@@ -17,6 +17,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @Tag(name = "탐색", description = "Search V2 개인 대화")
 @SecurityRequirement(name = ACCESS_TOKEN_COOKIE)
 public interface SearchQuestionApi {
+
     @Operation(summary = "탐색 첫 질문 접수와 대화 생성", description = "현재 Workspace 멤버의 질문을 원자적으로 접수합니다. "
             + "DB 커밋 뒤 accepted를 먼저 전송하며 생성은 연결 해제 후에도 계속됩니다. "
             + "같은 requestId·본문은 기존 ID와 현재 본문부터 복구합니다. 클라이언트는 기존 답변 버퍼를 교체해야 합니다.")

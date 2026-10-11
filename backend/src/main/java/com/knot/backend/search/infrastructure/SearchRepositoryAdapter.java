@@ -29,18 +29,23 @@ public class SearchRepositoryAdapter implements SearchRepository {
     public SearchConversation save(SearchConversation conversation) {
         return conversations.save(conversation);
     }
+
     public SearchMessage save(SearchMessage message) {
         return messages.save(message);
     }
+
     public SearchRequestReceipt save(SearchRequestReceipt receipt) {
         return receipts.save(receipt);
     }
+
     public SearchAnswerExecution save(SearchAnswerExecution execution) {
         return executions.save(execution);
     }
+
     public SearchEvidence save(SearchEvidence evidence) {
         return evidences.save(evidence);
     }
+
     public Optional<SearchRequestReceipt> findFirstReceipt(
             long workspaceId,
             long memberId,
@@ -52,26 +57,32 @@ public class SearchRepositoryAdapter implements SearchRepository {
                 requestId
         );
     }
+
     public Optional<SearchConversation> findConversation(long id) {
         return conversations.findById(id);
     }
+
     public Optional<SearchConversation> findConversationForUpdate(long id) {
         Optional<SearchConversation> locked = conversations.findForUpdate(id);
         locked.ifPresent(entityManager::refresh);
         return locked;
     }
+
     public Optional<SearchMessage> findMessage(long id) {
         return messages.findById(id);
     }
+
     public Optional<SearchAnswerExecution> findExecution(long id) {
         return executions.findById(id);
     }
+
     public Optional<SearchAnswerExecution> findExecutionForUpdate(long id) {
         Optional<SearchAnswerExecution> locked = executions.findForUpdate(id);
         // 잠금 대기 전에 관리된 객체가 있으면 DB의 최신 선점 상태를 다시 읽는다.
         locked.ifPresent(entityManager::refresh);
         return locked;
     }
+
     public List<Long> findQueuedAnswerIds(int limit) {
         return executions.findQueued(
                 PageRequest.of(
@@ -80,6 +91,7 @@ public class SearchRepositoryAdapter implements SearchRepository {
                 )
         );
     }
+
     public List<Long> findExpiredAnswerIds(
             Instant now,
             int limit
@@ -92,6 +104,7 @@ public class SearchRepositoryAdapter implements SearchRepository {
                 )
         );
     }
+
     public void flush() {
         conversations.flush();
     }

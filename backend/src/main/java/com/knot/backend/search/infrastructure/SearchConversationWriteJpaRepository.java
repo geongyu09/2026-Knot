@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 
 interface SearchConversationWriteJpaRepository extends JpaRepository<SearchConversation, Long> {
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from SearchConversation c where c.id = :id")
     Optional<SearchConversation> findForUpdate(long id);
