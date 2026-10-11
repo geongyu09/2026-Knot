@@ -1,4 +1,4 @@
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -539,5 +539,75 @@ describe("relaySearchAnswerUntilEnd", () => {
       { event: "delta", data: new SearchStreamDeltaDto(delta) },
     ]);
     expect(error).toBeInstanceOf(SearchAnswerDisconnectedError);
+  });
+
+  // SEARCH-R8 이어 보기 · 질문을 보내자마자 화면을 떠나도 실패로 보지 않음
+  it("[SEARCH-R8] 응답을 기다리는 중에 abort하면 실패 없이 null을 반환한다", async () => {
+    let resolveRequestArrived = () => {};
+    const requestArrived = new Promise<void>((resolve) => {
+      resolveRequestArrived = resolve;
+    });
+    mockServer.use(
+      http.post(SEARCH_CONVERSATIONS_PATH, async () => {
+        resolveRequestArrived();
+        await delay("infinite");
+        return new HttpResponse(null);
+      }),
+    );
+    const controller = new AbortController();
+    const onEvent = vi.fn();
+
+    const result = relaySearchAnswerUntilEnd({
+      stream: createSearchConversationApi({
+        workspaceId: WORKSPACE_ID,
+        body: QUESTION,
+        signal: controller.signal,
+      }),
+      onEvent,
+      signal: controller.signal,
+    });
+    await requestArrived;
+    controller.abort();
+
+    await expect(result).resolves.toBeNull();
+    expect(onEvent).not.toHaveBeenCalled();
+  });
+
+  // SEARCH-R8 이어 보기 · 보내기 전에 이미 화면을 떠난 경우
+  it("[SEARCH-R8] 이미 취소된 signal로 보내면 실패 없이 null을 반환한다", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const onEvent = vi.fn();
+
+    const result = await relaySearchAnswerUntilEnd({
+      stream: createSearchConversationApi({
+        workspaceId: WORKSPACE_ID,
+        body: QUESTION,
+        signal: controller.signal,
+      }),
+      onEvent,
+      signal: controller.signal,
+    });
+
+    expect(result).toBeNull();
+    expect(onEvent).not.toHaveBeenCalled();
+  });
+
+  // 취소 판정이 다른 오류까지 삼키지 않도록 지키는 테스트
+  it("onEvent가 던진 오류는 취소로 바꾸지 않고 그대로 전달한다", async () => {
+    const callbackError = new Error("화면 상태를 바꾸지 못했어요");
+    const onEvent = vi.fn(() => {
+      throw callbackError;
+    });
+
+    const error = await relaySearchAnswerUntilEnd({
+      stream: createSearchConversationApi({
+        workspaceId: WORKSPACE_ID,
+        body: QUESTION,
+      }),
+      onEvent,
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBe(callbackError);
   });
 });

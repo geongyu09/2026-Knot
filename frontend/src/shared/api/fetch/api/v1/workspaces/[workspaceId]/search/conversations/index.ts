@@ -144,18 +144,29 @@ export const relaySearchAnswerUntilEnd = async ({
   onEvent,
   signal,
 }: RelaySearchAnswerUntilEndParams) => {
-  for await (const searchStreamEvent of stream) {
-    onEvent(searchStreamEvent);
+  try {
+    // 서버가 끝 이벤트로 결과를 알려 주면 그대로 따라요
+    for await (const searchStreamEvent of stream) {
+      onEvent(searchStreamEvent);
 
-    if (searchStreamEvent.event === "completed") return searchStreamEvent.data;
-    if (searchStreamEvent.event === "stopped") return searchStreamEvent.data;
-    if (searchStreamEvent.event === "failed") {
-      throw new SearchAnswerFailedError(searchStreamEvent.data);
+      if (searchStreamEvent.event === "completed")
+        return searchStreamEvent.data;
+      if (searchStreamEvent.event === "stopped") return searchStreamEvent.data;
+      if (searchStreamEvent.event === "failed") {
+        throw new SearchAnswerFailedError(searchStreamEvent.data);
+      }
     }
+  } catch (error) {
+    // 응답 전에 abort됨: fetch가 던진 signal.reason이면 사용자가 떠난 것이라 실패로 보지 않아요
+
+    if (signal?.aborted && error === signal.reason) return null;
+    // 질문 거절·답변 실패·onEvent 오류는 화면이 알아야 하니 그대로 올려요
+    throw error;
   }
 
-  // signal을 abort하면 readSseStream이 오류 없이 끝나므로, 끝 이벤트 없이 끝난 이유가 abort인지 여기서 가려요
+  // 응답 도중 abort됨: readSseStream이 오류 없이 끝나서 여기로 와요
   if (signal?.aborted) return null;
 
+  // 끝 이벤트 없이 끊김: 서버는 답변을 계속 만들고 있을 수 있어요
   throw new SearchAnswerDisconnectedError();
 };
