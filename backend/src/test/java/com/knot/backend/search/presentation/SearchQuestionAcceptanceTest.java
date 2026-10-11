@@ -123,7 +123,7 @@ class SearchQuestionAcceptanceTest {
     @Test
     @DisplayName("실제 HTTP에서 accepted를 먼저 받고 한글 delta·근거·제외 수·완료와 EOF를 받는다")
     void create_success_realSseAndUtf8() throws Exception {
-        long document = new SearchMessageFixtures(jdbc).saveDocument(
+        long document = saveArchivedDocument(
                 workspaceId,
                 memberId
         );
@@ -201,7 +201,7 @@ class SearchQuestionAcceptanceTest {
     void create_success_disconnectDoesNotCancel() throws Exception {
         CountDownLatch generating = new CountDownLatch(1);
         CountDownLatch resume = new CountDownLatch(1);
-        long document = new SearchMessageFixtures(jdbc).saveDocument(
+        long document = saveArchivedDocument(
                 workspaceId,
                 memberId
         );
@@ -718,5 +718,21 @@ class SearchQuestionAcceptanceTest {
                         .query(Long.class)
                         .single()
         ).isZero();
+    }
+    private long saveArchivedDocument(
+            long workspace,
+            long member
+    ) {
+        long id = new SearchMessageFixtures(jdbc).saveDocument(
+                workspace,
+                member
+        );
+        jdbc.sql("UPDATE documents SET status = 'ARCHIVED', archived_at = created_at WHERE id = :id")
+                .param(
+                        "id",
+                        id
+                )
+                .update();
+        return id;
     }
 }
