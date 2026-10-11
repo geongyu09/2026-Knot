@@ -39,8 +39,8 @@ interface UploadRecordedAudioParams {
  * 녹음을 시작·일시정지·이어서 녹음·끝내며 서버 녹음 세션과 맞추는 도메인 훅.
  *
  * - 시작: 마이크 권한 → 시작 요청이 성공해야 브라우저 녹음을 시작해요. 시작 요청이 실패하면 마이크를 꺼요.
- *   서버가 409로 거절하거나, 남아 있던 증명의 녹음이 아직 열려 있으면 이어받지 않고 거절로 돌려줘요.
- *   남아 있던 증명의 녹음이 이미 끝났거나 버려졌으면 새 증명으로 한 번만 다시 보내요. 시작 중에 다시 불러도 겹쳐 보내지 않아요.
+ *   서버가 409로 거절하거나, 남아 있던 증명의 녹음을 돌려주면(200) 이어받지 않고 거절로 돌려줘요.
+ *   돌려준 녹음이 이미 끝났거나 버려졌으면 새 증명으로 한 번만 다시 보내요. 시작 중에 다시 불러도 겹쳐 보내지 않아요.
  * - 일시정지·이어서 녹음: 브라우저 녹음을 먼저 바꾸고 서버에 알려요. 서버 요청이 실패해도 다시 보내지 않고
  *   사용자가 누른 대로 둬요.
  * - 끝내기: 확인 창에서 [녹음 끝내기]를 고르면 종료 요청 → 업로드 URL 발급 → 오디오 PUT → 업로드 완료 확인 → 녹음 비우기 → 홈.
@@ -107,14 +107,12 @@ const useRecordingControl = () => {
         startRecordingSession({ workspaceId, ...getRecordingStartProof() });
 
       try {
-        // 새로 만든 증명의 응답은 늘 새 녹음이라, 남아 있던 증명일 때만 응답 상태를 따져요
-        const hasLeftoverProof = getRecordingControlProof() !== null;
         let session = await requestStart();
 
         if (session.status === "ENDED" || session.status === "DISCARDED") {
           clearRecordingStartProof();
           session = await requestStart();
-        } else if (hasLeftoverProof) {
+        } else if (!session.isCreated) {
           // 새로고침 전 녹음이 아직 열려 있어요. 이어 녹음은 이후 버전이라 이어받지 않아요(#374)
           useRecordingStore.getState().discardRecording();
 

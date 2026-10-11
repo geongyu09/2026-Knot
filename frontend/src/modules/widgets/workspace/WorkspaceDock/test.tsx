@@ -576,6 +576,20 @@ describe("WorkspaceDock", () => {
         },
       );
 
+      it("남은 증명으로 보낸 시작이 201 RECORDING이면 새 녹음으로 시작한다", async () => {
+        // 409·500으로 거절된 시작은 서버에 남지 않아, 같은 증명을 다시 보내면 새 녹음이 만들어져요
+        leaveStartProof();
+        respondStart(session("RECORDING", 201));
+        const { router } = renderDock();
+
+        await clickMic();
+
+        await waitFor(() =>
+          expect(router.state.location.pathname).toBe(RECORDING_PATH),
+        );
+        expect(useRecordingStore.getState().status).toBe("recording");
+      });
+
       it("모달의 닫기는 모달만 닫고 제자리에 남는다", async () => {
         respondStart(conflict("ACTIVE_RECORDING_ALREADY_EXISTS"));
         const { router } = renderDock();
