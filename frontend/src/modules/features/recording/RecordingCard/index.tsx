@@ -2,13 +2,17 @@ import useMeQuery from "@api/queries/useMeQuery";
 import styled from "@emotion/styled";
 import Divider from "@primitives/ui/Divider";
 
+import LoadingFallback from "./ui/LoadingFallback";
 import { formatRecordingTitle } from "./utils/formatRecordingTitle";
 
 /**
  * 녹음 화면 카드. 제목의 닉네임은 로그인한 회원 정보 조회(`GET /auth/me`) 응답에서 와요.
+ * 응답을 받기 전에는 제목·도움말·안내 자리를 스켈레톤으로 채워요.
  */
 export default function RecordingCard() {
-  const { data: me } = useMeQuery();
+  const { data: me, isPending } = useMeQuery();
+
+  if (isPending) return <LoadingFallback />;
 
   return (
     <Container>
