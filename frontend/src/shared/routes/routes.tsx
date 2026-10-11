@@ -11,7 +11,6 @@ import ChatPage from "@pages/workspace/[workspaceId]/chat";
 import DocumentPage from "@pages/workspace/[workspaceId]/documents/[documentId]";
 import WorkspaceInvitePage from "@pages/workspace/[workspaceId]/invite";
 import WorkspaceJoinPage from "@pages/workspace/[workspaceId]/join";
-import WorkspaceNotionConnectionPage from "@pages/workspace/[workspaceId]/notion-connection";
 import RecordingPage from "@pages/workspace/[workspaceId]/recording";
 import RecordingDocumentsPage from "@pages/workspace/[workspaceId]/recordings/[recordingId]";
 import WorkspaceCodePage from "@pages/workspace/code";
@@ -27,7 +26,7 @@ import { PATH_ROUTE } from "./PATH_ROUTE";
  * 로그인 여부로 세 구역이 나뉘어요.
  *
  * - 누구나: 온보딩, 가입 완료, 초대 링크 판정, 입장 확인, 초대 오류
- * - 로그인한 사람만(`AuthGuard`): 워크스페이스 선택·생성·초대·코드·노션 연동
+ * - 로그인한 사람만(`AuthGuard`): 워크스페이스 선택·생성·초대·코드
  * - 로그인하지 않은 사람용(`GuestGuard`): 로그인 화면
  *
  * 온보딩(`/onboarding`)은 닉네임을 아직 정하지 않아 `/api/v1/auth/me`가 401인 상태에서
@@ -94,10 +93,6 @@ export const routes: RouteObject[] = [
           {
             path: PATH_ROUTE.WORKSPACE_INVITE,
             element: <WorkspaceInvitePage />,
-          },
-          {
-            path: PATH_ROUTE.WORKSPACE_NOTION_CONNECTION,
-            element: <WorkspaceNotionConnectionPage />,
           },
           {
             path: PATH_ROUTE.WORKSPACE_CODE,

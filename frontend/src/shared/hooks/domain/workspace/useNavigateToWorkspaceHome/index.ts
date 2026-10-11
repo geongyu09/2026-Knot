@@ -11,8 +11,8 @@ interface NavigateToWorkspaceHomeParams {
 /**
  * 워크스페이스 홈 화면(`/workspace/:workspaceId`)으로 이동하는 도메인 훅.
  *
- * 노션 연동을 마치고 돌아온 화면처럼 뒤로 가기로 다시 볼 이유가 없는 곳에서는 `replace`를 켜요.
- * `useEffect` 안에서 부르는 곳(노션 연동 카드)이 있어 참조를 `useCallback`으로 고정해요.
+ * 들어올 수 없는 녹음 화면처럼 뒤로 가기로 다시 볼 이유가 없는 곳에서는 `replace`를 켜요.
+ * `useEffect` 안에서 부르는 곳(녹음 진입 가드·정리 화면 이동)이 있어 참조를 `useCallback`으로 고정해요.
  */
 const useNavigateToWorkspaceHome = () => {
   const navigate = useNavigate();
