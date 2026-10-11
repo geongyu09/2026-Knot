@@ -128,33 +128,32 @@ class SearchMessageListQueryIntegrationTest {
         }
     }
 
-    @Test
-    @DisplayName("메시지 조회 SQL에도 소유자와 Workspace 범위를 적용한다")
-    void findPage_failure_wrongScope() {
+    @ParameterizedTest
+    @ValueSource(strings = {"workspace", "member", "conversation"})
+    @DisplayName("메시지 조회 SQL의 Workspace·소유자·대화 범위를 각각 검사한다")
+    void findPage_failure_wrongScope(String target) {
+        // given
+        long requestedWorkspace = scopedId(
+                target,
+                "workspace",
+                workspaceId
+        );
+        long requestedMember = scopedId(
+                target,
+                "member",
+                memberId
+        );
+        long requestedConversation = scopedId(
+                target,
+                "conversation",
+                conversationId
+        );
         // when & then
         assertThat(
                 query.findPage(
-                        workspaceId,
-                        Long.MAX_VALUE,
-                        conversationId,
-                        null,
-                        30
-                )
-        ).isEmpty();
-        assertThat(
-                query.findPage(
-                        Long.MAX_VALUE,
-                        memberId,
-                        conversationId,
-                        null,
-                        30
-                )
-        ).isEmpty();
-        assertThat(
-                query.findPage(
-                        workspaceId,
-                        memberId,
-                        Long.MAX_VALUE,
+                        requestedWorkspace,
+                        requestedMember,
+                        requestedConversation,
                         null,
                         30
                 )
