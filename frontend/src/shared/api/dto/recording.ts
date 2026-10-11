@@ -11,8 +11,9 @@
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-upload-complete
  */
 
-/** 녹음 세션 상태. 시작·일시정지·재개·종료 응답과 녹음 상세 조회의 `sessionStatus`가 공유하는 서버 값 */
-export type RecordingSessionStatus = "RECORDING" | "PAUSED" | "ENDED";
+/** 녹음 세션 상태. 시작·일시정지·재개·종료 응답과 녹음 상세 조회의 `sessionStatus`가 공유하는 서버 값. `DISCARDED`는 서버가 버린 녹음이에요 */
+export type RecordingSessionStatus =
+  "RECORDING" | "PAUSED" | "ENDED" | "DISCARDED";
 
 // GET /api/v1/workspaces/{workspaceId}/recordings/current
 
