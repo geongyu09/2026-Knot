@@ -14,6 +14,7 @@ import { documentsHandlers } from "./api/v1/workspaces/[workspaceId]/documents";
 import { documentHandlers } from "./api/v1/workspaces/[workspaceId]/documents/[documentId]";
 import { documentConfirmationsHandlers } from "./api/v1/workspaces/[workspaceId]/documents/[documentId]/confirmations";
 import { documentMyConfirmationHandlers } from "./api/v1/workspaces/[workspaceId]/documents/[documentId]/confirmations/me";
+import { documentTranscriptHandlers } from "./api/v1/workspaces/[workspaceId]/documents/[documentId]/transcript";
 import { workspaceNotionImportsHandlers } from "./api/v1/workspaces/[workspaceId]/imports";
 import { workspaceInvitationHandlers } from "./api/v1/workspaces/[workspaceId]/invitation";
 import { workspaceInvitationsHandlers } from "./api/v1/workspaces/[workspaceId]/invitations";
@@ -58,6 +59,7 @@ export const handlers = [
   ...documentHandlers,
   ...documentConfirmationsHandlers,
   ...documentMyConfirmationHandlers,
+  ...documentTranscriptHandlers,
   ...invitationAcceptHandlers,
   ...invitationPreviewHandlers,
   ...chatMessagesHandlers,

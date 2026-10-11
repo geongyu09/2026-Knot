@@ -18,4 +18,7 @@ export const documentKeys = {
   // 문서 상세 키 아래에 둬서, 상세를 무효화하면 확인 대상도 함께 다시 받아요
   confirmations: (params: DocumentDetailKeyParams) =>
     [...documentKeys.detail(params), "confirmations"] as const,
+  // 문서 상세 키 아래에 두지 않아요. 문서를 확인해 상세를 무효화해도 원문은 바뀌지 않아 다시 받을 필요가 없어요
+  transcript: ({ workspaceId, documentId }: DocumentDetailKeyParams) =>
+    [...documentKeys.all, "transcript", workspaceId, documentId] as const,
 };
