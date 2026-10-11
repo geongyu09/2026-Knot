@@ -447,23 +447,22 @@ class SearchMessageListAcceptanceTest {
         );
     }
 
-    @Test
-    @DisplayName("미가입 Workspace와 탈퇴 후 접근은 403이다")
-    void find_failure_inactiveMembership() throws Exception {
-        // when & then
-        expectAccessDenied(
-                documents.saveWorkspace(),
-                conversationId,
-                memberId
-        );
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("미가입 Workspace와 탈퇴 후 접근을 각각 403으로 거절한다")
+    void find_failure_inactiveMembership(boolean formerMember) throws Exception {
         // given
-        documents.leave(
-                workspaceId,
-                memberId
-        );
+        long requestedWorkspace = documents.saveWorkspace();
+        if (formerMember) {
+            documents.leave(
+                    workspaceId,
+                    memberId
+            );
+            requestedWorkspace = workspaceId;
+        }
         // when & then
         expectAccessDenied(
-                workspaceId,
+                requestedWorkspace,
                 conversationId,
                 memberId
         );
