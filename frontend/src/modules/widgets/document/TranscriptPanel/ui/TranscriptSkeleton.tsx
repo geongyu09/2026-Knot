@@ -1,7 +1,8 @@
 import styled from "@emotion/styled";
 import Divider from "@primitives/ui/Divider";
 import Skeleton from "@primitives/ui/Skeleton";
-import { useId } from "react";
+
+import { useTitleId } from "../model/useTitleId";
 
 /** 덩어리의 굵기(rem). 피그마 Panel/Transcript(상태=불러오는 중)의 덩어리는 모두 12px이에요 */
 const SKELETON_HEIGHT = 0.75;
@@ -27,7 +28,7 @@ const LINE_TEXT_WIDTHS = [
  * 패널의 틀과 제목까지 여기서 그려요. 원문을 받은 화면(`TranscriptPanel`)과 따로 바뀌는 일이 많아, 틀을 함께 쓰지 않아요.
  */
 export default function TranscriptSkeleton() {
-  const titleId = useId();
+  const { titleId } = useTitleId();
 
   return (
     <Container aria-labelledby={titleId}>

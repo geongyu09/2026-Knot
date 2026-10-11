@@ -11,9 +11,9 @@ import Chip from "@primitives/ui/Chip";
 import Divider from "@primitives/ui/Divider";
 import { formatDate } from "@utils/formatDate";
 import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
-import { useId } from "react";
-import { useParams } from "react-router";
 
+import { useDocumentParams } from "./model/useDocumentParams";
+import { useTitleId } from "./model/useTitleId";
 import TranscriptLine from "./ui/TranscriptLine";
 import TranscriptLoadFailed from "./ui/TranscriptLoadFailed";
 import TranscriptSkeleton from "./ui/TranscriptSkeleton";
@@ -45,10 +45,8 @@ const isUnavailableError = (error: unknown) =>
  * 문서 상세를 받지 못했으면 날짜 없이 원문을 보여줘요.
  */
 export default function TranscriptPanel() {
-  const titleId = useId();
-  const params = useParams();
-  const workspaceId = Number(params.workspaceId);
-  const documentId = Number(params.documentId);
+  const { titleId } = useTitleId();
+  const { workspaceId, documentId } = useDocumentParams();
   const {
     data: transcript,
     error,
@@ -66,15 +64,17 @@ export default function TranscriptPanel() {
     refetch();
   };
 
-  if (isUnavailableError(error)) {
+  // 400 · 403 · 404는 받은 원문이 있어도 실패 안내를 보여줘요. 그 밖의 실패는 받은 원문이 없을 때만 보여주고,
+  // 로그인 화면으로 보내는 중(401)이면 가는 동안 안내가 잠깐 보이지 않게 빼요
+  const shouldShowLoadFailed =
+    isUnavailableError(error) ||
+    (transcript === undefined && isError && !isUnauthorized);
+
+  if (shouldShowLoadFailed) {
     return <TranscriptLoadFailed onRetry={handleRetry} />;
   }
 
   if (transcript === undefined) {
-    if (isError && !isUnauthorized) {
-      return <TranscriptLoadFailed onRetry={handleRetry} />;
-    }
-
     return <TranscriptSkeleton />;
   }
 

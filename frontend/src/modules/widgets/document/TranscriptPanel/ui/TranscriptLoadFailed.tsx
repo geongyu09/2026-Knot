@@ -1,6 +1,7 @@
 import styled from "@emotion/styled";
 import InlineError from "@primitives/ui/InlineError";
-import { useId } from "react";
+
+import { useTitleId } from "../model/useTitleId";
 
 interface TranscriptLoadFailedProps {
   /** `다시 시도`를 눌렀을 때 실행할 동작 */
@@ -17,7 +18,7 @@ interface TranscriptLoadFailedProps {
 export default function TranscriptLoadFailed({
   onRetry,
 }: TranscriptLoadFailedProps) {
-  const titleId = useId();
+  const { titleId } = useTitleId();
 
   return (
     <Container aria-labelledby={titleId}>
