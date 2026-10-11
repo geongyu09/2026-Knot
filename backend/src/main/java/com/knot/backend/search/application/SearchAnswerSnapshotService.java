@@ -111,7 +111,10 @@ public class SearchAnswerSnapshotService {
                 execution.getExecutionToken(),
                 execution.getStage(),
                 execution.getExcludedCount(),
-                List.copyOf(evidences)
+                List.copyOf(evidences),
+                repository.findLatestReceipt(answerId)
+                        .map(receipt -> receipt.getId())
+                        .orElse(0L)
         );
     }
 

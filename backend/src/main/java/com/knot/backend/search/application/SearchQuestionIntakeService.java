@@ -189,7 +189,7 @@ public class SearchQuestionIntakeService {
                         acceptedAt
                 )
         );
-        repository.save(
+        SearchRequestReceipt receipt = repository.save(
                 SearchRequestReceipt.question(
                         conversation.getWorkspaceId(),
                         conversation.getMemberId(),
@@ -213,7 +213,8 @@ public class SearchQuestionIntakeService {
         return new SearchQuestionAcceptedResult(
                 conversationId,
                 question.getId(),
-                answer.getId()
+                answer.getId(),
+                receipt.getId()
         );
     }
 
@@ -246,7 +247,8 @@ public class SearchQuestionIntakeService {
         return new SearchQuestionAcceptedResult(
                 receipt.getConversationId(),
                 receipt.getQuestionMessageId(),
-                receipt.getAnswerMessageId()
+                receipt.getAnswerMessageId(),
+                receipt.getId()
         );
     }
 
@@ -279,7 +281,7 @@ public class SearchQuestionIntakeService {
                         acceptedAt
                 )
         );
-        repository.save(
+        SearchRequestReceipt receipt = repository.save(
                 SearchRequestReceipt.firstQuestion(
                         workspaceId,
                         memberId,
@@ -302,7 +304,8 @@ public class SearchQuestionIntakeService {
         return new SearchQuestionAcceptedResult(
                 conversationId,
                 question.getId(),
-                answer.getId()
+                answer.getId(),
+                receipt.getId()
         );
     }
 }
