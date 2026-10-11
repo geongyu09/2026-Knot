@@ -32,6 +32,8 @@ public interface SearchRepository {
             UUID requestId
     );
 
+    boolean existsStreamingAnswer(long conversationId);
+
     Optional<SearchConversation> findConversationForUpdate(long conversationId);
 
     Optional<SearchMessage> findMessage(long messageId);
