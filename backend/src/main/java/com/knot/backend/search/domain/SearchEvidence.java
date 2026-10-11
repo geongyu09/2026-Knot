@@ -15,7 +15,7 @@ public class SearchEvidence {
     private SearchEvidenceId id;
 
     @Column(nullable = false)
-    private short rank;
+    private int rank;
 
     protected SearchEvidence() {}
 
@@ -24,15 +24,15 @@ public class SearchEvidence {
             long documentId,
             int rank
     ) {
-        if (rank < 1 || rank > 3) {
-            throw new IllegalArgumentException("evidence rank must be between 1 and 3");
+        if (rank < 1) {
+            throw new IllegalArgumentException("evidence rank must be positive");
         }
         SearchEvidence evidence = new SearchEvidence();
         evidence.id = SearchEvidenceId.of(
                 messageId,
                 documentId
         );
-        evidence.rank = (short) rank;
+        evidence.rank = rank;
         return evidence;
     }
 }

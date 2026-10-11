@@ -5,6 +5,6 @@ public record SearchEvidenceRow(
         long documentId,
         String title,
         String topic,
-        short rank
+        int rank
 ) {
 }
