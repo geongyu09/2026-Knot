@@ -71,6 +71,35 @@ public class SearchAnswerExecutionService {
         );
     }
 
+    public boolean recordRetrieval(
+            long answerId,
+            UUID token,
+            int excludedCount,
+            List<SearchDocumentResult> candidates
+    ) {
+        Optional<SearchAnswerExecution> current = currentExecution(
+                answerId,
+                token
+        );
+        if (current.isEmpty()) {
+            return false;
+        }
+        SearchAnswerExecution execution = current.get();
+        long workspaceId = conversation(execution).getWorkspaceId();
+        Set<Long> ids = new HashSet<>();
+        for (SearchDocumentResult candidate : candidates) {
+            if (!ids.add(candidate.documentId())) {
+                throw new IllegalArgumentException("duplicate candidate document");
+            }
+            requireDocument(
+                    workspaceId,
+                    candidate.documentId()
+            );
+        }
+        execution.recordRetrieval(excludedCount);
+        return true;
+    }
+
     private Optional<SearchAnswerExecution> lockExecution(long answerId) {
         Optional<SearchAnswerExecution> found = repository.findExecution(answerId);
         if (found.isEmpty()) {
