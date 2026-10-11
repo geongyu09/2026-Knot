@@ -12,6 +12,7 @@ import com.knot.backend.search.application.dto.query.SearchDocumentParameters;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.result.SearchDocumentPage;
 import com.knot.backend.search.application.dto.result.SearchDocumentCard;
+import com.knot.backend.search.application.dto.result.SearchDocumentSlice;
 import com.knot.backend.search.infrastructure.SearchDocumentQueryAdapter;
 import com.knot.backend.search.infrastructure.mcp.SearchToolTokenCodec;
 import com.knot.backend.testsupport.TestApplicationProperties;
@@ -261,19 +262,108 @@ class SearchDocumentToolServiceIntegrationTest {
     @Test
     @DisplayName("한글 검색은 제목 우선으로 후보를 찾고 검색 커서를 이어간다")
     void search_success_koreanRankedPages() {
-        long body = saveDocument(workspaceId, "ARCHIVED", "회고", "결제 장애 원인");
-        long title = saveDocument(workspaceId, "ARCHIVED", "결제 장애", "복구 완료");
-        saveDocument(workspaceId, "DRAFT", "결제 장애", "미보관");
-        saveDocument(fixtures.saveWorkspace(), "ARCHIVED", "결제 장애", "외부");
-        SearchDocumentPage first = service.search(scope, parameters("결제", null, 1));
-        assertThat(first.items()).extracting(SearchDocumentCard::documentId).containsExactly(title);
-        assertThat(service.search(scope, parameters("결제", first.nextCursor(), 1)).items())
-                .extracting(SearchDocumentCard::documentId).containsExactly(body);
-        assertThatThrownBy(() -> service.search(scope, parameters("장애", first.nextCursor(), 1)))
-                .hasMessage("INVALID_TOOL_ARGUMENTS");
-        assertThat(service.search(scope, parameters("%", null, 20)).items()).isEmpty();
-        assertThatThrownBy(() -> service.search(scope, parameters(null, null, 20)))
-                .hasMessage("INVALID_TOOL_ARGUMENTS");
+        long body = saveDocument(
+                workspaceId,
+                "ARCHIVED",
+                "회고",
+                "결제 장애 원인"
+        );
+        long title = saveDocument(
+                workspaceId,
+                "ARCHIVED",
+                "결제 장애",
+                "복구 완료"
+        );
+        saveDocument(
+                workspaceId,
+                "DRAFT",
+                "결제 장애",
+                "미보관"
+        );
+        saveDocument(
+                fixtures.saveWorkspace(),
+                "ARCHIVED",
+                "결제 장애",
+                "외부"
+        );
+        SearchDocumentPage first = service.search(
+                scope,
+                parameters(
+                        "결제",
+                        null,
+                        1
+                )
+        );
+        assertThat(first.items()).extracting(SearchDocumentCard::documentId)
+                .containsExactly(title);
+        assertThat(
+                service.search(
+                        scope,
+                        parameters(
+                                "결제",
+                                first.nextCursor(),
+                                1
+                        )
+                )
+                        .items()
+        ).extracting(SearchDocumentCard::documentId)
+                .containsExactly(body);
+        assertThatThrownBy(
+                () -> service.search(
+                        scope,
+                        parameters(
+                                "장애",
+                                first.nextCursor(),
+                                1
+                        )
+                )
+        ).hasMessage("INVALID_TOOL_ARGUMENTS");
+        assertThat(
+                service.search(
+                        scope,
+                        parameters(
+                                "%",
+                                null,
+                                20
+                        )
+                )
+                        .items()
+        ).isEmpty();
+        assertThatThrownBy(
+                () -> service.search(
+                        scope,
+                        parameters(
+                                null,
+                                null,
+                                20
+                        )
+                )
+        ).hasMessage("INVALID_TOOL_ARGUMENTS");
+    }
+
+    @Test
+    @DisplayName("긴 본문은 이모지를 보존하며 이어 읽고 변경된 본문 커서는 거절한다")
+    void read_success_continuationAndRevision() {
+        properties.setReadCodePoints(3);
+        long document = saveDocument(workspaceId, "ARCHIVED", "결정", "가🙂나다😃라");
+        SearchDocumentSlice first = service.read(scope, document, null);
+        assertThat(first.content()).isEqualTo("가🙂나");
+        assertThat(first.truncated()).isTrue();
+        SearchDocumentSlice second = service.read(scope, document, first.nextCursor());
+        assertThat(second.content()).isEqualTo("다😃라");
+        assertThat(second.nextCursor()).isNull();
+        jdbc.sql("UPDATE documents SET content = '변경됨' WHERE id = :id").param("id", document).update();
+        assertThatThrownBy(() -> service.read(scope, document, first.nextCursor())).hasMessage("DOCUMENT_CHANGED");
+    }
+
+    @Test
+    @DisplayName("본문 읽기는 외부 Workspace와 미보관 문서를 찾았다고 노출하지 않는다")
+    void read_failure_unavailableDocument() {
+        long outside = saveDocument(fixtures.saveWorkspace(), "ARCHIVED", "외부", "비공개");
+        long draft = saveDocument(workspaceId, "DRAFT", "초안", "비공개");
+        assertThatThrownBy(() -> service.read(scope, outside, null)).hasMessage("DOCUMENT_NOT_FOUND");
+        assertThatThrownBy(() -> service.read(scope, draft, null)).hasMessage("DOCUMENT_NOT_FOUND");
+        assertThatThrownBy(() -> service.read(scope, 0, null)).hasMessage("INVALID_TOOL_ARGUMENTS");
     }
 
     private SearchDocumentParameters parameters(
