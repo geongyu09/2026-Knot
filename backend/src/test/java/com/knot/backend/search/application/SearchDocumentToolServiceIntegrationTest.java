@@ -283,7 +283,7 @@ class SearchDocumentToolServiceIntegrationTest {
                 memberId
         );
         jdbc.sql(
-                "UPDATE documents SET title = :title, content = :content, status = :status, archived_at = created_at WHERE id = :id"
+                "UPDATE documents SET title = :title, content = :content, status = :status, archived_at = CASE WHEN :status = 'ARCHIVED' THEN created_at END WHERE id = :id"
         )
                 .param(
                         "title",
