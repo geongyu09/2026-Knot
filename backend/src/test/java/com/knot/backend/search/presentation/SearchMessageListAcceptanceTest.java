@@ -365,54 +365,52 @@ class SearchMessageListAcceptanceTest {
                 .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
     }
 
-    @Test
-    @DisplayName("만료된 access token과 닉네임 용도 token은 401이다")
-    void find_failure_expiredOrWrongPurposeToken() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("만료된 access token과 닉네임 용도 token을 각각 401로 거절한다")
+    void find_failure_expiredOrWrongPurposeToken(boolean expired) throws Exception {
         // given
-        Instant issuedAt = Instant.now()
-                .minus(jwtProperties.getExpiration())
-                .minusSeconds(60);
-        JwtProvider issuer = new JwtProvider(
-                jwtProperties,
-                Clock.fixed(
-                        issuedAt,
-                        ZoneOffset.UTC
-                )
-        );
-        String expired = issuer.issue(
-                AuthenticatedMember.of(
-                        memberId,
-                        "조회자",
-                        null
-                )
-        );
-        String onboarding = tokens.issueNickname(
+        String token = tokens.issueNickname(
                 OAuthUser.of(
                         OAuthProvider.GITHUB,
                         "search-onboarding",
                         null
                 )
         );
-        // when & then
-        for (String token : List.of(
-                expired,
-                onboarding
-        )) {
-            mvc.perform(
-                    get(
-                            PATH,
-                            workspaceId,
-                            conversationId
-                    ).cookie(
-                            new Cookie(
-                                    "KNOT_ACCESS_TOKEN",
-                                    token
-                            )
+        if (expired) {
+            Instant issuedAt = Instant.now()
+                    .minus(jwtProperties.getExpiration())
+                    .minusSeconds(60);
+            JwtProvider issuer = new JwtProvider(
+                    jwtProperties,
+                    Clock.fixed(
+                            issuedAt,
+                            ZoneOffset.UTC
                     )
-            )
-                    .andExpect(status().isUnauthorized())
-                    .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+            );
+            token = issuer.issue(
+                    AuthenticatedMember.of(
+                            memberId,
+                            "조회자",
+                            null
+                    )
+            );
         }
+        // when & then
+        mvc.perform(
+                get(
+                        PATH,
+                        workspaceId,
+                        conversationId
+                ).cookie(
+                        new Cookie(
+                                "KNOT_ACCESS_TOKEN",
+                                token
+                        )
+                )
+        )
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
     }
 
     @Test
