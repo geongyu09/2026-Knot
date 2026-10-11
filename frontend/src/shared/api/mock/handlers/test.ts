@@ -16,6 +16,7 @@ import {
   PutDocumentConfirmationResponseDto,
 } from "@api/dto/document";
 import {
+  GetCurrentRecordingResponseDto,
   GetRecordingResponseDto,
   PostRecordingAudioUploadCompleteResponseDto,
   PostRecordingAudioUploadUrlResponseDto,
@@ -75,6 +76,7 @@ import {
 import { endRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/end";
 import { pauseRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/pause";
 import { resumeRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/resume";
+import { getCurrentRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/current";
 import { HTTP_ERROR_TYPE } from "@api/httpClient/error";
 import { csrfTokenResponse, meResponse } from "@api/mock/responses/auth";
 import { documentGenerationJobRetryResponse } from "@api/mock/responses/documentGenerationJob";
@@ -93,6 +95,7 @@ import {
   documentsResponse,
 } from "@api/mock/responses/document";
 import {
+  currentRecordingResponse,
   recordingAudioUploadCompleteResponse,
   recordingAudioUploadUrlResponse,
   recordingDetailsResponse,
@@ -510,6 +513,12 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
           },
         }),
       ).resolves.toEqual(new PostRecordingResponseDto(recordingStartResponse));
+    });
+
+    it("GET /api/v1/workspaces/:workspaceId/recordings/current는 currentRecordingResponse를 돌려준다", async () => {
+      await expect(getCurrentRecordingApi(WORKSPACE_ID)).resolves.toEqual(
+        new GetCurrentRecordingResponseDto(currentRecordingResponse),
+      );
     });
 
     it("POST .../recordings/:recordingId/pause는 recordingPauseResponse를 돌려준다", async () => {
