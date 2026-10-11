@@ -60,11 +60,15 @@ export default function DocumentList() {
     refetch();
   };
 
-  if (documentList === undefined) {
-    if (isError && !isLeavingError(error)) {
-      return <DocumentListLoadFailed onRetry={handleRetry} />;
-    }
+  // 받은 문서가 없고 실패했을 때 실패 안내를 보여줘요. 다른 화면으로 보내는 실패(401 · 403 · 404)는 가는 동안 안내가 잠깐 보이지 않게 빼요
+  const shouldShowLoadFailed =
+    documentList === undefined && isError && !isLeavingError(error);
 
+  if (shouldShowLoadFailed) {
+    return <DocumentListLoadFailed onRetry={handleRetry} />;
+  }
+
+  if (documentList === undefined) {
     return <DocumentListSkeleton />;
   }
 
