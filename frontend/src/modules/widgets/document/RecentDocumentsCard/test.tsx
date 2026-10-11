@@ -78,12 +78,17 @@ const respondWith = (response: DocumentsResponse) =>
     http.get(DOCUMENTS_REQUEST, () => HttpResponse.json(response)),
   );
 
-const findCard = () => screen.findByRole("region", { name: CARD_TITLE });
-
 // 문서 행은 카드 안 목록의 링크예요. 「전체 보기」 링크는 목록 밖에 있어요.
 // 불러오는 동안의 카드는 문서를 받으면 다른 요소로 바뀌므로, 카드를 먼저 잡지 않고 목록을 바로 찾아요
 const findRows = async () =>
   within(await screen.findByRole("list")).getAllByRole("link");
+
+// 불러오는 동안의 카드도 이름이 같은 region이라, 문서 행이 나온 뒤에 카드를 잡아요
+const findCard = async () => {
+  await findRows();
+
+  return screen.getByRole("region", { name: CARD_TITLE });
+};
 
 const queryViewAllLink = () =>
   screen.queryByRole("link", { name: "전체 보기" });

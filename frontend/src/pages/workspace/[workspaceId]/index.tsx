@@ -21,7 +21,7 @@ import WorkspaceInviteMemberCard from "@widgets/workspace/WorkspaceInviteMemberC
  */
 export default function WorkspaceHomePage() {
   return (
-    <Container>
+    <Root>
       <PageColumn>
         <MemberGreeting />
         <CardGrid>
@@ -31,11 +31,11 @@ export default function WorkspaceHomePage() {
           <WorkspaceInviteMemberCard />
         </CardGrid>
       </PageColumn>
-    </Container>
+    </Root>
   );
 }
 
-const Container = styled.div`
+const Root = styled.div`
   display: flex;
   justify-content: center;
   min-height: 100%;
