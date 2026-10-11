@@ -238,9 +238,10 @@ class SearchMessageListQueryIntegrationTest {
         assertThat(storedId.getDocumentId()).isEqualTo(first);
     }
 
-    @Test
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
     @DisplayName("여러 답변의 근거와 페이지 밖 근거를 구분하고 SQL 수는 늘지 않는다")
-    void findEvidences_success_multipleAnswers() {
+    void findEvidences_success_multipleAnswers(boolean oneAnswer) {
         // given
         search.saveMessage(
                 conversationId,
@@ -284,30 +285,23 @@ class SearchMessageListQueryIntegrationTest {
         );
         Statistics statistics = statistics();
         statistics.clear();
+        List<Long> answerIds = List.of(
+                firstAnswer,
+                nextAnswer
+        );
+        if (oneAnswer) {
+            answerIds = List.of(firstAnswer);
+        }
         // when
         Map<Long, List<SearchEvidenceItemResult>> result = query.findEvidences(
                 workspaceId,
                 memberId,
                 conversationId,
-                List.of(
-                        firstAnswer,
-                        nextAnswer
-                )
+                answerIds
         );
         // then
         assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
-        assertThat(result).containsOnlyKeys(
-                firstAnswer,
-                nextAnswer
-        );
-        assertThat(
-                query.findEvidences(
-                        workspaceId,
-                        memberId,
-                        conversationId,
-                        List.of(firstAnswer)
-                )
-        ).containsOnlyKeys(firstAnswer);
+        assertThat(result.keySet()).containsExactlyInAnyOrderElementsOf(answerIds);
     }
 
     @Test
