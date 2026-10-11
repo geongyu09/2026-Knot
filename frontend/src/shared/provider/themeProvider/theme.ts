@@ -26,6 +26,18 @@ const text = {
     line-height: 1.5;
     letter-spacing: -0.02em;
   `,
+  heading03: css`
+    font-size: 1.25rem; /* 20px */
+    font-weight: 600;
+    line-height: 1.5;
+    letter-spacing: -0.02em;
+  `,
+  heading04: css`
+    font-size: 1.125rem; /* 18px */
+    font-weight: 600;
+    line-height: 1.5;
+    letter-spacing: -0.02em;
+  `,
 
   body01: css`
     font-size: 1rem; /* 16px */
@@ -91,6 +103,7 @@ export const theme = {
       50: "#FAEFEE",
       200: "#DDACA6",
       600: "#BF3B2C",
+      700: "#A8483C",
       800: "#8C2A1F",
     },
   },

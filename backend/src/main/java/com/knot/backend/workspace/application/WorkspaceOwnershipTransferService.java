@@ -1,5 +1,8 @@
 package com.knot.backend.workspace.application;
 
+import com.knot.backend.document.application.DocumentArchivalService;
+import com.knot.backend.recording.domain.RecordingSession;
+import com.knot.backend.recording.domain.RecordingSessionRepository;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import com.knot.backend.workspace.domain.WorkspaceMember;
@@ -18,9 +21,12 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional
 public class WorkspaceOwnershipTransferService {
+
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
+    private final RecordingSessionRepository recordingSessionRepository;
     private final Clock clock;
+    private final DocumentArchivalService documentArchivalService;
 
     public void transferOwnership(
             long memberId,
@@ -62,6 +68,33 @@ public class WorkspaceOwnershipTransferService {
                         successor
                 )
         );
+        discardOwnerActiveRecordings(
+                workspaceId,
+                memberId,
+                leftAt
+        );
+        workspaceMemberRepository.flush();
+        documentArchivalService.archiveAfterMemberDeparture(
+                workspaceId,
+                memberId,
+                leftAt
+        );
+    }
+
+    private void discardOwnerActiveRecordings(
+            long workspaceId,
+            long memberId,
+            Instant discardedAt
+    ) {
+        List<RecordingSession> recordingSessions = recordingSessionRepository
+                .findAllActiveByWorkspaceIdAndMemberIdForUpdate(
+                        workspaceId,
+                        memberId
+                );
+        for (RecordingSession recordingSession : recordingSessions) {
+            recordingSession.discard(discardedAt);
+            recordingSessionRepository.save(recordingSession);
+        }
     }
 
     private void validateWorkspaceId(Long workspaceId) {

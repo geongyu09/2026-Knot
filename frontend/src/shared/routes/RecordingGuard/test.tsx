@@ -40,14 +40,18 @@ const renderGuard = () => {
 /** 녹음은 독에서 마이크를 받은 뒤 시작하므로, 녹음 화면에 들어오기 전에 미리 시작해 둬요. */
 const startRecording = async () => {
   await act(async () => {
-    await useRecordingStore.getState().startRecording();
+    await useRecordingStore.getState().connectMicrophone();
+    useRecordingStore.getState().startRecording({
+      workspaceId: Number(WORKSPACE_ID),
+      recordingId: 10,
+    });
   });
 };
 
 describe("RecordingGuard", () => {
   afterEach(() => {
     // 전역 저장소라 테스트끼리 녹음이 새지 않도록 처음 상태로 되돌려요
-    useRecordingStore.getState().endRecording();
+    useRecordingStore.getState().discardRecording();
   });
 
   it("진행 중인 녹음 없이 들어오면 홈으로 보내고, 뒤로 가기로 돌아오지 않는다", async () => {
@@ -74,7 +78,7 @@ describe("RecordingGuard", () => {
     const { router } = renderGuard();
 
     await act(async () => {
-      useRecordingStore.getState().endRecording();
+      useRecordingStore.getState().discardRecording();
     });
 
     expect(router.state.location.pathname).toBe(RECORDING_PATH);

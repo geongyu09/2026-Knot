@@ -22,6 +22,7 @@ import lombok.Getter;
 @Table(name = "recording_sessions")
 public class RecordingSession {
     private static final Pattern SHA_256_HEX_PATTERN = Pattern.compile("^[0-9a-f]{64}$");
+    private static final Duration CONNECTION_TIMEOUT = Duration.ofSeconds(120);
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -54,8 +55,15 @@ public class RecordingSession {
     @Column(name = "current_interval_started_at")
     private Instant currentIntervalStartedAt;
 
+    @Column(name = "paused_at")
+    private Instant pausedAt;
+
     @Column(name = "ended_at")
     private Instant endedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "end_reason", length = 30)
+    private RecordingEndReason endReason;
 
     @Column(name = "last_seen_at", nullable = false)
     private Instant lastSeenAt;
@@ -93,6 +101,10 @@ public class RecordingSession {
         this.accumulatedRecordingMillis = 0L;
     }
 
+    public static Instant disconnectionThreshold(Instant now) {
+        return now.minus(CONNECTION_TIMEOUT);
+    }
+
     public static RecordingSession start(
             Long workspaceId,
             Long memberId,
@@ -120,8 +132,45 @@ public class RecordingSession {
                 && sameControlTokenHash(controlTokenHash);
     }
 
+    public void validateControlledBy(
+            long workspaceId,
+            long memberId
+    ) {
+        if (this.workspaceId != workspaceId) {
+            throw new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND);
+        }
+        if (this.memberId != memberId) {
+            throw new RecordingException(RecordingErrorCode.RECORDING_CONTROL_DENIED);
+        }
+    }
+
+    public void validateControlProof(
+            UUID tabId,
+            String controlTokenHash
+    ) {
+        if (!this.tabId.equals(tabId) || !sameControlTokenHash(controlTokenHash)) {
+            throw new RecordingException(RecordingErrorCode.RECORDING_CONTROL_DENIED);
+        }
+    }
+
+    public boolean belongsTo(long workspaceId) {
+        return this.workspaceId == workspaceId;
+    }
+
+    public void validateAudioUploadable() {
+        validateEnded();
+    }
+
+    public void validateEnded() {
+        ensureNotDiscarded();
+        if (status != RecordingStatus.ENDED) {
+            throw new RecordingException(RecordingErrorCode.RECORDING_NOT_ENDED);
+        }
+    }
+
     public void pause(Instant pausedAt) {
-        ensureNotEnded();
+        ensureActive();
+        ensureConnected(pausedAt);
         if (status == RecordingStatus.PAUSED) {
             return;
         }
@@ -134,37 +183,94 @@ public class RecordingSession {
                 .toMillis();
         status = RecordingStatus.PAUSED;
         currentIntervalStartedAt = null;
+        this.pausedAt = pausedAt;
         lastSeenAt = pausedAt;
     }
 
     public void resume(Instant resumedAt) {
-        ensureNotEnded();
+        ensureActive();
+        ensureConnected(resumedAt);
         if (status == RecordingStatus.RECORDING) {
             return;
         }
         validateTimeNotBeforeLastSeen(resumedAt);
         status = RecordingStatus.RECORDING;
         currentIntervalStartedAt = resumedAt;
+        pausedAt = null;
         lastSeenAt = resumedAt;
+    }
+
+    public Instant getResumedAt() {
+        if (status != RecordingStatus.RECORDING) {
+            return null;
+        }
+        return currentIntervalStartedAt;
     }
 
     public void end(Instant endedAt) {
         if (status == RecordingStatus.ENDED) {
             return;
         }
-        validateTimeNotBeforeLastSeen(endedAt);
+        ensureNotDiscarded();
+        if (expireIfDisconnected(endedAt)) {
+            return;
+        }
+        stop(
+                RecordingStatus.ENDED,
+                endedAt
+        );
+        endReason = RecordingEndReason.USER_ENDED;
+    }
+
+    public boolean expireIfDisconnected(Instant now) {
+        if (!isActive() || !isDisconnected(now)) {
+            return false;
+        }
+        Instant expiredAt = getExpiresAt();
         if (status == RecordingStatus.RECORDING) {
-            validateTimeNotBeforeCurrentInterval(endedAt);
             accumulatedRecordingMillis += Duration.between(
                     currentIntervalStartedAt,
-                    endedAt
+                    expiredAt
             )
                     .toMillis();
         }
         status = RecordingStatus.ENDED;
         currentIntervalStartedAt = null;
-        this.endedAt = endedAt;
-        lastSeenAt = endedAt;
+        endedAt = expiredAt;
+        endReason = RecordingEndReason.CONNECTION_EXPIRED;
+        return true;
+    }
+
+    public void recordHeartbeat(Instant receivedAt) {
+        if (!isActive()) {
+            return;
+        }
+        ensureConnected(receivedAt);
+        if (receivedAt.isAfter(lastSeenAt)) {
+            lastSeenAt = receivedAt;
+        }
+    }
+
+    public boolean isActive() {
+        return RecordingStatus.ACTIVE_STATUSES.contains(status);
+    }
+
+    public Instant getExpiresAt() {
+        if (!isActive()) {
+            return null;
+        }
+        return lastSeenAt.plus(CONNECTION_TIMEOUT);
+    }
+
+    public void discard(Instant discardedAt) {
+        if (status == RecordingStatus.DISCARDED) {
+            return;
+        }
+        ensureNotEnded();
+        stop(
+                RecordingStatus.DISCARDED,
+                notBeforeLastSeen(discardedAt)
+        );
     }
 
     public long getRecordingDurationMillis(Instant now) {
@@ -189,9 +295,60 @@ public class RecordingSession {
         );
     }
 
+    private void stop(
+            RecordingStatus stoppedStatus,
+            Instant stoppedAt
+    ) {
+        validateTimeNotBeforeLastSeen(stoppedAt);
+        if (status == RecordingStatus.RECORDING) {
+            validateTimeNotBeforeCurrentInterval(stoppedAt);
+            accumulatedRecordingMillis += Duration.between(
+                    currentIntervalStartedAt,
+                    stoppedAt
+            )
+                    .toMillis();
+        }
+        status = stoppedStatus;
+        currentIntervalStartedAt = null;
+        this.endedAt = stoppedAt;
+        lastSeenAt = stoppedAt;
+    }
+
+    // 폐기는 사용자가 요청하지 않은 처리라서 서버 시계가 뒤로 조정돼도 탈퇴·승계를 실패시키지 않는다.
+    private Instant notBeforeLastSeen(Instant pointInTime) {
+        if (pointInTime != null && pointInTime.isBefore(lastSeenAt)) {
+            return lastSeenAt;
+        }
+        return pointInTime;
+    }
+
+    private boolean isDisconnected(Instant now) {
+        if (now == null) {
+            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_TIME);
+        }
+        return !now.isBefore(lastSeenAt.plus(CONNECTION_TIMEOUT));
+    }
+
+    private void ensureConnected(Instant now) {
+        if (isDisconnected(now)) {
+            throw new RecordingException(RecordingErrorCode.RECORDING_ALREADY_ENDED);
+        }
+    }
+
+    private void ensureActive() {
+        ensureNotEnded();
+        ensureNotDiscarded();
+    }
+
     private void ensureNotEnded() {
         if (status == RecordingStatus.ENDED) {
             throw new RecordingException(RecordingErrorCode.RECORDING_ALREADY_ENDED);
+        }
+    }
+
+    private void ensureNotDiscarded() {
+        if (status == RecordingStatus.DISCARDED) {
+            throw new RecordingException(RecordingErrorCode.RECORDING_ALREADY_DISCARDED);
         }
     }
 

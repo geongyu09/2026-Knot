@@ -63,6 +63,22 @@ public class AuthService {
         );
     }
 
+    @Transactional
+    public void logout(String refreshTokenValue) {
+        if (refreshTokenValue == null || refreshTokenValue.isBlank()) {
+            return;
+        }
+
+        String refreshTokenHash = refreshTokenProvider.hash(refreshTokenValue);
+        Instant revokedAt = clock.instant();
+        sessionRepository.findByRefreshTokenHash(refreshTokenHash)
+                .ifPresent(session -> {
+                    if (session.revoke(revokedAt)) {
+                        sessionRepository.save(session);
+                    }
+                });
+    }
+
     private AuthLoginResult createMemberLogin(OAuthIdentity identity) {
         Member member = getActiveMember(identity.getMemberId());
         Instant loginAt = clock.instant();
@@ -85,7 +101,11 @@ public class AuthService {
         );
 
         String accessToken = authTokenProvider.issue(authenticatedMember);
-        RefreshToken refreshToken = refreshTokenProvider.issue();
+        Instant refreshExpiresAt = AuthSession.initialRefreshExpirationAt(
+                sessionCreatedAt,
+                initialOAuthLoginAt
+        );
+        RefreshToken refreshToken = refreshTokenProvider.issue(refreshExpiresAt);
         AuthSession session = createLoginSession(
                 member.getId(),
                 refreshToken.getHash(),

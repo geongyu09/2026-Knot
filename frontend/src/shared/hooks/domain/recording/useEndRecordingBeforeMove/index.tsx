@@ -25,7 +25,7 @@ const useEndRecordingBeforeMove = () => {
   const isRecordingActive = useRecordingStore(
     (state) => state.status !== "idle",
   );
-  const endRecording = useRecordingStore((state) => state.endRecording);
+  const endRecording = useRecordingStore((state) => state.discardRecording);
 
   /** 녹음이 없으면 `move`를 바로 부르고, 있으면 모달로 물은 뒤 끝내기로 하면 녹음을 버리고 불러요 */
   const moveAfterEndingRecording = (move: () => void) => {

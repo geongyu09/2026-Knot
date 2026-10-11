@@ -16,7 +16,7 @@ const HOME_PATH = getRouterPath({
 
 /** 녹음을 처음 상태로 되돌려요. 녹음은 전역 저장소에 남아 스토리끼리 이어지기 때문이에요. */
 const resetRecording = () => {
-  useRecordingStore.getState().endRecording();
+  useRecordingStore.getState().discardRecording();
 };
 
 /** 12분 48초째 녹음 중인 상태로 만들어요. */

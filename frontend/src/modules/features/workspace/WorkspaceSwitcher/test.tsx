@@ -67,12 +67,16 @@ const findWorkspaceItem = (name: string) =>
 describe("WorkspaceSwitcher", () => {
   afterEach(() => {
     // 전역 저장소라 테스트끼리 녹음이 새지 않도록 처음 상태로 되돌려요
-    useRecordingStore.getState().endRecording();
+    useRecordingStore.getState().discardRecording();
   });
 
   const startRecording = async () => {
     await act(async () => {
-      await useRecordingStore.getState().startRecording();
+      await useRecordingStore.getState().connectMicrophone();
+      useRecordingStore.getState().startRecording({
+        workspaceId: currentWorkspace.id,
+        recordingId: 10,
+      });
     });
   };
 
