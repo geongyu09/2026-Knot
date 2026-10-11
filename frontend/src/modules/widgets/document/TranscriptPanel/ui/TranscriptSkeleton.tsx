@@ -31,10 +31,11 @@ export default function TranscriptSkeleton() {
           <Skeleton width={2.375} />
         </Meta>
         <Divider />
-        <Lines>
+        <LineList>
           {LINE_TEXT_WIDTHS.map((textWidths, lineIndex) => (
             <Line key={lineIndex}>
               <TimeSlot>
+                {/* 실제 시각의 기본 폭(`02:40`, 32px)과 같아요 */}
                 <Skeleton width={2} />
               </TimeSlot>
               <TextBlock>
@@ -46,7 +47,7 @@ export default function TranscriptSkeleton() {
               </TextBlock>
             </Line>
           ))}
-        </Lines>
+        </LineList>
       </Body>
     </Container>
   );
@@ -86,7 +87,7 @@ const Meta = styled.div`
 `;
 
 /** 발화 줄 사이 10px */
-const Lines = styled.div`
+const LineList = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.625rem; /* 10px */

@@ -92,7 +92,7 @@ export default function TranscriptPanel() {
         </Chip>
       </Meta>
       <Divider />
-      <Lines>
+      <LineList>
         {transcript.segments.map(
           ({ startMillis, speakerNumber, text }, index) => (
             <TranscriptLine
@@ -104,7 +104,7 @@ export default function TranscriptPanel() {
             />
           ),
         )}
-      </Lines>
+      </LineList>
       <FooterNotice>
         이 문서를 만든 원본이에요. 전사 전체를 그대로 볼 수 있어요
       </FooterNotice>
@@ -145,7 +145,7 @@ const CreatedDate = styled.time`
 `;
 
 /** 피그마 Transcript: 발화 줄 사이 10px. 패널이 자리보다 길어지면 이 목록만 스크롤해요 */
-const Lines = styled.ol`
+const LineList = styled.ol`
   display: flex;
   flex-direction: column;
   gap: 0.625rem; /* 10px */
