@@ -79,7 +79,7 @@ export async function* createSearchConversationApi({
   }
 }
 
-interface ReceiveSearchAnswerParams {
+interface RelaySearchAnswerUntilEndParams {
   /** 첫 질문·후속 질문 요청 함수가 내는 이벤트 스트림 */
   stream: AsyncIterable<SearchStreamEvent>;
   /** 이벤트가 도착할 때마다 불려요. 화면 상태에 쌓는 건 부르는 쪽이 해요 */
@@ -91,15 +91,15 @@ interface ReceiveSearchAnswerParams {
  * @param params - 요청 함수의 이벤트 스트림, 이벤트를 받을 콜백
  * @returns completed 이벤트의 data
  * @example
- * const completed = await receiveSearchAnswer({
+ * const completed = await relaySearchAnswerUntilEnd({
  *   stream: createSearchConversationApi({ workspaceId, body, signal }),
  *   onEvent,
  * });
  */
-export const receiveSearchAnswer = async ({
+export const relaySearchAnswerUntilEnd = async ({
   stream,
   onEvent,
-}: ReceiveSearchAnswerParams) => {
+}: RelaySearchAnswerUntilEndParams) => {
   for await (const searchStreamEvent of stream) {
     onEvent(searchStreamEvent);
 

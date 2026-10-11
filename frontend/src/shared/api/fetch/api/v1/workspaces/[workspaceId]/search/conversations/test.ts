@@ -19,7 +19,7 @@ import {
 import { mockServer } from "@api/mock/server";
 import { SseRequestError } from "@api/sse/requestSseStream";
 
-import { createSearchConversationApi, receiveSearchAnswer } from ".";
+import { createSearchConversationApi, relaySearchAnswerUntilEnd } from ".";
 
 const WORKSPACE_ID = 1;
 const SEARCH_CONVERSATIONS_PATH =
@@ -365,12 +365,12 @@ const toCompletedAnswerEvents = ({
 const toReceivedEvents = (onEvent: ReturnType<typeof vi.fn>) =>
   onEvent.mock.calls.map(([event]) => event);
 
-describe("receiveSearchAnswer", () => {
+describe("relaySearchAnswerUntilEnd", () => {
   // SEARCH-R1 문서 근거 답변 · API 명세 첫 질문
   it("[SEARCH-R1] 첫 질문 스트림의 이벤트를 도착 순서대로 onEvent로 넘기고 completed의 data를 반환한다", async () => {
     const onEvent = vi.fn();
 
-    const result = await receiveSearchAnswer({
+    const result = await relaySearchAnswerUntilEnd({
       stream: createSearchConversationApi({
         workspaceId: WORKSPACE_ID,
         body: QUESTION,
@@ -393,7 +393,7 @@ describe("receiveSearchAnswer", () => {
   it("[SEARCH-R1] 후속 질문 스트림도 이벤트를 도착 순서대로 onEvent로 넘기고 completed의 data를 반환한다", async () => {
     const onEvent = vi.fn();
 
-    const result = await receiveSearchAnswer({
+    const result = await relaySearchAnswerUntilEnd({
       stream: createSearchQuestionApi({
         workspaceId: WORKSPACE_ID,
         conversationId: CONVERSATION_ID,
