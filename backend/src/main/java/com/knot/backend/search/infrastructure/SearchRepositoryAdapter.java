@@ -64,6 +64,36 @@ public class SearchRepositoryAdapter implements SearchRepository {
         return conversations.findById(id);
     }
 
+    public Optional<SearchRequestReceipt> findRetryReceipt(
+            long workspaceId,
+            long memberId,
+            UUID requestId
+    ) {
+        return receipts.findRetryReceipt(
+                workspaceId,
+                memberId,
+                requestId
+        );
+    }
+
+    public Optional<SearchRequestReceipt> findLatestReceipt(long answerId) {
+        return receipts.findFirstByAnswerMessageIdOrderByIdDesc(answerId);
+    }
+
+    public Optional<SearchMessage> findMessageBySequence(
+            long conversationId,
+            int sequence
+    ) {
+        return messages.findByConversationIdAndSequence(
+                conversationId,
+                sequence
+        );
+    }
+
+    public void deleteEvidences(long answerId) {
+        evidences.deleteByIdMessageId(answerId);
+    }
+
     public Optional<SearchRequestReceipt> findQuestionReceipt(
             long workspaceId,
             long memberId,
