@@ -19,7 +19,6 @@ import { workspaceInvitationHandlers } from "./api/v1/workspaces/[workspaceId]/i
 import { workspaceInvitationsHandlers } from "./api/v1/workspaces/[workspaceId]/invitations";
 import { workspaceInvitationReissueHandlers } from "./api/v1/workspaces/[workspaceId]/invitations/reissue";
 import { workspaceNotionConnectionHandlers } from "./api/v1/workspaces/[workspaceId]/notionConnection";
-import { workspaceNotionOAuthAuthorizationsHandlers } from "./api/v1/workspaces/[workspaceId]/notionOauthAuthorizations";
 import { workspaceNotionPageTreeHandlers } from "./api/v1/workspaces/[workspaceId]/notionPages/tree";
 import { workspaceRecordingsHandlers } from "./api/v1/workspaces/[workspaceId]/recordings";
 import { recordingHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]";
@@ -46,7 +45,6 @@ export const handlers = [
   ...workspaceConversationsHandlers,
   ...workspaceNotionImportsHandlers,
   ...notionImportStatusHandlers,
-  ...workspaceNotionOAuthAuthorizationsHandlers,
   ...workspaceNotionConnectionHandlers,
   ...workspaceNotionPageTreeHandlers,
   ...workspaceRecordingsHandlers,
