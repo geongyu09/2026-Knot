@@ -2,8 +2,9 @@
 
 ## 1. 범위와 브랜치
 
-- 상태: #565 로컬 구현과 Gradle 검증 완료. 아래 설계 초안과 근거 조사 기록을 유지하며 실제 구현 결과는 마지막 절에 기록했다. 부모 migration 충돌 해소와 운영 배포는 아직 수행하지 않았다.
+- 상태: #565 로컬 구현과 Gradle 검증 완료. 부모 Search migration의 V37 충돌은 PR #572 리뷰에서 V39 이동으로 해소하고 이 브랜치에 반영했다. 실제 운영 DB 적용 이력과 배포는 미관측이다. 아래 기존 설계·조사 기록은 당시 근거다.
 - 확인 날짜: 2026-10-11 KST.
+- PR #574 리뷰 반영: 페이지 경계·크기·인증·접근 범위·근거 조회를 독립 사례 또는 ParameterizedTest로 나눠 사례당 대상 조회 한 번만 실행한다. 동시 commit 중 이전 snapshot과 commit 이후 새 snapshot도 별도 테스트로 분리했다.
 - 대상: [Issue #565](https://github.com/woowacourse-teams/2026-knot/issues/565), `GET /api/v1/workspaces/{workspaceId}/search/conversations/{conversationId}/messages`.
 - 구현 브랜치: `be/feature/#565`. 분기한 부모 `be/feature/#564`의 HEAD는 `1f2744f9299e90289b4a1323af16baf2133214d8`. 테스트·구현은 메서드·저장 제약 단위의 커밋으로 분리한다.
 - 원격 develop 관측: `630f34d42b759c55852868ddd9077cb6ac766e4b`. [PR #572](https://github.com/woowacourse-teams/2026-knot/pull/572)는 OPEN·REVIEW_REQUIRED·미병합 상태다. 현재 브랜치의 Search 모델을 develop에 병합된 구현으로 취급하지 않는다.

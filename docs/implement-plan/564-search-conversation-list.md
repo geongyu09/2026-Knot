@@ -4,6 +4,7 @@
 
 - 상태: #564 GET 구현과 로컬 전체 검증 완료. 실제 #563/#569 생성·재시도 연결은 해당 Issue 범위다. Persona 전역 종료 판정은 별도로 기록한다.
 - 확인 날짜: 2026-10-11 KST. 외부 원문 revision은 근거 표의 수집 시점 그대로다.
+- PR #572 리뷰 반영: 미병합 Search 기반 migration을 V37에서 V39로 변경했다. 녹음 PR #544의 V37·#545의 V38 이후 Search V39 → 근거 V40 → 접수 V41 → 실행 V42 순서로 맞춘다. 운영 DB 적용 이력은 확인하지 않았으며, 이미 V37 Search를 적용한 환경에는 파일 교체를 바로 배포하지 않는다.
 - 대상: [Issue #564](https://github.com/woowacourse-teams/2026-knot/issues/564), `GET /api/v1/workspaces/{workspaceId}/search/conversations`.
 - 현재 브랜치: `be/feature/#564`. 확인한 develop `630f34d42b759c55852868ddd9077cb6ac766e4b`에서 분기했다.
 - 공유 기반 적용: #563 저장 모델이 아직 없으므로 이 브랜치에 목록에 필요한 `SearchConversation`·`SearchMessage` 매핑, 첫 답변 숨김 메서드, V37 테이블·제약·인덱스를 포함했다. #563은 이 기반을 재사용하며 첫 질문 원자적 저장과 생성 흐름을 구현한다.

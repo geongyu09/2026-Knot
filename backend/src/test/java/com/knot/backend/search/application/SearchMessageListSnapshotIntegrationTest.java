@@ -117,7 +117,6 @@ class SearchMessageListSnapshotIntegrationTest {
 
         // when
         SearchMessageListResult first = findMessages();
-        SearchMessageListResult next = findMessages();
 
         // then
         SearchMessageListItemResult oldAnswer = first.items()
@@ -126,6 +125,16 @@ class SearchMessageListSnapshotIntegrationTest {
         assertThat(oldAnswer.status()).isEqualTo(SearchMessageStatus.STREAMING);
         assertThat(oldAnswer.evidences()).extracting(SearchEvidenceItemResult::documentId)
                 .containsExactly(oldDocumentId);
+    }
+
+    @Test
+    @DisplayName("별도 트랜잭션에서 완료된 결과는 다음 요청의 snapshot에 반영한다")
+    void find_success_snapshotAfterAnswerCommit() throws Exception {
+        // given
+        commitAnswerInOtherTransaction();
+        // when
+        SearchMessageListResult next = findMessages();
+        // then
         SearchMessageListItemResult newAnswer = next.items()
                 .getLast();
         assertThat(newAnswer.content()).isEqualTo("완료 답변");
