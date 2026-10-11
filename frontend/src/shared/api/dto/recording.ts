@@ -94,11 +94,14 @@ export class PostRecordingResponseDto {
   status: RecordingSessionStatus;
   /** 서버가 확정한 녹음 시작 시각(ISO 8601) */
   startedAt: string;
+  /** 이 요청으로 새로 만든 녹음이면 `true`. 본문에는 없어 HTTP 상태(201)에서 읽어요 */
+  isCreated: boolean;
 
-  constructor(raw: PostRecordingResponseRaw) {
+  constructor(raw: PostRecordingResponseRaw, httpStatus: number) {
     this.recordingId = raw.recordingId;
     this.status = raw.status;
     this.startedAt = raw.startedAt;
+    this.isCreated = httpStatus === 201;
   }
 }
 

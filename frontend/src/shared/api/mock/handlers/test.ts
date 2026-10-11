@@ -603,7 +603,9 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
             ...CONTROL_PROOF,
           },
         }),
-      ).resolves.toEqual(new PostRecordingResponseDto(recordingStartResponse));
+      ).resolves.toEqual(
+        new PostRecordingResponseDto(recordingStartResponse, 201),
+      );
     });
 
     it("GET /api/v1/workspaces/:workspaceId/recordings/current는 currentRecordingResponse를 돌려준다", async () => {
