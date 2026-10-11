@@ -4,6 +4,7 @@ import com.knot.backend.search.application.SearchAnswerGenerator;
 import com.knot.backend.search.application.SearchDocumentRetriever;
 import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.infrastructure.SearchAgentHttp;
+import com.knot.backend.search.infrastructure.SearchTransportCancellation;
 import com.knot.backend.search.infrastructure.SearchHistoryQuery;
 import com.knot.backend.search.infrastructure.SearchLlmClient;
 import com.knot.backend.search.infrastructure.SearchMcpDocumentRetriever;
@@ -22,12 +23,24 @@ import tools.jackson.databind.ObjectMapper;
 public class SearchAgentConfig {
 
     @Bean(destroyMethod = "close")
+    public SearchTransportCancellation searchTransportCancellation(
+            SearchToolAccess access,
+            SearchAgentProperties properties
+    ) {
+        return new SearchTransportCancellation(
+                access,
+                properties.getCancellationPollInterval()
+        );
+    }
+
+    @Bean(destroyMethod = "close")
     public SearchAgentHttp searchAgentHttp(
             LlmProperties llm,
             SearchAgentProperties agent,
             SearchWorkerProperties worker,
             ObjectMapper mapper,
-            Clock clock
+            Clock clock,
+            SearchTransportCancellation cancellations
     ) {
         agent.validate();
         llm.validateEnabledConfiguration();
@@ -43,7 +56,8 @@ public class SearchAgentConfig {
                 client,
                 mapper,
                 clock,
-                llm.getMaxResponseBytes()
+                llm.getMaxResponseBytes(),
+                cancellations
         );
     }
 

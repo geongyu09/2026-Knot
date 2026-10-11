@@ -15,6 +15,10 @@ import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -26,17 +30,20 @@ public class SearchAgentHttp implements AutoCloseable {
     private final Clock clock;
     private final long byteLimit;
     private final ScheduledThreadPoolExecutor deadlines;
+    private final SearchTransportCancellation cancellations;
 
     public SearchAgentHttp(
             HttpClient client,
             ObjectMapper mapper,
             Clock clock,
-            long byteLimit
+            long byteLimit,
+            SearchTransportCancellation cancellations
     ) {
         this.client = client;
         this.mapper = mapper;
         this.clock = clock;
         this.byteLimit = byteLimit;
+        this.cancellations = cancellations;
         deadlines = new ScheduledThreadPoolExecutor(
                 1,
                 Thread.ofPlatform()
@@ -191,10 +198,18 @@ public class SearchAgentHttp implements AutoCloseable {
                 )
                 .POST(HttpRequest.BodyPublishers.ofByteArray(mapper.writeValueAsBytes(body)));
         headers.forEach(builder::header);
-        try {
-            HttpResponse<InputStream> response = client.send(
-                    builder.build(),
-                    HttpResponse.BodyHandlers.ofInputStream()
+        cancellations.validate(scope);
+        CompletableFuture<HttpResponse<InputStream>> pending = client.sendAsync(
+                builder.build(),
+                HttpResponse.BodyHandlers.ofInputStream()
+        );
+        try (SearchTransportRegistration registration = cancellations.watch(
+                scope,
+                pending
+        )) {
+            HttpResponse<InputStream> response = pending.get(
+                    remaining(scope).toMillis(),
+                    TimeUnit.MILLISECONDS
             );
             try (InputStream input = new java.io.BufferedInputStream(response.body())) {
                 if (response.statusCode() != expectedStatus) {
@@ -216,6 +231,11 @@ public class SearchAgentHttp implements AutoCloseable {
             Thread.currentThread()
                     .interrupt();
             throw new SearchToolException("SEARCH_TRANSPORT_INTERRUPTED");
+        } catch (TimeoutException exception) {
+            pending.cancel(true);
+            throw new SearchToolException("SEARCH_TRANSPORT_TIMEOUT");
+        } catch (ExecutionException | CancellationException exception) {
+            throw new SearchToolException("SEARCH_TRANSPORT_FAILED");
         } catch (IOException exception) {
             throw new SearchToolException("SEARCH_TRANSPORT_FAILED");
         }
