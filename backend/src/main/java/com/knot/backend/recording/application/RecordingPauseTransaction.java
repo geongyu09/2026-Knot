@@ -33,7 +33,7 @@ public class RecordingPauseTransaction {
         );
         Instant now = clock.instant()
                 .truncatedTo(ChronoUnit.MICROS);
-        if (!session.expireIfDisconnected(now)) {
+        if (!session.expireIfDue(now)) {
             session.pause(now);
         }
         return RecordingPauseResult.from(recordingSessionRepository.save(session));

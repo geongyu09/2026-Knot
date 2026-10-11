@@ -21,6 +21,8 @@ import lombok.Getter;
 @Entity
 @Table(name = "recording_sessions")
 public class RecordingSession {
+    public static final long MAX_RECORDING_MILLIS = Duration.ofHours(2)
+            .toMillis();
     private static final Pattern SHA_256_HEX_PATTERN = Pattern.compile("^[0-9a-f]{64}$");
     private static final Duration CONNECTION_TIMEOUT = Duration.ofSeconds(120);
 
@@ -170,7 +172,7 @@ public class RecordingSession {
 
     public void pause(Instant pausedAt) {
         ensureActive();
-        ensureConnected(pausedAt);
+        ensureNotDue(pausedAt);
         if (status == RecordingStatus.PAUSED) {
             return;
         }
@@ -189,7 +191,7 @@ public class RecordingSession {
 
     public void resume(Instant resumedAt) {
         ensureActive();
-        ensureConnected(resumedAt);
+        ensureNotDue(resumedAt);
         if (status == RecordingStatus.RECORDING) {
             return;
         }
@@ -212,7 +214,7 @@ public class RecordingSession {
             return;
         }
         ensureNotDiscarded();
-        if (expireIfDisconnected(endedAt)) {
+        if (expireIfDue(endedAt)) {
             return;
         }
         stop(
@@ -222,11 +224,12 @@ public class RecordingSession {
         endReason = RecordingEndReason.USER_ENDED;
     }
 
-    public boolean expireIfDisconnected(Instant now) {
-        if (!isActive() || !isDisconnected(now)) {
+    public boolean expireIfDue(Instant now) {
+        if (!isActive() || !isDue(now)) {
             return false;
         }
-        Instant expiredAt = getExpiresAt();
+        RecordingEndReason reason = calculateDueReason();
+        Instant expiredAt = calculateDueAt();
         if (status == RecordingStatus.RECORDING) {
             accumulatedRecordingMillis += Duration.between(
                     currentIntervalStartedAt,
@@ -237,7 +240,7 @@ public class RecordingSession {
         status = RecordingStatus.ENDED;
         currentIntervalStartedAt = null;
         endedAt = expiredAt;
-        endReason = RecordingEndReason.CONNECTION_EXPIRED;
+        endReason = reason;
         return true;
     }
 
@@ -245,7 +248,7 @@ public class RecordingSession {
         if (!isActive()) {
             return;
         }
-        ensureConnected(receivedAt);
+        ensureNotDue(receivedAt);
         if (receivedAt.isAfter(lastSeenAt)) {
             lastSeenAt = receivedAt;
         }
@@ -322,15 +325,37 @@ public class RecordingSession {
         return pointInTime;
     }
 
-    private boolean isDisconnected(Instant now) {
+    private boolean isDue(Instant now) {
         if (now == null) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_TIME);
         }
-        return !now.isBefore(lastSeenAt.plus(CONNECTION_TIMEOUT));
+        return !now.isBefore(calculateDueAt());
     }
 
-    private void ensureConnected(Instant now) {
-        if (isDisconnected(now)) {
+    private Instant calculateDueAt() {
+        if (calculateDueReason() == RecordingEndReason.MAX_DURATION) {
+            return calculateMaxDurationReachedAt();
+        }
+        return lastSeenAt.plus(CONNECTION_TIMEOUT);
+    }
+
+    private RecordingEndReason calculateDueReason() {
+        Instant maxDurationReachedAt = calculateMaxDurationReachedAt();
+        if (maxDurationReachedAt != null && !maxDurationReachedAt.isAfter(lastSeenAt.plus(CONNECTION_TIMEOUT))) {
+            return RecordingEndReason.MAX_DURATION;
+        }
+        return RecordingEndReason.CONNECTION_EXPIRED;
+    }
+
+    private Instant calculateMaxDurationReachedAt() {
+        if (status != RecordingStatus.RECORDING) {
+            return null;
+        }
+        return currentIntervalStartedAt.plusMillis(MAX_RECORDING_MILLIS - accumulatedRecordingMillis);
+    }
+
+    private void ensureNotDue(Instant now) {
+        if (isDue(now)) {
             throw new RecordingException(RecordingErrorCode.RECORDING_ALREADY_ENDED);
         }
     }
