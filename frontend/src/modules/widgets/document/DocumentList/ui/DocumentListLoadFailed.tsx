@@ -1,6 +1,7 @@
 import styled from "@emotion/styled";
 import InlineError from "@primitives/ui/InlineError";
-import { useId } from "react";
+
+import { useTitleId } from "../model/useTitleId";
 
 interface DocumentListLoadFailedProps {
   /** `다시 시도`를 눌렀을 때 실행할 동작 */
@@ -17,7 +18,7 @@ interface DocumentListLoadFailedProps {
 export default function DocumentListLoadFailed({
   onRetry,
 }: DocumentListLoadFailedProps) {
-  const titleId = useId();
+  const { titleId } = useTitleId();
 
   return (
     <Container aria-labelledby={titleId}>

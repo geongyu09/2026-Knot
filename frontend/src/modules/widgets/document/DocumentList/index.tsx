@@ -8,9 +8,9 @@ import styled from "@emotion/styled";
 import useWorkspaceAccessGuard from "@hooks/domain/workspace/useWorkspaceAccessGuard";
 import { getRouterPath } from "@routes/PATH_ROUTE";
 import { groupDocumentsByTopic } from "@utils/groupDocumentsByTopic";
-import { useId } from "react";
-import { useParams } from "react-router";
 
+import { useTitleId } from "./model/useTitleId";
+import { useWorkspaceId } from "./model/useWorkspaceId";
 import DocumentFolder from "./ui/DocumentFolder";
 import DocumentListEmpty from "./ui/DocumentListEmpty";
 import DocumentListLoadFailed from "./ui/DocumentListLoadFailed";
@@ -43,10 +43,8 @@ const isLeavingError = (error: unknown) =>
  * 같은 판단을 프론트에도 두면 기준이 두 곳에 생기기 때문이에요.
  */
 export default function DocumentList() {
-  const titleId = useId();
-  const params = useParams();
-
-  const workspaceId = Number(params.workspaceId);
+  const { titleId } = useTitleId();
+  const { workspaceId } = useWorkspaceId();
   const {
     data: documentList,
     error,

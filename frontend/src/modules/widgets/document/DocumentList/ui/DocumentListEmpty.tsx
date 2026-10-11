@@ -1,5 +1,6 @@
 import styled from "@emotion/styled";
-import { useId } from "react";
+
+import { useTitleId } from "../model/useTitleId";
 
 /**
  * 문서가 하나도 없을 때 보여 주는 문서 목록 섹션. 제목과 설명은 그대로 두고, 목록 자리에 안내를 둬요. 피그마 「문서 목록/빈 상태」예요.
@@ -7,7 +8,7 @@ import { useId } from "react";
  * 섹션의 틀과 제목까지 여기서 그려요. 문서를 받은 화면(`DocumentList`)과 따로 바뀌는 일이 많아, 틀을 함께 쓰지 않아요.
  */
 export default function DocumentListEmpty() {
-  const titleId = useId();
+  const { titleId } = useTitleId();
 
   return (
     <Container aria-labelledby={titleId}>

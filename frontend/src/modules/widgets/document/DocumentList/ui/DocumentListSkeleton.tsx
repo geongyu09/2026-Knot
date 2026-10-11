@@ -1,6 +1,7 @@
 import styled from "@emotion/styled";
 import Skeleton from "@primitives/ui/Skeleton";
-import { useId } from "react";
+
+import { useTitleId } from "../model/useTitleId";
 
 /** 폴더마다 그릴 행의 수. 피그마 「문서 목록/불러오는 중」처럼 폴더 세 개에 행 두 개 · 한 개 · 한 개를 둬요 */
 const FOLDER_ROW_COUNTS = [2, 1, 1];
@@ -16,7 +17,7 @@ const TEXT_SKELETON_HEIGHT = 0.875;
  * 섹션의 틀과 제목까지 여기서 그려요. 문서를 받은 화면(`DocumentList`)과 따로 바뀌는 일이 많아, 틀을 함께 쓰지 않아요.
  */
 export default function DocumentListSkeleton() {
-  const titleId = useId();
+  const { titleId } = useTitleId();
 
   return (
     <Container aria-labelledby={titleId}>
