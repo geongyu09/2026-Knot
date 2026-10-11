@@ -158,7 +158,8 @@ public class SearchDocumentToolService {
                         cursor
                 ),
                 parameters.size(),
-                binding
+                binding,
+                parameters.query()
         );
     }
 
@@ -184,7 +185,8 @@ public class SearchDocumentToolService {
         return page(
                 rows,
                 parameters.size(),
-                binding
+                binding,
+                null
         );
     }
 
@@ -209,7 +211,8 @@ public class SearchDocumentToolService {
     private SearchDocumentPage page(
             List<SearchDocumentRecord> rows,
             int size,
-            String binding
+            String binding,
+            String searchQuery
     ) {
         int count = Math.min(
                 rows.size(),
@@ -227,7 +230,12 @@ public class SearchDocumentToolService {
         );
         return new SearchDocumentPage(
                 selected.stream()
-                        .map(this::card)
+                        .map(
+                                row -> card(
+                                        row,
+                                        searchQuery
+                                )
+                        )
                         .toList(),
                 next
         );
@@ -257,6 +265,16 @@ public class SearchDocumentToolService {
     }
 
     private SearchDocumentCard card(SearchDocumentRecord row) {
+        return card(
+                row,
+                null
+        );
+    }
+
+    private SearchDocumentCard card(
+            SearchDocumentRecord row,
+            String searchQuery
+    ) {
         return new SearchDocumentCard(
                 row.documentId(),
                 row.title(),
@@ -264,25 +282,12 @@ public class SearchDocumentToolService {
                 row.recordingStartedAt(),
                 row.createdAt(),
                 row.archivedAt(),
-                excerpt(row.content()),
+                SearchDocumentSnippet.extract(
+                        row.content(),
+                        searchQuery
+                ),
                 tokens.revision(row.content())
         );
     }
 
-    private String excerpt(String text) {
-        int count = Math.min(
-                200,
-                text.codePointCount(
-                        0,
-                        text.length()
-                )
-        );
-        return text.substring(
-                0,
-                text.offsetByCodePoints(
-                        0,
-                        count
-                )
-        );
-    }
 }
