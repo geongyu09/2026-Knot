@@ -155,6 +155,9 @@ JSON 필드의 출력 순서와 delta 조각 수는 계약이 아니다.
 - 첫 답변 FAILED는 대화 목록에서 숨긴다. 질문·부분 답변은 보존되며 소유자는 메시지 GET으로 읽을 수 있다.
 - 검색 없음은 녹음 안내 COMPLETED로 처리한다. 검색 오류는 FAILED로 구분한다.
 - 실제 사용 문서는 실제 읽은 Document의 부분집합이다. 같은 Workspace의 ARCHIVED Document만 연결하고 실제 근거 전체를 보존한다. SSE·메시지 GET은 질문 관련도가 높은 상위 3개 카드만 반환한다.
+- 2026-10-12 사용자 지정 [기본 시스템 프롬프트](../../backend/src/main/resources/prompts/search-answer-system.md)를 적용했다. 현재 생성 adapter는 서로 다른 참조 문서를 최대 3개로 제한하고 `evidenceIds`가 실제 제공된 문서에 속하는지 검증한다. 기존 전체 근거 저장 구조와 과거 근거는 유지한다.
+- 모델 입력은 `question`, 문맥용 `conversationHistory`, 사실 근거용 `evidence`로 구분한다. 모델의 JSON 응답에서 `answer`만 delta·메시지 본문으로 전달한다. 확인 질문이 별도 필드에 있으면 본문 뒤에 전달하며, `status`·`decisionState`는 이번 API의 새 응답 필드나 메시지 생성 상태가 아니다.
+- 잘린 JSON·중복 필드·잘못된 상태 조합·허용되지 않은 근거는 접수 후 생성 실패로 처리한다. 이미 전송한 답변 부분은 보존하고, JSON 외피와 내부 메타데이터는 본문으로 저장하지 않는다. 별도 LLM 근거 추출 호출은 사용하지 않는다.
   Transcript와 원문 인용은 저장·반환하지 않는다.
 - excluded_documents는 이 POST 전송의 정보다. 메시지 GET에 추가 필드를 제공하지 않는다.
 - 후속 질문·GET SSE 재연결·명시적 중지·실패 재시도는 각각 #566~#569에서 구현한다.

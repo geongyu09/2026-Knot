@@ -16,11 +16,15 @@ import com.knot.backend.search.application.dto.result.SearchDocumentPage;
 import com.knot.backend.search.application.dto.result.SearchDocumentCard;
 import com.knot.backend.search.application.dto.result.SearchDocumentSlice;
 import com.knot.backend.search.infrastructure.SearchDocumentQueryAdapter;
+import com.knot.backend.search.infrastructure.SearchAnswerPrompt;
 import com.knot.backend.search.infrastructure.mcp.SearchToolTokenCodec;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -33,6 +37,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
 
 @Tag("integration")
 @ActiveProfiles("dev")
@@ -605,7 +610,7 @@ class SearchDocumentToolServiceIntegrationTest {
                             )
                             .query(String.class)
                             .single()
-            ).contains("김개발");
+            ).isEqualTo("김개발이 복구한다");
             assertThat(
                     jdbc.sql("SELECT document_id FROM search_evidences WHERE message_id = :id")
                             .param(
@@ -624,7 +629,35 @@ class SearchDocumentToolServiceIntegrationTest {
                             .query(Integer.class)
                             .single()
             ).isZero();
-            assertThat(turns.get()).isEqualTo(5);
+            assertThat(turns.get()).isEqualTo(4);
+            JsonNode generationMessages = mapper.readTree(server.requestBody())
+                    .path("messages");
+            assertThat(
+                    generationMessages.get(0)
+                            .path("content")
+                            .asString()
+            ).isEqualTo(SearchAnswerPrompt.system());
+            JsonNode generationInput = mapper.readTree(
+                    generationMessages.get(1)
+                            .path("content")
+                            .asString()
+            );
+            assertThat(
+                    generationInput.path("conversationHistory")
+                            .isArray()
+            ).isTrue();
+            assertThat(
+                    generationInput.path("evidence")
+                            .get(0)
+                            .path("evidenceId")
+                            .asString()
+            ).isEqualTo("E" + document);
+            assertThat(
+                    generationInput.path("evidence")
+                            .get(0)
+                            .path("content")
+                            .asString()
+            ).contains("김개발");
         }
     }
 
@@ -791,25 +824,54 @@ class SearchDocumentToolServiceIntegrationTest {
             return "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"탐색 완료\"}}]}";
         }
         if (turn == 4) {
-            return "data: {\"choices\":[{\"delta\":{\"content\":\"김개발이 복구한다 [" + document
-                    + "]\"}}]}\n\ndata: [DONE]\n\n";
+            Map<String, Object> answer = new LinkedHashMap<>();
+            answer.put(
+                    "status",
+                    "ANSWERED"
+            );
+            answer.put(
+                    "decisionState",
+                    "DECIDED"
+            );
+            answer.put(
+                    "answer",
+                    "김개발이 복구한다"
+            );
+            answer.put(
+                    "evidenceIds",
+                    List.of("E" + document)
+            );
+            answer.put(
+                    "clarificationQuestion",
+                    null
+            );
+            String json = mapper.writeValueAsString(answer);
+            int split = json.indexOf("복구");
+            return modelDelta(
+                    json.substring(
+                            0,
+                            split
+                    )
+            ) + modelDelta(json.substring(split)) + "data: [DONE]\n\n";
         }
-        return mapper.writeValueAsString(
-                java.util.Map.of(
+        throw new IllegalStateException("별도 근거 추출 호출은 사용하지 않는다");
+    }
+
+    private String modelDelta(String text) {
+        return "data: " + mapper.writeValueAsString(
+                Map.of(
                         "choices",
-                        java.util.List.of(
-                                java.util.Map.of(
-                                        "message",
-                                        java.util.Map.of(
-                                                "role",
-                                                "assistant",
+                        List.of(
+                                Map.of(
+                                        "delta",
+                                        Map.of(
                                                 "content",
-                                                "{\"usedDocumentIds\":[" + document + "]}"
+                                                text
                                         )
                                 )
                         )
                 )
-        );
+        ) + "\n\n";
     }
 
     private String toolTurn(

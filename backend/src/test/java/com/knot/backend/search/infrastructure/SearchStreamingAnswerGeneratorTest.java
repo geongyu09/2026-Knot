@@ -6,21 +6,27 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.SearchToolScope;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
+import com.knot.backend.search.domain.SearchToolException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.JsonNode;
 
 class SearchStreamingAnswerGeneratorTest {
 
@@ -55,7 +61,15 @@ class SearchStreamingAnswerGeneratorTest {
         );
         doAnswer(call -> {
             Consumer<String> consumer = call.getArgument(2);
-            consumer.accept("네 회의의 변화 [4] [2] [1] [3]");
+            consumer.accept(
+                    response(
+                            List.of(
+                                    "E4",
+                                    "E2",
+                                    "E1"
+                            )
+                    )
+            );
             return null;
         }).when(llm)
                 .stream(
@@ -66,21 +80,8 @@ class SearchStreamingAnswerGeneratorTest {
     }
 
     @Test
-    @DisplayName("실제 읽은 모든 근거를 질문 관련도 순서로 돌려주고 세 개로 자르지 않는다")
-    void generate_success_allUsedEvidence() {
-        when(
-                llm.evidence(
-                        eq(scope),
-                        any()
-                )
-        ).thenReturn(
-                mapper.valueToTree(
-                        Map.of(
-                                "content",
-                                "{\"usedDocumentIds\":[4,2,1,3]}"
-                        )
-                )
-        );
+    @DisplayName("JSON의 답변만 전달하고 실제 참조 근거 최대 세 개를 돌려준다")
+    void generate_success_structuredAnswer() {
         List<String> deltas = new ArrayList<>();
         assertThat(
                 generator.generate(
@@ -92,52 +93,203 @@ class SearchStreamingAnswerGeneratorTest {
         ).containsExactly(
                 4L,
                 2L,
-                1L,
-                3L
+                1L
         );
-        assertThat(deltas).hasSize(1);
+        assertThat(
+                String.join(
+                        "",
+                        deltas
+                )
+        ).isEqualTo("세 회의의 변화");
+        verify(
+                llm,
+                never()
+        ).evidence(
+                eq(scope),
+                any()
+        );
     }
 
     @Test
     @DisplayName("읽지 않은 ID와 중복 ID는 실제 사용 근거로 인정하지 않는다")
     void generate_failure_unreadAndDuplicateEvidence() {
-        when(
-                llm.evidence(
+        AtomicInteger attempts = new AtomicInteger();
+        doAnswer(call -> {
+            Consumer<String> consumer = call.getArgument(2);
+            if (attempts.getAndIncrement() == 0) {
+                consumer.accept(response(List.of("E99")));
+                return null;
+            }
+            consumer.accept(
+                    response(
+                            List.of(
+                                    "E1",
+                                    "E1"
+                            )
+                    )
+            );
+            return null;
+        }).when(llm)
+                .stream(
                         eq(scope),
+                        any(),
                         any()
+                );
+        assertThatThrownBy(
+                () -> generator.generate(
+                        scope,
+                        "변화",
+                        documents(),
+                        text -> {
+                        }
                 )
-        ).thenReturn(
-                mapper.valueToTree(
-                        Map.of(
-                                "content",
-                                "{\"usedDocumentIds\":[99]}"
-                        )
-                ),
-                mapper.valueToTree(
-                        Map.of(
-                                "content",
-                                "{\"usedDocumentIds\":[1,1]}"
-                        )
+        ).hasMessage("INVALID_MODEL_ANSWER");
+        assertThatThrownBy(
+                () -> generator.generate(
+                        scope,
+                        "변화",
+                        documents(),
+                        text -> {
+                        }
+                )
+        ).hasMessage("INVALID_MODEL_ANSWER");
+    }
+
+    @Test
+    @DisplayName("지정 시스템 프롬프트와 구분된 대화 문맥·근거를 모델 요청에 전달한다")
+    void generate_success_promptAndEvidenceBoundary() {
+        List<Map<String, Object>> previous = List.of(
+                Map.of(
+                        "role",
+                        "assistant",
+                        "content",
+                        "이전 답변"
                 )
         );
-        assertThatThrownBy(
-                () -> generator.generate(
+        when(history.beforeQuestion(scope)).thenReturn(previous);
+        doAnswer(call -> {
+            List<Map<String, Object>> messages = call.getArgument(1);
+            assertThat(messages).hasSize(2);
+            assertThat(messages.getFirst()).containsEntry(
+                    "role",
+                    "system"
+            )
+                    .containsEntry(
+                            "content",
+                            SearchAnswerPrompt.system()
+                    );
+            String system = (String) messages.getFirst()
+                    .get("content");
+            assertThat(system).contains(
+                    "핵심 원칙: 근거에 없는 내용은 답변하지 않습니다.",
+                    "제안을 결정으로 바꾸지 않습니다.",
+                    "서로 다른 출처 문서는 최대 3개로 제한합니다."
+            );
+            JsonNode user = mapper.readTree(
+                    (String) messages.getLast()
+                            .get("content")
+            );
+            assertThat(
+                    user.path("question")
+                            .asString()
+            ).isEqualTo("변화");
+            assertThat(
+                    user.path("conversationHistory")
+                            .get(0)
+                            .path("content")
+                            .asString()
+            ).isEqualTo("이전 답변");
+            assertThat(
+                    user.path("evidence")
+                            .get(0)
+                            .path("evidenceId")
+                            .asString()
+            ).isEqualTo("E1");
+            assertThat(
+                    user.path("evidence")
+                            .get(0)
+                            .path("documentId")
+                            .asLong()
+            ).isEqualTo(1L);
+            assertThat(
+                    user.path("evidence")
+                            .get(0)
+                            .path("content")
+                            .asString()
+            ).isEqualTo("읽은 본문");
+            Consumer<String> consumer = call.getArgument(2);
+            consumer.accept(response(List.of("E1")));
+            return null;
+        }).when(llm)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any()
+                );
+        assertThat(
+                generator.generate(
                         scope,
                         "변화",
                         documents(),
                         text -> {
                         }
                 )
-        ).hasMessage("INVALID_MODEL_EVIDENCE");
+        ).containsExactly(1L);
+    }
+
+    @Test
+    @DisplayName("모델 스트림이 끊기면 JSON 외피 없이 이미 받은 답변만 보존한다")
+    void generate_failure_interruptedStreamPreservesPartialAnswer() {
+        List<String> deltas = new ArrayList<>();
+        doAnswer(call -> {
+            Consumer<String> consumer = call.getArgument(2);
+            consumer.accept("{\"status\":\"ANSWERED\",\"decisionState\":\"DECIDED\",\"answer\":\"부분 답변");
+            throw new SearchToolException("MODEL_GENERATION_FAILED");
+        }).when(llm)
+                .stream(
+                        eq(scope),
+                        any(),
+                        any()
+                );
         assertThatThrownBy(
                 () -> generator.generate(
                         scope,
                         "변화",
                         documents(),
-                        text -> {
-                        }
+                        deltas::add
                 )
-        ).hasMessage("INVALID_MODEL_EVIDENCE");
+        ).hasMessage("MODEL_GENERATION_FAILED");
+        assertThat(
+                String.join(
+                        "",
+                        deltas
+                )
+        ).isEqualTo("부분 답변");
+    }
+
+    private String response(List<String> ids) {
+        Map<String, Object> json = new LinkedHashMap<>();
+        json.put(
+                "status",
+                "ANSWERED"
+        );
+        json.put(
+                "decisionState",
+                "DECIDED"
+        );
+        json.put(
+                "answer",
+                "세 회의의 변화"
+        );
+        json.put(
+                "evidenceIds",
+                ids
+        );
+        json.put(
+                "clarificationQuestion",
+                null
+        );
+        return mapper.writeValueAsString(json);
     }
 
     private List<SearchDocumentResult> documents() {
