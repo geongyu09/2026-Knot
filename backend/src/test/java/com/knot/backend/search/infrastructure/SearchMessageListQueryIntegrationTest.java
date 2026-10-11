@@ -346,15 +346,32 @@ class SearchMessageListQueryIntegrationTest {
                         )
                 )
         ).isEmpty();
+    }
+
+    @Test
+    @DisplayName("다른 소유자가 전달한 정상 답변의 근거도 노출하지 않는다")
+    void findEvidences_failure_wrongOwner() {
+        // given
+        long answer = messages.messageId(
+                conversationId,
+                2
+        );
+        long document = messages.saveDocument(
+                workspaceId,
+                memberId
+        );
+        messages.saveEvidence(
+                answer,
+                document,
+                1
+        );
+        // when & then
         assertThat(
                 query.findEvidences(
                         workspaceId,
                         Long.MAX_VALUE,
                         conversationId,
-                        List.of(
-                                user,
-                                answer
-                        )
+                        List.of(answer)
                 )
         ).isEmpty();
     }
