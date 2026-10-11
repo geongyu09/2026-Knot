@@ -6,8 +6,15 @@ import { ThemeProvider } from "@emotion/react";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { delay, http, HttpResponse } from "msw";
 import {
   createMemoryRouter,
   Outlet,
@@ -22,6 +29,9 @@ const expected = new GetDocumentsResponseDto(documentsResponse);
 const WORKSPACE_ID = "1";
 // 경로 파라미터 자리에 무엇이 와도 잡도록 fetch 상수 대신 패턴을 적어요
 const DOCUMENTS_REQUEST = "*/api/v1/workspaces/:workspaceId/documents";
+const LOADING_LABEL = "문서 목록을 불러오고 있어요";
+const EMPTY_NOTICE = "아직 문서가 없어요";
+const LOAD_FAILED_NOTICE = "목록을 불러오지 못했어요. 다시 시도해 주세요.";
 const HOME_PATH = getRouterPath({
   routeKey: "WORKSPACE_HOME",
   params: { workspaceId: WORKSPACE_ID },
@@ -76,6 +86,9 @@ const renderDocumentTree = (initialEntry = HOME_PATH) => {
           { path: PATH_ROUTE.DOCUMENT, element: <DocumentViewStub /> },
         ],
       },
+      // 이동을 확인할 수 있게 로그인 · 워크스페이스 선택 경로에 표시만 하는 화면을 둬요
+      { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
+      { path: PATH_ROUTE.WORKSPACE, element: <p>워크스페이스 선택 화면</p> },
     ],
     { initialEntries: [initialEntry] },
   );
@@ -96,8 +109,13 @@ const respondWith = (response: DocumentsResponse) =>
     http.get(DOCUMENTS_REQUEST, () => HttpResponse.json(response)),
   );
 
-// 문서 목록 안의 버튼은 폴더 행뿐이에요
+// 문서를 받은 목록 안의 버튼은 폴더 행뿐이에요
 const findFolderRows = () => screen.findAllByRole("button");
+
+const getTree = () => screen.getByRole("navigation", { name: "문서" });
+
+const clickRetry = async () =>
+  fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
 
 // 폴더 행의 이름은 폴더 이름과 문서 수를 이은 글이라 폴더 이름으로 시작하는 것을 찾아요
 const findFolderRow = (topic: string) =>
@@ -261,4 +279,125 @@ describe("DocumentTree", () => {
     });
     expect(getDocumentRowTitles()).toEqual([]);
   });
+
+  it("불러오는 동안에는 머리말을 그대로 두고 불러오는 중이라고 알리고, 문서를 받으면 폴더로 바꾼다", async () => {
+    mockServer.use(
+      http.get(DOCUMENTS_REQUEST, async () => {
+        await delay(50);
+
+        return HttpResponse.json(documentsResponse);
+      }),
+    );
+
+    renderDocumentTree();
+
+    expect(
+      within(getTree()).getByRole("status", { name: LOADING_LABEL }),
+    ).toBeInTheDocument();
+
+    await findFolderRow(firstTopic);
+
+    expect(
+      screen.queryByRole("status", { name: LOADING_LABEL }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("문서가 하나도 없으면 머리말 아래에 아직 문서가 없다고 알린다", async () => {
+    respondWith({ topics: [], items: [], nextCursor: null });
+
+    renderDocumentTree();
+
+    expect(await screen.findByText(EMPTY_NOTICE)).toBeInTheDocument();
+    expect(within(getTree()).getByText(EMPTY_NOTICE)).toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["잘못된 요청(400)", () => new HttpResponse(null, { status: 400 })],
+    ["서버 오류(500)", () => new HttpResponse(null, { status: 500 })],
+    ["네트워크 오류", () => HttpResponse.error()],
+  ])(
+    "%s로 불러오지 못하면 머리말 아래에 안내와 「다시 시도」를 보여 준다",
+    async (_, respond) => {
+      mockServer.use(http.get(DOCUMENTS_REQUEST, respond));
+
+      renderDocumentTree();
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        LOAD_FAILED_NOTICE,
+      );
+      expect(
+        within(getTree()).getByRole("button", { name: "다시 시도" }),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it("「다시 시도」를 누르면 다시 불러와 폴더를 보여 준다", async () => {
+    let requestCount = 0;
+    mockServer.use(
+      http.get(DOCUMENTS_REQUEST, () => {
+        requestCount += 1;
+
+        return requestCount === 1
+          ? new HttpResponse(null, { status: 500 })
+          : HttpResponse.json(documentsResponse);
+      }),
+    );
+
+    renderDocumentTree();
+    await clickRetry();
+
+    expect(await findFolderRow(firstTopic)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("목록을 보는 동안 다시 불러오기가 서버 오류로 실패하면 받은 목록을 계속 보여 준다", async () => {
+    let failedRequestCount = 0;
+    renderDocumentTree();
+    await findFolderRow(firstTopic);
+
+    mockServer.use(
+      http.get(DOCUMENTS_REQUEST, () => {
+        failedRequestCount += 1;
+
+        return new HttpResponse(null, { status: 500 });
+      }),
+    );
+    // 다른 탭에 다녀오면 목록을 다시 받아요
+    act(() => {
+      window.dispatchEvent(new Event("visibilitychange"));
+    });
+    await waitFor(() => expect(failedRequestCount).toBe(1));
+
+    expect(getFolderRow(firstTopic)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["로그인이 풀렸으면(401)", "로그인 화면", 401],
+    ["워크스페이스 멤버가 아니면(403)", "워크스페이스 선택 화면", 403],
+    ["없는 워크스페이스면(404)", "워크스페이스 선택 화면", 404],
+  ])(
+    "%s 불러오지 못했다는 안내를 보여 주지 않고 %s으로 보낸다",
+    async (_, destination, status) => {
+      mockServer.use(
+        http.get(DOCUMENTS_REQUEST, () => new HttpResponse(null, { status })),
+      );
+      // 다른 화면으로 가면 문서 목록이 사라져, 간 뒤에는 안내가 있었는지 알 수 없어요. 가기 전까지 그려진 화면을 모두 지켜봐요
+      let isAlertShown = false;
+      const observer = new MutationObserver(() => {
+        if (screen.queryByRole("alert") !== null) isAlertShown = true;
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      renderDocumentTree();
+
+      try {
+        expect(await screen.findByText(destination)).toBeInTheDocument();
+      } finally {
+        observer.disconnect();
+      }
+      expect(isAlertShown).toBe(false);
+    },
+  );
 });
