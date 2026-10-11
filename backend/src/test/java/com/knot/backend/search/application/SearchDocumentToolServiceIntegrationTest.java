@@ -59,6 +59,7 @@ class SearchDocumentToolServiceIntegrationTest {
     private SearchMessageFixtures messages;
     private SearchDocumentToolService service;
     private SearchToolScope scope;
+    private SearchAgentProperties properties;
     private long workspaceId;
     private long memberId;
 
@@ -91,7 +92,7 @@ class SearchDocumentToolServiceIntegrationTest {
                 NOW,
                 NOW.plusSeconds(120)
         );
-        SearchAgentProperties properties = new SearchAgentProperties();
+        properties = new SearchAgentProperties();
         properties.setSigningKey("test-signing-key-32-characters-minimum");
         service = new SearchDocumentToolService(
                 query,
@@ -255,6 +256,24 @@ class SearchDocumentToolServiceIntegrationTest {
                         20
                 )
         ).hasMessage("INVALID_TOOL_ARGUMENTS");
+    }
+
+    @Test
+    @DisplayName("한글 검색은 제목 우선으로 후보를 찾고 검색 커서를 이어간다")
+    void search_success_koreanRankedPages() {
+        long body = saveDocument(workspaceId, "ARCHIVED", "회고", "결제 장애 원인");
+        long title = saveDocument(workspaceId, "ARCHIVED", "결제 장애", "복구 완료");
+        saveDocument(workspaceId, "DRAFT", "결제 장애", "미보관");
+        saveDocument(fixtures.saveWorkspace(), "ARCHIVED", "결제 장애", "외부");
+        SearchDocumentPage first = service.search(scope, parameters("결제", null, 1));
+        assertThat(first.items()).extracting(SearchDocumentCard::documentId).containsExactly(title);
+        assertThat(service.search(scope, parameters("결제", first.nextCursor(), 1)).items())
+                .extracting(SearchDocumentCard::documentId).containsExactly(body);
+        assertThatThrownBy(() -> service.search(scope, parameters("장애", first.nextCursor(), 1)))
+                .hasMessage("INVALID_TOOL_ARGUMENTS");
+        assertThat(service.search(scope, parameters("%", null, 20)).items()).isEmpty();
+        assertThatThrownBy(() -> service.search(scope, parameters(null, null, 20)))
+                .hasMessage("INVALID_TOOL_ARGUMENTS");
     }
 
     private SearchDocumentParameters parameters(
