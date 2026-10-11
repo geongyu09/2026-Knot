@@ -427,33 +427,33 @@ describe("DocumentList", () => {
     expect(cursorAfterRetry).toBeNull();
   });
 
-  it("로그인이 풀렸으면(401) 로그인 화면으로 보낸다", async () => {
-    mockServer.use(
-      http.get(
-        DOCUMENTS_REQUEST,
-        () => new HttpResponse(null, { status: 401 }),
-      ),
-    );
-
-    renderDocumentList();
-
-    expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
-  });
-
   it.each([
-    ["워크스페이스 멤버가 아니면(403)", 403],
-    ["없는 워크스페이스면(404)", 404],
-  ])("%s 워크스페이스 선택 화면으로 보낸다", async (_, status) => {
-    mockServer.use(
-      http.get(DOCUMENTS_REQUEST, () => new HttpResponse(null, { status })),
-    );
+    ["로그인이 풀렸으면(401)", "로그인 화면", 401],
+    ["워크스페이스 멤버가 아니면(403)", "워크스페이스 선택 화면", 403],
+    ["없는 워크스페이스면(404)", "워크스페이스 선택 화면", 404],
+  ])(
+    "%s 불러오지 못했다는 안내를 보여 주지 않고 %s으로 보낸다",
+    async (_, destination, status) => {
+      mockServer.use(
+        http.get(DOCUMENTS_REQUEST, () => new HttpResponse(null, { status })),
+      );
+      // 다른 화면으로 가면 문서 목록이 사라져, 간 뒤에는 안내가 있었는지 알 수 없어요. 가기 전까지 그려진 화면을 모두 지켜봐요
+      let isAlertShown = false;
+      const observer = new MutationObserver(() => {
+        if (screen.queryByRole("alert") !== null) isAlertShown = true;
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
 
-    renderDocumentList();
+      renderDocumentList();
 
-    expect(
-      await screen.findByText("워크스페이스 선택 화면"),
-    ).toBeInTheDocument();
-  });
+      try {
+        expect(await screen.findByText(destination)).toBeInTheDocument();
+      } finally {
+        observer.disconnect();
+      }
+      expect(isAlertShown).toBe(false);
+    },
+  );
 
   it("주소의 워크스페이스 id가 숫자가 아니어도 확인하지 않고 그대로 요청하고, 서버가 거절하면 목록을 불러오지 못했다고 알린다", async () => {
     let requestCount = 0;
