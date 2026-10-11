@@ -28,6 +28,36 @@ public class SearchQuestionController implements SearchQuestionApi {
     private final SearchAnswerStream streams;
 
     @Override
+    @PostMapping(value = "/{conversationId}/questions", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity<SseEmitter> ask(
+            @PathVariable Long workspaceId,
+            @PathVariable Long conversationId,
+            @RequestBody SearchQuestionRequest request,
+            @AuthenticationPrincipal AuthenticatedMember member
+    ) {
+        SearchQuestionCommand command = request.toCommand();
+        SearchStreamReservation reservation = streams.reserve();
+        try {
+            SearchQuestionAcceptedResult accepted = intake.acceptNext(
+                    workspaceId,
+                    member.getMemberId(),
+                    conversationId,
+                    command
+            );
+            SseEmitter emitter = streams.open(
+                    workspaceId,
+                    member.getMemberId(),
+                    accepted,
+                    reservation
+            );
+            return eventStream(emitter);
+        } catch (RuntimeException exception) {
+            reservation.close();
+            throw exception;
+        }
+    }
+
+    @Override
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public ResponseEntity<SseEmitter> create(
             @PathVariable Long workspaceId,
