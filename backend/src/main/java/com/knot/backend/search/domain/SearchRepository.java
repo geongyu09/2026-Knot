@@ -34,6 +34,8 @@ public interface SearchRepository {
 
     boolean existsStreamingAnswer(long conversationId);
 
+    Optional<SearchMessage> findLastMessage(long conversationId);
+
     Optional<SearchConversation> findConversationForUpdate(long conversationId);
 
     Optional<SearchMessage> findMessage(long messageId);

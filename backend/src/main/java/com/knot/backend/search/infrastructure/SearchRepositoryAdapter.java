@@ -86,6 +86,10 @@ public class SearchRepositoryAdapter implements SearchRepository {
         );
     }
 
+    public Optional<SearchMessage> findLastMessage(long conversationId) {
+        return messages.findFirstByConversationIdOrderBySequenceDesc(conversationId);
+    }
+
     public Optional<SearchConversation> findConversationForUpdate(long id) {
         Optional<SearchConversation> locked = conversations.findForUpdate(id);
         locked.ifPresent(entityManager::refresh);
