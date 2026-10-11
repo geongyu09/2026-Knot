@@ -1,5 +1,7 @@
 package com.knot.backend.search.application;
 
+import com.knot.backend.search.infrastructure.SearchTransportCancellation;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
@@ -503,11 +505,16 @@ class SearchDocumentToolServiceIntegrationTest {
         );
         properties.setMcpBaseUrl(java.net.URI.create("http://127.0.0.1:" + port));
         try (com.knot.backend.testsupport.LlmHttpServer server = new com.knot.backend.testsupport.LlmHttpServer();
+                SearchTransportCancellation cancellation = new SearchTransportCancellation(
+                        access,
+                        java.time.Duration.ofMillis(250)
+                );
                 com.knot.backend.search.infrastructure.SearchAgentHttp transport = new com.knot.backend.search.infrastructure.SearchAgentHttp(
                         java.net.http.HttpClient.newHttpClient(),
                         mapper,
                         clock,
-                        262144
+                        262144,
+                        cancellation
                 )) {
             java.util.concurrent.atomic.AtomicInteger turns = new java.util.concurrent.atomic.AtomicInteger();
             server.respond(exchange -> {
