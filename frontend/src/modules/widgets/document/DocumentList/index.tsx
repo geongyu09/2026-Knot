@@ -1,8 +1,3 @@
-import {
-  HTTP_ERROR_TYPE,
-  type HttpErrorType,
-  isHttpError,
-} from "@api/httpClient/error";
 import useDocumentsQuery from "@api/queries/useDocumentsQuery";
 import styled from "@emotion/styled";
 import useWorkspaceAccessGuard from "@hooks/domain/workspace/useWorkspaceAccessGuard";
@@ -16,16 +11,6 @@ import DocumentListEmpty from "./ui/DocumentListEmpty";
 import DocumentListLoadFailed from "./ui/DocumentListLoadFailed";
 import DocumentListSkeleton from "./ui/DocumentListSkeleton";
 import DocumentRow from "./ui/DocumentRow";
-
-/** `useWorkspaceAccessGuard`가 다른 화면으로 보내는 실패. 로그인 풀림(401) · 워크스페이스 멤버 아님(403) · 없는 워크스페이스(404) */
-const LEAVING_TYPES: HttpErrorType[] = [
-  HTTP_ERROR_TYPE.unauthorized,
-  HTTP_ERROR_TYPE.forbidden,
-  HTTP_ERROR_TYPE.notFound,
-];
-
-const isLeavingError = (error: unknown) =>
-  isHttpError(error) && LEAVING_TYPES.includes(error.type);
 
 /**
  * 문서 목록 섹션. 워크스페이스의 모든 문서를 폴더(주제)별로 모아 보여주고, 행을 누르면 그 문서 보기로 가요.
@@ -53,16 +38,16 @@ export default function DocumentList() {
   } = useDocumentsQuery({ workspaceId });
 
   // 로그인이 풀렸으면 로그인 화면으로, 워크스페이스에 들어갈 수 없으면 선택 화면으로 보내요
-  useWorkspaceAccessGuard({ error });
+  const { isRedirecting } = useWorkspaceAccessGuard({ error });
 
   // 화면을 새로고침하지 않고 목록만 다시 조회해요. 새로고침하면 브라우저 안에만 있는 진행 중인 녹음이 사라져요
   const handleRetry = () => {
     refetch();
   };
 
-  // 받은 문서가 없고 실패했을 때 실패 안내를 보여줘요. 다른 화면으로 보내는 실패(401 · 403 · 404)는 가는 동안 안내가 잠깐 보이지 않게 빼요
+  // 받은 문서가 없고 실패했을 때 실패 안내를 보여줘요. 다른 화면으로 보내는 중이면 가는 동안 안내가 잠깐 보이지 않게 빼요
   const shouldShowLoadFailed =
-    documentList === undefined && isError && !isLeavingError(error);
+    documentList === undefined && isError && !isRedirecting;
 
   if (shouldShowLoadFailed) {
     return <DocumentListLoadFailed onRetry={handleRetry} />;
