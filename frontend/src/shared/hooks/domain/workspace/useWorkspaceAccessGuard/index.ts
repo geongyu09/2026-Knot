@@ -22,6 +22,7 @@ const isAccessDeniedError = (error: unknown) =>
  *
  * 그 외(네트워크·5xx·timeout)는 다루지 않아요. 진입을 막을 근거가 아니라서요.
  * 쓰는 쪽은 에러를 넘기기만 하고, 어디로 보낼지는 여기서 정합니다.
+ * 이동하는 동안 오류 안내를 그리지 않도록 `isRedirecting`을 돌려줘요.
  *
  * effect deps의 `navigateToLogin`·`navigateToWorkspace`는 각 훅이 `useCallback`으로 고정한 참조라,
  * 판정 결과가 바뀔 때만 한 번 이동해요. 이동 뒤에도 살아 있는 컴포넌트(레이아웃 가드)에 붙여도 반복되지 않아요.
@@ -43,6 +44,8 @@ const useWorkspaceAccessGuard = ({ error }: UseWorkspaceAccessGuardParams) => {
       navigateToWorkspace({ replace: true });
     }
   }, [isUnauthorized, isAccessDenied, navigateToLogin, navigateToWorkspace]);
+
+  return { isRedirecting: isUnauthorized || isAccessDenied };
 };
 
 export default useWorkspaceAccessGuard;
