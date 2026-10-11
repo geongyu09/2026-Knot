@@ -109,12 +109,16 @@ export const NoDocuments: Story = {
 };
 
 /**
- * 문서 목록을 불러오는 동안이에요. 제목과 설명은 그대로 두고, 목록 자리를 폴더 2개 · 행 3개 모양의 회색 덩어리로 채워요.
- * 피그마 시안은 없어요. 요청 제한 시간(10초)이 지나면 불러오기 실패 모습으로 바뀌어요.
+ * 문서 목록을 불러오는 동안이에요. 제목과 설명은 그대로 두고, 목록 자리를 폴더 3개 · 행 4개 모양의 회색 덩어리로 채워요.
+ * 요청 제한 시간(10초)이 지나면 불러오기 실패 모습으로 바뀌어요.
  */
 export const Loading: Story = {
   parameters: {
-    docs: { story: { inline: false, iframeHeight: 520 } },
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3812-39476",
+    },
+    docs: { story: { inline: false, iframeHeight: 680 } },
     msw: {
       handlers: {
         documents: http.get(DOCUMENTS_REQUEST, async () => {

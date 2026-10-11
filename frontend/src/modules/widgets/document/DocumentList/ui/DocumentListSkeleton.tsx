@@ -2,8 +2,11 @@ import styled from "@emotion/styled";
 import Skeleton from "@primitives/ui/Skeleton";
 import { useId } from "react";
 
-/** 폴더마다 그릴 행의 수. 폴더 두 개에 행 두 개 · 한 개를 둬요 */
-const FOLDER_ROW_COUNTS = [2, 1];
+/** 폴더마다 그릴 행의 수. 피그마 「문서 목록/불러오는 중」처럼 폴더 세 개에 행 두 개 · 한 개 · 한 개를 둬요 */
+const FOLDER_ROW_COUNTS = [2, 1, 1];
+
+/** 폴더 이름 · 제목 · 요약 자리 덩어리의 굵기(rem). 피그마에서 14px이에요 */
+const TEXT_SKELETON_HEIGHT = 0.875;
 
 /**
  * 문서 목록을 불러오는 동안 보여 주는 문서 목록 섹션. 제목과 설명은 그대로 두고, 폴더 이름 · 카드 · 행 자리를 회색 덩어리로 채워요.
@@ -25,20 +28,28 @@ export default function DocumentListSkeleton() {
         {FOLDER_ROW_COUNTS.map((rowCount, folderIndex) => (
           <Folder key={folderIndex}>
             <TopicRow>
-              <Skeleton width={5} />
+              {/* 피그마의 폴더 이름 자리 60px */}
+              <Skeleton width={3.75} height={TEXT_SKELETON_HEIGHT} />
             </TopicRow>
             <Card>
               {Array.from({ length: rowCount }, (_, rowIndex) => (
                 <Row key={rowIndex}>
                   <TextBlock>
                     <Line>
-                      <Skeleton width="30%" />
+                      {/* 피그마의 제목 자리 120px */}
+                      <Skeleton width={7.5} height={TEXT_SKELETON_HEIGHT} />
                     </Line>
                     <Line>
-                      <Skeleton width="60%" />
+                      {/* 피그마의 요약 자리 420px. 글 묶음 678px에 대한 비율로 옮겼어요 */}
+                      <Skeleton width="62%" height={TEXT_SKELETON_HEIGHT} />
                     </Line>
                   </TextBlock>
-                  <Skeleton width={8} />
+                  <Meta>
+                    {/* 피그마의 날짜 자리 90 × 10px */}
+                    <Skeleton width={5.625} />
+                    {/* 피그마의 녹음 길이 자리 40 × 12px */}
+                    <Skeleton width={2.5} height={0.75} />
+                  </Meta>
                 </Row>
               ))}
             </Card>
@@ -130,4 +141,12 @@ const Line = styled.div`
   display: flex;
   align-items: center;
   height: 1.5rem; /* 24px */
+`;
+
+/** 피그마 Meta: 날짜 자리와 녹음 길이 자리 사이 8px. 실제 행의 날짜 묶음과 같아요 */
+const Meta = styled.div`
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem; /* 8px */
 `;
