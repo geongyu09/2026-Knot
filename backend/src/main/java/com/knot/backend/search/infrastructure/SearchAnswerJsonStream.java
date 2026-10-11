@@ -41,11 +41,21 @@ public class SearchAnswerJsonStream {
                 .contentEquals(answer)) {
             throw new SearchToolException("INVALID_MODEL_ANSWER");
         }
-        if (response.answer()
-                .isEmpty()) {
-            onDelta.accept(response.clarificationQuestion());
-        }
+        emitClarification(response);
         return response.usedDocumentIds();
+    }
+
+    private void emitClarification(SearchAnswerResponse response) {
+        String question = response.clarificationQuestion();
+        if (question == null || response.answer()
+                .contains(question)) {
+            return;
+        }
+        if (!response.answer()
+                .isEmpty()) {
+            onDelta.accept("\n");
+        }
+        onDelta.accept(question);
     }
 
     private void locateAnswer() {

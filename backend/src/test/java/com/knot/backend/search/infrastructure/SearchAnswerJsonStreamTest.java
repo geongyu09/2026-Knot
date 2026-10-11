@@ -105,6 +105,53 @@ class SearchAnswerJsonStreamTest {
         assertThat(stream.complete(documents)).isEmpty();
     }
 
+    @Test
+    @DisplayName("확인 질문과 설명이 분리된 응답에서도 질문을 누락하지 않는다")
+    void complete_success_clarificationAfterExplanation() {
+        List<String> deltas = new ArrayList<>();
+        SearchAnswerJsonStream stream = new SearchAnswerJsonStream(
+                mapper,
+                deltas::add
+        );
+        stream.accept(
+                "{\"status\":\"NEEDS_CLARIFICATION\",\"decisionState\":\"UNKNOWN\",\"answer\":\"회의를 특정해야 합니다.\",\"evidenceIds\":[],\"clarificationQuestion\":\"어느 회의인가요?\"}"
+        );
+        assertThat(stream.complete(documents)).isEmpty();
+        assertThat(
+                String.join(
+                        "",
+                        deltas
+                )
+        ).isEqualTo("회의를 특정해야 합니다.\n어느 회의인가요?");
+    }
+
+    @Test
+    @DisplayName("모든 문자 위치에서 나뉜 JSON을 같은 답변과 근거로 복구한다")
+    void accept_success_everyChunkBoundary() {
+        String json = "{\"status\":\"ANSWERED\",\"decisionState\":\"DECIDED\",\"answer\":\"첫 줄\\n\\\"둘째\\\" \\uD83D\\uDE00\",\"evidenceIds\":[\"E7\"],\"clarificationQuestion\":null}";
+        for (int split = 0; split <= json.length(); split++) {
+            List<String> deltas = new ArrayList<>();
+            SearchAnswerJsonStream stream = new SearchAnswerJsonStream(
+                    mapper,
+                    deltas::add
+            );
+            stream.accept(
+                    json.substring(
+                            0,
+                            split
+                    )
+            );
+            stream.accept(json.substring(split));
+            assertThat(stream.complete(documents)).containsExactly(7L);
+            assertThat(
+                    String.join(
+                            "",
+                            deltas
+                    )
+            ).isEqualTo("첫 줄\n\"둘째\" 😀");
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"[\"E99\"]", "[\"E7\",\"E7\"]", "[7]", "[]", "[\"E7\",\"E8\",\"E9\",\"E10\"]"})
     @DisplayName("읽지 않은 근거·중복·숫자·근거 없는 ANSWERED·네 문서 응답은 거절한다")
