@@ -165,5 +165,6 @@ SSE 연결=8개, snapshot poll=100ms, 연결 timeout=3분이다.
 이 값은 기술 운영 기본값이며 실제 공급자 timeout·취소 및 성능 평가는 아직 확인하지 않았다.
 전송 timeout은 생성 취소를 의미하지 않는다.
 
-추가 migration은 V41 접수 기록·실패 code, V42 실행 상태다. 부모 Search V37과 다른 열린 PR의 Recording V37/V38 충돌은
-병합·배포 전에 정리해야 한다. 운영 DB에는 적용하지 않았다.
+추가 migration은 V41 접수 기록·실패 code, V42 실행 상태다. 부모 Search 기반은 PR #572 리뷰에서 V39로 이동해
+Recording V37/V38과의 파일 버전 충돌을 해소했다. 준비한 순서는 녹음 V37/V38 → Search V39 → 근거 V40 → 접수 V41 → 실행 V42다.
+운영 DB 적용 이력은 미관측이며 운영 migration은 실행하지 않았다. 기존 Search V37을 이미 적용한 환경은 배포 전에 별도 확인한다.
