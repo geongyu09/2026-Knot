@@ -9,7 +9,7 @@
 - 서버는 마지막 유효 신호(`lastSeenAt`)부터 120초가 지나면 연결이 끊긴 것으로 본다. 판정은 서버 시각으로만 한다.
 - 연결이 끊긴 녹음은 `ENDED`, `endReason=CONNECTION_EXPIRED`, `endedAt = lastSeenAt + 120초`로 확정한다. `lastSeenAt`은 마지막 유효 신호 시각 그대로 둔다.
 - 신호·일시정지·재개·종료·시작 재요청·새 시작이 모두 같은 판정을 먼저 한다. 늦게 도착한 요청은 끊긴 녹음을 되살리지 않는다.
-- 일반 조회(`GET .../recordings/current`)는 생존 신호가 아니다.
+- 일반 조회(`GET .../recordings/current`, [단건 조회](recording-detail.md))는 생존 신호가 아니다.
 - 신호나 제어 요청이 아예 오지 않는 녹음은 서버 주기 작업이 회수한다([#385](https://github.com/woowacourse-teams/2026-Knot/issues/385)). 기본 1초 간격으로 한 번에 100건씩 찾는다.
   작업이 늦게 돌아도 종료 시각은 `lastSeenAt + 120초`다. 설정: `RECORDING_CONNECTION_EXPIRY_ENABLED`·`_INTERVAL`·`_BATCH_SIZE`.
 
@@ -75,5 +75,4 @@
 ## 이번 범위 밖
 
 - 일시정지를 뺀 누적 2시간 상한(#385 작업 B)
-- 녹음 단건 상세 조회(#380)
 - 새로고침 뒤 오디오 보존과 수집 재개
