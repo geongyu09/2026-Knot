@@ -524,24 +524,25 @@ class SearchMessageListAcceptanceTest {
                 .andExpect(jsonPath("$.code").value("INVALID_PARAMETER"));
     }
 
-    @ParameterizedTest
-    @ValueSource(longs = {0, -1})
-    @DisplayName("양수가 아닌 경로는 400 INVALID_PARAMETER다")
-    void find_failure_invalidPath(long id) throws Exception {
+    @ParameterizedTest(name = "{0}={1}")
+    @CsvSource({"workspace,0", "workspace,-1", "conversation,0", "conversation,-1"})
+    @DisplayName("Workspace와 대화의 양수가 아닌 경로를 각각 거절한다")
+    void find_failure_invalidPath(
+            String target,
+            long id
+    ) throws Exception {
+        // given
+        long requestedWorkspace = workspaceId;
+        long requestedConversation = id;
+        if (target.equals("workspace")) {
+            requestedWorkspace = id;
+            requestedConversation = conversationId;
+        }
         // when & then
         mvc.perform(
                 request(
-                        id,
-                        conversationId,
-                        memberId
-                )
-        )
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_PARAMETER"));
-        mvc.perform(
-                request(
-                        workspaceId,
-                        id,
+                        requestedWorkspace,
+                        requestedConversation,
                         memberId
                 )
         )
