@@ -4,12 +4,14 @@
 
 - 상태: 접수·저장·작업 실행·SSE 기반 구현 및 로컬 검증 진행. 실제 검색·LLM adapter 연결은 선행 결정이 남아 있어 #563 전체는 미완료다. 아래 설계 초안과 마지막 구현 결과를 구분한다.
 - 확인 날짜: 2026-10-11 KST.
+- PR 리뷰 후속: 부모 #572의 Search migration V37→V39와 #574의 단일 조회 테스트 분리를 반영했다. 부모 HEAD는 `37763d30d87ae89a436a7df84294565796f0fd5c`이며, #563 고유 diff는 POST 접수·실행·SSE와 직접 검증에 한정한다. 녹음 V37/V38 → Search V39 → 근거 V40 → 접수 V41 → 실행 V42의 파일 버전 중복은 없고, 운영 DB 적용 이력은 미관측이다.
+- 리뷰 반영 후 전체 검증: `./gradlew spotlessCheck check bootJar --console=plain` 통과. 단위 1,021·통합 472·인수 477, 총 1,970개 실패/오류/skip 0이다. 이후 Java 선언 간 빈 줄만 정리했고 공백을 무시한 diff가 비어 있음을 확인했다. 아래 1,943개 기록은 부모 리뷰 반영 이전 결과다.
 - 대상: [Issue #563](https://github.com/woowacourse-teams/2026-knot/issues/563), `POST /api/v1/workspaces/{workspaceId}/search/conversations` 하나.
 - 현재 브랜치: `be/feature/#563`. 사용자 개발 승인으로 `be/feature/#565`의 `6932506261df8c88276be3b4f66bded58b582361`에서 분기했다. [#574](https://github.com/woowacourse-teams/2026-knot/pull/574)의 메시지·근거 기반이며 부모는 [#572](https://github.com/woowacourse-teams/2026-knot/pull/572)의 `be/feature/#564`다. 두 PR은 조사 시점 미병합이다.
-- 실행한 분기: `git switch -c 'be/feature/#563' 'be/feature/#565'`. 현재 요청에서는 commit/push/PR/merge를 실행하지 않았다.
+- 실행한 분기: `git switch -c 'be/feature/#563' 'be/feature/#565'`. 계획 작성 당시에는 분기만 수행했고, commit/push/PR은 이후 사용자 명시 승인에 따라 별도 수행한다. GitHub PR 병합은 승인 범위에 없다.
 - PR base 후보: `be/feature/#565`. 부모 변경과 #563 고유 변경을 분리해 리뷰한다. 부모 리뷰 수정은 자식에도 반영하며, 부모 병합 후 실제 병합 방식과 분기 경계를 확인해 고유 커밋만 develop 위로 정리한다. 이 문서는 commit/push/PR/merge 권한이 아니다.
 - 원격 develop: fetch 후 `d979c509a66a9844c176488e7ada992ccfae0816`. 저장소의 V36까지 확인했다. 로컬 조회 브랜치의 Search V37/V40은 develop에 병합된 기반으로 취급하지 않는다.
-- 전체 탐색 로드맵은 [기존 문서](563-search-v2-roadmap.md)를 참고한다. 그 사용자 소유 문서는 수정하지 않고, 이번 POST에 한정한 상세 계획을 별도로 둔다.
+- 전체 탐색 로드맵 `563-search-v2-roadmap.md`는 로컬의 사용자 소유 문서이며 이번 PR에 포함하지 않는다. 이번 POST에 한정한 상세 계획을 별도로 둔다.
 
 완료 범위는 첫 질문 검증, 원자적 접수, requestId 멱등성, SSE, 연결과 독립된 생성 작업, 부분 본문·근거·종료 상태 저장, 중단 복구, 실제 검색·LLM 연결이다. 실제 검색 전략은 선행 결정으로 남긴다. 테스트 adapter로 접수·생성 흐름을 먼저 만들 수 있지만 그 단계만으로 #563 전체 완료를 선언하지 않는다. 후속 질문 #566, GET 재연결 #567, 중지 POST #568, retry POST #569는 이번 PR에 추가하지 않는다.
 
