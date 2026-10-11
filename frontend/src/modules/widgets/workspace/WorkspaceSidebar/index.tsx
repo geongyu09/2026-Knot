@@ -1,32 +1,21 @@
-import useNotionPageTreeQuery from "@api/queries/useNotionPageTreeQuery";
 import useWorkspaceQuery from "@api/queries/useWorkspaceQuery";
 import styled from "@emotion/styled";
+import DocumentTree from "@features/document/DocumentTree";
 import Avatar from "@primitives/ui/Avatar";
 
 import { useParams } from "react-router";
 
-import { useWorkspaceTree } from "./model/useWorkspaceTree";
-import SidebarTreeList from "./ui/SidebarTreeList";
-import { toWorkspaceTree } from "./utils/toWorkspaceTree";
-
 /**
- * 워크스페이스 사이드바 드로어. 워크스페이스 이름과 Notion 페이지 트리를 보여줘요.
+ * 워크스페이스 사이드바 드로어. 워크스페이스 이름과 문서 목록(`DocumentTree`)을 보여줘요.
  */
 export default function WorkspaceSidebar() {
   const { workspaceId } = useParams();
-  const { isFolderExpanded, toggleFolder } = useWorkspaceTree();
   // 레이아웃의 진입 판정과 같은 쿼리라 요청은 한 번만 나가요
   const { data: workspace } = useWorkspaceQuery({
     workspaceId: Number(workspaceId),
   });
-  const { data: pageTree } = useNotionPageTreeQuery({
-    workspaceId: Number(workspaceId),
-  });
 
   const workspaceName = workspace?.name ?? "";
-  // 서버는 부모 ID만 달린 평평한 목록을 주므로 트리 모양으로 묶는 일은 여기서 해요.
-  // 페이지 수가 많지 않고 응답 DTO는 refetch마다 참조가 바뀌므로 메모이제이션하지 않아요
-  const treeNodes = toWorkspaceTree(pageTree?.pages ?? []);
 
   return (
     <Container aria-label="워크스페이스 사이드바">
@@ -41,16 +30,7 @@ export default function WorkspaceSidebar() {
         </WorkspaceInfo>
       </WorkspaceHeader>
 
-      <FolderHead>
-        <FolderLabel>폴더</FolderLabel>
-      </FolderHead>
-
-      <SidebarTreeList
-        nodes={treeNodes}
-        depth={0}
-        isFolderExpanded={isFolderExpanded}
-        onToggleFolder={toggleFolder}
-      />
+      <DocumentTree />
     </Container>
   );
 }
@@ -92,17 +72,4 @@ const WorkspaceName = styled.span`
   white-space: nowrap;
   text-overflow: ellipsis;
   ${({ theme }) => theme.text.label01};
-`;
-
-const FolderHead = styled.div`
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 0.5rem 0 0.625rem; /* 0 8px 0 10px */
-  color: ${({ theme }) => theme.neutral[400]};
-`;
-
-const FolderLabel = styled.span`
-  ${({ theme }) => theme.text.caption01};
 `;

@@ -100,12 +100,15 @@ const DocumentCount = styled.span`
   color: ${({ theme }) => theme.neutral[600]};
 `;
 
-/** 피그마 Indent · Docs: 왼쪽으로 14px 들여 세로선을 긋고, 선에서 6px 띄워 문서 행을 2px 간격으로 쌓아요 */
+/**
+ * 피그마 Indent · Docs: 왼쪽으로 14px 들여 세로선을 긋고, 문서 행을 2px 간격으로 쌓아요.
+ * 피그마의 선은 자리를 차지하지 않아 문서 행이 14px에서 6px 떨어져요. CSS의 선은 1px을 차지하므로 안쪽 여백을 5px로 둬요
+ */
 const Rows = styled.ul`
   display: flex;
   flex-direction: column;
   gap: 0.125rem; /* 2px */
   margin-left: 0.875rem; /* 14px */
-  padding-left: 0.375rem; /* 6px */
+  padding-left: 0.3125rem; /* 5px */
   border-left: 1px solid ${({ theme }) => theme.neutral[200]};
 `;
