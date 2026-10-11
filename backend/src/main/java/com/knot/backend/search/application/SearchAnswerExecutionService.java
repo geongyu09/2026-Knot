@@ -100,6 +100,24 @@ public class SearchAnswerExecutionService {
         return true;
     }
 
+    public boolean append(
+            long answerId,
+            UUID token,
+            String text
+    ) {
+        Optional<SearchAnswerExecution> current = currentExecution(
+                answerId,
+                token
+        );
+        if (current.isEmpty()) {
+            return false;
+        }
+        SearchAnswerExecution execution = current.get();
+        answer(execution).appendContent(text);
+        conversation(execution).recordMessageActivity(clock.instant());
+        return true;
+    }
+
     private Optional<SearchAnswerExecution> lockExecution(long answerId) {
         Optional<SearchAnswerExecution> found = repository.findExecution(answerId);
         if (found.isEmpty()) {
