@@ -193,51 +193,37 @@ class SearchMessageListAcceptanceTest {
         }
     }
 
-    @Test
-    @DisplayName("페이지 크기는 기본 30이며 최대 100과 최소 1을 지원한다")
-    void find_success_pageSizeBoundaries() throws Exception {
+    @ParameterizedTest(name = "size={0}")
+    @CsvSource(value = {"NULL,30,73", "100,100,3", "1,1,102"}, nullValues = "NULL")
+    @DisplayName("기본 30·최대 100·최소 1 크기로 최신 메시지를 읽는다")
+    void find_success_pageSizeBoundaries(
+            String size,
+            int count,
+            String cursor
+    ) throws Exception {
         // given
         addPairs(
                 3,
                 102
         );
+        MockHttpServletRequestBuilder request = request(
+                workspaceId,
+                conversationId,
+                memberId
+        );
+        if (size != null) {
+            request.param(
+                    "size",
+                    size
+            );
+        }
         // when & then
-        mvc.perform(
-                request(
-                        workspaceId,
-                        conversationId,
-                        memberId
-                )
-        )
+        mvc.perform(request)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items.length()").value(30))
-                .andExpect(jsonPath("$.previousCursor").value("73"));
-        mvc.perform(
-                request(
-                        workspaceId,
-                        conversationId,
-                        memberId
-                ).param(
-                        "size",
-                        "100"
-                )
-        )
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items.length()").value(100))
-                .andExpect(jsonPath("$.previousCursor").value("3"));
-        mvc.perform(
-                request(
-                        workspaceId,
-                        conversationId,
-                        memberId
-                ).param(
-                        "size",
-                        "1"
-                )
-        )
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items[0].sequence").value(102))
-                .andExpect(jsonPath("$.previousCursor").value("102"));
+                .andExpect(jsonPath("$.items.length()").value(count))
+                .andExpect(jsonPath("$.items[0].sequence").value(Integer.parseInt(cursor)))
+                .andExpect(jsonPath("$.items[" + (count - 1) + "].sequence").value(102))
+                .andExpect(jsonPath("$.previousCursor").value(cursor));
     }
 
     @ParameterizedTest
