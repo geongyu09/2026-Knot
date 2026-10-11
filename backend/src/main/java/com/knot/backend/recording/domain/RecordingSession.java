@@ -22,7 +22,6 @@ import lombok.Getter;
 @Table(name = "recording_sessions")
 public class RecordingSession {
     private static final Pattern SHA_256_HEX_PATTERN = Pattern.compile("^[0-9a-f]{64}$");
-    // 최초 탭은 30초마다 신호를 보내므로 120초 동안 신호가 하나도 없으면 연결이 끊긴 것으로 본다
     private static final Duration CONNECTION_TIMEOUT = Duration.ofSeconds(120);
 
     @Id
@@ -318,7 +317,6 @@ public class RecordingSession {
         return !now.isBefore(lastSeenAt.plus(CONNECTION_TIMEOUT));
     }
 
-    // 만료를 먼저 확정하지 않은 늦은 요청이 끊긴 녹음을 되살리지 못하게 막는다
     private void ensureConnected(Instant now) {
         if (isDisconnected(now)) {
             throw new RecordingException(RecordingErrorCode.RECORDING_ALREADY_ENDED);
