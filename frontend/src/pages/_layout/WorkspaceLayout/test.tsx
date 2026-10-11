@@ -1,4 +1,6 @@
+import { GetDocumentResponseDto } from "@api/dto/document";
 import { LAST_VIEWED_WORKSPACE_API_PATH } from "@api/fetch/api/v1/members/me/lastViewedWorkspace";
+import { documentDetailsResponse } from "@api/mock/responses/document";
 import { workspaceDetailResponse } from "@api/mock/responses/workspace";
 import { SEARCH_MESSAGES_MOCK } from "@hooks/domain/search/useSearchMessages/mock";
 import { mockServer } from "@api/mock/server";
@@ -6,9 +8,11 @@ import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
+import { useTranscriptPanelStore } from "@store/transcriptPanelStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -27,6 +31,24 @@ const HOME_PATH = getRouterPath({
   routeKey: "WORKSPACE_HOME",
   params: { workspaceId: String(WORKSPACE_ID) },
 });
+const [firstDocument, secondDocument] = documentDetailsResponse.map(
+  (response) => new GetDocumentResponseDto(response),
+);
+const DOCUMENT_PATH = getRouterPath({
+  routeKey: "DOCUMENT",
+  params: {
+    workspaceId: String(WORKSPACE_ID),
+    documentId: String(firstDocument.id),
+  },
+});
+const OTHER_DOCUMENT_PATH = getRouterPath({
+  routeKey: "DOCUMENT",
+  params: {
+    workspaceId: String(WORKSPACE_ID),
+    documentId: String(secondDocument.id),
+  },
+});
+const DOCUMENT_TEXT = "문서 본문";
 const CHAT_PATH = getRouterPath({
   routeKey: "CHAT",
   params: { workspaceId: String(WORKSPACE_ID) },
@@ -57,6 +79,7 @@ const renderLayout = (initialPath = HOME_PATH) => {
           { path: PATH_ROUTE.WORKSPACE_HOME, element: <p>{HOME_TEXT}</p> },
           { path: PATH_ROUTE.CHAT, element: <p>{CHAT_TEXT}</p> },
           { path: PATH_ROUTE.CHAT_SESSION, element: <p>{CHAT_TEXT}</p> },
+          { path: PATH_ROUTE.DOCUMENT, element: <p>{DOCUMENT_TEXT}</p> },
         ],
       },
       { path: PATH_ROUTE.WORKSPACE, element: <p>워크스페이스 선택</p> },
@@ -386,5 +409,134 @@ describe("WorkspaceLayout", () => {
     expect(getBody()?.lastElementChild).toContainElement(
       screen.getByRole("region", { name: "찾은 기록" }),
     );
+  });
+});
+
+describe("WorkspaceLayout의 원문 패널", () => {
+  const TRANSCRIPT_PANEL_TITLE = "원문";
+  /** 원문이 닫혀 있을 때의 버튼 이름 */
+  const OPEN_LABEL = "원문 보기";
+  /** 원문이 열려 있을 때의 버튼 이름 */
+  const CLOSE_LABEL = "원문 닫기";
+
+  /**
+   * 원문을 여닫은 적이 없는 처음 상태에서 레이아웃을 그려요.
+   * 열림 여부는 전역 저장소와 브라우저에 남아 테스트끼리 이어지므로, 그리기 전에 둘 다 되돌려요
+   */
+  const renderLayoutAsFirstVisit = (initialPath = DOCUMENT_PATH) => {
+    localStorage.clear();
+    useTranscriptPanelStore.setState({ isOpenThisVisit: null });
+
+    return renderLayout(initialPath);
+  };
+
+  /** 새로고침하고 다시 들어온 것처럼 화면과 이번 방문에서 정한 값을 지워요. 브라우저에 남긴 값은 그대로 둬요 */
+  const startNewVisit = () => {
+    cleanup();
+    useTranscriptPanelStore.setState({ isOpenThisVisit: null });
+  };
+
+  const getTranscriptPanel = () =>
+    screen.getByRole("region", { name: TRANSCRIPT_PANEL_TITLE });
+
+  const queryTranscriptPanel = () =>
+    screen.queryByRole("region", { name: TRANSCRIPT_PANEL_TITLE });
+
+  const findToggle = (name: string) =>
+    within(screen.getByRole("banner")).findByRole("button", { name });
+
+  /**
+   * 회원 정보를 받을 때까지 기다려요. GNB의 프로필에 회원의 이미지가 뜨면 받은 거예요.
+   * 회원 정보를 받기 전과 닫아 둔 회원은 화면이 같아, 원문 버튼만 봐서는 받았는지 알 수 없어요
+   */
+  const waitForMember = () =>
+    waitFor(() => {
+      expect(
+        screen.getByRole("img", { name: "내 프로필" }).querySelector("img"),
+      ).toBeInTheDocument();
+    });
+
+  it("문서를 보는 화면에서는 GNB 오른쪽에 원문 버튼을 두고, 원문을 여닫은 적이 없는 회원에게는 오른쪽 레일에 원문 패널을 열어 둔다 (DOC-R3)", async () => {
+    renderLayoutAsFirstVisit();
+
+    expect(await screen.findByText(DOCUMENT_TEXT)).toBeInTheDocument();
+    expect(await findToggle(CLOSE_LABEL)).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    const panel = getTranscriptPanel();
+    const main = screen.getByRole("main");
+    const body = getBody();
+
+    // 본문 바깥의 형제 칸에 놓여야 원문을 열었을 때 문서 폭이 줄어요
+    expect(main).not.toContainElement(panel);
+    expect(body?.children).toHaveLength(3);
+    expect(body?.lastElementChild).toContainElement(panel);
+  });
+
+  // 레일은 여닫힘을 폭으로 옮겨 가도록 문서 화면에서 늘 두므로, 닫힘은 레일이 비었는지로 봐요(폭은 jsdom이 계산하지 못해요)
+  it("원문 버튼을 누르면 원문 패널을 닫아 오른쪽 레일을 비우고, 다시 누르면 연다", async () => {
+    renderLayoutAsFirstVisit();
+    expect(await screen.findByText(DOCUMENT_TEXT)).toBeInTheDocument();
+
+    fireEvent.click(await findToggle(CLOSE_LABEL));
+
+    expect(queryTranscriptPanel()).not.toBeInTheDocument();
+    expect(getBody()?.lastElementChild).toBeEmptyDOMElement();
+
+    fireEvent.click(await findToggle(OPEN_LABEL));
+
+    expect(getBody()?.lastElementChild).toContainElement(getTranscriptPanel());
+  });
+
+  it("원문을 닫아 둔 회원이 다른 문서로 다시 들어오면 원문 패널을 닫아 둔다 (DOC-R3)", async () => {
+    renderLayoutAsFirstVisit();
+    expect(await screen.findByText(DOCUMENT_TEXT)).toBeInTheDocument();
+    fireEvent.click(await findToggle(CLOSE_LABEL));
+
+    startNewVisit();
+    renderLayout(OTHER_DOCUMENT_PATH);
+    expect(await screen.findByText(DOCUMENT_TEXT)).toBeInTheDocument();
+    await waitForMember();
+
+    expect(await findToggle(OPEN_LABEL)).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(queryTranscriptPanel()).not.toBeInTheDocument();
+  });
+
+  it("워크스페이스를 조회하는 동안에는 원문 패널을 두지 않는다", async () => {
+    holdWorkspaceResponse();
+    renderLayoutAsFirstVisit();
+
+    // 회원 정보를 받아 열림으로 정해진 뒤에도, 들어갈 수 있는 워크스페이스인지 알기 전에는 원문을 불러오지 않아요
+    expect(await findToggle(CLOSE_LABEL)).toBeInTheDocument();
+    expect(queryTranscriptPanel()).not.toBeInTheDocument();
+  });
+
+  it("홈 화면에서는 원문 버튼과 원문 패널 자리를 두지 않는다", async () => {
+    renderLayoutAsFirstVisit(HOME_PATH);
+
+    expect(await screen.findByText(HOME_TEXT)).toBeInTheDocument();
+    await waitForMember();
+
+    expect(
+      screen.queryByRole("button", { name: /^원문/ }),
+    ).not.toBeInTheDocument();
+    expect(queryTranscriptPanel()).not.toBeInTheDocument();
+    expect(getBody()?.children).toHaveLength(2);
+  });
+
+  it("탐색 화면에서는 원문 버튼을 두지 않는다", async () => {
+    renderLayoutAsFirstVisit(CONVERSATION_PATH);
+
+    expect(await screen.findByText(CHAT_TEXT)).toBeInTheDocument();
+    await waitForMember();
+
+    expect(
+      screen.queryByRole("button", { name: /^원문/ }),
+    ).not.toBeInTheDocument();
+    expect(queryTranscriptPanel()).not.toBeInTheDocument();
   });
 });
