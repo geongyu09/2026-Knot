@@ -3,10 +3,13 @@ package com.knot.backend.global.exception;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.SearchException;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.AsyncContext;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -25,7 +28,8 @@ class SearchQuestionExceptionHandlerTest {
         org.springframework.http.ResponseEntity<com.knot.backend.global.response.ErrorResponse> result = handler
                 .handleProjectException(
                         exception,
-                        response
+                        response,
+                        mock(HttpServletRequest.class)
                 );
         assertThat(
                 result.getStatusCode()
@@ -44,10 +48,15 @@ class SearchQuestionExceptionHandlerTest {
         HttpServletResponse response = mock(HttpServletResponse.class);
         when(response.isCommitted()).thenReturn(true);
         when(response.getStatus()).thenReturn(200);
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        AsyncContext async = mock(AsyncContext.class);
+        when(request.isAsyncStarted()).thenReturn(true);
+        when(request.getAsyncContext()).thenReturn(async);
         org.springframework.http.ResponseEntity<com.knot.backend.global.response.ErrorResponse> result = handler
                 .handleUnexpectedException(
                         new IllegalStateException("transport disconnected"),
-                        response
+                        response,
+                        request
                 );
         assertThat(
                 result.getStatusCode()
@@ -58,6 +67,7 @@ class SearchQuestionExceptionHandlerTest {
                 result.getHeaders()
                         .getContentType()
         ).isNull();
+        verify(async).complete();
     }
 
     @Test
@@ -69,7 +79,8 @@ class SearchQuestionExceptionHandlerTest {
         org.springframework.http.ResponseEntity<com.knot.backend.global.response.ErrorResponse> result = handler
                 .handleProjectException(
                         new SearchException(SearchErrorCode.SEARCH_ACCESS_DENIED),
-                        response
+                        response,
+                        mock(HttpServletRequest.class)
                 );
         assertThat(result.getBody()).isNull();
         assertThat(
