@@ -45,7 +45,7 @@ class SearchConversationListQueryIntegrationTest {
 
     @Test
     @DisplayName("개인 범위와 숨김 조건을 페이지 크기 적용 전에 거른다")
-    void findPage_scopesAndVisibilityBeforeLimit() {
+    void findPage_success_scopesAndVisibilityBeforeLimit() {
         long mine = fixtures.saveConversation(
                 workspaceId,
                 memberId,
@@ -93,7 +93,7 @@ class SearchConversationListQueryIntegrationTest {
 
     @Test
     @DisplayName("최근 활동과 ID 순서로 다음 페이지 확인용 한 행을 더 읽는다")
-    void findPage_ordersByActivityThenIdAndReadsExtraRow() {
+    void findPage_success_ordersByActivityThenIdAndReadsExtraRow() {
         long first = fixtures.saveConversation(
                 workspaceId,
                 memberId,
@@ -129,6 +129,29 @@ class SearchConversationListQueryIntegrationTest {
                         first,
                         third
                 );
+    }
+
+    @Test
+    @DisplayName("같은 시각의 커서보다 작은 ID만 다음 페이지에 포함한다")
+    void findPage_success_nextPageAfterEqualTimestamp() {
+        long second = fixtures.saveConversation(
+                workspaceId,
+                memberId,
+                "둘째 질문",
+                "답변"
+        );
+        long third = fixtures.saveConversation(
+                workspaceId,
+                memberId,
+                "셋째 질문",
+                "답변"
+        );
+        fixtures.saveConversation(
+                workspaceId,
+                memberId,
+                "넷째 질문",
+                "답변"
+        );
         SearchConversationCursor cursor = SearchConversationCursor.of(
                 workspaceId,
                 memberId,
@@ -148,7 +171,7 @@ class SearchConversationListQueryIntegrationTest {
 
     @Test
     @DisplayName("PostgreSQL의 마이크로초 시각으로 커서를 이어 읽는다")
-    void findPage_keepsPostgresMicrosecondCursorPrecision() {
+    void findPage_success_keepsPostgresMicrosecondPrecision() {
         long earlier = fixtures.saveConversation(
                 workspaceId,
                 memberId,
@@ -172,19 +195,41 @@ class SearchConversationListQueryIntegrationTest {
                 null
         );
         SearchConversationListItemResult item = page.getFirst();
+        assertThat(item.id()).isEqualTo(later);
+        assertThat(item.updatedAt()).isEqualTo(SearchFixtures.TIME.plusNanos(1000));
+    }
+
+    @Test
+    @DisplayName("PostgreSQL 마이크로초 정밀도 커서 이후 대화만 이어 읽는다")
+    void findPage_success_keepsPostgresMicrosecondCursorPrecision() {
+        long earlier = fixtures.saveConversation(
+                workspaceId,
+                memberId,
+                "이전",
+                "답변"
+        );
+        long later = fixtures.saveConversation(
+                workspaceId,
+                memberId,
+                "이후",
+                "답변"
+        );
+        fixtures.setUpdatedAt(
+                later,
+                SearchFixtures.TIME.plusNanos(1000)
+        );
         SearchConversationCursor cursor = SearchConversationCursor.parse(
                 SearchConversationCursor.of(
                         workspaceId,
                         memberId,
-                        item.updatedAt(),
-                        item.id()
+                        SearchFixtures.TIME.plusNanos(1000),
+                        later
                 )
                         .encode(),
                 workspaceId,
                 memberId
         );
 
-        assertThat(item.id()).isEqualTo(later);
         assertThat(
                 query.findPage(
                         workspaceId,
@@ -198,7 +243,7 @@ class SearchConversationListQueryIntegrationTest {
 
     @Test
     @DisplayName("첫 질문 제목과 최신 메시지를 파생하고 원문은 보존한다")
-    void findPage_derivesFirstQuestionAndLatestMessageWithoutChangingSource() {
+    void findPage_success_derivesFirstQuestionAndLatestMessageWithoutChangingSource() {
         long id = fixtures.saveConversation(
                 workspaceId,
                 memberId,
@@ -244,7 +289,7 @@ class SearchConversationListQueryIntegrationTest {
 
     @Test
     @DisplayName("생성 중 빈 답변은 빈 미리보기로 반환한다")
-    void findPage_preservesEmptyStreamingPreview() {
+    void findPage_success_preservesEmptyStreamingPreview() {
         fixtures.saveConversation(
                 workspaceId,
                 memberId,
@@ -266,7 +311,7 @@ class SearchConversationListQueryIntegrationTest {
 
     @Test
     @DisplayName("대화가 많아도 목록 조회 SQL은 한 번이다")
-    void findPage_usesOneSelectForManyConversations() {
+    void findPage_success_usesOneSelectForManyConversations() {
         for (int i = 0; i < 25; i++) {
             fixtures.saveConversation(
                     workspaceId,
