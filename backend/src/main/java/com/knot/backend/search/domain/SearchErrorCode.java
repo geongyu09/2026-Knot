@@ -43,6 +43,16 @@ public enum SearchErrorCode implements ErrorCode {
             "ANSWER_NOT_FOUND",
             "탐색 답변을 찾을 수 없습니다"
     ),
+    QUESTION_NOT_FOUND(
+            ErrorCategory.NOT_FOUND,
+            "QUESTION_NOT_FOUND",
+            "탐색 질문을 찾을 수 없습니다"
+    ),
+    ANSWER_NOT_FAILED(
+            ErrorCategory.CONFLICT,
+            "ANSWER_NOT_FAILED",
+            "답변이 실패 상태가 아닙니다"
+    ),
     ANSWER_NOT_RUNNING(
             ErrorCategory.CONFLICT,
             "ANSWER_NOT_RUNNING",
