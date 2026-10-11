@@ -88,9 +88,14 @@ class SearchMessageListQueryIntegrationTest {
         assertThat(query.findConversation(Long.MAX_VALUE)).isEmpty();
     }
 
-    @Test
-    @DisplayName("생성 시각이 같아도 순서로 최신 페이지와 과거 경계를 선택한다")
-    void findPage_success() {
+    @ParameterizedTest(name = "beforeSequence={0}, size={1}")
+    @MethodSource("messagePageCases")
+    @DisplayName("최신·과거·빈 페이지의 순서 경계를 각각 조회한다")
+    void findPage_success(
+            Integer beforeSequence,
+            int size,
+            List<Integer> expected
+    ) {
         // given
         search.saveMessage(
                 conversationId,
@@ -107,43 +112,20 @@ class SearchMessageListQueryIntegrationTest {
                 "STREAMING"
         );
         // when
-        List<SearchMessage> latest = query.findPage(
+        List<SearchMessage> result = query.findPage(
                 workspaceId,
                 memberId,
                 conversationId,
-                null,
-                2
-        );
-        List<SearchMessage> previous = query.findPage(
-                workspaceId,
-                memberId,
-                conversationId,
-                3,
-                2
+                beforeSequence,
+                size
         );
         // then
-        assertThat(latest).extracting(SearchMessage::getSequence)
-                .containsExactly(
-                        4,
-                        3,
-                        2
-                );
-        assertThat(previous).extracting(SearchMessage::getSequence)
-                .containsExactly(
-                        2,
-                        1
-                );
-        SearchMessage latestMessage = latest.getFirst();
-        assertThat(latestMessage.getContent()).isEmpty();
-        assertThat(
-                query.findPage(
-                        workspaceId,
-                        memberId,
-                        conversationId,
-                        1,
-                        30
-                )
-        ).isEmpty();
+        assertThat(result).extracting(SearchMessage::getSequence)
+                .containsExactlyElementsOf(expected);
+        if (beforeSequence == null) {
+            SearchMessage latest = result.getFirst();
+            assertThat(latest.getContent()).isEmpty();
+        }
     }
 
     @Test
@@ -433,6 +415,44 @@ class SearchMessageListQueryIntegrationTest {
         // then
         assertThat(result).isEmpty();
         assertThat(statistics.getPrepareStatementCount()).isZero();
+    }
+
+    private static Stream<Arguments> messagePageCases() {
+        return Stream.of(
+                Arguments.of(
+                        null,
+                        2,
+                        List.of(
+                                4,
+                                3,
+                                2
+                        )
+                ),
+                Arguments.of(
+                        3,
+                        2,
+                        List.of(
+                                2,
+                                1
+                        )
+                ),
+                Arguments.of(
+                        1,
+                        30,
+                        List.of()
+                )
+        );
+    }
+
+    private long scopedId(
+            String target,
+            String field,
+            long id
+    ) {
+        if (target.equals(field)) {
+            return Long.MAX_VALUE;
+        }
+        return id;
     }
 
     private Statistics statistics() {
