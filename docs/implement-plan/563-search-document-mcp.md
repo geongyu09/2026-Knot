@@ -1,5 +1,11 @@
 # #563 탐색 Document 도구·MCP·LLM 실행 계획
 
+## 2026-10-12 기본 시스템 프롬프트 적용
+
+사용자가 제공한 Knot Search Assistant 프롬프트를 `backend/src/main/resources/prompts/search-answer-system.md`에 등록한다. 이번 지정 프롬프트는 현재 답변의 서로 다른 참조 문서를 최대 3개로 제한한다. 이전 계획의 전체 근거 저장 구조·과거 데이터는 보존하되, 현재 generator는 3개 초과 응답을 거절한다.
+
+모델 응답은 `status`, `decisionState`, `answer`, `evidenceIds`, `clarificationQuestion`의 JSON이다. 서버는 답변 본문을 부분 전달하고 종료 시 JSON·허용 ID를 검증한다. 상태 분류의 사실 정확성은 별도 실제 모델 평가가 필요하며 이번 로컬 검증으로 증명하지 않는다. 별도 근거 metadata 추출 호출은 제거하고 같은 응답의 ID를 사용한다.
+
 ## 1. 범위와 브랜치
 
 - 상태: 사용자 승인에 따라 아래 A/B/C를 현재 #563 브랜치에서 TDD로 구현했다. 최초 제안과 실제 결과를 구분하며 아래 최신 결과를 우선한다.
