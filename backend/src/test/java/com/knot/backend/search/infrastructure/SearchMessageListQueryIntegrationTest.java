@@ -70,6 +70,72 @@ class SearchMessageListQueryIntegrationTest {
     }
 
     @Test
+    @DisplayName("같은 페이지의 여러 답변에 각각 상위 세 카드를 반환한다")
+    void findEvidences_success_multipleAnswersInOnePage() {
+        search.saveMessage(
+                conversationId,
+                "USER",
+                3,
+                "후속 질문",
+                "RECEIVED"
+        );
+        search.saveMessage(
+                conversationId,
+                "ASSISTANT",
+                4,
+                "후속 답변",
+                "COMPLETED"
+        );
+        long first = messages.messageId(
+                conversationId,
+                2
+        );
+        long second = messages.messageId(
+                conversationId,
+                4
+        );
+        for (int rank = 1; rank <= 5; rank++) {
+            messages.saveEvidence(
+                    first,
+                    messages.saveDocument(
+                            workspaceId,
+                            memberId
+                    ),
+                    rank
+            );
+            messages.saveEvidence(
+                    second,
+                    messages.saveDocument(
+                            workspaceId,
+                            memberId
+                    ),
+                    rank
+            );
+        }
+        Map<Long, List<SearchEvidenceItemResult>> result = query.findEvidences(
+                workspaceId,
+                memberId,
+                conversationId,
+                List.of(
+                        first,
+                        second
+                )
+        );
+        assertThat(result.get(first)).extracting(SearchEvidenceItemResult::rank)
+                .containsExactly(
+                        1,
+                        2,
+                        3
+                );
+        assertThat(result.get(second)).extracting(SearchEvidenceItemResult::rank)
+                .containsExactly(
+                        1,
+                        2,
+                        3
+                );
+    }
+
+    @Test
     @DisplayName("실제 근거는 모두 보존하고 각 답변의 관련도 상위 세 카드만 조회한다")
     void findEvidences_success_threeCardsPerAnswer() {
         long firstAnswer = messages.messageId(
