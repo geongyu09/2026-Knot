@@ -162,6 +162,25 @@ public class SearchAnswerExecutionService {
         return true;
     }
 
+    public boolean fail(
+            long answerId,
+            UUID token,
+            String code
+    ) {
+        Optional<SearchAnswerExecution> current = currentExecution(
+                answerId,
+                token
+        );
+        if (current.isEmpty()) {
+            return false;
+        }
+        finishFailure(
+                current.get(),
+                code
+        );
+        return true;
+    }
+
     private Optional<SearchAnswerExecution> lockExecution(long answerId) {
         Optional<SearchAnswerExecution> found = repository.findExecution(answerId);
         if (found.isEmpty()) {
