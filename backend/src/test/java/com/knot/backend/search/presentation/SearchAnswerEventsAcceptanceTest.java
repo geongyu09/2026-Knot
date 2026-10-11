@@ -675,9 +675,9 @@ class SearchAnswerEventsAcceptanceTest {
     }
 
     private JsonNode payload(String event) {
-        return json.readTree(
-                event.substring(event.indexOf("data:") + 5)
-                        .trim()
+        return SearchSseEventPayload.read(
+                event,
+                json
         );
     }
 }
