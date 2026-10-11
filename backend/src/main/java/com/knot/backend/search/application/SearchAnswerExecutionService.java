@@ -181,6 +181,22 @@ public class SearchAnswerExecutionService {
         return true;
     }
 
+    public boolean expire(long answerId) {
+        Optional<SearchAnswerExecution> locked = lockExecution(answerId);
+        if (locked.isEmpty()) {
+            return false;
+        }
+        SearchAnswerExecution execution = locked.get();
+        if (!execution.isExpired(clock.instant())) {
+            return false;
+        }
+        finishFailure(
+                execution,
+                "ANSWER_GENERATION_TIMEOUT"
+        );
+        return true;
+    }
+
     private Optional<SearchAnswerExecution> lockExecution(long answerId) {
         Optional<SearchAnswerExecution> found = repository.findExecution(answerId);
         if (found.isEmpty()) {
