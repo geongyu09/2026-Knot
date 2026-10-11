@@ -566,7 +566,7 @@ class SearchAnswerRetryIntegrationTest {
         long transcript = fixtures.saveTranscript(recording);
         long job = fixtures.saveJob(
                 transcript,
-                "COMPLETED"
+                "SUCCEEDED"
         );
         long document = fixtures.saveDocument(
                 workspace,
@@ -575,7 +575,7 @@ class SearchAnswerRetryIntegrationTest {
                 job,
                 "재시도 근거"
         );
-        jdbc.sql("UPDATE documents SET status = 'ARCHIVED' WHERE id = :id")
+        jdbc.sql("UPDATE documents SET status = 'ARCHIVED', archived_at = created_at WHERE id = :id")
                 .param(
                         "id",
                         document
@@ -629,6 +629,97 @@ class SearchAnswerRetryIntegrationTest {
             return exception.getErrorCode()
                     .getCode();
         }
+    }
+
+    @Test
+    @DisplayName("후속 질문과 재시도가 경합하면 생성 작업은 하나만 접수한다")
+    void acceptRetry_success_raceWithFollowup() throws Exception {
+        // given
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        // when
+        try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
+            Future<String> retry = pool.submit(
+                    () -> race(
+                            barrier,
+                            UUID.randomUUID()
+                    )
+            );
+            Future<String> question = pool.submit(() -> {
+                barrier.await(
+                        5,
+                        TimeUnit.SECONDS
+                );
+                try {
+                    intake.acceptNext(
+                            workspace,
+                            member,
+                            first.conversationId(),
+                            new SearchQuestionCommand(
+                                    "동시 후속 질문",
+                                    UUID.randomUUID()
+                            )
+                    );
+                    return "ACCEPTED";
+                } catch (SearchException exception) {
+                    return exception.getErrorCode()
+                            .getCode();
+                }
+            });
+            // then
+            assertThat(
+                    List.of(
+                            retry.get(
+                                    10,
+                                    TimeUnit.SECONDS
+                            ),
+                            question.get(
+                                    10,
+                                    TimeUnit.SECONDS
+                            )
+                    )
+            ).containsExactlyInAnyOrder(
+                    "ACCEPTED",
+                    "ANSWER_ALREADY_IN_PROGRESS"
+            );
+        }
+        assertThat(count("search_request_receipts")).isEqualTo(2);
+        assertThat(
+                jdbc.sql("SELECT COUNT(*) FROM search_messages WHERE status = 'STREAMING'")
+                        .query(Long.class)
+                        .single()
+        ).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    @DisplayName("질문 다음 순서에 ASSISTANT 답변이 없으면 접수하지 않는다")
+    void acceptRetry_failure_brokenQuestionAnswerPair(boolean missingSequence) {
+        // given
+        if (missingSequence) {
+            jdbc.sql("UPDATE search_messages SET sequence = 3 WHERE id = :id")
+                    .param(
+                            "id",
+                            old.answerId()
+                    )
+                    .update();
+        }
+        if (!missingSequence) {
+            jdbc.sql(
+                    "UPDATE search_messages SET role = 'USER', status = 'RECEIVED', failure_code = NULL WHERE id = :id"
+            )
+                    .param(
+                            "id",
+                            old.answerId()
+                    )
+                    .update();
+        }
+        // when & then
+        assertError(
+                member,
+                first.questionMessageId(),
+                "QUESTION_NOT_FOUND"
+        );
+        assertThat(count("search_request_receipts")).isEqualTo(1);
     }
 
     private long count(String table) {
