@@ -12,11 +12,18 @@ import { ThemeProvider } from "@emotion/react";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { formatDate } from "@utils/formatDate";
 import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
 import { formatRecordingTime } from "@utils/formatRecordingTime";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it } from "vitest";
 
@@ -37,13 +44,19 @@ const PANEL_TITLE = "원문";
 const FOOTER_NOTICE =
   "이 문서를 만든 원본이에요. 전사 전체를 그대로 볼 수 있어요";
 const MILLIS_PER_SECOND = 1000;
+const LOADING_LABEL = "원문을 불러오고 있어요";
+const LOAD_FAILED_NOTICE = "원문을 불러오지 못했어요. 다시 시도해 주세요.";
 
 const renderTranscriptPanel = (documentId = DOCUMENT_ID) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const router = createMemoryRouter(
-    [{ path: PATH_ROUTE.DOCUMENT, element: <TranscriptPanel /> }],
+    [
+      { path: PATH_ROUTE.DOCUMENT, element: <TranscriptPanel /> },
+      // 이동을 확인할 수 있게 로그인 경로에 표시만 하는 화면을 둬요
+      { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
+    ],
     {
       initialEntries: [
         getRouterPath({
@@ -68,11 +81,27 @@ const respondWithTranscript = (response: DocumentTranscriptResponse) =>
     http.get(TRANSCRIPT_REQUEST, () => HttpResponse.json(response)),
   );
 
-const findPanel = () => screen.findByRole("region", { name: PANEL_TITLE });
-
 /** 발화 줄. 원문을 받은 뒤에 보여요 */
-const findLines = async () =>
-  within(await findPanel()).findAllByRole("listitem");
+const findLines = () => screen.findAllByRole("listitem");
+
+/**
+ * 원문을 받은 뒤의 패널.
+ * 불러오는 중 화면도 같은 이름의 패널을 따로 그리므로, 발화 줄이 보인 뒤에 찾아요
+ */
+const findLoadedPanel = async () => {
+  await findLines();
+
+  return screen.getByRole("region", { name: PANEL_TITLE });
+};
+
+const clickRetry = async () =>
+  fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+
+/** 다른 탭에 다녀온 것처럼 만들어 다시 불러오기를 일으켜요. TanStack Query는 탭이 다시 보이게 된 것을 visibilitychange 이벤트로 알아요 */
+const refetchByReturningToTab = () =>
+  act(() => {
+    window.dispatchEvent(new Event("visibilitychange"));
+  });
 
 /** 발화 줄에 보이는 시각. 서버가 준 ms를 초로 바꿔 `분:초`로 보여 줘요 */
 const formatLineTime = (startMillis: number) =>
@@ -82,7 +111,7 @@ describe("TranscriptPanel", () => {
   it("제목 「원문」과 문서를 만든 날짜, 녹음 길이를 보여 준다", async () => {
     renderTranscriptPanel();
 
-    const panel = within(await findPanel());
+    const panel = within(await findLoadedPanel());
 
     expect(
       panel.getByRole("heading", { level: 2, name: PANEL_TITLE }),
@@ -161,10 +190,8 @@ describe("TranscriptPanel", () => {
   it("발화 아래에 원문 안내 문구를 보여 준다", async () => {
     renderTranscriptPanel();
 
-    await findLines();
-
     expect(
-      within(await findPanel()).getByText(FOOTER_NOTICE),
+      within(await findLoadedPanel()).getByText(FOOTER_NOTICE),
     ).toBeInTheDocument();
   });
 
@@ -201,7 +228,7 @@ describe("TranscriptPanel", () => {
     renderTranscriptPanel();
 
     const lines = await findLines();
-    const panel = within(await findPanel());
+    const panel = within(await findLoadedPanel());
 
     await waitFor(() => expect(documentRequestCount).toBe(1));
 
@@ -214,5 +241,154 @@ describe("TranscriptPanel", () => {
     expect(
       panel.queryByText(formatDate(expectedDocument.createdAt)),
     ).not.toBeInTheDocument();
+  });
+
+  it("불러오는 동안에는 제목 「원문」을 그대로 두고 불러오는 중이라고 알리고, 원문을 받으면 발화 줄로 바꾼다", async () => {
+    mockServer.use(
+      http.get(TRANSCRIPT_REQUEST, async () => {
+        await delay(50);
+
+        return HttpResponse.json(transcriptResponse);
+      }),
+    );
+
+    renderTranscriptPanel();
+
+    expect(
+      screen.getByRole("status", { name: LOADING_LABEL }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: PANEL_TITLE }),
+    ).toBeInTheDocument();
+
+    await findLines();
+
+    expect(
+      screen.queryByRole("status", { name: LOADING_LABEL }),
+    ).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["잘못된 요청(400)", () => new HttpResponse(null, { status: 400 })],
+    ["원문 없음(404)", () => new HttpResponse(null, { status: 404 })],
+    ["서버 오류(500)", () => new HttpResponse(null, { status: 500 })],
+    ["네트워크 오류", () => HttpResponse.error()],
+  ])(
+    "%s로 불러오지 못하면 제목 「원문」을 그대로 두고 안내와 「다시 시도」를 보여 준다",
+    async (_, respond) => {
+      mockServer.use(http.get(TRANSCRIPT_REQUEST, respond));
+
+      renderTranscriptPanel();
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        LOAD_FAILED_NOTICE,
+      );
+      expect(
+        screen.getByRole("button", { name: "다시 시도" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { level: 2, name: PANEL_TITLE }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
+    },
+  );
+
+  it("「다시 시도」를 누르면 원문을 다시 조회해 발화 줄을 보여 준다", async () => {
+    let requestCount = 0;
+
+    mockServer.use(
+      http.get(TRANSCRIPT_REQUEST, () => {
+        requestCount += 1;
+
+        // 첫 요청만 실패해요
+        return requestCount === 1
+          ? new HttpResponse(null, { status: 500 })
+          : HttpResponse.json(transcriptResponse);
+      }),
+    );
+
+    renderTranscriptPanel();
+
+    await clickRetry();
+
+    expect(await findLines()).toHaveLength(expectedTranscript.segments.length);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(requestCount).toBe(2);
+  });
+
+  it("원문을 보는 동안 다시 불러오기가 서버 오류로 실패하면 받은 원문을 계속 보여 준다", async () => {
+    let failedRequestCount = 0;
+
+    renderTranscriptPanel();
+
+    await findLines();
+
+    mockServer.use(
+      http.get(TRANSCRIPT_REQUEST, () => {
+        failedRequestCount += 1;
+
+        return new HttpResponse(null, { status: 500 });
+      }),
+    );
+    refetchByReturningToTab();
+    await waitFor(() => expect(failedRequestCount).toBe(1));
+
+    expect(screen.getAllByRole("listitem")).toHaveLength(
+      expectedTranscript.segments.length,
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("원문을 보는 동안 원문이 없어지면(404) 다시 불러올 때 받은 원문 대신 불러오지 못했다고 알린다", async () => {
+    renderTranscriptPanel();
+
+    await findLines();
+
+    mockServer.use(
+      http.get(
+        TRANSCRIPT_REQUEST,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    refetchByReturningToTab();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      LOAD_FAILED_NOTICE,
+    );
+    expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
+  });
+
+  it("로그인이 풀렸으면(401) 안내를 보여 주지 않고 로그인 화면으로 보낸다", async () => {
+    mockServer.use(
+      http.get(
+        TRANSCRIPT_REQUEST,
+        () => new HttpResponse(null, { status: 401 }),
+      ),
+    );
+
+    renderTranscriptPanel();
+
+    expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("주소의 문서 id가 숫자가 아니어도 확인하지 않고 그대로 요청하고, 서버가 거절하면 불러오지 못했다고 알린다", async () => {
+    let requestCount = 0;
+
+    mockServer.use(
+      http.get(TRANSCRIPT_REQUEST, () => {
+        requestCount += 1;
+
+        // 서버는 숫자가 아닌 문서 id를 잘못된 요청으로 거절해요
+        return new HttpResponse(null, { status: 400 });
+      }),
+    );
+
+    renderTranscriptPanel("abc");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      LOAD_FAILED_NOTICE,
+    );
+    expect(requestCount).toBe(1);
   });
 });

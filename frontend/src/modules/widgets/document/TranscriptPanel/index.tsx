@@ -1,6 +1,12 @@
+import {
+  HTTP_ERROR_TYPE,
+  type HttpErrorType,
+  isHttpError,
+} from "@api/httpClient/error";
 import useDocumentQuery from "@api/queries/useDocumentQuery";
 import useDocumentTranscriptQuery from "@api/queries/useDocumentTranscriptQuery";
 import styled from "@emotion/styled";
+import useRedirectToLoginOnUnauthorized from "@hooks/domain/auth/useRedirectToLoginOnUnauthorized";
 import Chip from "@primitives/ui/Chip";
 import Divider from "@primitives/ui/Divider";
 import { formatDate } from "@utils/formatDate";
@@ -9,6 +15,18 @@ import { useId } from "react";
 import { useParams } from "react-router";
 
 import TranscriptLine from "./ui/TranscriptLine";
+import TranscriptLoadFailed from "./ui/TranscriptLoadFailed";
+import TranscriptSkeleton from "./ui/TranscriptSkeleton";
+
+/** 원문이 없어졌거나 볼 수 없게 된 실패. 경로 형식 오류(400) · 워크스페이스 멤버 아님(403) · 문서나 원문 없음(404) */
+const UNAVAILABLE_TYPES: HttpErrorType[] = [
+  HTTP_ERROR_TYPE.badRequest,
+  HTTP_ERROR_TYPE.forbidden,
+  HTTP_ERROR_TYPE.notFound,
+];
+
+const isUnavailableError = (error: unknown) =>
+  isHttpError(error) && UNAVAILABLE_TYPES.includes(error.type);
 
 /**
  * 원문 패널. 주소의 문서를 만든 원본 전사를 말한 시각 · 말한 사람 · 문장으로 한 줄씩 보여줘요.
@@ -16,7 +34,12 @@ import TranscriptLine from "./ui/TranscriptLine";
  * 문서 보기 화면의 오른쪽에 놓여요. 패널을 여닫는 버튼은 GNB에 있어서, 패널 안에는 닫기 버튼을 두지 않아요(DOC-R3).
  * 발화가 많으면 패널 전체가 아니라 발화 목록만 세로로 스크롤해요(DOC-R4).
  *
- * 주소의 두 id는 숫자인지 확인하지 않고 그대로 요청해요. 잘못된 주소인지는 서버가 판단해요.
+ * 원문을 받지 못한 동안에는 상태 화면이 패널 전체를 대신 그려요.
+ * - 불러오는 중: `TranscriptSkeleton`. 로그인이 풀려(401) 로그인 화면으로 보내는 동안에도 이 화면이에요.
+ * - 불러오기 실패: `TranscriptLoadFailed`. 400 · 403 · 404는 원문이 없어졌거나 볼 수 없게 된 것이라, 이미 받은 원문이 있어도 이 화면이에요.
+ *   네트워크 · 5xx는 받은 원문이 없을 때만 이 화면이고, 받은 원문이 있으면 계속 보여줘요.
+ *
+ * 주소의 두 id는 숫자인지 확인하지 않고 그대로 요청해요. 잘못된 주소인지는 서버가 판단하고, 여기서는 그 응답에 따라 원문을 불러오지 못했다고 알려요.
  *
  * 만든 날짜는 원문 응답에 없어 문서 상세에서 가져와요. 문서 보기와 같은 쿼리 키라 캐시를 함께 써요.
  * 문서 상세를 받지 못했으면 날짜 없이 원문을 보여줘요.
@@ -26,16 +49,34 @@ export default function TranscriptPanel() {
   const params = useParams();
   const workspaceId = Number(params.workspaceId);
   const documentId = Number(params.documentId);
-  const { data: transcript } = useDocumentTranscriptQuery({
-    workspaceId,
-    documentId,
-  });
+  const {
+    data: transcript,
+    error,
+    isError,
+    refetch,
+  } = useDocumentTranscriptQuery({ workspaceId, documentId });
   const { data: documentDetail } = useDocumentQuery({
     workspaceId,
     documentId,
   });
+  const { isUnauthorized } = useRedirectToLoginOnUnauthorized({ error });
 
-  if (transcript === undefined) return null;
+  // 화면을 새로고침하지 않고 원문만 다시 조회해요. 새로고침하면 브라우저 안에만 있는 진행 중인 녹음이 사라져요
+  const handleRetry = () => {
+    refetch();
+  };
+
+  if (isUnavailableError(error)) {
+    return <TranscriptLoadFailed onRetry={handleRetry} />;
+  }
+
+  if (transcript === undefined) {
+    if (isError && !isUnauthorized) {
+      return <TranscriptLoadFailed onRetry={handleRetry} />;
+    }
+
+    return <TranscriptSkeleton />;
+  }
 
   return (
     <Container aria-labelledby={titleId}>
