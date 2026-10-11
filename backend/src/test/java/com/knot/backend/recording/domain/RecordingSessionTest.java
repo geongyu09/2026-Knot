@@ -834,6 +834,21 @@ class RecordingSessionTest {
     }
 
     @Test
+    @DisplayName("연결 만료 기준 시각보다 마지막 신호가 같거나 이르면 만료 판정과 같은 결과다")
+    void disconnectionThreshold_success_matchesExpiry() {
+        // given
+        RecordingSession session = startRecording();
+        Instant now = STARTED_AT.plusSeconds(120);
+
+        // when
+        Instant threshold = RecordingSession.disconnectionThreshold(now);
+
+        // then
+        assertThat(threshold).isEqualTo(session.getLastSeenAt());
+        assertThat(session.expireIfDisconnected(now)).isTrue();
+    }
+
+    @Test
     @DisplayName("녹음이 Workspace 소속 여부를 직접 판단한다")
     void belongsTo_success() {
         // given

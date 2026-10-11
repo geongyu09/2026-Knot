@@ -142,24 +142,24 @@ describe("createSearchQuestionApi", () => {
 
   // SEARCH-R6 409 중복 거절
   it("[SEARCH-R6] accepted 전 409는 상태 코드와 서버 오류 코드를 담아 throw한다", async () => {
-    respondWithError(409, "SEARCH_REQUEST_CONFLICT");
+    respondWithError(409, "ANSWER_ALREADY_IN_PROGRESS");
 
     const error = await catchQuestionError();
 
     expect(error).toBeInstanceOf(SseRequestError);
-    expect(error).toMatchObject({ status: 409, code: "SEARCH_REQUEST_CONFLICT" });
+    expect(error).toMatchObject({ status: 409, code: "ANSWER_ALREADY_IN_PROGRESS" });
   });
 
   // API 명세에 대화가 없을 때의 응답이 정해지지 않아, 404가 오면 상태 코드와 서버 오류 코드가 그대로 담기는지만 확인해요
   it("accepted 전 404는 상태 코드와 서버 오류 코드를 담아 throw한다", async () => {
-    respondWithError(404, "SEARCH_CONVERSATION_NOT_FOUND");
+    respondWithError(404, "CONVERSATION_NOT_FOUND");
 
     const error = await catchQuestionError();
 
     expect(error).toBeInstanceOf(SseRequestError);
     expect(error).toMatchObject({
       status: 404,
-      code: "SEARCH_CONVERSATION_NOT_FOUND",
+      code: "CONVERSATION_NOT_FOUND",
     });
   });
 });

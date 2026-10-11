@@ -2,7 +2,6 @@ import { authCsrfHandlers } from "./api/v1/auth/csrf";
 import { authMeHandlers } from "./api/v1/auth/me";
 import { authNicknameHandlers } from "./api/v1/auth/nickname";
 import { chatMessagesHandlers } from "./api/v1/conversations/[sessionId]";
-import { notionImportStatusHandlers } from "./api/v1/imports/[importRunId]";
 import { invitationPreviewHandlers } from "./api/v1/invitations/[tokenOrCode]";
 import { invitationAcceptHandlers } from "./api/v1/invitations/accept";
 import { lastViewedWorkspaceHandlers } from "./api/v1/members/me/lastViewedWorkspace";
@@ -14,11 +13,9 @@ import { documentsHandlers } from "./api/v1/workspaces/[workspaceId]/documents";
 import { documentHandlers } from "./api/v1/workspaces/[workspaceId]/documents/[documentId]";
 import { documentConfirmationsHandlers } from "./api/v1/workspaces/[workspaceId]/documents/[documentId]/confirmations";
 import { documentMyConfirmationHandlers } from "./api/v1/workspaces/[workspaceId]/documents/[documentId]/confirmations/me";
-import { workspaceNotionImportsHandlers } from "./api/v1/workspaces/[workspaceId]/imports";
 import { workspaceInvitationHandlers } from "./api/v1/workspaces/[workspaceId]/invitation";
 import { workspaceInvitationsHandlers } from "./api/v1/workspaces/[workspaceId]/invitations";
 import { workspaceInvitationReissueHandlers } from "./api/v1/workspaces/[workspaceId]/invitations/reissue";
-import { workspaceNotionConnectionHandlers } from "./api/v1/workspaces/[workspaceId]/notionConnection";
 import { workspaceNotionPageTreeHandlers } from "./api/v1/workspaces/[workspaceId]/notionPages/tree";
 import { workspaceRecordingsHandlers } from "./api/v1/workspaces/[workspaceId]/recordings";
 import { recordingHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]";
@@ -43,9 +40,6 @@ export const handlers = [
   ...workspaceInvitationsHandlers,
   ...workspaceInvitationReissueHandlers,
   ...workspaceConversationsHandlers,
-  ...workspaceNotionImportsHandlers,
-  ...notionImportStatusHandlers,
-  ...workspaceNotionConnectionHandlers,
   ...workspaceNotionPageTreeHandlers,
   ...workspaceRecordingsHandlers,
   ...currentRecordingHandlers,
