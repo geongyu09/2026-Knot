@@ -1,12 +1,9 @@
 package com.knot.backend.global.config;
 
-import com.knot.backend.search.application.SearchAnswerSnapshotService;
 import com.knot.backend.search.application.SearchGenerationAvailability;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import com.knot.backend.search.infrastructure.SearchAnswerStream;
 import java.util.concurrent.ThreadPoolExecutor;
 import org.springframework.context.annotation.Bean;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
@@ -46,16 +43,4 @@ public class SearchWorkerConfig {
         return executor;
     }
 
-    @Bean
-    public SearchAnswerStream searchAnswerStream(
-            SearchAnswerSnapshotService snapshots,
-            @Qualifier("searchStreamExecutor") ThreadPoolTaskExecutor executor,
-            SearchWorkerProperties properties
-    ) {
-        return new SearchAnswerStream(
-                snapshots,
-                executor,
-                properties
-        );
-    }
 }
