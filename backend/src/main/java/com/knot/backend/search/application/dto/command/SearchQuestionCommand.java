@@ -30,7 +30,7 @@ public record SearchQuestionCommand(
         );
     }
 
-    private static UUID parseRequestId(String requestId) {
+    public static UUID parseRequestId(String requestId) {
         if (requestId == null || !UUID_PATTERN.matcher(requestId)
                 .matches()) {
             throw new SearchException(SearchErrorCode.VALIDATION_ERROR);
