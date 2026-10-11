@@ -345,25 +345,77 @@ class SearchDocumentToolServiceIntegrationTest {
     @DisplayName("긴 본문은 이모지를 보존하며 이어 읽고 변경된 본문 커서는 거절한다")
     void read_success_continuationAndRevision() {
         properties.setReadCodePoints(3);
-        long document = saveDocument(workspaceId, "ARCHIVED", "결정", "가🙂나다😃라");
-        SearchDocumentSlice first = service.read(scope, document, null);
+        long document = saveDocument(
+                workspaceId,
+                "ARCHIVED",
+                "결정",
+                "가🙂나다😃라"
+        );
+        SearchDocumentSlice first = service.read(
+                scope,
+                document,
+                null
+        );
         assertThat(first.content()).isEqualTo("가🙂나");
         assertThat(first.truncated()).isTrue();
-        SearchDocumentSlice second = service.read(scope, document, first.nextCursor());
+        SearchDocumentSlice second = service.read(
+                scope,
+                document,
+                first.nextCursor()
+        );
         assertThat(second.content()).isEqualTo("다😃라");
         assertThat(second.nextCursor()).isNull();
-        jdbc.sql("UPDATE documents SET content = '변경됨' WHERE id = :id").param("id", document).update();
-        assertThatThrownBy(() -> service.read(scope, document, first.nextCursor())).hasMessage("DOCUMENT_CHANGED");
+        jdbc.sql("UPDATE documents SET content = '변경됨' WHERE id = :id")
+                .param(
+                        "id",
+                        document
+                )
+                .update();
+        assertThatThrownBy(
+                () -> service.read(
+                        scope,
+                        document,
+                        first.nextCursor()
+                )
+        ).hasMessage("DOCUMENT_CHANGED");
     }
 
     @Test
     @DisplayName("본문 읽기는 외부 Workspace와 미보관 문서를 찾았다고 노출하지 않는다")
     void read_failure_unavailableDocument() {
-        long outside = saveDocument(fixtures.saveWorkspace(), "ARCHIVED", "외부", "비공개");
-        long draft = saveDocument(workspaceId, "DRAFT", "초안", "비공개");
-        assertThatThrownBy(() -> service.read(scope, outside, null)).hasMessage("DOCUMENT_NOT_FOUND");
-        assertThatThrownBy(() -> service.read(scope, draft, null)).hasMessage("DOCUMENT_NOT_FOUND");
-        assertThatThrownBy(() -> service.read(scope, 0, null)).hasMessage("INVALID_TOOL_ARGUMENTS");
+        long outside = saveDocument(
+                fixtures.saveWorkspace(),
+                "ARCHIVED",
+                "외부",
+                "비공개"
+        );
+        long draft = saveDocument(
+                workspaceId,
+                "DRAFT",
+                "초안",
+                "비공개"
+        );
+        assertThatThrownBy(
+                () -> service.read(
+                        scope,
+                        outside,
+                        null
+                )
+        ).hasMessage("DOCUMENT_NOT_FOUND");
+        assertThatThrownBy(
+                () -> service.read(
+                        scope,
+                        draft,
+                        null
+                )
+        ).hasMessage("DOCUMENT_NOT_FOUND");
+        assertThatThrownBy(
+                () -> service.read(
+                        scope,
+                        0,
+                        null
+                )
+        ).hasMessage("INVALID_TOOL_ARGUMENTS");
     }
 
     private SearchDocumentParameters parameters(
