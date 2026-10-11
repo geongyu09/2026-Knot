@@ -15,6 +15,7 @@ public class SearchAgentProperties {
     private String signingKey;
     private URI mcpBaseUrl = URI.create("http://127.0.0.1:8080");
     private Duration budget = Duration.ofSeconds(120);
+    private Duration cancellationPollInterval = Duration.ofMillis(250);
     private int toolCallLimit = 12;
     private int readCodePoints = 6000;
     private int contextCharacterLimit = 48000;
@@ -36,6 +37,13 @@ public class SearchAgentProperties {
             throw new IllegalStateException("invalid search context limit");
         }
         validateOrigin();
+        validateCancellationInterval();
+    }
+
+    private void validateCancellationInterval() {
+        if (cancellationPollInterval == null || cancellationPollInterval.toMillis() < 1) {
+            throw new IllegalStateException("search cancellation interval must be at least one millisecond");
+        }
     }
 
     private void validateOrigin() {
