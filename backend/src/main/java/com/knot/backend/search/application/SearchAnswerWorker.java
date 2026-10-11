@@ -24,6 +24,8 @@ public class SearchAnswerWorker {
     private final SearchAnswerExecutionService executions;
     private final ObjectProvider<SearchDocumentRetriever> retrievers;
     private final ObjectProvider<SearchAnswerGenerator> generators;
+    private final java.time.Clock clock;
+    private final com.knot.backend.global.config.SearchAgentProperties agentProperties;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void execute(long answerId) {
@@ -50,9 +52,15 @@ public class SearchAnswerWorker {
     }
 
     private void generate(SearchAnswerWorkResult work) {
+        java.time.Instant startedAt = clock.instant();
+        SearchToolScope scope = SearchToolScope.from(
+                work,
+                startedAt,
+                startedAt.plus(agentProperties.getBudget())
+        );
         SearchDocumentRetriever retriever = retrievers.getObject();
         SearchRetrievalResult retrieval = retriever.retrieve(
-                work.workspaceId(),
+                scope,
                 work.question()
         );
         if (!executions.recordRetrieval(
@@ -79,6 +87,7 @@ public class SearchAnswerWorker {
         }
         SearchAnswerGenerator generator = generators.getObject();
         List<Long> usedIds = generator.generate(
+                scope,
                 work.question(),
                 documents,
                 text -> append(
