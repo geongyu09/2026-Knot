@@ -111,7 +111,8 @@ public class SearchDocumentQueryAdapter {
             String match = " ILIKE :term" + index + " ESCAPE '!'";
             scores.add(
                     "(CASE WHEN d.title" + match + " THEN 8 ELSE 0 END" + " + CASE WHEN d.topic" + match
-                            + " THEN 4 ELSE 0 END" + " + CASE WHEN d.content" + match + " THEN 1 ELSE 0 END)"
+                            + " THEN 4 ELSE 0 END" + " + CASE WHEN d.summary" + match + " THEN 2 ELSE 0 END"
+                            + " + CASE WHEN d.content" + match + " THEN 1 ELSE 0 END)"
             );
         }
         return String.join(
