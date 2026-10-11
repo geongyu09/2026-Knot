@@ -68,7 +68,7 @@ class SearchConversationListSnapshotIntegrationTest {
 
     @Test
     @DisplayName("권한 확인 후 메시지가 저장되어도 한 응답은 같은 DB 스냅샷을 읽는다")
-    void find_keepsSnapshotEstablishedByMembershipReadDuringConcurrentMessageCommit() {
+    void find_success_keepsSnapshotEstablishedByMembershipReadDuringConcurrentMessageCommit() {
         doAnswer(invocation -> {
             try (var executor = Executors.newSingleThreadExecutor()) {
                 executor.submit(() -> new TransactionTemplate(transactions).executeWithoutResult(status -> {
