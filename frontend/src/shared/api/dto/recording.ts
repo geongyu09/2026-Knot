@@ -11,8 +11,9 @@
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-upload-complete
  */
 
-/** 녹음 세션 상태. 시작·일시정지·재개·종료 응답과 녹음 상세 조회의 `sessionStatus`가 공유하는 서버 값 */
-export type RecordingSessionStatus = "RECORDING" | "PAUSED" | "ENDED";
+/** 녹음 세션 상태. 시작·일시정지·재개·종료 응답과 녹음 상세 조회의 `sessionStatus`가 공유하는 서버 값. `DISCARDED`는 서버가 버린 녹음이에요 */
+export type RecordingSessionStatus =
+  "RECORDING" | "PAUSED" | "ENDED" | "DISCARDED";
 
 // GET /api/v1/workspaces/{workspaceId}/recordings/current
 
@@ -93,11 +94,14 @@ export class PostRecordingResponseDto {
   status: RecordingSessionStatus;
   /** 서버가 확정한 녹음 시작 시각(ISO 8601) */
   startedAt: string;
+  /** 이 요청으로 새로 만든 녹음이면 `true`. 본문에는 없어 HTTP 상태(201)에서 읽어요 */
+  isCreated: boolean;
 
-  constructor(raw: PostRecordingResponseRaw) {
+  constructor(raw: PostRecordingResponseRaw, httpStatus: number) {
     this.recordingId = raw.recordingId;
     this.status = raw.status;
     this.startedAt = raw.startedAt;
+    this.isCreated = httpStatus === 201;
   }
 }
 
