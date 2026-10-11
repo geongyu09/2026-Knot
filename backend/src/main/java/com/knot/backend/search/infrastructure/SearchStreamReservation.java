@@ -10,7 +10,7 @@ public final class SearchStreamReservation implements AutoCloseable, Runnable {
 
     private final Semaphore capacity;
     private final AtomicBoolean active = new AtomicBoolean(true);
-    private final CompletableFuture<SearchAnswerSseConnection> connection = new CompletableFuture<>();
+    private final CompletableFuture<Runnable> connection = new CompletableFuture<>();
 
     SearchStreamReservation(Semaphore capacity) {
         this.capacity = capacity;
@@ -20,7 +20,7 @@ public final class SearchStreamReservation implements AutoCloseable, Runnable {
         return active.get();
     }
 
-    void attach(SearchAnswerSseConnection ready) {
+    void attach(Runnable ready) {
         if (!active.get() || !connection.complete(ready)) {
             throw new IllegalStateException("stream reservation ended");
         }
@@ -29,7 +29,7 @@ public final class SearchStreamReservation implements AutoCloseable, Runnable {
     @Override
     public void run() {
         try {
-            SearchAnswerSseConnection ready = connection.get();
+            Runnable ready = connection.get();
             ready.run();
         } catch (InterruptedException exception) {
             Thread.currentThread()
