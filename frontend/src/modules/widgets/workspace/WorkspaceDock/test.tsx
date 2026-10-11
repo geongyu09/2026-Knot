@@ -1,4 +1,7 @@
-import { recordingEndResponse } from "@api/mock/responses/recording";
+import {
+  recordingEndResponse,
+  recordingStartResponse,
+} from "@api/mock/responses/recording";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
@@ -481,6 +484,17 @@ describe("WorkspaceDock", () => {
       const conflict = (code: string) => () =>
         HttpResponse.json({ code }, { status: 409 });
 
+      const session =
+        (status: string, httpStatus = 200) =>
+        () =>
+          HttpResponse.json(
+            { ...recordingStartResponse, status },
+            { status: httpStatus },
+          );
+
+      /** 새로고침 전에 보냈던 시작 증명이 이 탭에 남아 있게 해요 */
+      const leaveStartProof = () => getRecordingStartProof().requestId;
+
       const expectRefusedInPlace = (
         router: ReturnType<typeof renderDock>["router"],
       ) => {
@@ -509,6 +523,56 @@ describe("WorkspaceDock", () => {
 
           await waitFor(() => expectRefusedInPlace(router));
           expect(getRecordingStartProof().requestId).toBe(requestIds[0]);
+        },
+      );
+
+      it.each(["ENDED", "DISCARDED"])(
+        "남은 증명의 응답이 %s면 새 증명으로 한 번 더 보내 녹음을 시작한다",
+        async (status) => {
+          const leftoverRequestId = leaveStartProof();
+          const requestIds = respondStart(
+            session(status),
+            session("RECORDING", 201),
+          );
+          const { router } = renderDock();
+
+          await clickMic();
+
+          await waitFor(() =>
+            expect(router.state.location.pathname).toBe(RECORDING_PATH),
+          );
+          expect(useRecordingStore.getState().status).toBe("recording");
+          expect(requestIds).toHaveLength(2);
+          expect(requestIds[0]).toBe(leftoverRequestId);
+          expect(requestIds[1]).not.toBe(leftoverRequestId);
+        },
+      );
+
+      it("끝난 녹음 뒤 다시 보낸 시작도 409면 모달을 띄운다", async () => {
+        leaveStartProof();
+        const requestIds = respondStart(
+          session("ENDED"),
+          conflict("ACTIVE_RECORDING_ALREADY_EXISTS"),
+        );
+        const { router } = renderDock();
+
+        await clickMic();
+
+        await waitFor(() => expectRefusedInPlace(router));
+        expect(requestIds).toHaveLength(2);
+      });
+
+      it.each(["RECORDING", "PAUSED"])(
+        "남은 증명의 응답이 %s면 이어받지 않고 모달을 띄운 뒤 시작 증명을 남긴다",
+        async (status) => {
+          const leftoverRequestId = leaveStartProof();
+          respondStart(session(status));
+          const { router } = renderDock();
+
+          await clickMic();
+
+          await waitFor(() => expectRefusedInPlace(router));
+          expect(getRecordingStartProof().requestId).toBe(leftoverRequestId);
         },
       );
 
