@@ -118,6 +118,50 @@ public class SearchAnswerExecutionService {
         return true;
     }
 
+    public boolean complete(
+            long answerId,
+            UUID token,
+            List<Long> usedDocumentIds,
+            Set<Long> candidateIds
+    ) {
+        Optional<SearchAnswerExecution> current = currentExecution(
+                answerId,
+                token
+        );
+        if (current.isEmpty()) {
+            return false;
+        }
+        validateUsedDocuments(
+                usedDocumentIds,
+                candidateIds
+        );
+        SearchAnswerExecution execution = current.get();
+        SearchConversation conversation = conversation(execution);
+        for (int index = 0; index < usedDocumentIds.size(); index++) {
+            long documentId = usedDocumentIds.get(index);
+            requireDocument(
+                    conversation.getWorkspaceId(),
+                    documentId
+            );
+            repository.save(
+                    SearchEvidence.create(
+                            answerId,
+                            documentId,
+                            index + 1
+                    )
+            );
+        }
+        answer(execution).complete();
+        execution.finish();
+        recordTerminalActivity(
+                conversation,
+                execution,
+                SearchMessageStatus.COMPLETED
+        );
+        repository.flush();
+        return true;
+    }
+
     private Optional<SearchAnswerExecution> lockExecution(long answerId) {
         Optional<SearchAnswerExecution> found = repository.findExecution(answerId);
         if (found.isEmpty()) {
