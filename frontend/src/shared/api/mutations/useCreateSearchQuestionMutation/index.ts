@@ -41,6 +41,7 @@ const useCreateSearchQuestionMutation = () => {
           signal,
         }),
         onEvent,
+        signal,
       }),
   });
 };

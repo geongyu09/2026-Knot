@@ -39,6 +39,7 @@ const useCreateSearchConversationMutation = () => {
           signal,
         }),
         onEvent,
+        signal,
       }),
   });
 };

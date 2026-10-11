@@ -101,37 +101,61 @@ export class SearchAnswerFailedError extends Error {
   }
 }
 
+/**
+ * 끝 이벤트(completed·failed·stopped) 없이 닫힌 답변 스트림. 취소한 경우는 해당하지 않아요.
+ *
+ * 연결이 끊겨도 서버는 답변을 계속 만들어요(SEARCH-R8). 서버에 FAILED로 저장된 답변(`SearchAnswerFailedError`)과
+ * 다르므로 따로 둬요.
+ */
+// TODO: SEARCH-R8 이어 보기. 재연결 작업에서 실패와 끊김을 나눌지 결정
+export class SearchAnswerDisconnectedError extends Error {
+  constructor() {
+    super("탐색 답변 스트림이 끝 이벤트 없이 닫혔어요");
+
+    this.name = "SearchAnswerDisconnectedError";
+  }
+}
+
 interface RelaySearchAnswerUntilEndParams {
   /** 첫 질문·후속 질문 요청 함수가 내는 이벤트 스트림 */
   stream: AsyncIterable<SearchStreamEvent>;
   /** 이벤트가 도착할 때마다 불려요. 화면 상태에 쌓는 건 부르는 쪽이 해요 */
   onEvent: (event: SearchStreamEvent) => void;
+  /** 요청 함수에 넘긴 것과 같은 취소 신호. 끝 이벤트 없이 끝났을 때 취소인지 가려요 */
+  signal?: AbortSignal;
 }
 
 /**
  * @description 탐색 답변 스트림을 끝까지 받으며 이벤트를 넘기고, 답변이 어떻게 끝났는지 판정해요. 첫 질문·후속 질문 뮤테이션이 함께 써요
- * @param params - 요청 함수의 이벤트 스트림, 이벤트를 받을 콜백
- * @returns completed 이벤트의 data
+ * @param params - 요청 함수의 이벤트 스트림, 이벤트를 받을 콜백, 요청 함수에 넘긴 것과 같은 취소 신호
+ * @returns completed·stopped 이벤트의 data. 두 끝은 `status`로 구분해요. 취소했으면 null
  * @throws {SearchAnswerFailedError} accepted 뒤 `failed` 이벤트를 받은 경우
  * @throws {SseRequestError} accepted 전에 실패 응답을 받은 경우. 요청 함수가 던진 그대로 올려요
+ * @throws {SearchAnswerDisconnectedError} 취소하지 않았는데 끝 이벤트 없이 스트림이 닫힌 경우
  * @example
  * const completed = await relaySearchAnswerUntilEnd({
  *   stream: createSearchConversationApi({ workspaceId, body, signal }),
  *   onEvent,
+ *   signal,
  * });
  */
 export const relaySearchAnswerUntilEnd = async ({
   stream,
   onEvent,
+  signal,
 }: RelaySearchAnswerUntilEndParams) => {
   for await (const searchStreamEvent of stream) {
     onEvent(searchStreamEvent);
 
     if (searchStreamEvent.event === "completed") return searchStreamEvent.data;
+    if (searchStreamEvent.event === "stopped") return searchStreamEvent.data;
     if (searchStreamEvent.event === "failed") {
       throw new SearchAnswerFailedError(searchStreamEvent.data);
     }
   }
 
-  return null;
+  // signal을 abort하면 readSseStream이 오류 없이 끝나므로, 끝 이벤트 없이 끝난 이유가 abort인지 여기서 가려요
+  if (signal?.aborted) return null;
+
+  throw new SearchAnswerDisconnectedError();
 };

@@ -22,6 +22,7 @@ import { SseRequestError } from "@api/sse/requestSseStream";
 import {
   createSearchConversationApi,
   relaySearchAnswerUntilEnd,
+  SearchAnswerDisconnectedError,
   SearchAnswerFailedError,
 } from ".";
 
@@ -468,5 +469,75 @@ describe("relaySearchAnswerUntilEnd", () => {
     expect(onEvent).not.toHaveBeenCalled();
     expect(error).toBeInstanceOf(SseRequestError);
     expect(error).toMatchObject({ status: 403, code: "WORKSPACE_ACCESS_DENIED" });
+  });
+
+  // SEARCH-R7 답변 중지 · API 명세 stopped 이벤트
+  it("[SEARCH-R7] stopped 이벤트는 onEvent로 넘긴 뒤 stopped의 data를 반환한다", async () => {
+    const delta = { answerMessageId: ANSWER_MESSAGE_ID, text: "DB는 " };
+    const stopped = { answerMessageId: ANSWER_MESSAGE_ID, status: "STOPPED" } as const;
+    respondWithSseChunks([
+      toFrame("accepted", ACCEPTED),
+      toFrame("delta", delta),
+      toFrame("stopped", stopped),
+    ]);
+    const onEvent = vi.fn();
+
+    const result = await relaySearchAnswerUntilEnd({
+      stream: createSearchConversationApi({
+        workspaceId: WORKSPACE_ID,
+        body: QUESTION,
+      }),
+      onEvent,
+    });
+
+    expect(toReceivedEvents(onEvent)).toEqual([
+      { event: "accepted", data: new SearchStreamAcceptedDto(ACCEPTED) },
+      { event: "delta", data: new SearchStreamDeltaDto(delta) },
+      { event: "stopped", data: new SearchStreamStoppedDto(stopped) },
+    ]);
+    expect(result).toEqual(new SearchStreamStoppedDto(stopped));
+  });
+
+  // SEARCH-R8 이어 보기 · 화면을 떠나면 스트림만 끊고 실패로 보지 않음
+  it("[SEARCH-R8] 요청을 취소하면 실패 없이 null을 반환한다", async () => {
+    const controller = new AbortController();
+    // accepted를 받자마자 화면을 떠난 상황이에요
+    const onEvent = vi.fn(() => controller.abort());
+
+    const result = await relaySearchAnswerUntilEnd({
+      stream: createSearchConversationApi({
+        workspaceId: WORKSPACE_ID,
+        body: QUESTION,
+        signal: controller.signal,
+      }),
+      onEvent,
+      signal: controller.signal,
+    });
+
+    expect(toReceivedEvents(onEvent)).toEqual([
+      { event: "accepted", data: expect.any(SearchStreamAcceptedDto) },
+    ]);
+    expect(result).toBeNull();
+  });
+
+  // SEARCH-R8 이어 보기(재연결 전까지 실패로 처리) · #580 TODO
+  it("[SEARCH-R8] 끝 이벤트 없이 닫힌 스트림은 취소가 아니면 SearchAnswerDisconnectedError로 throw한다", async () => {
+    const delta = { answerMessageId: ANSWER_MESSAGE_ID, text: "DB는 " };
+    respondWithSseChunks([toFrame("accepted", ACCEPTED), toFrame("delta", delta)]);
+    const onEvent = vi.fn();
+
+    const error = await relaySearchAnswerUntilEnd({
+      stream: createSearchConversationApi({
+        workspaceId: WORKSPACE_ID,
+        body: QUESTION,
+      }),
+      onEvent,
+    }).catch((caught: unknown) => caught);
+
+    expect(toReceivedEvents(onEvent)).toEqual([
+      { event: "accepted", data: new SearchStreamAcceptedDto(ACCEPTED) },
+      { event: "delta", data: new SearchStreamDeltaDto(delta) },
+    ]);
+    expect(error).toBeInstanceOf(SearchAnswerDisconnectedError);
   });
 });
