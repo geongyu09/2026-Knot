@@ -1,12 +1,12 @@
 package com.knot.backend.global.config;
 
 import com.knot.backend.search.application.SearchAnswerSnapshotService;
+import com.knot.backend.search.infrastructure.SearchAnswerStream;
+import org.springframework.beans.factory.annotation.Qualifier;
 import com.knot.backend.search.application.SearchGenerationAvailability;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import com.knot.backend.search.infrastructure.SearchAnswerStream;
 import java.util.concurrent.ThreadPoolExecutor;
 import org.springframework.context.annotation.Bean;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
