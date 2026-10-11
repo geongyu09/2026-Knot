@@ -106,6 +106,13 @@ public class SearchAnswerExecution {
         stage = SearchProgressStage.GENERATING;
     }
 
+    public void stop() {
+        if (state == SearchExecutionState.FINISHED) {
+            throw new IllegalStateException("execution is already finished");
+        }
+        state = SearchExecutionState.FINISHED;
+    }
+
     public void finish() {
         if (state != SearchExecutionState.RUNNING) {
             throw new IllegalStateException("execution is not running");
