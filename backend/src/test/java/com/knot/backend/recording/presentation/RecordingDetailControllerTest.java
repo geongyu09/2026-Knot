@@ -67,18 +67,11 @@ class RecordingDetailControllerTest {
                 )
         ).thenReturn(
                 new RecordingDetailResult(
-                        RECORDING_ID,
                         RecordingStatus.ENDED,
-                        STARTED_AT,
                         60_000L,
                         STARTED_AT.plusSeconds(60),
                         RecordingEndReason.USER_ENDED,
-                        null,
-                        STARTED_AT.plusSeconds(90),
-                        RecordingAudioUploadStatus.COMPLETED,
-                        3L,
-                        STARTED_AT.plusSeconds(80),
-                        7_200_000L
+                        RecordingAudioUploadStatus.COMPLETED
                 )
         );
 
@@ -93,18 +86,11 @@ class RecordingDetailControllerTest {
 
         // then
         result.andExpect(status().isOk())
-                .andExpect(jsonPath("$.recordingId").value(RECORDING_ID))
                 .andExpect(jsonPath("$.status").value("ENDED"))
-                .andExpect(jsonPath("$.startedAt").value("2026-10-09T00:00:00Z"))
                 .andExpect(jsonPath("$.elapsedMillis").value(60_000L))
                 .andExpect(jsonPath("$.endedAt").value("2026-10-09T00:01:00Z"))
                 .andExpect(jsonPath("$.endReason").value("USER_ENDED"))
-                .andExpect(jsonPath("$.expiresAt").isEmpty())
-                .andExpect(jsonPath("$.serverNow").value("2026-10-09T00:01:30Z"))
-                .andExpect(jsonPath("$.audioUploadStatus").value("COMPLETED"))
-                .andExpect(jsonPath("$.uploadId").value(3L))
-                .andExpect(jsonPath("$.completedAt").value("2026-10-09T00:01:20Z"))
-                .andExpect(jsonPath("$.maxDurationMillis").value(7_200_000L));
+                .andExpect(jsonPath("$.audioUploadStatus").value("COMPLETED"));
     }
 
     @Test

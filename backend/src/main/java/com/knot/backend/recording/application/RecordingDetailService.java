@@ -38,7 +38,6 @@ public class RecordingDetailService {
         if (snapshot.memberId() != memberId) {
             throw new RecordingException(RecordingErrorCode.RECORDING_CONTROL_DENIED);
         }
-        // 녹음을 읽은 뒤 시각을 잡아야 동시에 커밋된 재개보다 이른 시각으로 경과 시간을 계산하지 않는다
         return RecordingDetailResult.of(
                 snapshot,
                 clock.instant()

@@ -139,17 +139,9 @@ class RecordingDetailServiceIntegrationTest {
                         RecordingAudioUploadStatus.COMPLETED
                 );
         assertThat(
-                results.get(0)
-                        .expiresAt()
-        ).isNotNull();
-        assertThat(
                 results.get(2)
                         .endReason()
         ).isEqualTo(RecordingEndReason.USER_ENDED);
-        assertThat(
-                results.get(3)
-                        .completedAt()
-        ).isNotNull();
     }
 
     @Test
@@ -196,7 +188,6 @@ class RecordingDetailServiceIntegrationTest {
         assertThat(result.status()).isEqualTo(RecordingStatus.ENDED);
         assertThat(result.endedAt()).isEqualTo(heartbeat.endedAt());
         assertThat(result.endReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
-        assertThat(result.expiresAt()).isNull();
     }
 
     @Test

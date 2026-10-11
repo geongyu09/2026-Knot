@@ -7,12 +7,10 @@ import org.springframework.data.repository.Repository;
 
 interface RecordingDetailReadJpaRepository extends Repository<RecordingSession, Long> {
 
-    // 세션과 업로드 예약을 한 문장으로 읽어 종료·업로드 완료와 겹쳐도 서로 다른 시점이 섞이지 않게 한다
     @Query("""
             select new com.knot.backend.recording.infrastructure.RecordingDetailRow(
-                rs.id, rs.memberId, rs.status, rs.startedAt, rs.currentIntervalStartedAt,
-                rs.accumulatedRecordingMillis, rs.lastSeenAt, rs.endedAt, rs.endReason,
-                u.id, u.status, u.completedAt
+                rs.memberId, rs.status, rs.currentIntervalStartedAt,
+                rs.accumulatedRecordingMillis, rs.endedAt, rs.endReason, u.status
             )
             from RecordingSession rs
             left join RecordingAudioUpload u on u.recordingId = rs.id

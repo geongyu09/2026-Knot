@@ -75,7 +75,7 @@ class RecordingDetailAcceptanceTest {
     }
 
     @Test
-    @DisplayName("최초 탭이 아닌 화면도 본인 진행 중 녹음을 조회하면 200과 상태·만료 예정 시각을 받고 제어 비밀값은 받지 않는다")
+    @DisplayName("최초 탭이 아닌 화면도 본인 진행 중 녹음을 조회하면 200과 상태를 받고 제어 비밀값은 받지 않는다")
     void findDetail_success_activeRecording() throws Exception {
         // given
         long memberId = saveMember("member");
@@ -98,14 +98,9 @@ class RecordingDetailAcceptanceTest {
 
         // then
         String body = result.andExpect(status().isOk())
-                .andExpect(jsonPath("$.recordingId").value(recordingId))
                 .andExpect(jsonPath("$.status").value("RECORDING"))
-                .andExpect(jsonPath("$.startedAt").isNotEmpty())
-                .andExpect(jsonPath("$.expiresAt").isNotEmpty())
-                .andExpect(jsonPath("$.serverNow").isNotEmpty())
                 .andExpect(jsonPath("$.endedAt").isEmpty())
                 .andExpect(jsonPath("$.audioUploadStatus").isEmpty())
-                .andExpect(jsonPath("$.maxDurationMillis").value(7_200_000))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
@@ -149,8 +144,7 @@ class RecordingDetailAcceptanceTest {
         result.andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ENDED"))
                 .andExpect(jsonPath("$.endedAt").value(endedAt))
-                .andExpect(jsonPath("$.endReason").value("USER_ENDED"))
-                .andExpect(jsonPath("$.expiresAt").isEmpty());
+                .andExpect(jsonPath("$.endReason").value("USER_ENDED"));
     }
 
     @Test

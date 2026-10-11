@@ -57,7 +57,7 @@ class RecordingDetailServiceTest {
     }
 
     @Test
-    @DisplayName("진행 중인 본인 녹음은 서버 시각까지의 경과 시간과 연결 만료 예정 시각, 최대 녹음 시간을 반환한다")
+    @DisplayName("진행 중인 본인 녹음은 서버 시각까지의 경과 시간을 반환한다")
     void find_success_recording() {
         // given
         prepareAccess();
@@ -71,7 +71,6 @@ class RecordingDetailServiceTest {
                         snapshot(
                                 RecordingStatus.RECORDING,
                                 NOW.minusSeconds(30),
-                                null,
                                 null,
                                 null
                         )
@@ -88,16 +87,11 @@ class RecordingDetailServiceTest {
         // then
         assertThat(result.status()).isEqualTo(RecordingStatus.RECORDING);
         assertThat(result.elapsedMillis()).isEqualTo(90_000L);
-        assertThat(result.expiresAt()).isEqualTo(NOW.plusSeconds(90));
-        assertThat(result.serverNow()).isEqualTo(NOW);
-        assertThat(result.maxDurationMillis()).isEqualTo(7_200_000L);
         assertThat(result.audioUploadStatus()).isNull();
-        assertThat(result.uploadId()).isNull();
-        assertThat(result.completedAt()).isNull();
     }
 
     @Test
-    @DisplayName("종료되고 업로드가 끝난 녹음은 종료 시각·사유와 업로드 완료 정보를 반환하고 만료 예정 시각은 비운다")
+    @DisplayName("종료되고 업로드가 끝난 녹음은 종료 시각·사유와 업로드 완료 상태를 반환한다")
     void find_success_endedWithCompletedUpload() {
         // given
         prepareAccess();
@@ -113,8 +107,7 @@ class RecordingDetailServiceTest {
                                 RecordingStatus.ENDED,
                                 null,
                                 endedAt,
-                                RecordingAudioUploadStatus.COMPLETED,
-                                NOW
+                                RecordingAudioUploadStatus.COMPLETED
                         )
                 )
         );
@@ -131,10 +124,7 @@ class RecordingDetailServiceTest {
         assertThat(result.endedAt()).isEqualTo(endedAt);
         assertThat(result.endReason()).isEqualTo(RecordingEndReason.USER_ENDED);
         assertThat(result.elapsedMillis()).isEqualTo(60_000L);
-        assertThat(result.expiresAt()).isNull();
         assertThat(result.audioUploadStatus()).isEqualTo(RecordingAudioUploadStatus.COMPLETED);
-        assertThat(result.uploadId()).isEqualTo(3L);
-        assertThat(result.completedAt()).isEqualTo(NOW);
     }
 
     @Test
@@ -152,7 +142,6 @@ class RecordingDetailServiceTest {
                         snapshot(
                                 RecordingStatus.RECORDING,
                                 NOW.plusMillis(5),
-                                null,
                                 null,
                                 null
                         )
@@ -183,15 +172,10 @@ class RecordingDetailServiceTest {
         ).thenReturn(
                 Optional.of(
                         new RecordingDetailSnapshot(
-                                RECORDING_ID,
                                 MEMBER_ID + 1,
                                 RecordingStatus.RECORDING,
                                 STARTED_AT,
-                                STARTED_AT,
                                 0L,
-                                STARTED_AT,
-                                null,
-                                null,
                                 null,
                                 null,
                                 null
@@ -295,22 +279,16 @@ class RecordingDetailServiceTest {
             RecordingStatus status,
             Instant currentIntervalStartedAt,
             Instant endedAt,
-            RecordingAudioUploadStatus uploadStatus,
-            Instant completedAt
+            RecordingAudioUploadStatus uploadStatus
     ) {
         return new RecordingDetailSnapshot(
-                RECORDING_ID,
                 MEMBER_ID,
                 status,
-                STARTED_AT,
                 currentIntervalStartedAt,
                 60_000L,
-                currentIntervalStartedAt == null ? STARTED_AT : currentIntervalStartedAt,
                 endedAt,
                 endedAt == null ? null : RecordingEndReason.USER_ENDED,
-                uploadStatus == null ? null : 3L,
-                uploadStatus,
-                completedAt
+                uploadStatus
         );
     }
 

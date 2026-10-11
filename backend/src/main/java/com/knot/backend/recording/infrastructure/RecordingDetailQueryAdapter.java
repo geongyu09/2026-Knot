@@ -22,18 +22,13 @@ public class RecordingDetailQueryAdapter implements RecordingDetailQuery {
         )
                 .map(
                         row -> new RecordingDetailSnapshot(
-                                row.recordingId(),
                                 row.memberId(),
                                 row.status(),
-                                row.startedAt(),
                                 row.currentIntervalStartedAt(),
                                 row.accumulatedRecordingMillis(),
-                                row.lastSeenAt(),
                                 row.endedAt(),
                                 row.endReason(),
-                                row.uploadId(),
-                                row.audioUploadStatus(),
-                                row.completedAt()
+                                row.audioUploadStatus()
                         )
                 );
     }
