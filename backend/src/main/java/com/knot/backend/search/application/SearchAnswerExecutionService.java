@@ -256,19 +256,22 @@ public class SearchAnswerExecutionService {
             long workspaceId,
             long documentId
     ) {
-        documents.findByWorkspaceIdAndIdForUpdate(
+        com.knot.backend.document.domain.Document document = documents.findByWorkspaceIdAndIdForUpdate(
                 workspaceId,
                 documentId
         )
                 .orElseThrow(() -> new IllegalArgumentException("document is outside workspace"));
+        if (document.getStatus() != com.knot.backend.document.domain.DocumentStatus.ARCHIVED) {
+            throw new IllegalArgumentException("document is not archived");
+        }
     }
 
     private void validateUsedDocuments(
             List<Long> ids,
             Set<Long> candidates
     ) {
-        if (ids == null || ids.size() > 3) {
-            throw new IllegalArgumentException("at most three evidence documents are allowed");
+        if (ids == null) {
+            throw new IllegalArgumentException("evidence document IDs are required");
         }
         if (new HashSet<>(ids).size() != ids.size()) {
             throw new IllegalArgumentException("duplicate evidence document");

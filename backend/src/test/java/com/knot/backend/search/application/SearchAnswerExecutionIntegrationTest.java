@@ -163,15 +163,15 @@ class SearchAnswerExecutionIntegrationTest {
     void complete_success_usedEvidenceOnly() {
         SearchAnswerWorkResult work = service.claim(accepted.answerMessageId())
                 .orElseThrow();
-        long first = messages.saveDocument(
+        long first = archivedDocument(
                 workspaceId,
                 memberId
         );
-        long second = messages.saveDocument(
+        long second = archivedDocument(
                 workspaceId,
                 memberId
         );
-        long candidate = messages.saveDocument(
+        long candidate = archivedDocument(
                 workspaceId,
                 memberId
         );
@@ -219,7 +219,7 @@ class SearchAnswerExecutionIntegrationTest {
     void complete_failure_invalidEvidence() {
         SearchAnswerWorkResult work = service.claim(accepted.answerMessageId())
                 .orElseThrow();
-        long document = messages.saveDocument(
+        long document = archivedDocument(
                 workspaceId,
                 memberId
         );
@@ -269,7 +269,7 @@ class SearchAnswerExecutionIntegrationTest {
     void complete_failure_otherWorkspaceEvidence() {
         SearchAnswerWorkResult work = service.claim(accepted.answerMessageId())
                 .orElseThrow();
-        long valid = messages.saveDocument(
+        long valid = archivedDocument(
                 workspaceId,
                 memberId
         );
@@ -278,7 +278,7 @@ class SearchAnswerExecutionIntegrationTest {
                 otherWorkspace,
                 memberId
         );
-        long invalid = messages.saveDocument(
+        long invalid = archivedDocument(
                 otherWorkspace,
                 memberId
         );
@@ -383,7 +383,7 @@ class SearchAnswerExecutionIntegrationTest {
     @Test
     @DisplayName("생성은 TX 밖에서 진행하며 delta와 실제 사용 문서만 저장한다")
     void execute_success_generatorOutsideTransaction() {
-        long document = messages.saveDocument(
+        long document = archivedDocument(
                 workspaceId,
                 memberId
         );
@@ -487,7 +487,7 @@ class SearchAnswerExecutionIntegrationTest {
     @Test
     @DisplayName("생성 중 오류가 발생하면 이미 저장한 본문은 남기고 근거를 만들지 않는다")
     void execute_failure_preservesGeneratedPartial() {
-        long document = messages.saveDocument(
+        long document = archivedDocument(
                 workspaceId,
                 memberId
         );
@@ -560,29 +560,78 @@ class SearchAnswerExecutionIntegrationTest {
     @Test
     @DisplayName("실제 사용한 네 문서는 모두 저장하고 SSE 카드에는 상위 세 개만 노출한다")
     void complete_success_allEvidenceAndThreeCards() {
-        SearchAnswerWorkResult work = service.claim(accepted.answerMessageId()).orElseThrow();
-        List<Long> documents = java.util.stream.LongStream.range(0, 4)
-                .map(index -> archivedDocument(workspaceId, memberId)).boxed().toList();
-        service.append(work.answerId(), work.token(), "네 회의 종합");
-        assertThat(service.complete(work.answerId(), work.token(), documents, new java.util.HashSet<>(documents))).isTrue();
+        SearchAnswerWorkResult work = service.claim(accepted.answerMessageId())
+                .orElseThrow();
+        List<Long> documents = java.util.stream.LongStream.range(
+                0,
+                4
+        )
+                .map(
+                        index -> archivedDocument(
+                                workspaceId,
+                                memberId
+                        )
+                )
+                .boxed()
+                .toList();
+        service.append(
+                work.answerId(),
+                work.token(),
+                "네 회의 종합"
+        );
+        assertThat(
+                service.complete(
+                        work.answerId(),
+                        work.token(),
+                        documents,
+                        new java.util.HashSet<>(documents)
+                )
+        ).isTrue();
         assertThat(evidenceCount()).isEqualTo(4);
-        assertThat(snapshots.read(workspaceId, memberId, work.answerId()).evidences()).hasSize(3);
+        assertThat(
+                snapshots.read(
+                        workspaceId,
+                        memberId,
+                        work.answerId()
+                )
+                        .evidences()
+        ).hasSize(3);
     }
 
     @Test
     @DisplayName("미보관 문서는 실제 사용 근거로 저장할 수 없다")
     void complete_failure_draftEvidence() {
-        SearchAnswerWorkResult work = service.claim(accepted.answerMessageId()).orElseThrow();
-        long draft = messages.saveDocument(workspaceId, memberId);
-        assertThatThrownBy(() -> service.complete(work.answerId(), work.token(), List.of(draft), Set.of(draft)))
-                .isInstanceOf(IllegalArgumentException.class);
+        SearchAnswerWorkResult work = service.claim(accepted.answerMessageId())
+                .orElseThrow();
+        long draft = messages.saveDocument(
+                workspaceId,
+                memberId
+        );
+        assertThatThrownBy(
+                () -> service.complete(
+                        work.answerId(),
+                        work.token(),
+                        List.of(draft),
+                        Set.of(draft)
+                )
+        ).isInstanceOf(IllegalArgumentException.class);
         assertThat(evidenceCount()).isZero();
     }
 
-    private long archivedDocument(long workspace, long member) {
-        long id = messages.saveDocument(workspace, member);
+    private long archivedDocument(
+            long workspace,
+            long member
+    ) {
+        long id = messages.saveDocument(
+                workspace,
+                member
+        );
         jdbc.sql("UPDATE documents SET status = 'ARCHIVED', archived_at = created_at WHERE id = :id")
-                .param("id", id).update();
+                .param(
+                        "id",
+                        id
+                )
+                .update();
         return id;
     }
 
