@@ -23,18 +23,18 @@ export default function TranscriptLine({
   text,
 }: TranscriptLineProps) {
   return (
-    <Item>
+    <Container>
       <Time>{formatRecordingTime(startMillis / MILLIS_PER_SECOND)}</Time>
       <Text>
         {speakerNumber !== null && `참여자 ${speakerNumber}: `}
         {text}
       </Text>
-    </Item>
+    </Container>
   );
 }
 
 /** 피그마 Line: 시각과 문장 사이 10px, 안쪽 여백 6px 8px, 모서리 8px. 시각은 문장의 첫 줄 위쪽에 맞춰요 */
-const Item = styled.li`
+const Container = styled.li`
   display: flex;
   align-items: flex-start;
   gap: 0.625rem; /* 10px */

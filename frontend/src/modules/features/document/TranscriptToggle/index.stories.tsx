@@ -52,7 +52,7 @@ export const Closed: Story = {
   parameters: {
     design: {
       type: "figma",
-      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-36058",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-36100",
     },
     // 문서 페이지는 스토리를 한 화면에 함께 그리는데 전역 저장소는 화면에 하나뿐이라, 따로 그려 Default와 섞이지 않게 해요
     docs: { story: { inline: false, iframeHeight: 80 } },

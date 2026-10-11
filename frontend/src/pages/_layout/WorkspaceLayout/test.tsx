@@ -49,6 +49,11 @@ const OTHER_DOCUMENT_PATH = getRouterPath({
   },
 });
 const DOCUMENT_TEXT = "문서 본문";
+const TRANSCRIPT_PANEL_TITLE = "원문";
+/** 원문이 닫혀 있을 때의 버튼 이름 */
+const OPEN_LABEL = "원문 보기";
+/** 원문이 열려 있을 때의 버튼 이름 */
+const CLOSE_LABEL = "원문 닫기";
 const CHAT_PATH = getRouterPath({
   routeKey: "CHAT",
   params: { workspaceId: String(WORKSPACE_ID) },
@@ -413,12 +418,6 @@ describe("WorkspaceLayout", () => {
 });
 
 describe("WorkspaceLayout의 원문 패널", () => {
-  const TRANSCRIPT_PANEL_TITLE = "원문";
-  /** 원문이 닫혀 있을 때의 버튼 이름 */
-  const OPEN_LABEL = "원문 보기";
-  /** 원문이 열려 있을 때의 버튼 이름 */
-  const CLOSE_LABEL = "원문 닫기";
-
   /**
    * 원문을 여닫은 적이 없는 처음 상태에서 레이아웃을 그려요.
    * 열림 여부는 전역 저장소와 브라우저에 남아 테스트끼리 이어지므로, 그리기 전에 둘 다 되돌려요
