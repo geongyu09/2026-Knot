@@ -9,7 +9,11 @@ import { lastViewedWorkspaceHandlers } from "./api/v1/members/me/lastViewedWorks
 import { workspacesHandlers } from "./api/v1/workspaces";
 import { workspaceHandlers } from "./api/v1/workspaces/[workspaceId]";
 import { workspaceConversationsHandlers } from "./api/v1/workspaces/[workspaceId]/conversations";
+import { documentGenerationJobRetryHandlers } from "./api/v1/workspaces/[workspaceId]/documentGenerationJobs/[jobId]/retry";
+import { documentsHandlers } from "./api/v1/workspaces/[workspaceId]/documents";
 import { documentHandlers } from "./api/v1/workspaces/[workspaceId]/documents/[documentId]";
+import { documentConfirmationsHandlers } from "./api/v1/workspaces/[workspaceId]/documents/[documentId]/confirmations";
+import { documentMyConfirmationHandlers } from "./api/v1/workspaces/[workspaceId]/documents/[documentId]/confirmations/me";
 import { workspaceNotionImportsHandlers } from "./api/v1/workspaces/[workspaceId]/imports";
 import { workspaceInvitationHandlers } from "./api/v1/workspaces/[workspaceId]/invitation";
 import { workspaceInvitationsHandlers } from "./api/v1/workspaces/[workspaceId]/invitations";
@@ -18,6 +22,7 @@ import { workspaceNotionConnectionHandlers } from "./api/v1/workspaces/[workspac
 import { workspaceNotionOAuthAuthorizationsHandlers } from "./api/v1/workspaces/[workspaceId]/notionOauthAuthorizations";
 import { workspaceNotionPageTreeHandlers } from "./api/v1/workspaces/[workspaceId]/notionPages/tree";
 import { workspaceRecordingsHandlers } from "./api/v1/workspaces/[workspaceId]/recordings";
+import { recordingHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]";
 import { recordingAudioUploadCompleteHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioUploadComplete";
 import { recordingAudioUploadUrlHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioUploadUrl";
 import { recordingEndHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/end";
@@ -44,12 +49,17 @@ export const handlers = [
   ...workspaceNotionPageTreeHandlers,
   ...workspaceRecordingsHandlers,
   ...currentRecordingHandlers,
+  ...recordingHandlers,
   ...recordingPauseHandlers,
   ...recordingResumeHandlers,
   ...recordingEndHandlers,
   ...recordingAudioUploadUrlHandlers,
   ...recordingAudioUploadCompleteHandlers,
+  ...documentGenerationJobRetryHandlers,
+  ...documentsHandlers,
   ...documentHandlers,
+  ...documentConfirmationsHandlers,
+  ...documentMyConfirmationHandlers,
   ...invitationAcceptHandlers,
   ...invitationPreviewHandlers,
   ...chatMessagesHandlers,

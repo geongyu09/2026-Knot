@@ -18,7 +18,7 @@ export const useThisTabRecording = () => {
   const { elapsedSeconds } = useRecordingElapsedTime();
 
   const handleOpenRecording = () => {
-    if (workspaceId) navigateToRecording(workspaceId);
+    if (workspaceId) navigateToRecording({ workspaceId });
   };
 
   return {

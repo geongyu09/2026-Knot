@@ -1,5 +1,6 @@
 import { GetCsrfTokenResponseDto, GetMeResponseDto } from "@api/dto/auth";
 import { GetChatMessagesResponseDto } from "@api/dto/chatMessage";
+import { PostDocumentGenerationJobRetryResponseDto } from "@api/dto/documentGenerationJob";
 import {
   GetNotionConnectionResponseDto,
   PostNotionOAuthAuthorizationResponseDto,
@@ -8,9 +9,15 @@ import {
   GetChatSessionsResponseDto,
   PostChatSessionResponseDto,
 } from "@api/dto/chatSession";
-import { GetDocumentResponseDto } from "@api/dto/document";
+import {
+  GetDocumentConfirmationsResponseDto,
+  GetDocumentResponseDto,
+  GetDocumentsResponseDto,
+  PutDocumentConfirmationResponseDto,
+} from "@api/dto/document";
 import {
   GetCurrentRecordingResponseDto,
+  GetRecordingResponseDto,
   PostRecordingAudioUploadCompleteResponseDto,
   PostRecordingAudioUploadUrlResponseDto,
   PostRecordingEndResponseDto,
@@ -46,13 +53,21 @@ import {
   createChatSessionApi,
   getChatSessionsApi,
 } from "@api/fetch/api/v1/workspaces/[workspaceId]/conversations";
+import {
+  getAllDocumentsApi,
+  getDocumentsApi,
+} from "@api/fetch/api/v1/workspaces/[workspaceId]/documents";
 import { getDocumentApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documents/[documentId]";
+import { getDocumentConfirmationsApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documents/[documentId]/confirmations";
+import { confirmDocumentApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documents/[documentId]/confirmations/me";
 import { getWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitation";
 import { getNotionConnectionApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/notionConnection";
 import { startNotionOAuthApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/notionOauthAuthorizations";
 import { issueWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations";
 import { reissueWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations/reissue";
+import { retryDocumentGenerationJobApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documentGenerationJobs/[jobId]/retry";
 import { startRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings";
+import { getRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]";
 import { completeRecordingAudioUploadApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioUploadComplete";
 import {
   issueRecordingAudioUploadUrlApi,
@@ -64,6 +79,7 @@ import { resumeRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/r
 import { getCurrentRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/current";
 import { HTTP_ERROR_TYPE } from "@api/httpClient/error";
 import { csrfTokenResponse, meResponse } from "@api/mock/responses/auth";
+import { documentGenerationJobRetryResponse } from "@api/mock/responses/documentGenerationJob";
 import {
   notionConnectionResponse,
   notionOAuthAuthorizationResponse,
@@ -73,11 +89,16 @@ import {
   chatSessionResponse,
   chatSessionsResponse,
 } from "@api/mock/responses/chatSession";
-import { documentDetailsResponse } from "@api/mock/responses/document";
+import {
+  documentConfirmationsResponse,
+  documentDetailsResponse,
+  documentsResponse,
+} from "@api/mock/responses/document";
 import {
   currentRecordingResponse,
   recordingAudioUploadCompleteResponse,
   recordingAudioUploadUrlResponse,
+  recordingDetailsResponse,
   recordingEndResponse,
   recordingPauseResponse,
   recordingResumeResponse,
@@ -194,6 +215,111 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
   });
 
   describe("문서", () => {
+    describe("GET /api/v1/workspaces/:workspaceId/documents", () => {
+      const expected = new GetDocumentsResponseDto(documentsResponse);
+
+      it("documentsResponse를 돌려준다", async () => {
+        await expect(
+          getDocumentsApi({ workspaceId: WORKSPACE_ID }),
+        ).resolves.toEqual(expected);
+      });
+
+      it("문서가 size보다 많으면 앞에서 size개만 주고 nextCursor를 준다. 주제 폴더는 전체를 준다", async () => {
+        const page = await getDocumentsApi({
+          workspaceId: WORKSPACE_ID,
+          size: 3,
+        });
+
+        expect(page.items).toEqual(expected.items.slice(0, 3));
+        expect(page.topics).toEqual(expected.topics);
+        expect(page.nextCursor).not.toBeNull();
+      });
+
+      it("nextCursor로 요청하면 그다음 문서부터 주고, 마지막 페이지의 nextCursor는 null이다", async () => {
+        const { nextCursor } = await getDocumentsApi({
+          workspaceId: WORKSPACE_ID,
+          size: 4,
+        });
+
+        const lastPage = await getDocumentsApi({
+          workspaceId: WORKSPACE_ID,
+          size: 4,
+          cursor: nextCursor ?? undefined,
+        });
+
+        expect(lastPage.items).toEqual(expected.items.slice(4));
+        expect(lastPage.nextCursor).toBeNull();
+      });
+
+      it("없는 cursor면 400 INVALID_PARAMETER로 답한다", async () => {
+        await expect(
+          getDocumentsApi({ workspaceId: WORKSPACE_ID, cursor: "없는 커서" }),
+        ).rejects.toMatchObject({
+          type: HTTP_ERROR_TYPE.badRequest,
+          code: "INVALID_PARAMETER",
+        });
+      });
+
+      it("recordingSessionId를 주면 그 녹음에서 나온 문서만 주고, 주제 폴더도 그 문서들만 센다", async () => {
+        // 기본 응답에서 같은 녹음에서 나온 문서는 상세 mock이 있는 두 문서예요
+        const [{ recordingSessionId }] = documentDetailsResponse;
+        const recordingItems = expected.items.filter(
+          (item) => item.recordingSessionId === recordingSessionId,
+        );
+
+        const page = await getDocumentsApi({
+          workspaceId: WORKSPACE_ID,
+          recordingSessionId,
+        });
+
+        expect(recordingItems).toHaveLength(documentDetailsResponse.length);
+        expect(page.items).toEqual(recordingItems);
+        const recordingTopics = recordingItems.map(({ topic }) => topic);
+
+        expect(page.topics).toEqual(
+          // 순서는 전체 응답의 주제 순서를 따르고, 두 문서의 주제가 서로 달라 주제마다 문서가 하나예요
+          expected.topics
+            .filter(({ topic }) => recordingTopics.includes(topic))
+            .map((topic) => ({ ...topic, documentCount: 1 })),
+        );
+        expect(page.nextCursor).toBeNull();
+      });
+
+      it("끝까지 받는 getAllDocumentsApi도 recordingSessionId를 주면 그 녹음에서 나온 문서만 받는다", async () => {
+        const [{ recordingSessionId }] = documentDetailsResponse;
+
+        const { items, nextCursor } = await getAllDocumentsApi({
+          workspaceId: WORKSPACE_ID,
+          recordingSessionId,
+        });
+
+        expect(items).toEqual(
+          expected.items.filter(
+            (item) => item.recordingSessionId === recordingSessionId,
+          ),
+        );
+        expect(nextCursor).toBeNull();
+      });
+
+      it("recordingSessionId가 1 이상의 정수가 아니면 400 INVALID_PARAMETER로 답한다", async () => {
+        await expect(
+          getDocumentsApi({ workspaceId: WORKSPACE_ID, recordingSessionId: 0 }),
+        ).rejects.toMatchObject({
+          type: HTTP_ERROR_TYPE.badRequest,
+          code: "INVALID_PARAMETER",
+        });
+      });
+
+      it("size가 1~100을 벗어나면 400 INVALID_PARAMETER로 답한다", async () => {
+        await expect(
+          getDocumentsApi({ workspaceId: WORKSPACE_ID, size: 101 }),
+        ).rejects.toMatchObject({
+          type: HTTP_ERROR_TYPE.badRequest,
+          code: "INVALID_PARAMETER",
+        });
+      });
+    });
+
     it("GET /api/v1/workspaces/:workspaceId/documents/:documentId는 documentDetailsResponse에서 그 id의 문서를 돌려준다", async () => {
       const [document] = documentDetailsResponse;
 
@@ -208,6 +334,134 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
       ).rejects.toMatchObject({
         type: HTTP_ERROR_TYPE.notFound,
         code: "DOCUMENT_NOT_FOUND",
+      });
+    });
+
+    it("GET /api/v1/workspaces/:workspaceId/documents/:documentId/confirmations는 documentConfirmationsResponse에서 그 문서의 확인 대상을 돌려준다", async () => {
+      const [confirmations] = documentConfirmationsResponse;
+
+      await expect(
+        getDocumentConfirmationsApi({
+          workspaceId: WORKSPACE_ID,
+          documentId: confirmations.documentId,
+        }),
+      ).resolves.toEqual(
+        new GetDocumentConfirmationsResponseDto(confirmations),
+      );
+    });
+
+    it("documentConfirmationsResponse에 없는 문서의 확인 대상을 물으면 404 DOCUMENT_NOT_FOUND로 답한다", async () => {
+      await expect(
+        getDocumentConfirmationsApi({
+          workspaceId: WORKSPACE_ID,
+          documentId: 999,
+        }),
+      ).rejects.toMatchObject({
+        type: HTTP_ERROR_TYPE.notFound,
+        code: "DOCUMENT_NOT_FOUND",
+      });
+    });
+
+    describe("PUT /api/v1/workspaces/:workspaceId/documents/:documentId/confirmations/me", () => {
+      // 내가 아직 확인하지 않은 문서(101)와 이미 확인한 문서(102)
+      const [pendingDocument, confirmedDocument] = documentDetailsResponse;
+      const pendingParams = {
+        workspaceId: WORKSPACE_ID,
+        documentId: pendingDocument.id,
+      };
+
+      it("확인하지 않은 문서를 확인하면 확인 수가 1 늘고 미확인 수가 1 준 집계를 돌려준다", async () => {
+        const { id, confirmationSummary } = new GetDocumentResponseDto(
+          pendingDocument,
+        );
+
+        const result = await confirmDocumentApi(pendingParams);
+
+        expect(result).toBeInstanceOf(PutDocumentConfirmationResponseDto);
+        expect(result.documentId).toBe(id);
+        expect(result.confirmationSummary).toEqual({
+          ...confirmationSummary,
+          confirmedCount: confirmationSummary.confirmedCount + 1,
+          pendingCount: confirmationSummary.pendingCount - 1,
+        });
+      });
+
+      it("확인한 뒤에는 문서 상세의 내 상태와 집계, 확인 대상의 내 상태가 함께 바뀐다", async () => {
+        const { confirmedAt, confirmationSummary } =
+          await confirmDocumentApi(pendingParams);
+
+        const document = await getDocumentApi(pendingParams);
+        const { items } = await getDocumentConfirmationsApi(pendingParams);
+        const myItem = items.find(
+          ({ memberId }) => memberId === meResponse.memberId,
+        );
+
+        expect(document.myConfirmationState).toBe("CONFIRMED");
+        expect(document.confirmationSummary).toEqual(confirmationSummary);
+        expect(myItem).toMatchObject({ state: "CONFIRMED", confirmedAt });
+        // 서버 정렬처럼 확인한 사람이 미확인인 사람보다 앞에 와요
+        expect(items.map(({ state }) => state)).toEqual([
+          "CONFIRMED",
+          "CONFIRMED",
+          "CONFIRMED",
+          "PENDING",
+        ]);
+      });
+
+      it("확인한 뒤에는 문서 목록의 그 문서도 내 상태와 집계가 함께 바뀐다", async () => {
+        const { confirmationSummary } = await confirmDocumentApi(pendingParams);
+
+        const { items } = await getDocumentsApi({ workspaceId: WORKSPACE_ID });
+        const confirmedItem = items.find(({ id }) => id === pendingDocument.id);
+
+        expect(confirmedItem).toMatchObject({
+          myConfirmationState: "CONFIRMED",
+          confirmationSummary,
+        });
+      });
+
+      it("다시 확인해도 처음 확인한 시각과 같은 집계를 돌려준다", async () => {
+        const first = await confirmDocumentApi(pendingParams);
+        const second = await confirmDocumentApi(pendingParams);
+
+        expect(second).toEqual(first);
+      });
+
+      it("이미 확인한 문서를 확인하면 집계를 바꾸지 않고 처음 확인한 시각을 돌려준다", async () => {
+        const [, confirmations] = documentConfirmationsResponse;
+        const { items } = new GetDocumentConfirmationsResponseDto(
+          confirmations,
+        );
+        const myItem = items.find(
+          ({ memberId }) => memberId === meResponse.memberId,
+        );
+        const expected = new GetDocumentResponseDto(confirmedDocument);
+
+        const result = await confirmDocumentApi({
+          workspaceId: WORKSPACE_ID,
+          documentId: expected.id,
+        });
+
+        expect(result.confirmedAt).toBe(myItem?.confirmedAt);
+        expect(result.confirmationSummary).toEqual(
+          expected.confirmationSummary,
+        );
+      });
+
+      it("확인한 기록은 테스트가 끝나면 지워져, 다음 테스트는 기본 응답을 받는다", async () => {
+        // 위 테스트들이 101을 확인했지만 vitest.setup의 afterEach가 기록을 지웠어요
+        await expect(getDocumentApi(pendingParams)).resolves.toEqual(
+          new GetDocumentResponseDto(pendingDocument),
+        );
+      });
+
+      it("없는 문서를 확인하면 404 DOCUMENT_NOT_FOUND로 답한다", async () => {
+        await expect(
+          confirmDocumentApi({ workspaceId: WORKSPACE_ID, documentId: 999 }),
+        ).rejects.toMatchObject({
+          type: HTTP_ERROR_TYPE.notFound,
+          code: "DOCUMENT_NOT_FOUND",
+        });
       });
     });
   });
@@ -334,6 +588,106 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
         new PostRecordingAudioUploadCompleteResponseDto(
           recordingAudioUploadCompleteResponse,
         ),
+      );
+    });
+
+    it("GET .../recordings/:recordingId는 recordingDetailsResponse에서 그 녹음을 찾아 돌려준다", async () => {
+      // 상태가 서로 다른 녹음을 모두 물어, 핸들러가 id로 골라 주는지 확인해요
+      for (const recording of recordingDetailsResponse) {
+        await expect(
+          getRecordingApi({
+            workspaceId: WORKSPACE_ID,
+            recordingId: recording.recordingId,
+          }),
+        ).resolves.toEqual(new GetRecordingResponseDto(recording));
+      }
+    });
+
+    it("recordingDetailsResponse에 없는 녹음을 물으면 404 RECORDING_NOT_FOUND로 답한다", async () => {
+      await expect(
+        getRecordingApi({ workspaceId: WORKSPACE_ID, recordingId: 999 }),
+      ).rejects.toMatchObject({
+        type: HTTP_ERROR_TYPE.notFound,
+        code: "RECORDING_NOT_FOUND",
+      });
+    });
+  });
+
+  describe("문서 생성 작업", () => {
+    // 정리 중인 녹음(작업 진행 중)과 문서 만들기에 실패한 녹음(작업 실패)
+    const [processingRecording, , failedRecording] = recordingDetailsResponse;
+    const failedJobParams = {
+      workspaceId: WORKSPACE_ID,
+      jobId: documentGenerationJobRetryResponse.jobId,
+    };
+    const failedRecordingParams = {
+      workspaceId: WORKSPACE_ID,
+      recordingId: failedRecording.recordingId,
+    };
+
+    it("POST .../document-generation-jobs/:jobId/retry는 실패한 작업을 접수하고 documentGenerationJobRetryResponse를 돌려준다", async () => {
+      await expect(
+        retryDocumentGenerationJobApi(failedJobParams),
+      ).resolves.toEqual(
+        new PostDocumentGenerationJobRetryResponseDto(
+          documentGenerationJobRetryResponse,
+        ),
+      );
+    });
+
+    it("다시 시도한 뒤에는 그 녹음의 상세가 정리 중으로 바뀌고 실패 사유가 지워진다", async () => {
+      await retryDocumentGenerationJobApi(failedJobParams);
+
+      await expect(
+        getRecordingApi(failedRecordingParams),
+      ).resolves.toMatchObject({
+        status: "PROCESSING",
+        documentGenerationStatus: "QUEUED",
+        failureStage: null,
+        failureReason: null,
+      });
+    });
+
+    it("이미 다시 시도해 실패 상태가 아닌 작업을 또 시도하면 409 RETRY_NOT_ALLOWED로 답한다", async () => {
+      await retryDocumentGenerationJobApi(failedJobParams);
+
+      await expect(
+        retryDocumentGenerationJobApi(failedJobParams),
+      ).rejects.toMatchObject({
+        type: HTTP_ERROR_TYPE.conflict,
+        code: "RETRY_NOT_ALLOWED",
+      });
+    });
+
+    it("진행 중인 작업을 다시 시도하면 409 RETRY_NOT_ALLOWED로 답한다", async () => {
+      await expect(
+        retryDocumentGenerationJobApi({
+          workspaceId: WORKSPACE_ID,
+          // mock 데이터에서 이 작업 ID가 사라지면 0이 되어 404로 실패하므로, 테스트가 알려 줘요
+          jobId: Number(processingRecording.documentGenerationJobId),
+        }),
+      ).rejects.toMatchObject({
+        type: HTTP_ERROR_TYPE.conflict,
+        code: "RETRY_NOT_ALLOWED",
+      });
+    });
+
+    it("없는 작업을 다시 시도하면 404 DOCUMENT_GENERATION_JOB_NOT_FOUND로 답한다", async () => {
+      await expect(
+        retryDocumentGenerationJobApi({
+          workspaceId: WORKSPACE_ID,
+          jobId: 999,
+        }),
+      ).rejects.toMatchObject({
+        type: HTTP_ERROR_TYPE.notFound,
+        code: "DOCUMENT_GENERATION_JOB_NOT_FOUND",
+      });
+    });
+
+    it("다시 시도한 기록은 테스트가 끝나면 지워져, 다음 테스트는 기본 응답을 받는다", async () => {
+      // 위 테스트들이 작업을 다시 시도했지만 vitest.setup의 afterEach가 기록을 지웠어요
+      await expect(getRecordingApi(failedRecordingParams)).resolves.toEqual(
+        new GetRecordingResponseDto(failedRecording),
       );
     });
   });
