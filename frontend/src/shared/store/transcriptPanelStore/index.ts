@@ -28,7 +28,8 @@ interface TranscriptPanelActions {
 /** 지난번 열림 여부를 브라우저에 남겨 두는 키의 앞부분. 회원마다 따로 남기도록 뒤에 회원 id를 붙여요 */
 const IS_OPEN_LAST_TIME_KEY_PREFIX = "knot.transcriptPanelOpen";
 
-const getIsOpenLastTimeKey = (memberId: number) =>
+/** 회원의 지난번 열림 여부를 브라우저에 남겨 두는 키. 스토리가 남긴 값을 지울 때도 써요 */
+export const getIsOpenLastTimeKey = (memberId: number) =>
   `${IS_OPEN_LAST_TIME_KEY_PREFIX}.${memberId}`;
 
 /**
