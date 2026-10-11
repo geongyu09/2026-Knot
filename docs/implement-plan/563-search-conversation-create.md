@@ -2,8 +2,9 @@
 
 ## 1. 범위와 브랜치
 
-- 상태: 접수·저장·작업 실행·SSE 기반 구현 및 로컬 검증 진행. 실제 검색·LLM adapter 연결은 선행 결정이 남아 있어 #563 전체는 미완료다. 아래 설계 초안과 마지막 구현 결과를 구분한다.
+- 상태: 접수·저장·작업 실행·SSE 기반과 production MCP 탐색·LLM adapter를 구현했다. 아래 기존 설계·검증 기록은 당시 상태이며, 최신 연동 결과는 [MCP 구현 계획](563-search-document-mcp.md)과 [실제 모델 평가](../qa/563-search-mcp-live-20261011.md)를 따른다. 운영 배포 완료는 아니다.
 - 확인 날짜: 2026-10-11 KST.
+- MCP/LLM 연결 후 최신 전체 검증: Java 25 `spotlessCheck check bootJar` PASS, 단위 1,033·통합 488·인수 477=1,998개, 실패·오류·skip 0. 별도 실제 모델 평가 2건 COMPLETED. 이전 adapter 미연결·1,943/1,970개 기록은 과거 단계의 결과다.
 - PR 리뷰 후속: 부모 #572의 Search migration V37→V39와 #574의 단일 조회 테스트 분리를 반영했다. 부모 HEAD는 `37763d30d87ae89a436a7df84294565796f0fd5c`이며, #563 고유 diff는 POST 접수·실행·SSE와 직접 검증에 한정한다. 녹음 V37/V38 → Search V39 → 근거 V40 → 접수 V41 → 실행 V42의 파일 버전 중복은 없고, 운영 DB 적용 이력은 미관측이다.
 - 리뷰 반영 후 전체 검증: `./gradlew spotlessCheck check bootJar --console=plain` 통과. 단위 1,021·통합 472·인수 477, 총 1,970개 실패/오류/skip 0이다. 이후 Java 선언 간 빈 줄만 정리했고 공백을 무시한 diff가 비어 있음을 확인했다. 아래 1,943개 기록은 부모 리뷰 반영 이전 결과다.
 - 대상: [Issue #563](https://github.com/woowacourse-teams/2026-knot/issues/563), `POST /api/v1/workspaces/{workspaceId}/search/conversations` 하나.
@@ -13,7 +14,7 @@
 - 원격 develop: fetch 후 `d979c509a66a9844c176488e7ada992ccfae0816`. 저장소의 V36까지 확인했다. 로컬 조회 브랜치의 Search V37/V40은 develop에 병합된 기반으로 취급하지 않는다.
 - 전체 탐색 로드맵 `563-search-v2-roadmap.md`는 로컬의 사용자 소유 문서이며 이번 PR에 포함하지 않는다. 이번 POST에 한정한 상세 계획을 별도로 둔다.
 
-완료 범위는 첫 질문 검증, 원자적 접수, requestId 멱등성, SSE, 연결과 독립된 생성 작업, 부분 본문·근거·종료 상태 저장, 중단 복구, 실제 검색·LLM 연결이다. 실제 검색 전략은 선행 결정으로 남긴다. 테스트 adapter로 접수·생성 흐름을 먼저 만들 수 있지만 그 단계만으로 #563 전체 완료를 선언하지 않는다. 후속 질문 #566, GET 재연결 #567, 중지 POST #568, retry POST #569는 이번 PR에 추가하지 않는다.
+완료 범위는 첫 질문 검증, 원자적 접수, requestId 멱등성, SSE, 연결과 독립된 생성 작업, 부분 본문·근거·종료 상태 저장, 중단 복구, 실제 검색·LLM 연결이다. 검색은 ARCHIVED Document에 대한 MCP 세 도구와 lexical 검색으로 결정했다. 실제 사용 근거 전체 보존·질문 관련도 상위 3개 카드·제외 수 0을 적용한다. 후속 질문 #566, GET 재연결 #567, 중지 POST #568, retry POST #569는 이번 PR에 추가하지 않는다.
 
 ### 선별한 근거
 
