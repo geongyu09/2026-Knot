@@ -37,8 +37,113 @@ public class SearchMessage {
     @Column(nullable = false, length = 20)
     private SearchMessageStatus status;
 
+    @Column(name = "failure_code", length = 50)
+    private String failureCode;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     protected SearchMessage() {}
+
+    private SearchMessage(
+            long conversationId,
+            int sequence,
+            SearchMessageRole role,
+            String content,
+            SearchMessageStatus status,
+            Instant createdAt
+    ) {
+        validateIdentity(
+                conversationId,
+                sequence
+        );
+        if (createdAt == null) {
+            throw new IllegalArgumentException("createdAt is required");
+        }
+        this.conversationId = conversationId;
+        this.sequence = sequence;
+        this.role = role;
+        this.content = content;
+        this.status = status;
+        this.createdAt = createdAt;
+    }
+
+    public static SearchMessage receiveQuestion(
+            long conversationId,
+            int sequence,
+            String content,
+            Instant createdAt
+    ) {
+        try {
+            SearchQuestionText.validate(content);
+        } catch (SearchException exception) {
+            throw new IllegalArgumentException(
+                    "invalid question",
+                    exception
+            );
+        }
+        return new SearchMessage(
+                conversationId,
+                sequence,
+                SearchMessageRole.USER,
+                content,
+                SearchMessageStatus.RECEIVED,
+                createdAt
+        );
+    }
+
+    public static SearchMessage startAnswer(
+            long conversationId,
+            int sequence,
+            Instant createdAt
+    ) {
+        return new SearchMessage(
+                conversationId,
+                sequence,
+                SearchMessageRole.ASSISTANT,
+                "",
+                SearchMessageStatus.STREAMING,
+                createdAt
+        );
+    }
+
+    public void appendContent(String text) {
+        requireStreamingAnswer();
+        if (text == null) {
+            throw new IllegalArgumentException("text is required");
+        }
+        content += text;
+    }
+
+    public void complete() {
+        requireStreamingAnswer();
+        if (content.isBlank()) {
+            throw new IllegalStateException("completed answer content is required");
+        }
+        status = SearchMessageStatus.COMPLETED;
+    }
+
+    public void fail(String code) {
+        requireStreamingAnswer();
+        if (code == null || code.isBlank() || code.length() > 50) {
+            throw new IllegalArgumentException("failure code is required");
+        }
+        failureCode = code;
+        status = SearchMessageStatus.FAILED;
+    }
+
+    private void requireStreamingAnswer() {
+        if (role != SearchMessageRole.ASSISTANT || status != SearchMessageStatus.STREAMING) {
+            throw new IllegalStateException("answer is not streaming");
+        }
+    }
+
+    private static void validateIdentity(
+            long conversationId,
+            int sequence
+    ) {
+        if (conversationId <= 0 || sequence <= 0) {
+            throw new IllegalArgumentException("invalid message identity");
+        }
+    }
 }
