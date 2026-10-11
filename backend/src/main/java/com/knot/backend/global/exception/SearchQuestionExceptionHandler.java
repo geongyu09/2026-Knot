@@ -1,8 +1,7 @@
-package com.knot.backend.search.presentation;
+package com.knot.backend.global.exception;
 
-import com.knot.backend.global.exception.GlobalExceptionHandler;
-import com.knot.backend.global.exception.ProjectException;
 import com.knot.backend.global.response.ErrorResponse;
+import com.knot.backend.search.presentation.SearchQuestionController;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.Ordered;

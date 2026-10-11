@@ -1,10 +1,9 @@
-package com.knot.backend.search.presentation;
+package com.knot.backend.global.exception;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.knot.backend.global.exception.GlobalExceptionHandler;
 import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.SearchException;
 import jakarta.servlet.http.HttpServletResponse;
