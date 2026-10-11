@@ -22,6 +22,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -36,6 +37,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -145,86 +147,50 @@ class SearchMessageListAcceptanceTest {
         assertThat(snapshot()).isEqualTo(before);
     }
 
-    @Test
-    @DisplayName("최신 페이지에서 과거 경계를 넘겨 마지막까지 중복 없이 읽는다")
-    void find_success_pagination() throws Exception {
+    @ParameterizedTest(name = "beforeSequence={0}")
+    @CsvSource(value = {"NULL,6,8,true,6", "6,3,5,true,3", "3,1,2,false,NULL", "1,1,0,false,NULL"}, nullValues = "NULL")
+    @DisplayName("최신·중간·마지막·빈 페이지를 경계별로 읽는다")
+    void find_success_pagination(
+            String beforeSequence,
+            int first,
+            int last,
+            boolean hasPrevious,
+            String previousCursor
+    ) throws Exception {
         // given
         addPairs(
                 3,
                 8
         );
+        MockHttpServletRequestBuilder request = request(
+                workspaceId,
+                conversationId,
+                memberId
+        ).param(
+                "size",
+                "3"
+        );
+        if (beforeSequence != null) {
+            request.param(
+                    "beforeSequence",
+                    beforeSequence
+            );
+        }
+        List<Integer> sequences = IntStream.rangeClosed(
+                first,
+                last
+        )
+                .boxed()
+                .toList();
         // when & then
-        mvc.perform(
-                request(
-                        workspaceId,
-                        conversationId,
-                        memberId
-                ).param(
-                        "size",
-                        "3"
-                )
-        )
+        ResultActions response = mvc.perform(request)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items.length()").value(3))
-                .andExpect(jsonPath("$.items[0].sequence").value(6))
-                .andExpect(jsonPath("$.items[1].sequence").value(7))
-                .andExpect(jsonPath("$.items[2].sequence").value(8))
-                .andExpect(jsonPath("$.hasPrevious").value(true))
-                .andExpect(jsonPath("$.previousCursor").value("6"));
-        mvc.perform(
-                request(
-                        workspaceId,
-                        conversationId,
-                        memberId
-                ).param(
-                        "size",
-                        "3"
-                )
-                        .param(
-                                "beforeSequence",
-                                "6"
-                        )
-        )
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items.length()").value(3))
-                .andExpect(jsonPath("$.items[0].sequence").value(3))
-                .andExpect(jsonPath("$.items[1].sequence").value(4))
-                .andExpect(jsonPath("$.items[2].sequence").value(5))
-                .andExpect(jsonPath("$.previousCursor").value("3"));
-        mvc.perform(
-                request(
-                        workspaceId,
-                        conversationId,
-                        memberId
-                ).param(
-                        "size",
-                        "3"
-                )
-                        .param(
-                                "beforeSequence",
-                                "3"
-                        )
-        )
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items.length()").value(2))
-                .andExpect(jsonPath("$.items[0].sequence").value(1))
-                .andExpect(jsonPath("$.items[1].sequence").value(2))
-                .andExpect(jsonPath("$.hasPrevious").value(false))
-                .andExpect(jsonPath("$.previousCursor").value(nullValue()));
-        mvc.perform(
-                request(
-                        workspaceId,
-                        conversationId,
-                        memberId
-                ).param(
-                        "beforeSequence",
-                        "1"
-                )
-        )
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items").isEmpty())
-                .andExpect(jsonPath("$.hasPrevious").value(false))
-                .andExpect(jsonPath("$.previousCursor").value(nullValue()));
+                .andExpect(jsonPath("$.items.length()").value(sequences.size()))
+                .andExpect(jsonPath("$.hasPrevious").value(hasPrevious))
+                .andExpect(jsonPath("$.previousCursor").value(previousCursor));
+        for (int index = 0; index < sequences.size(); index++) {
+            response.andExpect(jsonPath("$.items[" + index + "].sequence").value(sequences.get(index)));
+        }
     }
 
     @Test
