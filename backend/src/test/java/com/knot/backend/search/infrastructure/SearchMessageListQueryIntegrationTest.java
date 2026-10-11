@@ -14,12 +14,17 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
@@ -65,8 +70,8 @@ class SearchMessageListQueryIntegrationTest {
     }
 
     @Test
-    @DisplayName("숨긴 대화도 단건 조회하며 없는 대화는 비어 있다")
-    void findConversation_success() {
+    @DisplayName("목록에서 숨긴 대화도 단건 조회한다")
+    void findConversation_success_hiddenConversation() {
         // given
         search.setVisible(
                 conversationId,
@@ -74,6 +79,12 @@ class SearchMessageListQueryIntegrationTest {
         );
         // when & then
         assertThat(query.findConversation(conversationId)).isPresent();
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 대화는 비어 있다")
+    void findConversation_failure_missingConversation() {
+        // when & then
         assertThat(query.findConversation(Long.MAX_VALUE)).isEmpty();
     }
 
