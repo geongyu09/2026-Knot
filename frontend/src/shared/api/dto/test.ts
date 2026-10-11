@@ -17,7 +17,6 @@ import {
   GetDocumentsResponseDto,
   PutDocumentConfirmationResponseDto,
 } from "./document";
-import { GetNotionConnectionResponseDto } from "./notionConnection";
 import {
   GetWorkspacesResponseDto,
   PostWorkspaceRequestDto,
@@ -252,17 +251,6 @@ describe("DTO 생성자 변환", () => {
 
       expect(dto.confirmationSummary).toBeInstanceOf(ConfirmationSummaryDto);
       expect(dto).toEqual(raw);
-    });
-  });
-
-  describe("Notion 연결", () => {
-    it("연결 상태 응답의 status를 그대로 옮긴다", () => {
-      expect(
-        new GetNotionConnectionResponseDto({ status: "CONNECTED" }),
-      ).toEqual({ status: "CONNECTED" });
-      expect(
-        new GetNotionConnectionResponseDto({ status: "REAUTH_REQUIRED" }),
-      ).toEqual({ status: "REAUTH_REQUIRED" });
     });
   });
 });
