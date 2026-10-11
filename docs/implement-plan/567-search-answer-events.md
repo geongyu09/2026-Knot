@@ -294,3 +294,13 @@ Persona 구현·리뷰 보고서를 작성하고 변경 Java17개의 read eviden
 `npx ph workflow finish implement`는 exit1이며 기존 전역 `report-coverage-missing`, `java-role-read-coverage-missing`, `convention-toolchain-missing`, `workflow-loop-state-stale`, `pending-ticket` 5개를 반환했다. 부모 작업에서도 남아 있던 상태이며 이번 Java/Gradle 제품 gate 통과와 구분한다. 다른 티켓·과거 보고서·증거를 삭제하거나 검사 결과를 바꿔 종료 인증을 통과시키지 않았다.
 
 #567 뒤에는 #568 생성 중지 → #566 후속 질문 → #569 실패 답변 재시도 순서로 연결한다. #568에서는 실제 STOPPED 전환과 재연결 종료를, #569에서는 같은 answerId의 재시도 reset/시도 식별자와 오래된 구독 차단을 함께 검증한다. 실제 모델 호스트·운영 reverse proxy에서의 전송 지연/버퍼링은 로컬 제어 fixture의 통과와 별도로 기록한다.
+
+### 2026-10-11 CI 후속: SSE 테스트 payload 파싱
+
+[Backend CI 실행 38141574125](https://github.com/woowacourse-teams/2026-knot/actions/runs/38141574125)는 복수 구독 인수 테스트의 `payload`에서 StreamReadException으로 실패했다. 포맷·단위·통합 검사는 성공했고 인수 492개 중 1개가 실패했다. 원 실패의 SSE 프레임과 XML은 artifact로 남아 있지 않다. 원 테스트는 로컬 단독 실행 및 CPU 수를 2개로 제한한 12회 실행에서 통과했으므로 CI 당시 프레임을 재현했다고 주장하지 않는다.
+
+기존 parser와 같은 방식에 정상 SSE data 뒤 주석·메타데이터, 여러 data 줄을 입력한 회귀 테스트 6개 중 4개가 실패하는 Red를 관측했다. data 필드만 줄 순서대로 합쳐 JSON으로 읽는 `SearchSseEventPayload`를 적용한 뒤 6개가 모두 통과했다. data 없는 heartbeat와 잘린 JSON은 계속 거절한다. 임시 반복 실행·진단 변경은 제거했으며 제품 코드·CI timeout·실패 판정은 변경하지 않았다.
+
+최종 `JAVA_TOOL_OPTIONS='-XX:ActiveProcessorCount=2' ./gradlew spotlessCheck check bootJar --console=plain`은 2분 50초에 통과했다. XML 결과는 단위 1,066·통합 489·인수 492 = **2,047개**, 실패·오류·skip 0이다. git diff 공백 검사도 통과했다. 원격 CI 결과는 push 이후 별도로 확인하며 이 로컬 결과로 원격 성공을 대신하지 않는다.
+
+별도 브랜치 생성 자동화 [38141558465](https://github.com/woowacourse-teams/2026-knot/actions/runs/38141558465)의 Project 조회는 `KNOT_PROJECT_AUTOMATION` Secret 인증이 HTTP 401이었다. 이는 PR Backend CI 실패와 별개이며 Secret 값·권한 갱신을 코드 수정으로 대신하거나 오류를 무시하지 않는다.
