@@ -48,13 +48,7 @@ public class SearchAnswerStream {
             SearchQuestionAcceptedResult accepted,
             SearchStreamReservation reservation
     ) {
-        SseEmitter emitter = new SseEmitter(
-                properties.getStreamTimeout()
-                        .toMillis()
-        );
-        emitter.onCompletion(reservation::close);
-        emitter.onTimeout(reservation::close);
-        emitter.onError(error -> reservation.close());
+        SseEmitter emitter = createEmitter(reservation);
         try {
             emitter.send(
                     SseEmitter.event()
@@ -78,5 +72,16 @@ public class SearchAnswerStream {
             emitter.completeWithError(exception);
             throw new SearchException(SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE);
         }
+    }
+
+    private SseEmitter createEmitter(SearchStreamReservation reservation) {
+        SseEmitter emitter = new SseEmitter(
+                properties.getStreamTimeout()
+                        .toMillis()
+        );
+        emitter.onCompletion(reservation::close);
+        emitter.onTimeout(reservation::close);
+        emitter.onError(error -> reservation.close());
+        return emitter;
     }
 }
