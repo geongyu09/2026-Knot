@@ -134,14 +134,14 @@ describe("createSearchConversationApi", () => {
     ]);
   });
 
-  // SEARCH-R6 409 중복 거절
-  it("[SEARCH-R6] accepted 전 409는 상태 코드와 서버 오류 코드를 담아 throw한다", async () => {
-    respondWithError(409, "SEARCH_REQUEST_CONFLICT");
+  // requestId 충돌 409 (API 명세 · 첫 질문)
+  it("accepted 전 409는 상태 코드와 서버 오류 코드를 담아 throw한다", async () => {
+    respondWithError(409, "REQUEST_ID_CONFLICT");
 
     const error = await catchSearchError();
 
     expect(error).toBeInstanceOf(SseRequestError);
-    expect(error).toMatchObject({ status: 409, code: "SEARCH_REQUEST_CONFLICT" });
+    expect(error).toMatchObject({ status: 409, code: "REQUEST_ID_CONFLICT" });
   });
 
   // SEARCH-R4 accepted 전 실패

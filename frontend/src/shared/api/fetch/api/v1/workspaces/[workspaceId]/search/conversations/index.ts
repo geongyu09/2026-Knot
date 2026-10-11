@@ -57,7 +57,7 @@ interface CreateSearchConversationApiParams {
  * @description 첫 질문으로 탐색 대화를 시작하고 SSE로 도착하는 답변 이벤트를 순서대로 흘려보내요
  * @param params - 워크스페이스 ID, 첫 질문 전송 요청 본문, 취소용 AbortSignal
  * @returns accepted·progress·delta·evidence·excluded_documents·completed·failed·stopped 이벤트를 순서대로 내는 async generator. 받는 쪽이 중간에 멈추면 스트림 읽기를 정리해요
- * @throws {SseRequestError} accepted 이벤트 전에 실패 응답을 받은 경우. `error.code === "SEARCH_REQUEST_CONFLICT"`처럼 서버 오류 코드로 분기해요
+ * @throws {SseRequestError} accepted 이벤트 전에 실패 응답을 받은 경우. `error.code === "REQUEST_ID_CONFLICT"`처럼 서버 오류 코드로 분기해요
  * @example
  * for await (const { event, data } of createSearchConversationApi({ workspaceId: 1, body })) {
  *   if (event === "delta") answer += data.text;
