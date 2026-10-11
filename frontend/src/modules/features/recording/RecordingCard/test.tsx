@@ -5,13 +5,15 @@ import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
 import { theme } from "@provider/themeProvider";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import RecordingCard from ".";
 
 const expected = new GetMeResponseDto(meResponse);
+const GUIDE_TEXT =
+  "녹음을 끝내면 대화를 주제별 문서로 정리해 문서 탭에 저장해요.";
 
 const renderCard = () => {
   const queryClient = new QueryClient({
@@ -25,8 +27,6 @@ const renderCard = () => {
       </QueryClientProvider>
     </ThemeProvider>,
   );
-
-  return { queryClient };
 };
 
 describe("RecordingCard", () => {
@@ -40,7 +40,7 @@ describe("RecordingCard", () => {
     ).toBeInTheDocument();
   });
 
-  it("응답 전에는 닉네임 없이 녹음으로 보여준다", () => {
+  it("응답 전에는 제목과 안내 대신 불러오는 중으로 표시한다", () => {
     mockServer.use(
       http.get(`*${AUTH_ME_API_PATH}`, async () => {
         await delay("infinite");
@@ -49,7 +49,8 @@ describe("RecordingCard", () => {
     );
     renderCard();
 
-    expect(screen.getByRole("heading", { name: "녹음" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading")).not.toBeInTheDocument();
+    expect(screen.queryByText(GUIDE_TEXT)).not.toBeInTheDocument();
   });
 
   it("회원 정보를 못 받으면 닉네임 없이 녹음으로 보여준다", async () => {
@@ -59,11 +60,10 @@ describe("RecordingCard", () => {
         () => new HttpResponse(null, { status: 500 }),
       ),
     );
-    const { queryClient } = renderCard();
+    renderCard();
 
-    // 응답 전에도 같은 제목이라, 요청이 실패로 끝난 뒤의 화면을 확인해요
-    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
-
-    expect(screen.getByRole("heading", { name: "녹음" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "녹음" }),
+    ).toBeInTheDocument();
   });
 });
