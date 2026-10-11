@@ -501,6 +501,99 @@ class SearchAnswerRetryIntegrationTest {
         );
     }
 
+    @Test
+    @DisplayName("재시도는 기존 근거를 삭제하고 새 답변의 사용 근거만 저장한다")
+    void acceptRetry_success_replaceEvidence() {
+        // given
+        long document = saveEvidence();
+        // when
+        retry(UUID.randomUUID());
+        // then
+        assertThat(count("search_evidences")).isZero();
+        SearchAnswerWorkResult work = executions.claim(first.answerMessageId())
+                .orElseThrow();
+        executions.append(
+                work.answerId(),
+                work.token(),
+                "새 근거 답변"
+        );
+        assertThat(
+                executions.complete(
+                        work.answerId(),
+                        work.token(),
+                        List.of(document),
+                        Set.of(document)
+                )
+        ).isTrue();
+        assertThat(count("search_evidences")).isEqualTo(1);
+        assertThat(
+                snapshots.read(
+                        workspace,
+                        member,
+                        first.answerMessageId()
+                )
+                        .evidences()
+        ).extracting(item -> item.documentId())
+                .containsExactly(document);
+    }
+
+    @Test
+    @DisplayName("접수 실패는 이전 근거 삭제도 롤백한다")
+    void acceptRetry_failure_rollbackEvidence() {
+        // given
+        saveEvidence();
+        doThrow(new IllegalStateException("receipt failed")).when(repository)
+                .save(any(SearchRequestReceipt.class));
+        // when & then
+        assertThatThrownBy(() -> retry(UUID.randomUUID())).isInstanceOf(InvalidDataAccessApiUsageException.class);
+        assertThat(count("search_evidences")).isEqualTo(1);
+        assertThat(
+                snapshots.read(
+                        workspace,
+                        member,
+                        first.answerMessageId()
+                )
+                        .content()
+        ).isEqualTo("실패한 부분 답변");
+    }
+
+    private long saveEvidence() {
+        long recording = fixtures.saveRecording(
+                workspace,
+                member,
+                1000
+        );
+        long transcript = fixtures.saveTranscript(recording);
+        long job = fixtures.saveJob(
+                transcript,
+                "COMPLETED"
+        );
+        long document = fixtures.saveDocument(
+                workspace,
+                recording,
+                transcript,
+                job,
+                "재시도 근거"
+        );
+        jdbc.sql("UPDATE documents SET status = 'ARCHIVED' WHERE id = :id")
+                .param(
+                        "id",
+                        document
+                )
+                .update();
+        jdbc.sql("INSERT INTO search_evidences (message_id, document_id, rank) VALUES (:message, :document, 1)")
+                .param(
+                        "message",
+                        first.answerMessageId()
+                )
+                .param(
+                        "document",
+                        document
+                )
+                .update();
+        return document;
+    }
+
     private void assertError(
             long owner,
             long question,
