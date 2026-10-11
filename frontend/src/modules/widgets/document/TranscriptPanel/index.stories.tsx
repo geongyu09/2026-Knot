@@ -167,10 +167,13 @@ export const DocumentDetailLoadFailed: Story = {
 /**
  * 원문을 불러오는 동안이에요. 제목 「원문」은 그대로 두고, 날짜 줄과 발화 다섯 줄 자리를 회색 덩어리로 채워요.
  * 이 스토리는 응답이 오지 않게 했지만, 요청 제한 시간(10초)이 지나면 불러오지 못한 모습으로 바뀌어요.
- * 피그마 시안은 없어요.
  */
 export const Loading: Story = {
   parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3800-37616",
+    },
     // 덩어리만 그려져 원문 전체보다 짧아 높이를 따로 둬요
     docs: { story: { inline: false, iframeHeight: 480 } },
     msw: {
@@ -187,10 +190,14 @@ export const Loading: Story = {
 /**
  * 원문을 불러오지 못했을 때예요.
  * 잘못된 주소 · 볼 수 없는 문서 · 문서나 원문이 없을 때 · 서버 오류 · 네트워크 문제가 모두 이 모습이에요.
- * 이 스토리에서는 `다시 시도`를 눌러도 계속 실패해요. 피그마 시안은 없어요.
+ * 이 스토리에서는 `다시 시도`를 눌러도 계속 실패해요.
  */
 export const LoadFailed: Story = {
   parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3800-37745",
+    },
     docs: { story: { inline: false, iframeHeight: 240 } },
     msw: {
       handlers: {

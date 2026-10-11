@@ -3,13 +3,20 @@ import Divider from "@primitives/ui/Divider";
 import Skeleton from "@primitives/ui/Skeleton";
 import { useId } from "react";
 
-/** 발화 줄마다 그릴 문장 줄의 폭. 한 줄짜리와 두 줄짜리 발화를 섞어 다섯 줄을 둬요 */
+/** 덩어리의 굵기(rem). 피그마 Panel/Transcript(상태=불러오는 중)의 덩어리는 모두 12px이에요 */
+const SKELETON_HEIGHT = 0.75;
+
+/**
+ * 발화 줄마다 그릴 문장 줄의 폭. 한 줄짜리와 두 줄짜리 발화를 섞어 다섯 줄을 둬요.
+ *
+ * 피그마의 폭(문장 칸 293px 가운데 205 · 131 · 261 · 242px)을 비율로 옮겼어요.
+ */
 const LINE_TEXT_WIDTHS = [
-  ["100%", "55%"],
-  ["80%"],
-  ["100%", "35%"],
   ["100%", "70%"],
-  ["65%"],
+  ["100%"],
+  ["100%", "45%"],
+  ["100%", "89%"],
+  ["83%"],
 ];
 
 /**
@@ -27,21 +34,21 @@ export default function TranscriptSkeleton() {
       <Title id={titleId}>원문</Title>
       <Body role="status" aria-label="원문을 불러오고 있어요">
         <Meta>
-          <Skeleton width={5.5625} />
-          <Skeleton width={2.375} />
+          <Skeleton width={6.25} height={SKELETON_HEIGHT} />
+          <Skeleton width={2.75} height={SKELETON_HEIGHT} />
         </Meta>
         <Divider />
         <LineList>
           {LINE_TEXT_WIDTHS.map((textWidths, lineIndex) => (
             <Line key={lineIndex}>
               <TimeSlot>
-                {/* 실제 시각의 기본 폭(`02:40`, 32px)과 같아요 */}
-                <Skeleton width={2} />
+                {/* 피그마의 시각 자리 폭(33px). 실제 시각의 기본 폭(`02:40`, 32px)보다 1px 넓어요 */}
+                <Skeleton width={2.0625} height={SKELETON_HEIGHT} />
               </TimeSlot>
               <TextBlock>
                 {textWidths.map((width, textIndex) => (
                   <TextSlot key={textIndex}>
-                    <Skeleton width={width} />
+                    <Skeleton width={width} height={SKELETON_HEIGHT} />
                   </TextSlot>
                 ))}
               </TextBlock>
@@ -78,7 +85,7 @@ const Body = styled.div`
   gap: 1rem; /* 16px */
 `;
 
-/** 날짜(89px)와 녹음 길이 칩(38px) 자리. 실제 날짜 줄과 같은 높이 20px, 사이 8px */
+/** 피그마 Meta: 날짜(100px)와 녹음 길이(44px) 자리. 실제 날짜 줄과 같은 높이 20px, 사이 8px */
 const Meta = styled.div`
   display: flex;
   align-items: center;
@@ -101,12 +108,12 @@ const Line = styled.div`
   padding: 0.375rem 0.5rem; /* 6px 8px */
 `;
 
-/** 시각 한 줄(caption01 12px × 줄 높이 1.5)과 같은 높이 */
+/** 피그마 Time: 문장 한 줄과 같은 높이의 칸. 시각 덩어리가 문장 첫 줄 덩어리와 나란히 놓여요 */
 const TimeSlot = styled.div`
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  height: 1.125rem; /* 18px */
+  height: 1.5rem; /* 24px */
 `;
 
 const TextBlock = styled.div`
