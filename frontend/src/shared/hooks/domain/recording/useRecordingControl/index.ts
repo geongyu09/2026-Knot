@@ -1,3 +1,4 @@
+import { HTTP_ERROR_TYPE, isHttpError } from "@api/httpClient/error";
 import useCompleteRecordingAudioUploadMutation from "@api/mutations/useCompleteRecordingAudioUploadMutation";
 import useEndRecordingMutation from "@api/mutations/useEndRecordingMutation";
 import useIssueRecordingAudioUploadUrlMutation from "@api/mutations/useIssueRecordingAudioUploadUrlMutation";
@@ -38,6 +39,7 @@ interface UploadRecordedAudioParams {
  * 녹음을 시작·일시정지·이어서 녹음·끝내며 서버 녹음 세션과 맞추는 도메인 훅.
  *
  * - 시작: 마이크 권한 → 시작 요청이 성공해야 브라우저 녹음을 시작해요. 시작 요청이 실패하면 마이크를 꺼요.
+ *   서버가 409로 거절하면 거절로 돌려줘요.
  * - 일시정지·이어서 녹음: 브라우저 녹음을 먼저 바꾸고 서버에 알려요. 서버 요청이 실패해도 다시 보내지 않고
  *   사용자가 누른 대로 둬요.
  * - 끝내기: 확인 창에서 [녹음 끝내기]를 고르면 종료 요청 → 업로드 URL 발급 → 오디오 PUT → 업로드 완료 확인 → 녹음 비우기 → 홈.
@@ -84,7 +86,7 @@ const useRecordingControl = () => {
     [closeRecording],
   );
 
-  /** 녹음을 시작해요. 결과는 `started`·`microphoneUnavailable`·`failed`이고, 마이크를 받지 못한 경우만 부른 쪽이 안내해요 */
+  /** 녹음을 시작해요. 결과는 `started`·`microphoneUnavailable`·`refused`·`failed`이고, 마이크를 받지 못했거나 서버가 거절한 경우만 부른 쪽이 안내해요 */
   const startRecording = useCallback(
     async (workspaceId: number) => {
       const store = useRecordingStore.getState();
@@ -111,11 +113,13 @@ const useRecordingControl = () => {
 
         return "started";
       } catch (error) {
-        // 응답을 못 받았을 뿐 서버엔 열렸을 수 있어, 다음 시작이 같은 요청으로 가도록 증명은 남겨요
+        // 응답을 못 받았거나 거절됐어도 서버엔 열렸을 수 있어, 다음 시작이 같은 요청으로 가도록 증명은 남겨요
         logRequestError("녹음 시작", error);
         useRecordingStore.getState().discardRecording();
 
-        return "failed";
+        return isHttpError(error, HTTP_ERROR_TYPE.conflict)
+          ? "refused"
+          : "failed";
       }
     },
     [startRecordingSession],
