@@ -18,6 +18,8 @@ import com.knot.backend.search.infrastructure.SearchHistoryQuery;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.util.UUID;
+import java.time.Instant;
+import org.springframework.dao.InvalidDataAccessApiUsageException;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Executors;
@@ -369,7 +371,8 @@ class SearchAnswerRetryIntegrationTest {
         doThrow(new IllegalStateException("receipt failed")).when(repository)
                 .save(any(SearchRequestReceipt.class));
         // when & then
-        assertThatThrownBy(() -> retry(UUID.randomUUID())).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> retry(UUID.randomUUID())).isInstanceOf(InvalidDataAccessApiUsageException.class)
+                .hasMessageContaining("receipt failed");
         assertThat(
                 jdbc.sql("SELECT content FROM search_messages WHERE id = :id")
                         .param(
@@ -476,7 +479,12 @@ class SearchAnswerRetryIntegrationTest {
                                 workspace,
                                 member,
                                 first.conversationId(),
-                                first.questionMessageId()
+                                first.questionMessageId(),
+                                first.answerMessageId(),
+                                UUID.randomUUID(),
+                                Instant.now(),
+                                Instant.now()
+                                        .plusSeconds(60)
                         )
                 )
         ).isEmpty();
