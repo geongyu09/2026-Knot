@@ -75,7 +75,8 @@ public class SearchAgentHttp implements AutoCloseable {
                     } catch (IOException exception) {
                         throw new SearchToolException("SEARCH_TRANSPORT_FAILED");
                     }
-                }
+                },
+                200
         );
         return mapper.readTree(result.toString());
     }
@@ -99,7 +100,27 @@ public class SearchAgentHttp implements AutoCloseable {
                 input -> readEvents(
                         input,
                         consumer
-                )
+                ),
+                200
+        );
+    }
+
+    public void notification(
+            URI uri,
+            String bearer,
+            Object body,
+            SearchToolScope scope,
+            Map<String, String> headers
+    ) {
+        exchange(
+                uri,
+                bearer,
+                body,
+                scope,
+                headers,
+                input -> {
+                },
+                202
         );
     }
 
@@ -150,7 +171,8 @@ public class SearchAgentHttp implements AutoCloseable {
             Object body,
             SearchToolScope scope,
             Map<String, String> headers,
-            Consumer<InputStream> reader
+            Consumer<InputStream> reader,
+            int expectedStatus
     ) {
         Duration remaining = remaining(scope);
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
@@ -174,8 +196,8 @@ public class SearchAgentHttp implements AutoCloseable {
                     builder.build(),
                     HttpResponse.BodyHandlers.ofInputStream()
             );
-            try (InputStream input = response.body()) {
-                if (response.statusCode() != 200) {
+            try (InputStream input = new java.io.BufferedInputStream(response.body())) {
+                if (response.statusCode() != expectedStatus) {
                     throw new SearchToolException("SEARCH_TRANSPORT_FAILED");
                 }
                 ScheduledFuture<?> timeout = deadlines.schedule(

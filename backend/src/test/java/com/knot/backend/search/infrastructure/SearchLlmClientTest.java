@@ -110,6 +110,55 @@ class SearchLlmClientTest {
         }
     }
 
+    @Test
+    @DisplayName("응답 헤더 뒤 본문이 멈춰도 전체 작업 기한 안에 연결을 종료한다")
+    void stream_failure_bodyDeadline() throws Exception {
+        try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
+            server.respond(exchange -> {
+                exchange.sendResponseHeaders(
+                        200,
+                        0
+                );
+                exchange.getResponseBody()
+                        .flush();
+                try {
+                    new java.util.concurrent.CountDownLatch(1).await(
+                            3,
+                            java.util.concurrent.TimeUnit.SECONDS
+                    );
+                } catch (InterruptedException exception) {
+                    Thread.currentThread()
+                            .interrupt();
+                }
+            });
+            Instant now = Instant.now();
+            SearchToolScope deadline = new SearchToolScope(
+                    1,
+                    1,
+                    1,
+                    1,
+                    2,
+                    UUID.randomUUID(),
+                    now,
+                    now.plusMillis(500)
+            );
+            long started = System.nanoTime();
+            assertThatThrownBy(
+                    () -> client(
+                            server,
+                            http
+                    ).stream(
+                            deadline,
+                            List.of(),
+                            text -> {
+                            }
+                    )
+            ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class);
+            assertThat(java.time.Duration.ofNanos(System.nanoTime() - started))
+                    .isLessThan(java.time.Duration.ofSeconds(2));
+        }
+    }
+
     private SearchAgentHttp transport() {
         return new SearchAgentHttp(
                 HttpClient.newBuilder()
