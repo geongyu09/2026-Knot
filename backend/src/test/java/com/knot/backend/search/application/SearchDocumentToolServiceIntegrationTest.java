@@ -66,6 +66,8 @@ class SearchDocumentToolServiceIntegrationTest {
     private long memberId;
     @org.springframework.boot.test.web.server.LocalServerPort
     private int port;
+    @Autowired
+    private com.knot.backend.search.infrastructure.SearchHistoryQuery history;
 
     @BeforeEach
     void setUp() {
@@ -488,6 +490,263 @@ class SearchDocumentToolServiceIntegrationTest {
                         "{}"
                 ).statusCode()
         ).isEqualTo(403);
+    }
+
+    @Test
+    @DisplayName("실제 MCP HTTP와 LLM HTTP 어댑터를 worker로 연결해 답변과 근거를 완료 저장한다")
+    void execute_success_actualMcpAndLlmHttp() throws Exception {
+        long document = saveDocument(
+                workspaceId,
+                "ARCHIVED",
+                "결제 결정",
+                "결제 장애는 김개발이 복구하기로 결정했다."
+        );
+        properties.setMcpBaseUrl(java.net.URI.create("http://127.0.0.1:" + port));
+        try (com.knot.backend.testsupport.LlmHttpServer server = new com.knot.backend.testsupport.LlmHttpServer();
+                com.knot.backend.search.infrastructure.SearchAgentHttp transport = new com.knot.backend.search.infrastructure.SearchAgentHttp(
+                        java.net.http.HttpClient.newHttpClient(),
+                        mapper,
+                        clock,
+                        262144
+                )) {
+            java.util.concurrent.atomic.AtomicInteger turns = new java.util.concurrent.atomic.AtomicInteger();
+            server.respond(exchange -> {
+                int turn = turns.incrementAndGet();
+                String body = response(
+                        turn,
+                        document
+                );
+                byte[] bytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(
+                        200,
+                        bytes.length
+                );
+                exchange.getResponseBody()
+                        .write(bytes);
+            });
+            com.knot.backend.global.config.LlmProperties llmProperties = new com.knot.backend.global.config.LlmProperties();
+            llmProperties.setBaseUrl(server.baseUrl());
+            llmProperties.setApiToken("test-token");
+            llmProperties.setModel("test-model");
+            com.knot.backend.search.infrastructure.SearchLlmClient llm = new com.knot.backend.search.infrastructure.SearchLlmClient(
+                    transport,
+                    llmProperties
+            );
+            com.knot.backend.search.infrastructure.mcp.SearchMcpClient mcp = new com.knot.backend.search.infrastructure.mcp.SearchMcpClient(
+                    transport,
+                    new SearchToolTokenCodec(
+                            mapper,
+                            properties,
+                            clock
+                    ),
+                    properties,
+                    mapper
+            );
+            org.springframework.beans.factory.support.StaticListableBeanFactory adapters = new org.springframework.beans.factory.support.StaticListableBeanFactory();
+            adapters.addBean(
+                    "retriever",
+                    new com.knot.backend.search.infrastructure.SearchMcpDocumentRetriever(
+                            llm,
+                            mcp,
+                            history,
+                            access,
+                            properties,
+                            mapper
+                    )
+            );
+            adapters.addBean(
+                    "generator",
+                    new com.knot.backend.search.infrastructure.SearchStreamingAnswerGenerator(
+                            llm,
+                            history,
+                            access,
+                            properties,
+                            mapper
+                    )
+            );
+            SearchAnswerWorker worker = new SearchAnswerWorker(
+                    executions,
+                    adapters.getBeanProvider(SearchDocumentRetriever.class),
+                    adapters.getBeanProvider(SearchAnswerGenerator.class),
+                    clock,
+                    properties
+            );
+            long answer = intake.acceptFirst(
+                    workspaceId,
+                    memberId,
+                    new SearchQuestionCommand(
+                            "결제 결정",
+                            UUID.randomUUID()
+                    )
+            )
+                    .answerMessageId();
+            worker.execute(answer);
+            assertThat(
+                    jdbc.sql("SELECT status FROM search_messages WHERE id = :id")
+                            .param(
+                                    "id",
+                                    answer
+                            )
+                            .query(String.class)
+                            .single()
+            ).isEqualTo("COMPLETED");
+            assertThat(
+                    jdbc.sql("SELECT content FROM search_messages WHERE id = :id")
+                            .param(
+                                    "id",
+                                    answer
+                            )
+                            .query(String.class)
+                            .single()
+            ).contains("김개발");
+            assertThat(
+                    jdbc.sql("SELECT document_id FROM search_evidences WHERE message_id = :id")
+                            .param(
+                                    "id",
+                                    answer
+                            )
+                            .query(Long.class)
+                            .list()
+            ).containsExactly(document);
+            assertThat(
+                    jdbc.sql("SELECT excluded_count FROM search_answer_executions WHERE answer_id = :id")
+                            .param(
+                                    "id",
+                                    answer
+                            )
+                            .query(Integer.class)
+                            .single()
+            ).isZero();
+            assertThat(turns.get()).isEqualTo(5);
+        }
+    }
+
+    @Test
+    @DisplayName("동시 MCP 요청은 Workspace의 권한과 본문을 섞지 않는다")
+    void mcp_success_concurrentWorkspaceIsolation() throws Exception {
+        long firstDocument = saveDocument(workspaceId, "ARCHIVED", "A", "첫 공간 비공개");
+        long other = fixtures.saveWorkspace();
+        fixtures.join(other, memberId);
+        long secondDocument = saveDocument(other, "ARCHIVED", "B", "둘 공간 비공개");
+        long answer = intake.acceptFirst(other, memberId, new SearchQuestionCommand("질문", UUID.randomUUID())).answerMessageId();
+        SearchToolScope secondScope = SearchToolScope.from(executions.claim(answer).orElseThrow(), NOW, NOW.plusSeconds(120));
+        SearchToolTokenCodec codec = new SearchToolTokenCodec(mapper, properties, clock);
+        String firstToken = codec.encode("knot-search-mcp", scope);
+        String secondToken = codec.encode("knot-search-mcp", secondScope);
+        try (java.util.concurrent.ExecutorService threads = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            java.util.concurrent.Future<String> first = threads.submit(() -> rpc(firstToken, "tools/call", readArguments(firstDocument)).body());
+            java.util.concurrent.Future<String> second = threads.submit(() -> rpc(secondToken, "tools/call", readArguments(secondDocument)).body());
+            assertThat(first.get()).contains("첫 공간 비공개").doesNotContain("둘 공간 비공개");
+            assertThat(second.get()).contains("둘 공간 비공개").doesNotContain("첫 공간 비공개");
+        }
+        assertThat(rpc(firstToken, "tools/call", readArguments(secondDocument)).body())
+                .contains("DOCUMENT_NOT_FOUND").doesNotContain("둘 공간 비공개");
+        assertThat(rpc(firstToken + "x", "tools/list", "{}").statusCode()).isEqualTo(401);
+        SearchToolScope expired = new SearchToolScope(scope.workspaceId(), scope.memberId(), scope.conversationId(),
+                scope.questionId(), scope.answerId(), scope.token(), NOW.minusSeconds(2), NOW.minusSeconds(1));
+        assertThat(rpc(codec.encode("knot-search-mcp", expired), "tools/list", "{}").statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    @DisplayName("후속 문맥은 현재 질문 전의 완료·중지 쌍만 제공한다")
+    void history_success_completedAndStoppedBeforeQuestion() {
+        jdbc.sql("UPDATE search_messages SET sequence = sequence + 8 WHERE conversation_id=:c")
+                .param("c", scope.conversationId()).update();
+        jdbc.sql("""
+                INSERT INTO search_messages (conversation_id, role, sequence, content, status, created_at)
+                SELECT :c, role, sequence, content, status, CURRENT_TIMESTAMP FROM (VALUES
+                  ('USER',1,'이전 질문','RECEIVED'),('ASSISTANT',2,'완료 답변','COMPLETED'),
+                  ('USER',3,'중지 질문','RECEIVED'),('ASSISTANT',4,'부분 답변','STOPPED'),
+                  ('USER',5,'실패 질문','RECEIVED'),('ASSISTANT',6,'오류 부분','FAILED'),
+                  ('USER',11,'미래 질문','RECEIVED'),('ASSISTANT',12,'미래 답변','COMPLETED')
+                ) AS turns(role,sequence,content,status)
+                """).param("c", scope.conversationId()).update();
+        assertThat(history.beforeQuestion(scope)).extracting(row -> row.get("content"))
+                .containsExactly("이전 질문", "완료 답변", "중지 질문", "부분 답변");
+    }
+
+    private String readArguments(long document) {
+        return "{\"name\":\"read_document\",\"arguments\":{\"documentId\":" + document + "}}";
+    }
+
+    private String response(
+            int turn,
+            long document
+    ) {
+        if (turn == 1) {
+            return toolTurn(
+                    "t1",
+                    "search_documents",
+                    "{\"query\":\"결제\"}"
+            );
+        }
+        if (turn == 2) {
+            return toolTurn(
+                    "t2",
+                    "read_document",
+                    "{\"documentId\":" + document + "}"
+            );
+        }
+        if (turn == 3) {
+            return "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"탐색 완료\"}}]}";
+        }
+        if (turn == 4) {
+            return "data: {\"choices\":[{\"delta\":{\"content\":\"김개발이 복구한다 [" + document
+                    + "]\"}}]}\n\ndata: [DONE]\n\n";
+        }
+        return mapper.writeValueAsString(
+                java.util.Map.of(
+                        "choices",
+                        java.util.List.of(
+                                java.util.Map.of(
+                                        "message",
+                                        java.util.Map.of(
+                                                "role",
+                                                "assistant",
+                                                "content",
+                                                "{\"usedDocumentIds\":[" + document + "]}"
+                                        )
+                                )
+                        )
+                )
+        );
+    }
+
+    private String toolTurn(
+            String id,
+            String name,
+            String arguments
+    ) {
+        return mapper.writeValueAsString(
+                java.util.Map.of(
+                        "choices",
+                        java.util.List.of(
+                                java.util.Map.of(
+                                        "message",
+                                        java.util.Map.of(
+                                                "role",
+                                                "assistant",
+                                                "tool_calls",
+                                                java.util.List.of(
+                                                        java.util.Map.of(
+                                                                "id",
+                                                                id,
+                                                                "type",
+                                                                "function",
+                                                                "function",
+                                                                java.util.Map.of(
+                                                                        "name",
+                                                                        name,
+                                                                        "arguments",
+                                                                        arguments
+                                                                )
+                                                        )
+                                                )
+                                        )
+                                )
+                        )
+                )
+        );
     }
 
     private java.net.http.HttpResponse<String> rpc(
