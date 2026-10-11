@@ -19,15 +19,17 @@ import { workspaceInvitationHandlers } from "./api/v1/workspaces/[workspaceId]/i
 import { workspaceInvitationsHandlers } from "./api/v1/workspaces/[workspaceId]/invitations";
 import { workspaceInvitationReissueHandlers } from "./api/v1/workspaces/[workspaceId]/invitations/reissue";
 import { workspaceNotionConnectionHandlers } from "./api/v1/workspaces/[workspaceId]/notionConnection";
-import { workspaceNotionOAuthAuthorizationsHandlers } from "./api/v1/workspaces/[workspaceId]/notionOauthAuthorizations";
 import { workspaceNotionPageTreeHandlers } from "./api/v1/workspaces/[workspaceId]/notionPages/tree";
 import { workspaceRecordingsHandlers } from "./api/v1/workspaces/[workspaceId]/recordings";
 import { recordingHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]";
+import { workspaceSearchConversationsHandlers } from "./api/v1/workspaces/[workspaceId]/search/conversations";
+import { workspaceSearchConversationQuestionsHandlers } from "./api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions";
 import { recordingAudioUploadCompleteHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioUploadComplete";
 import { recordingAudioUploadUrlHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioUploadUrl";
 import { recordingEndHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/end";
 import { recordingPauseHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/pause";
 import { recordingResumeHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/resume";
+import { currentRecordingHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/current";
 
 // 리다이렉트 엔드포인트(OAuth 시작·로그아웃)는 XHR 응답이 아니라 두지 않아요
 export const handlers = [
@@ -43,10 +45,10 @@ export const handlers = [
   ...workspaceConversationsHandlers,
   ...workspaceNotionImportsHandlers,
   ...notionImportStatusHandlers,
-  ...workspaceNotionOAuthAuthorizationsHandlers,
   ...workspaceNotionConnectionHandlers,
   ...workspaceNotionPageTreeHandlers,
   ...workspaceRecordingsHandlers,
+  ...currentRecordingHandlers,
   ...recordingHandlers,
   ...recordingPauseHandlers,
   ...recordingResumeHandlers,
@@ -61,4 +63,6 @@ export const handlers = [
   ...invitationAcceptHandlers,
   ...invitationPreviewHandlers,
   ...chatMessagesHandlers,
+  ...workspaceSearchConversationsHandlers,
+  ...workspaceSearchConversationQuestionsHandlers,
 ];

@@ -13,7 +13,6 @@ export const PATH_ROUTE = {
   WORKSPACE_CODE: "/workspace/code",
   WORKSPACE_HOME: "/workspace/:workspaceId",
   WORKSPACE_INVITE: "/workspace/:workspaceId/invite",
-  WORKSPACE_NOTION_CONNECTION: "/workspace/:workspaceId/notion-connection",
   WORKSPACE_JOIN: "/workspace/:workspaceId/join",
 
   CHAT: "/workspace/:workspaceId/chat",
