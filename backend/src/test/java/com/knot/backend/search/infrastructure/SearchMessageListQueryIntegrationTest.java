@@ -14,12 +14,17 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
@@ -65,8 +70,8 @@ class SearchMessageListQueryIntegrationTest {
     }
 
     @Test
-    @DisplayName("숨긴 대화도 단건 조회하며 없는 대화는 비어 있다")
-    void findConversation_success() {
+    @DisplayName("목록에서 숨긴 대화도 단건 조회한다")
+    void findConversation_success_hiddenConversation() {
         // given
         search.setVisible(
                 conversationId,
@@ -74,12 +79,23 @@ class SearchMessageListQueryIntegrationTest {
         );
         // when & then
         assertThat(query.findConversation(conversationId)).isPresent();
-        assertThat(query.findConversation(Long.MAX_VALUE)).isEmpty();
     }
 
     @Test
-    @DisplayName("생성 시각이 같아도 순서로 최신 페이지와 과거 경계를 선택한다")
-    void findPage_success() {
+    @DisplayName("존재하지 않는 대화는 비어 있다")
+    void findConversation_failure_missingConversation() {
+        // when & then
+        assertThat(query.findConversation(Long.MAX_VALUE)).isEmpty();
+    }
+
+    @ParameterizedTest(name = "beforeSequence={0}, size={1}")
+    @MethodSource("messagePageCases")
+    @DisplayName("최신·과거·빈 페이지의 순서 경계를 각각 조회한다")
+    void findPage_success(
+            Integer beforeSequence,
+            int size,
+            List<Integer> expected
+    ) {
         // given
         search.saveMessage(
                 conversationId,
@@ -96,72 +112,48 @@ class SearchMessageListQueryIntegrationTest {
                 "STREAMING"
         );
         // when
-        List<SearchMessage> latest = query.findPage(
+        List<SearchMessage> result = query.findPage(
                 workspaceId,
                 memberId,
                 conversationId,
-                null,
-                2
-        );
-        List<SearchMessage> previous = query.findPage(
-                workspaceId,
-                memberId,
-                conversationId,
-                3,
-                2
+                beforeSequence,
+                size
         );
         // then
-        assertThat(latest).extracting(SearchMessage::getSequence)
-                .containsExactly(
-                        4,
-                        3,
-                        2
-                );
-        assertThat(previous).extracting(SearchMessage::getSequence)
-                .containsExactly(
-                        2,
-                        1
-                );
-        SearchMessage latestMessage = latest.getFirst();
-        assertThat(latestMessage.getContent()).isEmpty();
-        assertThat(
-                query.findPage(
-                        workspaceId,
-                        memberId,
-                        conversationId,
-                        1,
-                        30
-                )
-        ).isEmpty();
+        assertThat(result).extracting(SearchMessage::getSequence)
+                .containsExactlyElementsOf(expected);
+        if (beforeSequence == null) {
+            SearchMessage latest = result.getFirst();
+            assertThat(latest.getContent()).isEmpty();
+        }
     }
 
-    @Test
-    @DisplayName("메시지 조회 SQL에도 소유자와 Workspace 범위를 적용한다")
-    void findPage_failure_wrongScope() {
+    @ParameterizedTest
+    @ValueSource(strings = {"workspace", "member", "conversation"})
+    @DisplayName("메시지 조회 SQL의 Workspace·소유자·대화 범위를 각각 검사한다")
+    void findPage_failure_wrongScope(String target) {
+        // given
+        long requestedWorkspace = scopedId(
+                target,
+                "workspace",
+                workspaceId
+        );
+        long requestedMember = scopedId(
+                target,
+                "member",
+                memberId
+        );
+        long requestedConversation = scopedId(
+                target,
+                "conversation",
+                conversationId
+        );
         // when & then
         assertThat(
                 query.findPage(
-                        workspaceId,
-                        Long.MAX_VALUE,
-                        conversationId,
-                        null,
-                        30
-                )
-        ).isEmpty();
-        assertThat(
-                query.findPage(
-                        Long.MAX_VALUE,
-                        memberId,
-                        conversationId,
-                        null,
-                        30
-                )
-        ).isEmpty();
-        assertThat(
-                query.findPage(
-                        workspaceId,
-                        memberId,
-                        Long.MAX_VALUE,
+                        requestedWorkspace,
+                        requestedMember,
+                        requestedConversation,
                         null,
                         30
                 )
@@ -246,9 +238,10 @@ class SearchMessageListQueryIntegrationTest {
         assertThat(storedId.getDocumentId()).isEqualTo(first);
     }
 
-    @Test
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
     @DisplayName("여러 답변의 근거와 페이지 밖 근거를 구분하고 SQL 수는 늘지 않는다")
-    void findEvidences_success_multipleAnswers() {
+    void findEvidences_success_multipleAnswers(boolean oneAnswer) {
         // given
         search.saveMessage(
                 conversationId,
@@ -292,30 +285,23 @@ class SearchMessageListQueryIntegrationTest {
         );
         Statistics statistics = statistics();
         statistics.clear();
+        List<Long> answerIds = List.of(
+                firstAnswer,
+                nextAnswer
+        );
+        if (oneAnswer) {
+            answerIds = List.of(firstAnswer);
+        }
         // when
         Map<Long, List<SearchEvidenceItemResult>> result = query.findEvidences(
                 workspaceId,
                 memberId,
                 conversationId,
-                List.of(
-                        firstAnswer,
-                        nextAnswer
-                )
+                answerIds
         );
         // then
         assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
-        assertThat(result).containsOnlyKeys(
-                firstAnswer,
-                nextAnswer
-        );
-        assertThat(
-                query.findEvidences(
-                        workspaceId,
-                        memberId,
-                        conversationId,
-                        List.of(firstAnswer)
-                )
-        ).containsOnlyKeys(firstAnswer);
+        assertThat(result.keySet()).containsExactlyInAnyOrderElementsOf(answerIds);
     }
 
     @Test
@@ -360,15 +346,32 @@ class SearchMessageListQueryIntegrationTest {
                         )
                 )
         ).isEmpty();
+    }
+
+    @Test
+    @DisplayName("다른 소유자가 전달한 정상 답변의 근거도 노출하지 않는다")
+    void findEvidences_failure_wrongOwner() {
+        // given
+        long answer = messages.messageId(
+                conversationId,
+                2
+        );
+        long document = messages.saveDocument(
+                workspaceId,
+                memberId
+        );
+        messages.saveEvidence(
+                answer,
+                document,
+                1
+        );
+        // when & then
         assertThat(
                 query.findEvidences(
                         workspaceId,
                         Long.MAX_VALUE,
                         conversationId,
-                        List.of(
-                                user,
-                                answer
-                        )
+                        List.of(answer)
                 )
         ).isEmpty();
     }
@@ -422,6 +425,44 @@ class SearchMessageListQueryIntegrationTest {
         // then
         assertThat(result).isEmpty();
         assertThat(statistics.getPrepareStatementCount()).isZero();
+    }
+
+    private static Stream<Arguments> messagePageCases() {
+        return Stream.of(
+                Arguments.of(
+                        null,
+                        2,
+                        List.of(
+                                4,
+                                3,
+                                2
+                        )
+                ),
+                Arguments.of(
+                        3,
+                        2,
+                        List.of(
+                                2,
+                                1
+                        )
+                ),
+                Arguments.of(
+                        1,
+                        30,
+                        List.of()
+                )
+        );
+    }
+
+    private long scopedId(
+            String target,
+            String field,
+            long id
+    ) {
+        if (target.equals(field)) {
+            return Long.MAX_VALUE;
+        }
+        return id;
     }
 
     private Statistics statistics() {

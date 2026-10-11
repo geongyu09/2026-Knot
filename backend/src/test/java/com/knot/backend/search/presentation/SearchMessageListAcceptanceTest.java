@@ -22,6 +22,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -36,6 +37,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -145,133 +147,83 @@ class SearchMessageListAcceptanceTest {
         assertThat(snapshot()).isEqualTo(before);
     }
 
-    @Test
-    @DisplayName("최신 페이지에서 과거 경계를 넘겨 마지막까지 중복 없이 읽는다")
-    void find_success_pagination() throws Exception {
+    @ParameterizedTest(name = "beforeSequence={0}")
+    @CsvSource(value = {"NULL,6,8,true,6", "6,3,5,true,3", "3,1,2,false,NULL", "1,1,0,false,NULL"}, nullValues = "NULL")
+    @DisplayName("최신·중간·마지막·빈 페이지를 경계별로 읽는다")
+    void find_success_pagination(
+            String beforeSequence,
+            int first,
+            int last,
+            boolean hasPrevious,
+            String previousCursor
+    ) throws Exception {
         // given
         addPairs(
                 3,
                 8
         );
+        MockHttpServletRequestBuilder request = request(
+                workspaceId,
+                conversationId,
+                memberId
+        ).param(
+                "size",
+                "3"
+        );
+        if (beforeSequence != null) {
+            request.param(
+                    "beforeSequence",
+                    beforeSequence
+            );
+        }
+        List<Integer> sequences = IntStream.rangeClosed(
+                first,
+                last
+        )
+                .boxed()
+                .toList();
         // when & then
-        mvc.perform(
-                request(
-                        workspaceId,
-                        conversationId,
-                        memberId
-                ).param(
-                        "size",
-                        "3"
-                )
-        )
+        ResultActions response = mvc.perform(request)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items.length()").value(3))
-                .andExpect(jsonPath("$.items[0].sequence").value(6))
-                .andExpect(jsonPath("$.items[1].sequence").value(7))
-                .andExpect(jsonPath("$.items[2].sequence").value(8))
-                .andExpect(jsonPath("$.hasPrevious").value(true))
-                .andExpect(jsonPath("$.previousCursor").value("6"));
-        mvc.perform(
-                request(
-                        workspaceId,
-                        conversationId,
-                        memberId
-                ).param(
-                        "size",
-                        "3"
-                )
-                        .param(
-                                "beforeSequence",
-                                "6"
-                        )
-        )
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items.length()").value(3))
-                .andExpect(jsonPath("$.items[0].sequence").value(3))
-                .andExpect(jsonPath("$.items[1].sequence").value(4))
-                .andExpect(jsonPath("$.items[2].sequence").value(5))
-                .andExpect(jsonPath("$.previousCursor").value("3"));
-        mvc.perform(
-                request(
-                        workspaceId,
-                        conversationId,
-                        memberId
-                ).param(
-                        "size",
-                        "3"
-                )
-                        .param(
-                                "beforeSequence",
-                                "3"
-                        )
-        )
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items.length()").value(2))
-                .andExpect(jsonPath("$.items[0].sequence").value(1))
-                .andExpect(jsonPath("$.items[1].sequence").value(2))
-                .andExpect(jsonPath("$.hasPrevious").value(false))
-                .andExpect(jsonPath("$.previousCursor").value(nullValue()));
-        mvc.perform(
-                request(
-                        workspaceId,
-                        conversationId,
-                        memberId
-                ).param(
-                        "beforeSequence",
-                        "1"
-                )
-        )
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items").isEmpty())
-                .andExpect(jsonPath("$.hasPrevious").value(false))
-                .andExpect(jsonPath("$.previousCursor").value(nullValue()));
+                .andExpect(jsonPath("$.items.length()").value(sequences.size()))
+                .andExpect(jsonPath("$.hasPrevious").value(hasPrevious))
+                .andExpect(jsonPath("$.previousCursor").value(previousCursor));
+        for (int index = 0; index < sequences.size(); index++) {
+            response.andExpect(jsonPath("$.items[" + index + "].sequence").value(sequences.get(index)));
+        }
     }
 
-    @Test
-    @DisplayName("페이지 크기는 기본 30이며 최대 100과 최소 1을 지원한다")
-    void find_success_pageSizeBoundaries() throws Exception {
+    @ParameterizedTest(name = "size={0}")
+    @CsvSource(value = {"NULL,30,73", "100,100,3", "1,1,102"}, nullValues = "NULL")
+    @DisplayName("기본 30·최대 100·최소 1 크기로 최신 메시지를 읽는다")
+    void find_success_pageSizeBoundaries(
+            String size,
+            int count,
+            String cursor
+    ) throws Exception {
         // given
         addPairs(
                 3,
                 102
         );
+        MockHttpServletRequestBuilder request = request(
+                workspaceId,
+                conversationId,
+                memberId
+        );
+        if (size != null) {
+            request.param(
+                    "size",
+                    size
+            );
+        }
         // when & then
-        mvc.perform(
-                request(
-                        workspaceId,
-                        conversationId,
-                        memberId
-                )
-        )
+        mvc.perform(request)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items.length()").value(30))
-                .andExpect(jsonPath("$.previousCursor").value("73"));
-        mvc.perform(
-                request(
-                        workspaceId,
-                        conversationId,
-                        memberId
-                ).param(
-                        "size",
-                        "100"
-                )
-        )
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items.length()").value(100))
-                .andExpect(jsonPath("$.previousCursor").value("3"));
-        mvc.perform(
-                request(
-                        workspaceId,
-                        conversationId,
-                        memberId
-                ).param(
-                        "size",
-                        "1"
-                )
-        )
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items[0].sequence").value(102))
-                .andExpect(jsonPath("$.previousCursor").value("102"));
+                .andExpect(jsonPath("$.items.length()").value(count))
+                .andExpect(jsonPath("$.items[0].sequence").value(Integer.parseInt(cursor)))
+                .andExpect(jsonPath("$.items[" + (count - 1) + "].sequence").value(102))
+                .andExpect(jsonPath("$.previousCursor").value(cursor));
     }
 
     @ParameterizedTest
@@ -389,19 +341,62 @@ class SearchMessageListAcceptanceTest {
                 .andExpect(jsonPath("$.previousCursor").value("2"));
     }
 
-    @Test
-    @DisplayName("미인증은 401이며 대화 존재 여부를 노출하지 않는다")
-    void find_failure_unauthenticated() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"", "invalid"})
+    @DisplayName("누락하거나 잘못된 쿠키는 401이며 대화 존재 여부를 노출하지 않는다")
+    void find_failure_unauthenticated(String token) throws Exception {
+        // given
+        MockHttpServletRequestBuilder request = get(
+                PATH,
+                workspaceId,
+                conversationId
+        );
+        if (!token.isEmpty()) {
+            request.cookie(
+                    new Cookie(
+                            "KNOT_ACCESS_TOKEN",
+                            token
+                    )
+            );
+        }
         // when & then
-        mvc.perform(
-                get(
-                        PATH,
-                        workspaceId,
-                        conversationId
-                )
-        )
+        mvc.perform(request)
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("만료된 access token과 닉네임 용도 token을 각각 401로 거절한다")
+    void find_failure_expiredOrWrongPurposeToken(boolean expired) throws Exception {
+        // given
+        String token = tokens.issueNickname(
+                OAuthUser.of(
+                        OAuthProvider.GITHUB,
+                        "search-onboarding",
+                        null
+                )
+        );
+        if (expired) {
+            Instant issuedAt = Instant.now()
+                    .minus(jwtProperties.getExpiration())
+                    .minusSeconds(60);
+            JwtProvider issuer = new JwtProvider(
+                    jwtProperties,
+                    Clock.fixed(
+                            issuedAt,
+                            ZoneOffset.UTC
+                    )
+            );
+            token = issuer.issue(
+                    AuthenticatedMember.of(
+                            memberId,
+                            "조회자",
+                            null
+                    )
+            );
+        }
+        // when & then
         mvc.perform(
                 get(
                         PATH,
@@ -410,62 +405,12 @@ class SearchMessageListAcceptanceTest {
                 ).cookie(
                         new Cookie(
                                 "KNOT_ACCESS_TOKEN",
-                                "invalid"
+                                token
                         )
                 )
         )
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
-    }
-
-    @Test
-    @DisplayName("만료된 access token과 닉네임 용도 token은 401이다")
-    void find_failure_expiredOrWrongPurposeToken() throws Exception {
-        // given
-        Instant issuedAt = Instant.now()
-                .minus(jwtProperties.getExpiration())
-                .minusSeconds(60);
-        JwtProvider issuer = new JwtProvider(
-                jwtProperties,
-                Clock.fixed(
-                        issuedAt,
-                        ZoneOffset.UTC
-                )
-        );
-        String expired = issuer.issue(
-                AuthenticatedMember.of(
-                        memberId,
-                        "조회자",
-                        null
-                )
-        );
-        String onboarding = tokens.issueNickname(
-                OAuthUser.of(
-                        OAuthProvider.GITHUB,
-                        "search-onboarding",
-                        null
-                )
-        );
-        // when & then
-        for (String token : List.of(
-                expired,
-                onboarding
-        )) {
-            mvc.perform(
-                    get(
-                            PATH,
-                            workspaceId,
-                            conversationId
-                    ).cookie(
-                            new Cookie(
-                                    "KNOT_ACCESS_TOKEN",
-                                    token
-                            )
-                    )
-            )
-                    .andExpect(status().isUnauthorized())
-                    .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
-        }
     }
 
     @Test
@@ -502,23 +447,22 @@ class SearchMessageListAcceptanceTest {
         );
     }
 
-    @Test
-    @DisplayName("미가입 Workspace와 탈퇴 후 접근은 403이다")
-    void find_failure_inactiveMembership() throws Exception {
-        // when & then
-        expectAccessDenied(
-                documents.saveWorkspace(),
-                conversationId,
-                memberId
-        );
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("미가입 Workspace와 탈퇴 후 접근을 각각 403으로 거절한다")
+    void find_failure_inactiveMembership(boolean formerMember) throws Exception {
         // given
-        documents.leave(
-                workspaceId,
-                memberId
-        );
+        long requestedWorkspace = documents.saveWorkspace();
+        if (formerMember) {
+            documents.leave(
+                    workspaceId,
+                    memberId
+            );
+            requestedWorkspace = workspaceId;
+        }
         // when & then
         expectAccessDenied(
-                workspaceId,
+                requestedWorkspace,
                 conversationId,
                 memberId
         );
@@ -580,24 +524,25 @@ class SearchMessageListAcceptanceTest {
                 .andExpect(jsonPath("$.code").value("INVALID_PARAMETER"));
     }
 
-    @ParameterizedTest
-    @ValueSource(longs = {0, -1})
-    @DisplayName("양수가 아닌 경로는 400 INVALID_PARAMETER다")
-    void find_failure_invalidPath(long id) throws Exception {
+    @ParameterizedTest(name = "{0}={1}")
+    @CsvSource({"workspace,0", "workspace,-1", "conversation,0", "conversation,-1"})
+    @DisplayName("Workspace와 대화의 양수가 아닌 경로를 각각 거절한다")
+    void find_failure_invalidPath(
+            String target,
+            long id
+    ) throws Exception {
+        // given
+        long requestedWorkspace = workspaceId;
+        long requestedConversation = id;
+        if (target.equals("workspace")) {
+            requestedWorkspace = id;
+            requestedConversation = conversationId;
+        }
         // when & then
         mvc.perform(
                 request(
-                        id,
-                        conversationId,
-                        memberId
-                )
-        )
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_PARAMETER"));
-        mvc.perform(
-                request(
-                        workspaceId,
-                        id,
+                        requestedWorkspace,
+                        requestedConversation,
                         memberId
                 )
         )
