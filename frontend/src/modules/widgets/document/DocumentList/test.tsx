@@ -270,7 +270,7 @@ describe("DocumentList", () => {
     expect(requestCount).toBe(MAX_REQUEST_COUNT);
   });
 
-  it("불러오는 동안에는 불러오는 중이라고 알리고, 문서를 받으면 폴더로 바꾼다", async () => {
+  it("불러오는 동안에는 제목과 설명을 그대로 두고 불러오는 중이라고 알리고, 문서를 받으면 폴더로 바꾼다", async () => {
     mockServer.use(
       http.get(DOCUMENTS_REQUEST, async () => {
         await delay(50);
@@ -283,6 +283,12 @@ describe("DocumentList", () => {
 
     expect(
       screen.getByRole("status", { name: LOADING_LABEL }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "문서" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("녹음하고 정리한 내용을 폴더별로 모아둬요"),
     ).toBeInTheDocument();
 
     await findFolder(expected.topics[0].topic);
