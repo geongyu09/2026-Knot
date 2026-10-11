@@ -281,11 +281,14 @@ public class RecordingSession {
             return accumulatedRecordingMillis;
         }
         validateTimeNotBeforeCurrentInterval(now);
-        return accumulatedRecordingMillis + Duration.between(
-                currentIntervalStartedAt,
-                now
-        )
-                .toMillis();
+        return Math.min(
+                accumulatedRecordingMillis + Duration.between(
+                        currentIntervalStartedAt,
+                        now
+                )
+                        .toMillis(),
+                MAX_RECORDING_MILLIS
+        );
     }
 
     private boolean sameControlTokenHash(String controlTokenHash) {

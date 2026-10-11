@@ -999,6 +999,23 @@ class RecordingSessionTest {
     }
 
     @Test
+    @DisplayName("상한을 확정하기 전에 조회해도 녹음 시간은 2시간을 넘지 않는다")
+    void getRecordingDurationMillis_success_capsAtMaxDuration() {
+        // given
+        RecordingSession session = startRecording();
+        keepAlive(
+                session,
+                STARTED_AT.plusSeconds(7_200)
+        );
+
+        // when
+        long durationMillis = session.getRecordingDurationMillis(STARTED_AT.plusSeconds(7_205));
+
+        // then
+        assertThat(durationMillis).isEqualTo(7_200_000L);
+    }
+
+    @Test
     @DisplayName("녹음이 속한 Workspace면 소속으로 판단한다")
     void belongsTo_success() {
         // given
