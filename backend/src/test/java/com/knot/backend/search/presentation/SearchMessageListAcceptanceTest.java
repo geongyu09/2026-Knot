@@ -341,31 +341,26 @@ class SearchMessageListAcceptanceTest {
                 .andExpect(jsonPath("$.previousCursor").value("2"));
     }
 
-    @Test
-    @DisplayName("미인증은 401이며 대화 존재 여부를 노출하지 않는다")
-    void find_failure_unauthenticated() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"", "invalid"})
+    @DisplayName("누락하거나 잘못된 쿠키는 401이며 대화 존재 여부를 노출하지 않는다")
+    void find_failure_unauthenticated(String token) throws Exception {
+        // given
+        MockHttpServletRequestBuilder request = get(
+                PATH,
+                workspaceId,
+                conversationId
+        );
+        if (!token.isEmpty()) {
+            request.cookie(
+                    new Cookie(
+                            "KNOT_ACCESS_TOKEN",
+                            token
+                    )
+            );
+        }
         // when & then
-        mvc.perform(
-                get(
-                        PATH,
-                        workspaceId,
-                        conversationId
-                )
-        )
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
-        mvc.perform(
-                get(
-                        PATH,
-                        workspaceId,
-                        conversationId
-                ).cookie(
-                        new Cookie(
-                                "KNOT_ACCESS_TOKEN",
-                                "invalid"
-                        )
-                )
-        )
+        mvc.perform(request)
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
     }
