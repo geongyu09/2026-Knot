@@ -48,26 +48,30 @@ public class SearchQuestionController implements SearchQuestionApi {
                     accepted,
                     reservation
             );
-            return ResponseEntity.ok()
-                    .contentType(
-                            new MediaType(
-                                    "text",
-                                    "event-stream",
-                                    StandardCharsets.UTF_8
-                            )
-                    )
-                    .header(
-                            "Cache-Control",
-                            "no-cache"
-                    )
-                    .header(
-                            "X-Accel-Buffering",
-                            "no"
-                    )
-                    .body(emitter);
+            return eventStream(emitter);
         } catch (RuntimeException exception) {
             reservation.close();
             throw exception;
         }
+    }
+
+    private ResponseEntity<SseEmitter> eventStream(SseEmitter emitter) {
+        return ResponseEntity.ok()
+                .contentType(
+                        new MediaType(
+                                "text",
+                                "event-stream",
+                                StandardCharsets.UTF_8
+                        )
+                )
+                .header(
+                        "Cache-Control",
+                        "no-cache"
+                )
+                .header(
+                        "X-Accel-Buffering",
+                        "no"
+                )
+                .body(emitter);
     }
 }
