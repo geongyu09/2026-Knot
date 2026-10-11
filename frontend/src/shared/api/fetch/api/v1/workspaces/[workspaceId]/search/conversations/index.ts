@@ -79,6 +79,28 @@ export async function* createSearchConversationApi({
   }
 }
 
+/**
+ * accepted 뒤에 `failed` 이벤트로 도착한 답변 실패.
+ *
+ * 요청 함수는 이 이벤트를 다른 이벤트와 같은 줄에 흘려보내지만, 화면에서는 답변이 끊긴 실패이므로
+ * 뮤테이션의 실패 상태에 싣도록 throw로 바꿔요. accepted 전 실패(`SseRequestError`)와 달리
+ * 질문은 서버에 저장돼 있어 입력창 복원이 아니라 답변 자리의 다시 시도로 이어져요.
+ */
+export class SearchAnswerFailedError extends Error {
+  /** 실패한 답변 메시지 ID. 화면에서 그 답변 자리를 찾을 때 써요 */
+  answerMessageId: number;
+  /** 실패 원인 오류 코드. 예: LLM_STREAM_FAILED */
+  code: string;
+
+  constructor({ answerMessageId, code }: SearchStreamFailedDto) {
+    super(`탐색 답변 생성에 실패했어요 (${code})`);
+
+    this.name = "SearchAnswerFailedError";
+    this.answerMessageId = answerMessageId;
+    this.code = code;
+  }
+}
+
 interface RelaySearchAnswerUntilEndParams {
   /** 첫 질문·후속 질문 요청 함수가 내는 이벤트 스트림 */
   stream: AsyncIterable<SearchStreamEvent>;
@@ -90,6 +112,8 @@ interface RelaySearchAnswerUntilEndParams {
  * @description 탐색 답변 스트림을 끝까지 받으며 이벤트를 넘기고, 답변이 어떻게 끝났는지 판정해요. 첫 질문·후속 질문 뮤테이션이 함께 써요
  * @param params - 요청 함수의 이벤트 스트림, 이벤트를 받을 콜백
  * @returns completed 이벤트의 data
+ * @throws {SearchAnswerFailedError} accepted 뒤 `failed` 이벤트를 받은 경우
+ * @throws {SseRequestError} accepted 전에 실패 응답을 받은 경우. 요청 함수가 던진 그대로 올려요
  * @example
  * const completed = await relaySearchAnswerUntilEnd({
  *   stream: createSearchConversationApi({ workspaceId, body, signal }),
@@ -104,6 +128,9 @@ export const relaySearchAnswerUntilEnd = async ({
     onEvent(searchStreamEvent);
 
     if (searchStreamEvent.event === "completed") return searchStreamEvent.data;
+    if (searchStreamEvent.event === "failed") {
+      throw new SearchAnswerFailedError(searchStreamEvent.data);
+    }
   }
 
   return null;

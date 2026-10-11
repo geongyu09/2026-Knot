@@ -19,7 +19,11 @@ import {
 import { mockServer } from "@api/mock/server";
 import { SseRequestError } from "@api/sse/requestSseStream";
 
-import { createSearchConversationApi, relaySearchAnswerUntilEnd } from ".";
+import {
+  createSearchConversationApi,
+  relaySearchAnswerUntilEnd,
+  SearchAnswerFailedError,
+} from ".";
 
 const WORKSPACE_ID = 1;
 const SEARCH_CONVERSATIONS_PATH =
@@ -414,5 +418,55 @@ describe("relaySearchAnswerUntilEnd", () => {
         status: "COMPLETED",
       }),
     );
+  });
+
+  // SEARCH-R5 답변 실패 · API 명세 failed 이벤트
+  it("[SEARCH-R5] accepted 뒤 failed 이벤트는 onEvent로 넘긴 뒤 answerMessageId와 code를 담은 SearchAnswerFailedError로 throw한다", async () => {
+    const failed = {
+      answerMessageId: ANSWER_MESSAGE_ID,
+      status: "FAILED",
+      code: "LLM_STREAM_FAILED",
+    } as const;
+    respondWithSseChunks([
+      toFrame("accepted", ACCEPTED),
+      toFrame("failed", failed),
+    ]);
+    const onEvent = vi.fn();
+
+    const error = await relaySearchAnswerUntilEnd({
+      stream: createSearchConversationApi({
+        workspaceId: WORKSPACE_ID,
+        body: QUESTION,
+      }),
+      onEvent,
+    }).catch((caught: unknown) => caught);
+
+    expect(toReceivedEvents(onEvent)).toEqual([
+      { event: "accepted", data: new SearchStreamAcceptedDto(ACCEPTED) },
+      { event: "failed", data: new SearchStreamFailedDto(failed) },
+    ]);
+    expect(error).toBeInstanceOf(SearchAnswerFailedError);
+    expect(error).toMatchObject({
+      answerMessageId: ANSWER_MESSAGE_ID,
+      code: "LLM_STREAM_FAILED",
+    });
+  });
+
+  // SEARCH-R4 질문 전송 실패 · API 명세 첫 질문 403
+  it("[SEARCH-R4] accepted 전 실패 응답은 onEvent를 부르지 않고 SseRequestError를 그대로 throw한다", async () => {
+    respondWithError(403, "WORKSPACE_ACCESS_DENIED");
+    const onEvent = vi.fn();
+
+    const error = await relaySearchAnswerUntilEnd({
+      stream: createSearchConversationApi({
+        workspaceId: WORKSPACE_ID,
+        body: QUESTION,
+      }),
+      onEvent,
+    }).catch((caught: unknown) => caught);
+
+    expect(onEvent).not.toHaveBeenCalled();
+    expect(error).toBeInstanceOf(SseRequestError);
+    expect(error).toMatchObject({ status: 403, code: "WORKSPACE_ACCESS_DENIED" });
   });
 });
