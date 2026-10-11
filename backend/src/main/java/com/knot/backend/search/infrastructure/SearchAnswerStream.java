@@ -3,6 +3,7 @@ package com.knot.backend.search.infrastructure;
 import com.knot.backend.global.config.SearchWorkerProperties;
 import com.knot.backend.search.application.SearchAnswerSnapshotService;
 import com.knot.backend.search.application.dto.result.SearchQuestionAcceptedResult;
+import com.knot.backend.search.application.dto.result.SearchAnswerSnapshotResult;
 import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.SearchException;
 import java.io.IOException;
@@ -71,6 +72,40 @@ public class SearchAnswerStream {
             reservation.close();
             emitter.completeWithError(exception);
             throw new SearchException(SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE);
+        }
+    }
+
+    public SseEmitter reconnect(
+            long workspaceId,
+            long memberId,
+            long conversationId,
+            long answerId
+    ) {
+        SearchAnswerSnapshotResult initial = snapshots.read(
+                workspaceId,
+                memberId,
+                conversationId,
+                answerId
+        );
+        SearchStreamReservation reservation = reserve();
+        try {
+            SseEmitter emitter = createEmitter(reservation);
+            reservation.attach(
+                    new SearchAnswerReconnectConnection(
+                            emitter,
+                            reservation,
+                            snapshots,
+                            workspaceId,
+                            memberId,
+                            conversationId,
+                            initial,
+                            properties
+                    )
+            );
+            return emitter;
+        } catch (RuntimeException exception) {
+            reservation.close();
+            throw exception;
         }
     }
 
