@@ -70,7 +70,7 @@ export const useDockRecording = () => {
       openRecordingStartRefusedDialog();
       return;
     }
-    if (result === "failed") return;
+    if (result !== "started") return;
 
     navigateToRecording({ workspaceId });
   };

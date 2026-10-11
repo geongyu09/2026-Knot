@@ -16,7 +16,7 @@ import {
   getRecordingControlProof,
   getRecordingStartProof,
 } from "@utils/recordingControlProof";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import useEndRecordingDialog from "../useEndRecordingDialog";
 
 /** 최종 오디오 업로드가 일시 실패했을 때 다시 시도하는 최대 횟수(첫 시도 제외) */
@@ -40,7 +40,7 @@ interface UploadRecordedAudioParams {
  *
  * - 시작: 마이크 권한 → 시작 요청이 성공해야 브라우저 녹음을 시작해요. 시작 요청이 실패하면 마이크를 꺼요.
  *   서버가 409로 거절하거나, 남아 있던 증명의 녹음이 아직 열려 있으면 이어받지 않고 거절로 돌려줘요.
- *   남아 있던 증명의 녹음이 이미 끝났거나 버려졌으면 새 증명으로 한 번만 다시 보내요.
+ *   남아 있던 증명의 녹음이 이미 끝났거나 버려졌으면 새 증명으로 한 번만 다시 보내요. 시작 중에 다시 불러도 겹쳐 보내지 않아요.
  * - 일시정지·이어서 녹음: 브라우저 녹음을 먼저 바꾸고 서버에 알려요. 서버 요청이 실패해도 다시 보내지 않고
  *   사용자가 누른 대로 둬요.
  * - 끝내기: 확인 창에서 [녹음 끝내기]를 고르면 종료 요청 → 업로드 URL 발급 → 오디오 PUT → 업로드 완료 확인 → 녹음 비우기 → 홈.
@@ -64,6 +64,7 @@ const useRecordingControl = () => {
   const { mutateAsync: completeAudioUpload } =
     useCompleteRecordingAudioUploadMutation();
   const { openEndRecordingDialog } = useEndRecordingDialog();
+  const isStartingRef = useRef(false);
 
   //TODO: shared훅에서 라우팅 제거하기
   /** 녹음을 버리고 다음 녹음은 새 시작 요청으로 보내도록 증명을 지운 뒤 홈으로 가요 */
@@ -87,11 +88,10 @@ const useRecordingControl = () => {
     [closeRecording],
   );
 
-  /** 녹음을 시작해요. 결과는 `started`·`microphoneUnavailable`·`refused`·`failed`이고, 마이크를 받지 못했거나 서버가 거절한 경우만 부른 쪽이 안내해요 */
-  const startRecording = useCallback(
+  /** 마이크를 받아 서버에 녹음을 열어요. 결과는 `started`·`microphoneUnavailable`·`refused`·`failed`예요 */
+  const connectAndStartRecording = useCallback(
     async (workspaceId: number) => {
       const store = useRecordingStore.getState();
-      if (store.status !== "idle") return "started";
 
       try {
         const isConnected = await store.connectMicrophone();
@@ -137,6 +137,26 @@ const useRecordingControl = () => {
       }
     },
     [startRecordingSession],
+  );
+
+  /**
+   * 녹음을 시작해요. 결과는 `started`·`microphoneUnavailable`·`refused`·`failed`·`ignored`이고,
+   * 마이크를 받지 못했거나 서버가 거절한 경우만 부른 쪽이 안내해요
+   */
+  const startRecording = useCallback(
+    async (workspaceId: number) => {
+      if (useRecordingStore.getState().status !== "idle") return "started";
+      // 같은 증명으로 시작이 겹치면 두 번째 응답(200 RECORDING)이 첫 녹음을 남은 녹음으로 오인해요
+      if (isStartingRef.current) return "ignored";
+
+      isStartingRef.current = true;
+      try {
+        return await connectAndStartRecording(workspaceId);
+      } finally {
+        isStartingRef.current = false;
+      }
+    },
+    [connectAndStartRecording],
   );
 
   /** 서버에 일시정지를 알려요. 마이크가 끊겨 브라우저가 먼저 멈춘 경우에도 불러요 */

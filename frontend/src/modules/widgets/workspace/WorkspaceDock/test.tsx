@@ -587,6 +587,31 @@ describe("WorkspaceDock", () => {
         expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
         expect(router.state.location.pathname).toBe(HOME_PATH);
       });
+
+      it("시작 요청이 오가는 중에 다시 눌러도 한 번만 보내고, 응답 뒤에는 다시 누를 수 있다", async () => {
+        let respondFirst = () => {};
+        const requestIds = respondStart(async () => {
+          await new Promise<void>((resolve) => {
+            respondFirst = resolve;
+          });
+
+          return conflict("ACTIVE_RECORDING_ALREADY_EXISTS")();
+        }, conflict("ACTIVE_RECORDING_ALREADY_EXISTS"));
+        renderDock();
+
+        await clickMic();
+        await waitFor(() => expect(requestIds).toHaveLength(1));
+        await clickMic();
+        await act(async () => respondFirst());
+        await screen.findByRole("dialog", { name: START_REFUSED });
+
+        expect(requestIds).toHaveLength(1);
+
+        fireEvent.click(screen.getByRole("button", { name: "닫기" }));
+        await clickMic();
+
+        await waitFor(() => expect(requestIds).toHaveLength(2));
+      });
     });
 
     describe("녹음 화면이 아닌 곳에서 녹음 중이면", () => {
