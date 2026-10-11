@@ -849,14 +849,29 @@ class RecordingSessionTest {
     }
 
     @Test
-    @DisplayName("녹음이 Workspace 소속 여부를 직접 판단한다")
+    @DisplayName("녹음이 속한 Workspace면 소속으로 판단한다")
     void belongsTo_success() {
         // given
         RecordingSession session = startRecording();
 
-        // when & then
-        assertThat(session.belongsTo(WORKSPACE_ID)).isTrue();
-        assertThat(session.belongsTo(99)).isFalse();
+        // when
+        boolean belongs = session.belongsTo(WORKSPACE_ID);
+
+        // then
+        assertThat(belongs).isTrue();
+    }
+
+    @Test
+    @DisplayName("다른 Workspace면 녹음의 소속이 아니라고 판단한다")
+    void belongsTo_success_otherWorkspace() {
+        // given
+        RecordingSession session = startRecording();
+
+        // when
+        boolean belongs = session.belongsTo(99);
+
+        // then
+        assertThat(belongs).isFalse();
     }
 
     @Test
@@ -866,22 +881,40 @@ class RecordingSessionTest {
         RecordingSession session = startRecording();
         session.end(STARTED_AT.plusSeconds(10));
 
-        // when & then
-        assertThat(catchThrowable(session::validateEnded)).isNull();
+        // when
+        Throwable failure = catchThrowable(session::validateEnded);
+
+        // then
+        assertThat(failure).isNull();
     }
 
     @Test
-    @DisplayName("종료 검증은 실행 중과 폐기된 녹음을 각각 기존 오류로 거절한다")
-    void validateEnded_failure() {
+    @DisplayName("종료 검증은 실행 중인 녹음을 종료 전 오류로 거절한다")
+    void validateEnded_failure_notEnded() {
         // given
         RecordingSession session = startRecording();
 
-        // when & then
-        assertThat(catchThrowable(session::validateEnded)).isInstanceOf(RecordingException.class)
+        // when
+        Throwable failure = catchThrowable(session::validateEnded);
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
                 .extracting("errorCode")
                 .isEqualTo(RecordingErrorCode.RECORDING_NOT_ENDED);
+    }
+
+    @Test
+    @DisplayName("종료 검증은 폐기된 녹음을 폐기 오류로 거절한다")
+    void validateEnded_failure_discarded() {
+        // given
+        RecordingSession session = startRecording();
         session.discard(STARTED_AT.plusSeconds(10));
-        assertThat(catchThrowable(session::validateEnded)).isInstanceOf(RecordingException.class)
+
+        // when
+        Throwable failure = catchThrowable(session::validateEnded);
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
                 .extracting("errorCode")
                 .isEqualTo(RecordingErrorCode.RECORDING_ALREADY_DISCARDED);
     }
