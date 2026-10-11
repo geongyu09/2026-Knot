@@ -1,4 +1,5 @@
 import { GetWorkspacesResponseDto } from "@api/dto/workspace";
+import { mockServer } from "@api/mock/server";
 import { workspacesResponse } from "@api/mock/responses/workspace";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
@@ -6,9 +7,17 @@ import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import WorkspaceSwitcher from ".";
 
@@ -68,6 +77,7 @@ describe("WorkspaceSwitcher", () => {
   afterEach(() => {
     // 전역 저장소라 테스트끼리 녹음이 새지 않도록 처음 상태로 되돌려요
     useRecordingStore.getState().discardRecording();
+    mockServer.events.removeAllListeners();
   });
 
   const startRecording = async () => {
@@ -200,7 +210,12 @@ describe("WorkspaceSwitcher", () => {
       ).toBeInTheDocument();
     });
 
-    it("끝내고 이동을 누르면 녹음을 버리고 그 워크스페이스로 이동한다", async () => {
+    it("끝내고 이동을 누르면 녹음을 끝내 올린 뒤 그 워크스페이스로 이동한다", async () => {
+      const count = { end: 0, complete: 0 };
+      mockServer.events.on("request:start", ({ request }) => {
+        if (request.url.endsWith("/end")) count.end += 1;
+        if (request.url.endsWith("/audio-upload-complete")) count.complete += 1;
+      });
       await startRecording();
       const { router } = renderSwitcher();
       await openMenu();
@@ -208,9 +223,34 @@ describe("WorkspaceSwitcher", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "끝내고 이동" }));
 
-      expect(useRecordingStore.getState().status).toBe("idle");
-      expect(router.state.location.pathname).toBe(OTHER_HOME_PATH);
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(OTHER_HOME_PATH),
+      );
+      expect(useRecordingStore.getState().status).toBe("idle");
+      expect(count).toEqual({ end: 1, complete: 1 });
+    });
+
+    it("종료 요청이 실패하면 이동하지 않고 녹음을 이어 간다", async () => {
+      mockServer.use(
+        http.post(
+          "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/end",
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      );
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      await startRecording();
+      const { router } = renderSwitcher();
+      await openMenu();
+      fireEvent.click(await findWorkspaceItem(otherWorkspace.name));
+
+      fireEvent.click(screen.getByRole("button", { name: "끝내고 이동" }));
+
+      await waitFor(() =>
+        expect(useRecordingStore.getState().isEnding).toBe(false),
+      );
+      expect(useRecordingStore.getState().status).toBe("recording");
+      expect(router.state.location.pathname).toBe(HOME_PATH);
     });
 
     it("취소를 누르면 녹음과 화면을 그대로 둔다", async () => {
@@ -238,8 +278,12 @@ describe("WorkspaceSwitcher", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "끝내고 이동" }));
 
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(
+          PATH_ROUTE.WORKSPACE_CREATE,
+        ),
+      );
       expect(useRecordingStore.getState().status).toBe("idle");
-      expect(router.state.location.pathname).toBe(PATH_ROUTE.WORKSPACE_CREATE);
     });
 
     it("지금 워크스페이스를 고르면 묻지 않고 메뉴만 닫는다", async () => {
