@@ -15,7 +15,6 @@ public class RecordingConnectionExpiryTransaction {
     private final RecordingSessionRepository recordingSessionRepository;
     private final Clock clock;
 
-    // 다른 요청과 같은 녹음 잠금 아래에서 최신 신호를 다시 판정한다. Workspace·Member는 잠그지 않는다.
     @Transactional
     public boolean expire(long recordingId) {
         Optional<RecordingSession> found = recordingSessionRepository.findByIdForUpdate(recordingId);
