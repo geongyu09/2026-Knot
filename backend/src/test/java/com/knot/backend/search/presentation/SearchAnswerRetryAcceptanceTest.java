@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doAnswer;
 
 import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.auth.domain.AuthenticatedMember;
@@ -21,6 +22,7 @@ import com.knot.backend.search.application.dto.command.SearchQuestionCommand;
 import com.knot.backend.search.application.dto.result.SearchQuestionAcceptedResult;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
+import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.domain.SearchException;
 import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.testsupport.TestApplicationProperties;
@@ -36,7 +38,10 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -163,7 +168,7 @@ class SearchAnswerRetryAcceptanceTest {
             assertAccepted(accepted(reader));
             worker.execute(first.answerMessageId());
             String rest = reader.lines()
-                    .collect(java.util.stream.Collectors.joining("\n"));
+                    .collect(Collectors.joining("\n"));
             // then
             assertThat(rest).contains(
                     "event:delta",
@@ -182,17 +187,25 @@ class SearchAnswerRetryAcceptanceTest {
             assertAccepted(accepted(reader));
             assertThat(
                     reader.lines()
-                            .collect(java.util.stream.Collectors.joining("\n"))
+                            .collect(Collectors.joining("\n"))
             ).contains("event:completed")
                     .doesNotContain("실패한 부분");
         }
         assertThat(count("search_messages")).isEqualTo(2);
         assertThat(count("search_request_receipts")).isEqualTo(2);
         assertThat(
-                jdbc.sql("SELECT list_visible FROM search_conversations")
+                jdbc.sql("SELECT visible_in_list FROM search_conversations")
                         .query(Boolean.class)
                         .single()
         ).isTrue();
+    }
+
+    @AfterEach
+    void finishAcceptedWork() {
+        jdbc.sql("SELECT id FROM search_messages WHERE status = 'STREAMING'")
+                .query(Long.class)
+                .list()
+                .forEach(worker::execute);
     }
 
     @Test
@@ -210,7 +223,7 @@ class SearchAnswerRetryAcceptanceTest {
             worker.execute(first.answerMessageId());
             assertThat(
                     reader.lines()
-                            .collect(java.util.stream.Collectors.joining("\n"))
+                            .collect(Collectors.joining("\n"))
             ).contains("event:completed");
         }
         try (InputStream stream = connect(oldRequest).body(); BufferedReader reader = reader(stream)) {
@@ -426,6 +439,135 @@ class SearchAnswerRetryAcceptanceTest {
                 work.token(),
                 "ANSWER_GENERATION_FAILED"
         );
+    }
+
+    @Test
+    @DisplayName("접수 후 생성 실패는 부분 본문을 보존하고 같은 질문을 다시 재시도할 수 있다")
+    void retry_success_generationFailurePreservesPartial() throws Exception {
+        // given
+        long recording = fixtures.saveRecording(
+                workspace,
+                member,
+                1000
+        );
+        long transcript = fixtures.saveTranscript(recording);
+        long job = fixtures.saveJob(
+                transcript,
+                "SUCCEEDED"
+        );
+        long document = fixtures.saveDocument(
+                workspace,
+                recording,
+                transcript,
+                job,
+                "실제 근거"
+        );
+        jdbc.sql("UPDATE documents SET status = 'ARCHIVED', archived_at = created_at WHERE id = :id")
+                .param(
+                        "id",
+                        document
+                )
+                .update();
+        when(
+                retriever.retrieve(
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                new SearchRetrievalResult(
+                        List.of(
+                                new SearchDocumentResult(
+                                        document,
+                                        "회의",
+                                        "주제",
+                                        "문서 본문"
+                                )
+                        ),
+                        0
+                )
+        );
+        doAnswer(call -> {
+            Consumer<String> delta = call.getArgument(3);
+            delta.accept("새 시도 부분 답변");
+            throw new IllegalStateException("generation failed");
+        }).when(generator)
+                .generate(
+                        any(),
+                        any(),
+                        any(),
+                        any()
+                );
+        // when
+        try (InputStream stream = connect(body(UUID.randomUUID())).body(); BufferedReader reader = reader(stream)) {
+            assertAccepted(accepted(reader));
+            worker.execute(first.answerMessageId());
+            // then
+            assertThat(
+                    reader.lines()
+                            .collect(Collectors.joining("\n"))
+            ).contains(
+                    "새 시도 부분 답변",
+                    "event:failed",
+                    "ANSWER_GENERATION_FAILED"
+            )
+                    .doesNotContain("실패한 부분");
+        }
+        assertThat(
+                jdbc.sql("SELECT visible_in_list FROM search_conversations")
+                        .query(Boolean.class)
+                        .single()
+        ).isFalse();
+        assertThat(
+                jdbc.sql("SELECT content FROM search_messages WHERE role = 'ASSISTANT'")
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("새 시도 부분 답변");
+        try (InputStream stream = connect(body(UUID.randomUUID())).body(); BufferedReader reader = reader(stream)) {
+            assertAccepted(accepted(reader));
+        }
+        assertThat(count("search_messages")).isEqualTo(2);
+        assertThat(count("search_request_receipts")).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("접속 종료 뒤 worker 완료 결과를 GET snapshot과 종료 이벤트로 복구한다")
+    void retry_success_workerAfterDisconnectAndSnapshot() throws Exception {
+        // given
+        try (InputStream stream = connect(body(UUID.randomUUID())).body(); BufferedReader reader = reader(stream)) {
+            assertAccepted(accepted(reader));
+        }
+        // when
+        worker.execute(first.answerMessageId());
+        String path = "/api/v1/workspaces/" + workspace + "/search/conversations/" + first.conversationId()
+                + "/answers/" + first.answerMessageId() + "/events";
+        HttpResponse<String> response = client.send(
+                HttpRequest.newBuilder(uri(path))
+                        .timeout(Duration.ofSeconds(15))
+                        .header(
+                                "Cookie",
+                                cookies
+                        )
+                        .header(
+                                "Accept",
+                                "text/event-stream"
+                        )
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString()
+        );
+        // then
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains(
+                "event:snapshot",
+                "현재 검색 가능한 회의 문서",
+                "event:completed"
+        )
+                .doesNotContain(
+                        "실패한 부분",
+                        "receiptId",
+                        "excluded_documents"
+                );
+        assertThat(count("search_messages")).isEqualTo(2);
     }
 
     private HttpResponse<InputStream> connect(String body) throws Exception {
