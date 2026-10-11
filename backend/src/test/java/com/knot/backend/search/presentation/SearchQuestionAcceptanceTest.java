@@ -287,6 +287,35 @@ class SearchQuestionAcceptanceTest {
                     "부분 완료 😀",
                     "COMPLETED"
             );
+            HttpResponse<InputStream> restored = client.send(
+                    HttpRequest
+                            .newBuilder(
+                                    uri(
+                                            "/api/v1/workspaces/" + workspaceId + "/search/conversations/"
+                                                    + conversation + "/answers/" + answer + "/events"
+                                    )
+                            )
+                            .header(
+                                    "Cookie",
+                                    accessCookie
+                            )
+                            .header(
+                                    "Accept",
+                                    "text/event-stream"
+                            )
+                            .GET()
+                            .build(),
+                    HttpResponse.BodyHandlers.ofInputStream()
+            );
+            assertThat(restored.statusCode()).isEqualTo(200);
+            try (BufferedReader replay = reader(restored.body())) {
+                assertThat(readEvent(replay)).startsWith("event:snapshot")
+                        .contains("부분 완료 😀");
+                assertThat(
+                        replay.lines()
+                                .collect(java.util.stream.Collectors.joining("\n"))
+                ).contains("event:completed");
+            }
         }
     }
 
