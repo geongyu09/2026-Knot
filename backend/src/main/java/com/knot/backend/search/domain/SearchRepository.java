@@ -25,6 +25,13 @@ public interface SearchRepository {
 
     Optional<SearchConversation> findConversation(long conversationId);
 
+    Optional<SearchRequestReceipt> findQuestionReceipt(
+            long workspaceId,
+            long memberId,
+            long conversationId,
+            UUID requestId
+    );
+
     Optional<SearchConversation> findConversationForUpdate(long conversationId);
 
     Optional<SearchMessage> findMessage(long messageId);

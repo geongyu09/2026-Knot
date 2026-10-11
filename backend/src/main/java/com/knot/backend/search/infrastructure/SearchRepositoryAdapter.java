@@ -62,6 +62,20 @@ public class SearchRepositoryAdapter implements SearchRepository {
         return conversations.findById(id);
     }
 
+    public Optional<SearchRequestReceipt> findQuestionReceipt(
+            long workspaceId,
+            long memberId,
+            long conversationId,
+            UUID requestId
+    ) {
+        return receipts.findQuestionReceipt(
+                workspaceId,
+                memberId,
+                conversationId,
+                requestId
+        );
+    }
+
     public Optional<SearchConversation> findConversationForUpdate(long id) {
         Optional<SearchConversation> locked = conversations.findForUpdate(id);
         locked.ifPresent(entityManager::refresh);
