@@ -18,4 +18,17 @@ public class SearchEvidenceId implements Serializable {
     private long documentId;
 
     protected SearchEvidenceId() {}
+
+    public static SearchEvidenceId of(
+            long messageId,
+            long documentId
+    ) {
+        if (messageId <= 0 || documentId <= 0) {
+            throw new IllegalArgumentException("invalid evidence identity");
+        }
+        SearchEvidenceId id = new SearchEvidenceId();
+        id.messageId = messageId;
+        id.documentId = documentId;
+        return id;
+    }
 }

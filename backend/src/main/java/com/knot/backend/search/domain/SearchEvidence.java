@@ -18,4 +18,21 @@ public class SearchEvidence {
     private short rank;
 
     protected SearchEvidence() {}
+
+    public static SearchEvidence create(
+            long messageId,
+            long documentId,
+            int rank
+    ) {
+        if (rank < 1 || rank > 3) {
+            throw new IllegalArgumentException("evidence rank must be between 1 and 3");
+        }
+        SearchEvidence evidence = new SearchEvidence();
+        evidence.id = SearchEvidenceId.of(
+                messageId,
+                documentId
+        );
+        evidence.rank = (short) rank;
+        return evidence;
+    }
 }
