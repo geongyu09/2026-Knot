@@ -78,3 +78,33 @@ export async function* createSearchConversationApi({
     if (searchStreamEvent) yield searchStreamEvent;
   }
 }
+
+interface ReceiveSearchAnswerParams {
+  /** 첫 질문·후속 질문 요청 함수가 내는 이벤트 스트림 */
+  stream: AsyncIterable<SearchStreamEvent>;
+  /** 이벤트가 도착할 때마다 불려요. 화면 상태에 쌓는 건 부르는 쪽이 해요 */
+  onEvent: (event: SearchStreamEvent) => void;
+}
+
+/**
+ * @description 탐색 답변 스트림을 끝까지 받으며 이벤트를 넘기고, 답변이 어떻게 끝났는지 판정해요. 첫 질문·후속 질문 뮤테이션이 함께 써요
+ * @param params - 요청 함수의 이벤트 스트림, 이벤트를 받을 콜백
+ * @returns completed 이벤트의 data
+ * @example
+ * const completed = await receiveSearchAnswer({
+ *   stream: createSearchConversationApi({ workspaceId, body, signal }),
+ *   onEvent,
+ * });
+ */
+export const receiveSearchAnswer = async ({
+  stream,
+  onEvent,
+}: ReceiveSearchAnswerParams) => {
+  for await (const searchStreamEvent of stream) {
+    onEvent(searchStreamEvent);
+
+    if (searchStreamEvent.event === "completed") return searchStreamEvent.data;
+  }
+
+  return null;
+};

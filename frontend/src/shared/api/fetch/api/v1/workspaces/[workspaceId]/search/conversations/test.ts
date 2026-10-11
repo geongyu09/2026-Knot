@@ -11,11 +11,15 @@ import {
   SearchStreamProgressDto,
   SearchStreamStoppedDto,
 } from "@api/dto/search";
-import { searchAnswerStreamResponse } from "@api/mock/responses/search";
+import { createSearchQuestionApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions";
+import {
+  searchAnswerStreamResponse,
+  searchQuestionAnswerStreamResponse,
+} from "@api/mock/responses/search";
 import { mockServer } from "@api/mock/server";
 import { SseRequestError } from "@api/sse/requestSseStream";
 
-import { createSearchConversationApi } from ".";
+import { createSearchConversationApi, receiveSearchAnswer } from ".";
 
 const WORKSPACE_ID = 1;
 const SEARCH_CONVERSATIONS_PATH =
@@ -307,5 +311,108 @@ describe("createSearchConversationApi", () => {
 
     await expect(receiveUntilCompleted()).resolves.toBe(ANSWER_MESSAGE_ID);
     await vi.waitFor(() => expect(cancel).toHaveBeenCalled());
+  });
+});
+
+// 첫 질문 mock의 대화 ID와 다른 값이어야 후속 질문 경로의 값이 드러나요
+const CONVERSATION_ID = 200;
+
+interface CompletedAnswerEventsParams {
+  conversationId: number;
+  questionMessageId: number;
+  answerMessageId: number;
+  stages: ("SEARCHING" | "GENERATING")[];
+  deltas: string[];
+  evidences: (typeof searchAnswerStreamResponse)["evidences"];
+}
+
+/** mock 응답이 정상 완료될 때 도착하는 이벤트를 앱 모양으로 바꿔요 */
+const toCompletedAnswerEvents = ({
+  conversationId,
+  questionMessageId,
+  answerMessageId,
+  stages,
+  deltas,
+  evidences,
+}: CompletedAnswerEventsParams) => [
+  {
+    event: "accepted",
+    data: new SearchStreamAcceptedDto({
+      conversationId,
+      questionMessageId,
+      answerMessageId,
+    }),
+  },
+  ...stages.map((stage) => ({
+    event: "progress",
+    data: new SearchStreamProgressDto({ stage }),
+  })),
+  ...deltas.map((text) => ({
+    event: "delta",
+    data: new SearchStreamDeltaDto({ answerMessageId, text }),
+  })),
+  {
+    event: "evidence",
+    data: new SearchStreamEvidenceDto({ answerMessageId, items: evidences }),
+  },
+  {
+    event: "completed",
+    data: new SearchStreamCompletedDto({ answerMessageId, status: "COMPLETED" }),
+  },
+];
+
+/** onEvent가 받은 이벤트를 받은 순서대로 꺼내요 */
+const toReceivedEvents = (onEvent: ReturnType<typeof vi.fn>) =>
+  onEvent.mock.calls.map(([event]) => event);
+
+describe("receiveSearchAnswer", () => {
+  // SEARCH-R1 문서 근거 답변 · API 명세 첫 질문
+  it("[SEARCH-R1] 첫 질문 스트림의 이벤트를 도착 순서대로 onEvent로 넘기고 completed의 data를 반환한다", async () => {
+    const onEvent = vi.fn();
+
+    const result = await receiveSearchAnswer({
+      stream: createSearchConversationApi({
+        workspaceId: WORKSPACE_ID,
+        body: QUESTION,
+      }),
+      onEvent,
+    });
+
+    expect(toReceivedEvents(onEvent)).toEqual(
+      toCompletedAnswerEvents(searchAnswerStreamResponse),
+    );
+    expect(result).toEqual(
+      new SearchStreamCompletedDto({
+        answerMessageId: searchAnswerStreamResponse.answerMessageId,
+        status: "COMPLETED",
+      }),
+    );
+  });
+
+  // SEARCH-R1 문서 근거 답변 · API 명세 후속 질문
+  it("[SEARCH-R1] 후속 질문 스트림도 이벤트를 도착 순서대로 onEvent로 넘기고 completed의 data를 반환한다", async () => {
+    const onEvent = vi.fn();
+
+    const result = await receiveSearchAnswer({
+      stream: createSearchQuestionApi({
+        workspaceId: WORKSPACE_ID,
+        conversationId: CONVERSATION_ID,
+        body: QUESTION,
+      }),
+      onEvent,
+    });
+
+    expect(toReceivedEvents(onEvent)).toEqual(
+      toCompletedAnswerEvents({
+        ...searchQuestionAnswerStreamResponse,
+        conversationId: CONVERSATION_ID,
+      }),
+    );
+    expect(result).toEqual(
+      new SearchStreamCompletedDto({
+        answerMessageId: searchQuestionAnswerStreamResponse.answerMessageId,
+        status: "COMPLETED",
+      }),
+    );
   });
 });
