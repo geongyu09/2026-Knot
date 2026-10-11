@@ -23,8 +23,8 @@ const expected = new PostWorkspaceInvitationResponseDto(
   workspaceInvitationResponse,
 );
 const WORKSPACE_ID = 1;
-const NOTION_CONNECTION_PATH = getRouterPath({
-  routeKey: "WORKSPACE_NOTION_CONNECTION",
+const WORKSPACE_HOME_PATH = getRouterPath({
+  routeKey: "WORKSPACE_HOME",
   params: { workspaceId: String(WORKSPACE_ID) },
 });
 const DISPLAY_INVITE_LINK = `/invite/${expected.linkToken}`;
@@ -45,10 +45,7 @@ const renderCard = (workspaceId = String(WORKSPACE_ID)) => {
     [
       { path: ELSEWHERE_PATH, element: <p>다른 화면</p> },
       { path: PATH_ROUTE.WORKSPACE_INVITE, element: <WorkspaceInviteCard /> },
-      {
-        path: PATH_ROUTE.WORKSPACE_NOTION_CONNECTION,
-        element: <p>노션 연동</p>,
-      },
+      { path: PATH_ROUTE.WORKSPACE_HOME, element: <p>워크스페이스 홈</p> },
       { path: PATH_ROUTE.WORKSPACE, element: <p>워크스페이스 선택</p> },
       { path: PATH_ROUTE.LOGIN, element: <p>로그인</p> },
     ],
@@ -199,13 +196,13 @@ describe("WorkspaceInviteCard", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("다음을 누르면 노션 연동 화면으로 이동한다", async () => {
+  it("다음을 누르면 워크스페이스 홈으로 이동한다", async () => {
     const { router } = renderCard();
     await waitForInvitation();
 
     await click(screen.getByRole("button", { name: "다음" }));
 
-    expect(router.state.location.pathname).toBe(NOTION_CONNECTION_PATH);
+    expect(router.state.location.pathname).toBe(WORKSPACE_HOME_PATH);
   });
 
   it("초대 조회가 401이면 로그인 화면으로 replace 이동한다", async () => {
