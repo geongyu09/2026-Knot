@@ -270,6 +270,7 @@ describe("TranscriptPanel", () => {
 
   it.each([
     ["잘못된 요청(400)", () => new HttpResponse(null, { status: 400 })],
+    ["볼 수 없는 문서(403)", () => new HttpResponse(null, { status: 403 })],
     ["원문 없음(404)", () => new HttpResponse(null, { status: 404 })],
     ["서버 오류(500)", () => new HttpResponse(null, { status: 500 })],
     ["네트워크 오류", () => HttpResponse.error()],
@@ -366,10 +367,21 @@ describe("TranscriptPanel", () => {
       ),
     );
 
+    // 로그인 화면으로 가면 패널이 사라져, 간 뒤에는 안내가 있었는지 알 수 없어요. 가기 전까지 그려진 화면을 모두 지켜봐요
+    let isAlertShown = false;
+    const observer = new MutationObserver(() => {
+      if (screen.queryByRole("alert") !== null) isAlertShown = true;
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
     renderTranscriptPanel();
 
-    expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    try {
+      expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
+    } finally {
+      observer.disconnect();
+    }
+    expect(isAlertShown).toBe(false);
   });
 
   it("주소의 문서 id가 숫자가 아니어도 확인하지 않고 그대로 요청하고, 서버가 거절하면 불러오지 못했다고 알린다", async () => {
