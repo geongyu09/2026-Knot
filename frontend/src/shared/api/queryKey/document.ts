@@ -4,6 +4,10 @@ interface DocumentListKeyParams {
   recordingSessionId?: number;
 }
 
+interface DocumentRecentListKeyParams {
+  workspaceId: number;
+}
+
 interface DocumentDetailKeyParams {
   workspaceId: number;
   documentId: number;
@@ -13,6 +17,9 @@ export const documentKeys = {
   all: ["documents"] as const,
   list: ({ workspaceId, recordingSessionId }: DocumentListKeyParams) =>
     [...documentKeys.all, "list", workspaceId, { recordingSessionId }] as const,
+  // 홈 카드의 최근 문서. 문서 전체 목록과 받는 범위가 달라 키를 따로 둬요
+  recentList: ({ workspaceId }: DocumentRecentListKeyParams) =>
+    [...documentKeys.all, "recentList", workspaceId] as const,
   detail: ({ workspaceId, documentId }: DocumentDetailKeyParams) =>
     [...documentKeys.all, "detail", workspaceId, documentId] as const,
   // 문서 상세 키 아래에 둬서, 상세를 무효화하면 확인 대상도 함께 다시 받아요
