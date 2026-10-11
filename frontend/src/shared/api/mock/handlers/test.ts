@@ -1,7 +1,6 @@
 import { GetCsrfTokenResponseDto, GetMeResponseDto } from "@api/dto/auth";
 import { GetChatMessagesResponseDto } from "@api/dto/chatMessage";
 import { PostDocumentGenerationJobRetryResponseDto } from "@api/dto/documentGenerationJob";
-import { GetNotionConnectionResponseDto } from "@api/dto/notionConnection";
 import {
   GetChatSessionsResponseDto,
   PostChatSessionResponseDto,
@@ -69,7 +68,6 @@ import { confirmDocumentApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/d
 import { getWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitation";
 import { createSearchConversationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations";
 import { createSearchQuestionApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions";
-import { getNotionConnectionApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/notionConnection";
 import { issueWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations";
 import { reissueWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations/reissue";
 import { retryDocumentGenerationJobApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documentGenerationJobs/[jobId]/retry";
@@ -87,7 +85,6 @@ import { getCurrentRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceI
 import { HTTP_ERROR_TYPE } from "@api/httpClient/error";
 import { csrfTokenResponse, meResponse } from "@api/mock/responses/auth";
 import { documentGenerationJobRetryResponse } from "@api/mock/responses/documentGenerationJob";
-import { notionConnectionResponse } from "@api/mock/responses/notionConnection";
 import { chatMessagesResponse } from "@api/mock/responses/chatMessage";
 import {
   chatSessionResponse,
@@ -518,14 +515,6 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
     });
   });
 
-  describe("Notion 연결", () => {
-    it("GET /api/v1/workspaces/:workspaceId/notion-connection은 notionConnectionResponse를 돌려준다", async () => {
-      await expect(getNotionConnectionApi(WORKSPACE_ID)).resolves.toEqual(
-        new GetNotionConnectionResponseDto(notionConnectionResponse),
-      );
-    });
-  });
-
   describe("대화", () => {
     it("GET /api/v1/workspaces/:workspaceId/conversations는 chatSessionsResponse를 돌려준다", async () => {
       await expect(getChatSessionsApi(WORKSPACE_ID)).resolves.toEqual(
@@ -603,7 +592,9 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
             ...CONTROL_PROOF,
           },
         }),
-      ).resolves.toEqual(new PostRecordingResponseDto(recordingStartResponse));
+      ).resolves.toEqual(
+        new PostRecordingResponseDto(recordingStartResponse, 201),
+      );
     });
 
     it("GET /api/v1/workspaces/:workspaceId/recordings/current는 currentRecordingResponse를 돌려준다", async () => {

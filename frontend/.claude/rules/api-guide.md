@@ -16,6 +16,7 @@ API 관련 코드는 한곳에서 계층적으로 관리해야 하므로 모두 
   - e.g. `GET /api/v1/users/[id]` → `src/shared/api/fetch/api/v1/users/[id]/index.ts`
   - 폴더 이름의 `fetch`는 네이티브 fetch API가 아니라 **요청 함수**를 뜻함. 실제 요청은 `httpClient/`의 인스턴스로 보냄.
   - 예외: SSE 응답(`Accept: text/event-stream`)을 받는 요청은 axios가 브라우저에서 응답 본문을 조각 단위로 읽지 못하므로 `httpClient` 대신 `sse/requestSseStream`으로 보냄. DTO 하나를 반환하는 대신 `requestSseStream`이 내는 이벤트를 `for await`로 받아 이벤트 DTO로 바꿔 하나씩 내는 async generator로 작성하고, 이름은 다른 요청 함수와 같은 규칙(e.g. `createSearchConversationApi`)을 따름. 스트림을 받기 전 실패 응답은 `requestSseStream`이 상태 코드와 서버 오류 코드를 담은 `SseRequestError`로 throw하므로 요청 함수에서 따로 오류 클래스를 만들지 않음. 스트림을 받은 뒤 실패는 이벤트로 전달.
+  - 같은 리소스 아래 여러 SSE 엔드포인트가 함께 쓰는 도메인 코드(이벤트 이름을 DTO로 바꾸는 변환, 끝 이벤트를 보고 반환·throw를 정하는 판정과 그 오류 클래스)는 경로상 공통 부모 엔드포인트의 `index.ts`에 함께 export하고, 테스트도 그 폴더의 `test.ts`에 둠. 이벤트 이름을 알아야 해서 `sse/`에 둘 수 없고, `dto/`를 써야 해서 `shared/utils`에 둘 수 없기 때문. (e.g. 탐색 첫 질문 `…/search/conversations/index.ts`의 `toSearchStreamEvent`·`relaySearchAnswerUntilEnd`를 후속 질문 요청 함수와 두 뮤테이션이 import)
 - `queryKey/` — 쿼리 키는 뮤테이션에서도 쓰이므로 별도 폴더로 분리, `user.ts`처럼 도메인별 파일로 관리.
 - `queries/`, `mutations/`, `suspense/`, `prefetch/` — 쿼리·뮤테이션·서스펜스·프리페치 훅을 각각 둠. 작성 규칙은 `.claude/rules/query-hooks.md` 참고.
 - `mock/` — 백엔드 연동 전 msw로 응답을 대신하는 mock API. 작성 규칙은 아래 「API mock」 참고.

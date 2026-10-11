@@ -1,4 +1,4 @@
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -11,11 +11,20 @@ import {
   SearchStreamProgressDto,
   SearchStreamStoppedDto,
 } from "@api/dto/search";
-import { searchAnswerStreamResponse } from "@api/mock/responses/search";
+import { createSearchQuestionApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions";
+import {
+  searchAnswerStreamResponse,
+  searchQuestionAnswerStreamResponse,
+} from "@api/mock/responses/search";
 import { mockServer } from "@api/mock/server";
 import { SseRequestError } from "@api/sse/requestSseStream";
 
-import { createSearchConversationApi } from ".";
+import {
+  createSearchConversationApi,
+  relaySearchAnswerUntilEnd,
+  SearchAnswerDisconnectedError,
+  SearchAnswerFailedError,
+} from ".";
 
 const WORKSPACE_ID = 1;
 const SEARCH_CONVERSATIONS_PATH =
@@ -134,14 +143,14 @@ describe("createSearchConversationApi", () => {
     ]);
   });
 
-  // SEARCH-R6 409 중복 거절
-  it("[SEARCH-R6] accepted 전 409는 상태 코드와 서버 오류 코드를 담아 throw한다", async () => {
-    respondWithError(409, "SEARCH_REQUEST_CONFLICT");
+  // requestId 충돌 409 (API 명세 · 첫 질문)
+  it("accepted 전 409는 상태 코드와 서버 오류 코드를 담아 throw한다", async () => {
+    respondWithError(409, "REQUEST_ID_CONFLICT");
 
     const error = await catchSearchError();
 
     expect(error).toBeInstanceOf(SseRequestError);
-    expect(error).toMatchObject({ status: 409, code: "SEARCH_REQUEST_CONFLICT" });
+    expect(error).toMatchObject({ status: 409, code: "REQUEST_ID_CONFLICT" });
   });
 
   // SEARCH-R4 accepted 전 실패
@@ -154,8 +163,8 @@ describe("createSearchConversationApi", () => {
     expect(error).toMatchObject({ status: 403, code: "WORKSPACE_ACCESS_DENIED" });
   });
 
-  // SEARCH-R4 accepted 뒤의 실패는 HTTP 오류가 아니라 이벤트로 와요
-  it("[SEARCH-R4] accepted 뒤 failed 이벤트는 throw하지 않고 그대로 낸다", async () => {
+  // SEARCH-R5 accepted 뒤의 실패는 HTTP 오류가 아니라 이벤트로 와요
+  it("[SEARCH-R5] accepted 뒤 failed 이벤트는 throw하지 않고 그대로 낸다", async () => {
     const delta = { answerMessageId: ANSWER_MESSAGE_ID, text: "DB는 " };
     const failed = {
       answerMessageId: ANSWER_MESSAGE_ID,
@@ -307,5 +316,298 @@ describe("createSearchConversationApi", () => {
 
     await expect(receiveUntilCompleted()).resolves.toBe(ANSWER_MESSAGE_ID);
     await vi.waitFor(() => expect(cancel).toHaveBeenCalled());
+  });
+});
+
+// 첫 질문 mock의 대화 ID와 다른 값이어야 후속 질문 경로의 값이 드러나요
+const CONVERSATION_ID = 200;
+
+interface CompletedAnswerEventsParams {
+  conversationId: number;
+  questionMessageId: number;
+  answerMessageId: number;
+  stages: ("SEARCHING" | "GENERATING")[];
+  deltas: string[];
+  evidences: (typeof searchAnswerStreamResponse)["evidences"];
+}
+
+/** mock 응답이 정상 완료될 때 도착하는 이벤트를 앱 모양으로 바꿔요 */
+const toCompletedAnswerEvents = ({
+  conversationId,
+  questionMessageId,
+  answerMessageId,
+  stages,
+  deltas,
+  evidences,
+}: CompletedAnswerEventsParams) => [
+  {
+    event: "accepted",
+    data: new SearchStreamAcceptedDto({
+      conversationId,
+      questionMessageId,
+      answerMessageId,
+    }),
+  },
+  ...stages.map((stage) => ({
+    event: "progress",
+    data: new SearchStreamProgressDto({ stage }),
+  })),
+  ...deltas.map((text) => ({
+    event: "delta",
+    data: new SearchStreamDeltaDto({ answerMessageId, text }),
+  })),
+  {
+    event: "evidence",
+    data: new SearchStreamEvidenceDto({ answerMessageId, items: evidences }),
+  },
+  {
+    event: "completed",
+    data: new SearchStreamCompletedDto({ answerMessageId, status: "COMPLETED" }),
+  },
+];
+
+/** onEvent가 받은 이벤트를 받은 순서대로 꺼내요 */
+const toReceivedEvents = (onEvent: ReturnType<typeof vi.fn>) =>
+  onEvent.mock.calls.map(([event]) => event);
+
+describe("relaySearchAnswerUntilEnd", () => {
+  // SEARCH-R1 문서 근거 답변 · API 명세 첫 질문
+  it("[SEARCH-R1] 첫 질문 스트림의 이벤트를 도착 순서대로 onEvent로 넘기고 completed의 data를 반환한다", async () => {
+    const onEvent = vi.fn();
+
+    const result = await relaySearchAnswerUntilEnd({
+      stream: createSearchConversationApi({
+        workspaceId: WORKSPACE_ID,
+        body: QUESTION,
+      }),
+      onEvent,
+    });
+
+    expect(toReceivedEvents(onEvent)).toEqual(
+      toCompletedAnswerEvents(searchAnswerStreamResponse),
+    );
+    expect(result).toEqual(
+      new SearchStreamCompletedDto({
+        answerMessageId: searchAnswerStreamResponse.answerMessageId,
+        status: "COMPLETED",
+      }),
+    );
+  });
+
+  // SEARCH-R1 문서 근거 답변 · API 명세 후속 질문
+  it("[SEARCH-R1] 후속 질문 스트림도 이벤트를 도착 순서대로 onEvent로 넘기고 completed의 data를 반환한다", async () => {
+    const onEvent = vi.fn();
+
+    const result = await relaySearchAnswerUntilEnd({
+      stream: createSearchQuestionApi({
+        workspaceId: WORKSPACE_ID,
+        conversationId: CONVERSATION_ID,
+        body: QUESTION,
+      }),
+      onEvent,
+    });
+
+    expect(toReceivedEvents(onEvent)).toEqual(
+      toCompletedAnswerEvents({
+        ...searchQuestionAnswerStreamResponse,
+        conversationId: CONVERSATION_ID,
+      }),
+    );
+    expect(result).toEqual(
+      new SearchStreamCompletedDto({
+        answerMessageId: searchQuestionAnswerStreamResponse.answerMessageId,
+        status: "COMPLETED",
+      }),
+    );
+  });
+
+  // SEARCH-R5 답변 실패 · API 명세 failed 이벤트
+  it("[SEARCH-R5] accepted 뒤 failed 이벤트는 onEvent로 넘긴 뒤 answerMessageId와 code를 담은 SearchAnswerFailedError로 throw한다", async () => {
+    const failed = {
+      answerMessageId: ANSWER_MESSAGE_ID,
+      status: "FAILED",
+      code: "LLM_STREAM_FAILED",
+    } as const;
+    respondWithSseChunks([
+      toFrame("accepted", ACCEPTED),
+      toFrame("failed", failed),
+    ]);
+    const onEvent = vi.fn();
+
+    const error = await relaySearchAnswerUntilEnd({
+      stream: createSearchConversationApi({
+        workspaceId: WORKSPACE_ID,
+        body: QUESTION,
+      }),
+      onEvent,
+    }).catch((caught: unknown) => caught);
+
+    expect(toReceivedEvents(onEvent)).toEqual([
+      { event: "accepted", data: new SearchStreamAcceptedDto(ACCEPTED) },
+      { event: "failed", data: new SearchStreamFailedDto(failed) },
+    ]);
+    expect(error).toBeInstanceOf(SearchAnswerFailedError);
+    expect(error).toMatchObject({
+      answerMessageId: ANSWER_MESSAGE_ID,
+      code: "LLM_STREAM_FAILED",
+    });
+  });
+
+  // SEARCH-R4 질문 전송 실패 · API 명세 첫 질문 403
+  it("[SEARCH-R4] accepted 전 실패 응답은 onEvent를 부르지 않고 SseRequestError를 그대로 throw한다", async () => {
+    respondWithError(403, "WORKSPACE_ACCESS_DENIED");
+    const onEvent = vi.fn();
+
+    const error = await relaySearchAnswerUntilEnd({
+      stream: createSearchConversationApi({
+        workspaceId: WORKSPACE_ID,
+        body: QUESTION,
+      }),
+      onEvent,
+    }).catch((caught: unknown) => caught);
+
+    expect(onEvent).not.toHaveBeenCalled();
+    expect(error).toBeInstanceOf(SseRequestError);
+    expect(error).toMatchObject({ status: 403, code: "WORKSPACE_ACCESS_DENIED" });
+  });
+
+  // SEARCH-R7 답변 중지 · API 명세 stopped 이벤트
+  it("[SEARCH-R7] stopped 이벤트는 onEvent로 넘긴 뒤 stopped의 data를 반환한다", async () => {
+    const delta = { answerMessageId: ANSWER_MESSAGE_ID, text: "DB는 " };
+    const stopped = { answerMessageId: ANSWER_MESSAGE_ID, status: "STOPPED" } as const;
+    respondWithSseChunks([
+      toFrame("accepted", ACCEPTED),
+      toFrame("delta", delta),
+      toFrame("stopped", stopped),
+    ]);
+    const onEvent = vi.fn();
+
+    const result = await relaySearchAnswerUntilEnd({
+      stream: createSearchConversationApi({
+        workspaceId: WORKSPACE_ID,
+        body: QUESTION,
+      }),
+      onEvent,
+    });
+
+    expect(toReceivedEvents(onEvent)).toEqual([
+      { event: "accepted", data: new SearchStreamAcceptedDto(ACCEPTED) },
+      { event: "delta", data: new SearchStreamDeltaDto(delta) },
+      { event: "stopped", data: new SearchStreamStoppedDto(stopped) },
+    ]);
+    expect(result).toEqual(new SearchStreamStoppedDto(stopped));
+  });
+
+  // SEARCH-R8 이어 보기 · 화면을 떠나면 스트림만 끊고 실패로 보지 않음
+  it("[SEARCH-R8] 요청을 취소하면 실패 없이 null을 반환한다", async () => {
+    const controller = new AbortController();
+    // accepted를 받자마자 화면을 떠난 상황이에요
+    const onEvent = vi.fn(() => controller.abort());
+
+    const result = await relaySearchAnswerUntilEnd({
+      stream: createSearchConversationApi({
+        workspaceId: WORKSPACE_ID,
+        body: QUESTION,
+        signal: controller.signal,
+      }),
+      onEvent,
+      signal: controller.signal,
+    });
+
+    expect(toReceivedEvents(onEvent)).toEqual([
+      { event: "accepted", data: expect.any(SearchStreamAcceptedDto) },
+    ]);
+    expect(result).toBeNull();
+  });
+
+  // SEARCH-R8 이어 보기(재연결 전까지 실패로 처리) · #580 TODO
+  it("[SEARCH-R8] 끝 이벤트 없이 닫힌 스트림은 취소가 아니면 SearchAnswerDisconnectedError로 throw한다", async () => {
+    const delta = { answerMessageId: ANSWER_MESSAGE_ID, text: "DB는 " };
+    respondWithSseChunks([toFrame("accepted", ACCEPTED), toFrame("delta", delta)]);
+    const onEvent = vi.fn();
+
+    const error = await relaySearchAnswerUntilEnd({
+      stream: createSearchConversationApi({
+        workspaceId: WORKSPACE_ID,
+        body: QUESTION,
+      }),
+      onEvent,
+    }).catch((caught: unknown) => caught);
+
+    expect(toReceivedEvents(onEvent)).toEqual([
+      { event: "accepted", data: new SearchStreamAcceptedDto(ACCEPTED) },
+      { event: "delta", data: new SearchStreamDeltaDto(delta) },
+    ]);
+    expect(error).toBeInstanceOf(SearchAnswerDisconnectedError);
+  });
+
+  // SEARCH-R8 이어 보기 · 질문을 보내자마자 화면을 떠나도 실패로 보지 않음
+  it("[SEARCH-R8] 응답을 기다리는 중에 abort하면 실패 없이 null을 반환한다", async () => {
+    let resolveRequestArrived = () => {};
+    const requestArrived = new Promise<void>((resolve) => {
+      resolveRequestArrived = resolve;
+    });
+    mockServer.use(
+      http.post(SEARCH_CONVERSATIONS_PATH, async () => {
+        resolveRequestArrived();
+        await delay("infinite");
+        return new HttpResponse(null);
+      }),
+    );
+    const controller = new AbortController();
+    const onEvent = vi.fn();
+
+    const result = relaySearchAnswerUntilEnd({
+      stream: createSearchConversationApi({
+        workspaceId: WORKSPACE_ID,
+        body: QUESTION,
+        signal: controller.signal,
+      }),
+      onEvent,
+      signal: controller.signal,
+    });
+    await requestArrived;
+    controller.abort();
+
+    await expect(result).resolves.toBeNull();
+    expect(onEvent).not.toHaveBeenCalled();
+  });
+
+  // SEARCH-R8 이어 보기 · 보내기 전에 이미 화면을 떠난 경우
+  it("[SEARCH-R8] 이미 취소된 signal로 보내면 실패 없이 null을 반환한다", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const onEvent = vi.fn();
+
+    const result = await relaySearchAnswerUntilEnd({
+      stream: createSearchConversationApi({
+        workspaceId: WORKSPACE_ID,
+        body: QUESTION,
+        signal: controller.signal,
+      }),
+      onEvent,
+      signal: controller.signal,
+    });
+
+    expect(result).toBeNull();
+    expect(onEvent).not.toHaveBeenCalled();
+  });
+
+  // 취소 판정이 다른 오류까지 삼키지 않도록 지키는 테스트
+  it("onEvent가 던진 오류는 취소로 바꾸지 않고 그대로 전달한다", async () => {
+    const callbackError = new Error("화면 상태를 바꾸지 못했어요");
+    const onEvent = vi.fn(() => {
+      throw callbackError;
+    });
+
+    const error = await relaySearchAnswerUntilEnd({
+      stream: createSearchConversationApi({
+        workspaceId: WORKSPACE_ID,
+        body: QUESTION,
+      }),
+      onEvent,
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBe(callbackError);
   });
 });

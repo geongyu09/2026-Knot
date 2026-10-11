@@ -3,6 +3,7 @@ import useNavigateToRecording from "@hooks/domain/recording/useNavigateToRecordi
 import useRecordingState from "@hooks/domain/recording/useRecordingState";
 import useRecordingControl from "@hooks/domain/recording/useRecordingControl";
 import useRecordingElapsedTime from "@hooks/domain/recording/useRecordingElapsedTime";
+import useRecordingStartRefusedDialog from "@hooks/domain/recording/useRecordingStartRefusedDialog";
 import { PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { formatRecordingTime } from "@utils/formatRecordingTime";
 import { useEffect } from "react";
@@ -12,7 +13,7 @@ import { useMatch, useParams } from "react-router";
  * 독의 회의 녹음(마이크) 슬롯을 다룹니다.
  *
  * 마이크를 누르면 녹음 화면에 들어가기 전에 마이크 권한을 받고 서버에 녹음을 열어 시작한 뒤 녹음 화면으로 가요.
- * 권한을 받지 못하면 [다시 시도]/[닫기] 모달을 띄우고, 서버가 시작을 거절하면 안내 없이 지금 화면에 남아요.
+ * 권한을 받지 못하면 [다시 시도]/[닫기] 모달을, 서버가 시작을 거절하면 [닫기]/[새로고침] 모달을 띄워요.
  * 녹음 화면에서는 갈 곳이 없어 마이크를 숨겨요.
  *
  * 녹음 화면이 아닌 곳에서 녹음이 이어지고 있으면 마이크 대신 녹음 칩을 보여줘요.
@@ -26,6 +27,7 @@ export const useDockRecording = () => {
   const isRecordingPageActive = useMatch(PATH_ROUTE.RECORDING) !== null;
   const { navigateToRecording } = useNavigateToRecording();
   const { openMicrophoneUnavailableDialog } = useMicrophoneUnavailableDialog();
+  const { openRecordingStartRefusedDialog } = useRecordingStartRefusedDialog();
   const { status, isRecordingActive, isMicrophoneLost, clearMicrophoneLost } =
     useRecordingState();
   const { elapsedSeconds } = useRecordingElapsedTime();
@@ -64,7 +66,11 @@ export const useDockRecording = () => {
       openMicrophoneUnavailableDialog({ onRetry: handleMicClick });
       return;
     }
-    if (result === "failed") return;
+    if (result === "refused") {
+      openRecordingStartRefusedDialog();
+      return;
+    }
+    if (result !== "started") return;
 
     navigateToRecording({ workspaceId });
   };
