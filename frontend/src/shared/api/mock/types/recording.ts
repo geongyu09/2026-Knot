@@ -1,11 +1,51 @@
 /** 녹음 세션 상태 */
 export type RecordingSessionStatus = "RECORDING" | "PAUSED" | "ENDED";
 
+/** 현재 녹음의 화면용 종합 상태 */
+export type CurrentRecordingStatus =
+  "RECORDING" | "PAUSED" | "ENDED" | "PROCESSING" | "FAILED";
+
+export interface CurrentRecordingResponse {
+  recordingId: number;
+  status: CurrentRecordingStatus;
+  /** ISO 8601 */
+  startedAt: string;
+  /** 조회 시점까지 누적 녹음 시간(ms) */
+  elapsedMillis: number;
+}
+
 export interface RecordingStartResponse {
   recordingId: number;
   status: RecordingSessionStatus;
   /** ISO 8601 */
   startedAt: string;
+}
+
+/** 화면용 종합 상태 */
+export type RecordingStatus =
+  RecordingSessionStatus | "PROCESSING" | "COMPLETED" | "NO_CONTENT" | "FAILED";
+
+/** 전사·문서 생성 작업의 상태 */
+export type RecordingJobStatus =
+  "NOT_STARTED" | "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+
+export interface RecordingDetailResponse {
+  recordingId: number;
+  status: RecordingStatus;
+  sessionStatus: RecordingSessionStatus;
+  audioUploadStatus: "NOT_STARTED" | "PENDING" | "COMPLETED" | "FAILED";
+  /** ISO 8601 */
+  startedAt: string;
+  /** 끝나기 전이면 null */
+  endedAt: string | null;
+  /** 끝나기 전이면 null */
+  durationMillis: number | null;
+  transcriptionStatus: RecordingJobStatus;
+  documentGenerationStatus: RecordingJobStatus;
+  /** 문서 생성 작업이 없으면 null */
+  documentGenerationJobId: number | null;
+  failureStage: "AUDIO_UPLOAD" | "TRANSCRIPTION" | "DOCUMENT_GENERATION" | null;
+  failureReason: string | null;
 }
 
 export interface RecordingPauseResponse {
