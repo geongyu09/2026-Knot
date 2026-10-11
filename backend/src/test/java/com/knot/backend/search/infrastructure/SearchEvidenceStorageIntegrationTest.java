@@ -137,8 +137,8 @@ class SearchEvidenceStorageIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {-1, 0, 4})
-    @DisplayName("1부터 3까지 이외의 순위는 거절한다")
+    @ValueSource(ints = {-1, 0})
+    @DisplayName("양수가 아닌 근거 순위는 거절한다")
     void save_failure_invalidRank(int rank) {
         // when & then
         assertThatExceptionOfType(DataIntegrityViolationException.class).isThrownBy(
@@ -148,6 +148,25 @@ class SearchEvidenceStorageIntegrationTest {
                         rank
                 )
         );
+    }
+
+    @Test
+    @DisplayName("카드 세 개 제한과 별개로 큰 실제 근거 순위를 저장한다")
+    void save_success_rankBeyondCards() {
+        messages.saveEvidence(
+                answerId,
+                documentId,
+                40000
+        );
+        assertThat(
+                jdbc.sql("SELECT rank FROM search_evidences WHERE message_id = :id")
+                        .param(
+                                "id",
+                                answerId
+                        )
+                        .query(Integer.class)
+                        .single()
+        ).isEqualTo(40000);
     }
 
     @Test
