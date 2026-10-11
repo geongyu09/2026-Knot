@@ -33,6 +33,11 @@ public enum SearchErrorCode implements ErrorCode {
             "SEARCH_ACCESS_DENIED",
             "탐색 대화에 접근할 수 없습니다"
     ),
+    ANSWER_NOT_FOUND(
+            ErrorCategory.NOT_FOUND,
+            "ANSWER_NOT_FOUND",
+            "탐색 답변을 찾을 수 없습니다"
+    ),
     CONVERSATION_NOT_FOUND(
             ErrorCategory.NOT_FOUND,
             "CONVERSATION_NOT_FOUND",
