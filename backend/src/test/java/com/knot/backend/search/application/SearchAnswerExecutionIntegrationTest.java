@@ -370,7 +370,8 @@ class SearchAnswerExecutionIntegrationTest {
         });
         worker.execute(accepted.answerMessageId());
         assertThat(status()).isEqualTo("COMPLETED");
-        assertThat(content()).contains("녹음");
+        assertThat(content()).startsWith("현재 검색 가능한 회의 문서에서는 해당 내용을 확인하지 못했습니다.")
+                .contains("녹음");
         assertThat(evidenceCount()).isZero();
         assertThat(
                 jdbc.sql("SELECT excluded_count FROM search_answer_executions")
