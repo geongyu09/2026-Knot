@@ -158,8 +158,8 @@ describe("createSearchConversationApi", () => {
     expect(error).toMatchObject({ status: 403, code: "WORKSPACE_ACCESS_DENIED" });
   });
 
-  // SEARCH-R4 accepted 뒤의 실패는 HTTP 오류가 아니라 이벤트로 와요
-  it("[SEARCH-R4] accepted 뒤 failed 이벤트는 throw하지 않고 그대로 낸다", async () => {
+  // SEARCH-R5 accepted 뒤의 실패는 HTTP 오류가 아니라 이벤트로 와요
+  it("[SEARCH-R5] accepted 뒤 failed 이벤트는 throw하지 않고 그대로 낸다", async () => {
     const delta = { answerMessageId: ANSWER_MESSAGE_ID, text: "DB는 " };
     const failed = {
       answerMessageId: ANSWER_MESSAGE_ID,
