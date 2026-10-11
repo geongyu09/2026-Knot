@@ -16,6 +16,7 @@ import {
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { useRecordingStore } from "@store/recordingStore";
+import { getRecordingStartProof } from "@utils/recordingControlProof";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import WorkspaceDock from ".";
@@ -452,6 +453,76 @@ describe("WorkspaceDock", () => {
 
       expect(getUserMedia).not.toHaveBeenCalled();
       expect(router.state.location.pathname).toBe(RECORDING_PATH);
+    });
+
+    describe("서버에 녹음을 열 때", () => {
+      const START_PATH = "*/api/v1/workspaces/:workspaceId/recordings";
+      const START_REFUSED = "녹음을 시작할 수 없어요";
+
+      type StartResponse = () => Response | Promise<Response>;
+
+      /** 시작 요청을 차례로 응답하고, 요청마다 보낸 requestId를 모아요 */
+      const respondStart = (...responses: StartResponse[]) => {
+        const requestIds: string[] = [];
+        mockServer.use(
+          http.post(START_PATH, async ({ request }) => {
+            const { requestId } = (await request.json()) as {
+              requestId: string;
+            };
+            requestIds.push(requestId);
+
+            return responses[requestIds.length - 1]();
+          }),
+        );
+
+        return requestIds;
+      };
+
+      const conflict = (code: string) => () =>
+        HttpResponse.json({ code }, { status: 409 });
+
+      const expectRefusedInPlace = (
+        router: ReturnType<typeof renderDock>["router"],
+      ) => {
+        expect(
+          screen.getByRole("dialog", { name: START_REFUSED }),
+        ).toBeInTheDocument();
+        expect(useRecordingStore.getState().status).toBe("idle");
+        expect(useRecordingStore.getState().analyser).toBeNull();
+        expect(router.state.location.pathname).toBe(HOME_PATH);
+      };
+
+      beforeEach(() => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+      });
+
+      it.each([
+        "ACTIVE_RECORDING_ALREADY_EXISTS",
+        "RECORDING_START_REQUEST_CONFLICT",
+      ])(
+        "409(%s)면 마이크를 끄고 모달을 띄운 뒤 시작 증명을 남긴다",
+        async (code) => {
+          const requestIds = respondStart(conflict(code));
+          const { router } = renderDock();
+
+          await clickMic();
+
+          await waitFor(() => expectRefusedInPlace(router));
+          expect(getRecordingStartProof().requestId).toBe(requestIds[0]);
+        },
+      );
+
+      it("모달의 닫기는 모달만 닫고 제자리에 남는다", async () => {
+        respondStart(conflict("ACTIVE_RECORDING_ALREADY_EXISTS"));
+        const { router } = renderDock();
+        await clickMic();
+        await screen.findByRole("dialog", { name: START_REFUSED });
+
+        fireEvent.click(screen.getByRole("button", { name: "닫기" }));
+
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+        expect(router.state.location.pathname).toBe(HOME_PATH);
+      });
     });
 
     describe("녹음 화면이 아닌 곳에서 녹음 중이면", () => {
