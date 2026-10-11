@@ -223,16 +223,22 @@ describe("TranscriptPanel", () => {
 
         return new HttpResponse(null, { status: 500 });
       }),
+      // 문서 상세의 실패가 화면에 반영된 뒤에 원문이 오게 늦춰요. 그래야 원문이 그려진 화면이 마지막 상태예요
+      http.get(TRANSCRIPT_REQUEST, async () => {
+        await delay(50);
+
+        return HttpResponse.json(transcriptResponse);
+      }),
     );
 
     renderTranscriptPanel();
 
-    const lines = await findLines();
     const panel = within(await findLoadedPanel());
 
-    await waitFor(() => expect(documentRequestCount).toBe(1));
-
-    expect(lines).toHaveLength(expectedTranscript.segments.length);
+    expect(documentRequestCount).toBe(1);
+    expect(panel.getAllByRole("listitem")).toHaveLength(
+      expectedTranscript.segments.length,
+    );
     expect(
       panel.getByText(
         formatDurationFromSeconds(expectedTranscript.recordingDurationSeconds),
