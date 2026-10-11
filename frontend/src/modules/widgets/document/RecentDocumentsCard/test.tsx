@@ -32,7 +32,7 @@ const WORKSPACE_ID = "1";
 const DOCUMENTS_REQUEST = "*/api/v1/workspaces/:workspaceId/documents";
 const CARD_TITLE = "최근 추가된 문서";
 const LOADING_LABEL = "최근 추가된 문서를 불러오고 있어요";
-const LOAD_FAILED_NOTICE = "문서를 불러오지 못했어요. 다시 시도해 주세요.";
+const LOAD_FAILED_NOTICE = "목록을 불러오지 못했어요. 다시 시도해 주세요.";
 
 // 어느 문서로 갔는지 확인할 수 있게 문서 보기 경로에 표시만 하는 화면을 둬요
 function DocumentViewStub() {

@@ -11,10 +11,9 @@ interface RecentDocumentsLoadFailedProps {
 }
 
 /**
- * 최근 문서를 불러오지 못했을 때 보여 주는 「최근 추가된 문서」 카드(ERR-09).
+ * 최근 문서를 불러오지 못했을 때 보여 주는 「최근 추가된 문서」 카드. 피그마 「홈/최근 추가된 문서 불러오기 실패」예요(ERR-09).
  *
  * 홈 전체가 아니라 이 카드만 실패한 것이라, 제목과 「전체 보기」는 그대로 두고 행 자리에만 안내를 남겨요.
- * 시안이 없어 안내는 문서가 없을 때의 안내(`RecentDocumentsEmpty`)와 같은 자리에 뒀어요.
  *
  * 카드의 틀과 제목까지 여기서 그려요. 문서를 받은 화면(`RecentDocumentsCard`)과 따로 바뀌는 일이 많아, 틀을 함께 쓰지 않아요.
  */
@@ -31,7 +30,7 @@ export default function RecentDocumentsLoadFailed({
       </Header>
       <InlineErrorWrapper>
         <InlineError
-          message="문서를 불러오지 못했어요. 다시 시도해 주세요."
+          message="목록을 불러오지 못했어요. 다시 시도해 주세요."
           onRetry={onRetry}
         />
       </InlineErrorWrapper>
@@ -66,11 +65,11 @@ const Title = styled.h2`
   ${({ theme }) => theme.text.label01};
 `;
 
-/** 문서가 없을 때의 안내와 같은 자리: 높이 160px 영역의 가운데 */
+/** 피그마 Error: 제목 줄 아래 남는 영역(360x234) 전체의 가운데에 안내를 놓아요 */
 const InlineErrorWrapper = styled.div`
   display: flex;
-  flex-shrink: 0;
+  flex: 1;
   align-items: center;
   justify-content: center;
-  height: 10rem; /* 160px */
+  min-height: 0;
 `;

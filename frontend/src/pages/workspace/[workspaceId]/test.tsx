@@ -68,7 +68,7 @@ describe("WorkspaceHomePage", () => {
     renderHomePage();
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "문서를 불러오지 못했어요. 다시 시도해 주세요.",
+      "목록을 불러오지 못했어요. 다시 시도해 주세요.",
     );
     expect(await findCardTitle(RECENT_DOCUMENTS_TITLE)).toBeInTheDocument();
     expect(await findCardTitle(CURRENT_RECORDING_TITLE)).toBeInTheDocument();
