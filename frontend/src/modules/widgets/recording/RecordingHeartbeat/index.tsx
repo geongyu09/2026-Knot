@@ -23,10 +23,7 @@ export default function RecordingHeartbeat() {
 
     sendHeartbeat(
       { ...session, ...proof },
-      {
-        onSuccess: ({ elapsedMillis }) => syncElapsedTime(elapsedMillis),
-        onError: () => sendHeartbeatHandler(),
-      },
+      { onSuccess: ({ elapsedMillis }) => syncElapsedTime(elapsedMillis) },
     );
   };
 
