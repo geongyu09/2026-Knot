@@ -840,21 +840,39 @@ class SearchDocumentToolServiceIntegrationTest {
             assertThat(second.get()).contains("둘 공간 비공개")
                     .doesNotContain("첫 공간 비공개");
         }
+    }
+
+    @Test
+    void mcp_failure_foreignDocument() throws Exception {
+        long document = saveDocument(
+                fixtures.saveWorkspace(),
+                "ARCHIVED",
+                "외부",
+                "다른 공간 비공개"
+        );
+        var response = rpc(
+                bearer(scope),
+                "tools/call",
+                readArguments(document)
+        );
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("DOCUMENT_NOT_FOUND")
+                .doesNotContain("다른 공간 비공개");
+    }
+
+    @Test
+    void mcp_failure_tamperedToken() throws Exception {
         assertThat(
                 rpc(
-                        firstToken,
-                        "tools/call",
-                        readArguments(secondDocument)
-                ).body()
-        ).contains("DOCUMENT_NOT_FOUND")
-                .doesNotContain("둘 공간 비공개");
-        assertThat(
-                rpc(
-                        firstToken + "x",
+                        bearer(scope) + "x",
                         "tools/list",
                         "{}"
                 ).statusCode()
         ).isEqualTo(401);
+    }
+
+    @Test
+    void mcp_failure_expiredToken() throws Exception {
         SearchToolScope expired = new SearchToolScope(
                 scope.workspaceId(),
                 scope.memberId(),
@@ -867,14 +885,22 @@ class SearchDocumentToolServiceIntegrationTest {
         );
         assertThat(
                 rpc(
-                        codec.encode(
-                                "knot-search-mcp",
-                                expired
-                        ),
+                        bearer(expired),
                         "tools/list",
                         "{}"
                 ).statusCode()
         ).isEqualTo(401);
+    }
+
+    private String bearer(SearchToolScope value) {
+        return new SearchToolTokenCodec(
+                mapper,
+                properties,
+                clock
+        ).encode(
+                "knot-search-mcp",
+                value
+        );
     }
 
     @Test
