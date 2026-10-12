@@ -6,6 +6,8 @@ import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.domain.SearchAnswerExecution;
 import com.knot.backend.search.domain.SearchConversation;
+import com.knot.backend.search.domain.SearchErrorCode;
+import com.knot.backend.search.domain.SearchException;
 import com.knot.backend.search.domain.SearchEvidence;
 import com.knot.backend.search.domain.SearchMessage;
 import com.knot.backend.search.domain.SearchMessageStatus;
@@ -89,7 +91,7 @@ public class SearchAnswerExecutionService {
         Set<Long> ids = new HashSet<>();
         for (SearchDocumentResult candidate : candidates) {
             if (!ids.add(candidate.documentId())) {
-                throw new IllegalArgumentException("duplicate candidate document");
+                throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
             }
             requireDocument(
                     workspaceId,
@@ -260,9 +262,9 @@ public class SearchAnswerExecutionService {
                 workspaceId,
                 documentId
         )
-                .orElseThrow(() -> new IllegalArgumentException("document is outside workspace"));
+                .orElseThrow(() -> new SearchException(SearchErrorCode.INVALID_SEARCH_STATE));
         if (document.getStatus() != com.knot.backend.document.domain.DocumentStatus.ARCHIVED) {
-            throw new IllegalArgumentException("document is not archived");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
     }
 
@@ -271,13 +273,13 @@ public class SearchAnswerExecutionService {
             Set<Long> candidates
     ) {
         if (ids == null) {
-            throw new IllegalArgumentException("evidence document IDs are required");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         if (new HashSet<>(ids).size() != ids.size()) {
-            throw new IllegalArgumentException("duplicate evidence document");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         if (!candidates.containsAll(ids)) {
-            throw new IllegalArgumentException("evidence document was not retrieved");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
     }
 

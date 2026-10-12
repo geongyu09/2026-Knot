@@ -26,14 +26,17 @@ class SearchDocumentSnippetTest {
     }
 
     @Test
-    @DisplayName("본문에 검색어가 없으면 앞부분을 반환하고 정규식 기호는 문자로 검색한다")
-    void extract_success_literalQueryAndFallback() {
+    void extract_success_noMatchFallback() {
         assertThat(
                 SearchDocumentSnippet.extract(
                         "짧은 본문",
                         "없음"
                 )
         ).isEqualTo("짧은 본문");
+    }
+
+    @Test
+    void extract_success_literalQuery() {
         String content = "앞".repeat(250) + "a+b 결정";
         assertThat(
                 SearchDocumentSnippet.extract(
@@ -41,9 +44,13 @@ class SearchDocumentSnippetTest {
                         "a+b"
                 )
         ).endsWith("a+b 결정");
+    }
+
+    @Test
+    void extract_success_nullQueryFallback() {
         assertThat(
                 SearchDocumentSnippet.extract(
-                        content,
+                        "앞".repeat(250),
                         null
                 )
         ).isEqualTo("앞".repeat(200));

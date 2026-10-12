@@ -1,16 +1,23 @@
+import useMeQuery from "@api/queries/useMeQuery";
 import styled from "@emotion/styled";
 import Divider from "@primitives/ui/Divider";
 
+import LoadingFallback from "./ui/LoadingFallback";
+import { formatRecordingTitle } from "./utils/formatRecordingTitle";
+
 /**
- * 녹음 화면 카드.
+ * 녹음 화면 카드. 제목의 닉네임은 로그인한 회원 정보 조회(`GET /auth/me`) 응답에서 와요.
+ * 응답을 받기 전에는 제목·도움말·안내 자리를 스켈레톤으로 채워요.
  */
 export default function RecordingCard() {
-  const me = "홍길동";
+  const { data: me, isPending } = useMeQuery();
+
+  if (isPending) return <LoadingFallback />;
 
   return (
     <Container>
       <Header>
-        <Title>{me ? `${me} 님의 녹음` : "녹음"}</Title>
+        <Title>{formatRecordingTitle(me?.nickname)}</Title>
         <Help>문서 제목은 녹음이 끝나면 주제별로 자동으로 붙어요.</Help>
       </Header>
 

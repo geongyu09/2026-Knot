@@ -65,8 +65,8 @@ class SearchLlmClientTest {
     }
 
     @Test
-    @DisplayName("공급자의 SSE를 UTF8 delta로 전달하고 DONE 없이 끊긴 스트림은 실패한다")
-    void stream_success_utf8AndFailureOnTruncation() throws Exception {
+    @DisplayName("공급자의 SSE를 UTF8 delta로 전달한다")
+    void stream_success_utf8() throws Exception {
         try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
             server.respond(
                     200,
@@ -91,6 +91,11 @@ class SearchLlmClientTest {
             assertThat(parts).containsExactly("한글 😀");
             assertThat(server.requestBody()).contains("\"stream\":true");
         }
+    }
+
+    @Test
+    @DisplayName("DONE 없이 끊긴 스트림은 실패한다")
+    void stream_failure_truncated() throws Exception {
         try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
             server.respond(
                     200,
@@ -156,6 +161,118 @@ class SearchLlmClientTest {
             ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class);
             assertThat(java.time.Duration.ofNanos(System.nanoTime() - started))
                     .isLessThan(java.time.Duration.ofSeconds(2));
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.MethodSource("invalidStreamEvents")
+    void stream_failure_providerErrors(
+            String event,
+            String code
+    ) throws Exception {
+        try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
+            server.respond(
+                    200,
+                    "data: " + event + "\n\ndata: [DONE]\n\n"
+            );
+            assertThatThrownBy(
+                    () -> client(
+                            server,
+                            http
+                    ).stream(
+                            scope(),
+                            List.of(),
+                            text -> {
+                            }
+                    )
+            ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class)
+                    .hasMessage(code);
+        }
+    }
+
+    private static java.util.stream.Stream<org.junit.jupiter.params.provider.Arguments> invalidStreamEvents() {
+        return java.util.stream.Stream.of(
+                org.junit.jupiter.params.provider.Arguments.of(
+                        "{\"error\":{\"message\":\"provider failed\"}}",
+                        "MODEL_GENERATION_FAILED"
+                ),
+                org.junit.jupiter.params.provider.Arguments.of(
+                        "{\"choices\":[{\"finish_reason\":\"length\",\"delta\":{}}]}",
+                        "INCOMPLETE_MODEL_STREAM"
+                ),
+                org.junit.jupiter.params.provider.Arguments.of(
+                        "{\"choices\":[{\"finish_reason\":\"content_filter\",\"delta\":{}}]}",
+                        "INCOMPLETE_MODEL_STREAM"
+                ),
+                org.junit.jupiter.params.provider.Arguments.of(
+                        "{\"choices\":[{\"delta\":{\"tool_calls\":[]}}]}",
+                        "UNEXPECTED_MODEL_TOOL_CALL"
+                ),
+                org.junit.jupiter.params.provider.Arguments.of(
+                        "{}",
+                        "INVALID_MODEL_RESPONSE"
+                )
+        );
+    }
+
+    @Test
+    void complete_failure_missingChoices() throws Exception {
+        try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
+            server.respond(
+                    200,
+                    "{}"
+            );
+            assertThatThrownBy(
+                    () -> client(
+                            server,
+                            http
+                    ).complete(
+                            scope(),
+                            List.of(),
+                            List.of()
+                    )
+            ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class)
+                    .hasMessage("INVALID_MODEL_RESPONSE");
+        }
+    }
+
+    @Test
+    void evidence_success_requestsStrictJsonSchema() throws Exception {
+        try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
+            server.respond(
+                    200,
+                    "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"{}\"}}]}"
+            );
+            client(
+                    server,
+                    http
+            ).evidence(
+                    scope(),
+                    List.of()
+            );
+            var body = JsonMapper.builder()
+                    .build()
+                    .readTree(server.requestBody());
+            var format = body.path("response_format");
+            assertThat(
+                    format.path("type")
+                            .asString()
+            ).isEqualTo("json_schema");
+            assertThat(
+                    format.path("json_schema")
+                            .path("strict")
+                            .asBoolean()
+            ).isTrue();
+            assertThat(
+                    format.path("json_schema")
+                            .path("schema")
+                            .path("additionalProperties")
+                            .asBoolean(true)
+            ).isFalse();
+            assertThat(
+                    body.path("stream")
+                            .asBoolean(true)
+            ).isFalse();
         }
     }
 

@@ -38,34 +38,44 @@ class SearchGenerationAvailabilityTest {
     }
 
     @Test
-    @DisplayName("worker 비활성 또는 adapter 미연결은 접수 전 unavailable이다")
-    void requireAvailable_failure_disabledOrMissingAdapter() {
+    @DisplayName("worker 비활성은 접수 전 unavailable이다")
+    void requireAvailable_failure_disabled() {
         SearchWorkerProperties properties = new SearchWorkerProperties();
-        ObjectProvider<SearchDocumentRetriever> retrievers = retrieverProvider;
-        ObjectProvider<SearchAnswerGenerator> generators = generatorProvider;
         assertThatExceptionOfType(SearchException.class).isThrownBy(
                 () -> new SearchGenerationAvailability(
                         properties,
-                        retrievers,
-                        generators
-                ).requireAvailable()
-        );
-        properties.setEnabled(true);
-        assertThatExceptionOfType(SearchException.class).isThrownBy(
-                () -> new SearchGenerationAvailability(
-                        properties,
-                        retrievers,
-                        generators
-                ).requireAvailable()
-        );
-        when(retrievers.getIfAvailable()).thenReturn(mock(SearchDocumentRetriever.class));
-        assertThatExceptionOfType(SearchException.class).isThrownBy(
-                () -> new SearchGenerationAvailability(
-                        properties,
-                        retrievers,
-                        generators
+                        retrieverProvider,
+                        generatorProvider
                 ).requireAvailable()
         );
     }
 
+    @Test
+    @DisplayName("검색 adapter 미연결은 접수 전 unavailable이다")
+    void requireAvailable_failure_missingRetriever() {
+        SearchWorkerProperties properties = new SearchWorkerProperties();
+        properties.setEnabled(true);
+        assertThatExceptionOfType(SearchException.class).isThrownBy(
+                () -> new SearchGenerationAvailability(
+                        properties,
+                        retrieverProvider,
+                        generatorProvider
+                ).requireAvailable()
+        );
+    }
+
+    @Test
+    @DisplayName("생성 adapter 미연결은 접수 전 unavailable이다")
+    void requireAvailable_failure_missingGenerator() {
+        SearchWorkerProperties properties = new SearchWorkerProperties();
+        properties.setEnabled(true);
+        when(retrieverProvider.getIfAvailable()).thenReturn(mock(SearchDocumentRetriever.class));
+        assertThatExceptionOfType(SearchException.class).isThrownBy(
+                () -> new SearchGenerationAvailability(
+                        properties,
+                        retrieverProvider,
+                        generatorProvider
+                ).requireAvailable()
+        );
+    }
 }
