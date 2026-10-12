@@ -46,6 +46,8 @@ class SearchSseLoggingMvcTest {
     void stream_failure_realAsyncDispatch(boolean reconnect) throws Exception {
         SearchAnswerSnapshotService snapshots = mock(SearchAnswerSnapshotService.class);
         CountDownLatch initialized = new CountDownLatch(1);
+        CountDownLatch connectionMayStart = new CountDownLatch(1);
+        CountDownLatch snapshotSent = new CountDownLatch(1);
         IllegalStateException failure = new IllegalStateException("private-sql");
         if (reconnect) {
             when(
@@ -69,6 +71,7 @@ class SearchSseLoggingMvcTest {
                     )
             )
                     .thenAnswer(call -> {
+                        snapshotSent.countDown();
                         assertThat(
                                 initialized.await(
                                         5,
@@ -100,6 +103,7 @@ class SearchSseLoggingMvcTest {
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(5);
         executor.initialize();
+        executor.execute(() -> awaitSignal(connectionMayStart));
         SecurityContextHolder.getContext()
                 .setAuthentication(
                         new UsernamePasswordAuthenticationToken(
@@ -158,12 +162,18 @@ class SearchSseLoggingMvcTest {
                     started.getRequest()
                             .isAsyncStarted()
             ).isTrue();
+            connectionMayStart.countDown();
+            awaitInitialSnapshot(
+                    snapshotSent,
+                    reconnect
+            );
             assertThat(
                     started.getResponse()
                             .isCommitted()
             ).isTrue();
             String priorBody = started.getResponse()
                     .getContentAsString();
+            assertThat(priorBody).contains(firstEvent(reconnect));
             initialized.countDown();
             assertThat(started.getAsyncResult(5000)).isSameAs(failure);
             MvcResult completed = mvc.perform(asyncDispatch(started))
@@ -186,9 +196,42 @@ class SearchSseLoggingMvcTest {
                         assertThat(event.getThrowableProxy()).isNull();
                     });
         } finally {
+            connectionMayStart.countDown();
             initialized.countDown();
             executor.shutdown();
             SecurityContextHolder.clearContext();
+        }
+    }
+
+    private void awaitInitialSnapshot(
+            CountDownLatch snapshotSent,
+            boolean reconnect
+    ) {
+        if (!reconnect) {
+            return;
+        }
+        awaitSignal(snapshotSent);
+    }
+
+    private String firstEvent(boolean reconnect) {
+        if (reconnect) {
+            return "event:snapshot";
+        }
+        return "event:accepted";
+    }
+
+    private void awaitSignal(CountDownLatch signal) {
+        try {
+            assertThat(
+                    signal.await(
+                            5,
+                            TimeUnit.SECONDS
+                    )
+            ).isTrue();
+        } catch (InterruptedException exception) {
+            Thread.currentThread()
+                    .interrupt();
+            throw new AssertionError(exception);
         }
     }
 
