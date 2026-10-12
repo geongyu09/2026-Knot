@@ -5,6 +5,7 @@ public enum ErrorCategory {
     UNAUTHORIZED,
     FORBIDDEN,
     NOT_FOUND,
+    METHOD_NOT_ALLOWED,
     CONFLICT,
     TOO_MANY_REQUESTS,
     INTERNAL_SERVER_ERROR,

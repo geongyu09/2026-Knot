@@ -31,6 +31,12 @@ public enum CommonErrorCode implements ErrorCode {
             "요청 경로를 찾을 수 없습니다"
     ),
 
+    METHOD_NOT_ALLOWED(
+            ErrorCategory.METHOD_NOT_ALLOWED,
+            "METHOD_NOT_ALLOWED",
+            "지원하지 않는 요청 메서드입니다"
+    ),
+
     FORBIDDEN(
             ErrorCategory.FORBIDDEN,
             "FORBIDDEN",
