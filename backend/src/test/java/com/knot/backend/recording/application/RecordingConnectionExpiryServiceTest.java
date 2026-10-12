@@ -37,12 +37,12 @@ class RecordingConnectionExpiryServiceTest {
     }
 
     @Test
-    @DisplayName("마지막 신호가 120초 이상 지난 활성 녹음을 정해진 개수만 찾아 녹음마다 회수하고 종료한 수를 돌려준다")
-    void expireDisconnected_success_countsExpired() {
+    @DisplayName("자동 종료 시각이 지난 활성 녹음을 정해진 개수만 찾아 녹음마다 회수하고 종료한 수를 돌려준다")
+    void expireDue_success_countsExpired() {
         // given
         when(
-                recordingSessionRepository.findActiveIdsLastSeenAtOrBefore(
-                        NOW.minusSeconds(120),
+                recordingSessionRepository.findActiveIdsDueAt(
+                        NOW,
                         BATCH_SIZE
                 )
         ).thenReturn(
@@ -55,7 +55,7 @@ class RecordingConnectionExpiryServiceTest {
         when(expiryTransaction.expire(2L)).thenReturn(false);
 
         // when
-        int expiredCount = service.expireDisconnected(BATCH_SIZE);
+        int expiredCount = service.expireDue(BATCH_SIZE);
 
         // then
         assertThat(expiredCount).isEqualTo(1);
@@ -65,11 +65,11 @@ class RecordingConnectionExpiryServiceTest {
 
     @Test
     @DisplayName("한 녹음의 회수가 실패해도 다음 녹음을 계속 회수한다")
-    void expireDisconnected_success_isolatesFailure() {
+    void expireDue_success_isolatesFailure() {
         // given
         when(
-                recordingSessionRepository.findActiveIdsLastSeenAtOrBefore(
-                        NOW.minusSeconds(120),
+                recordingSessionRepository.findActiveIdsDueAt(
+                        NOW,
                         BATCH_SIZE
                 )
         ).thenReturn(
@@ -82,7 +82,7 @@ class RecordingConnectionExpiryServiceTest {
         when(expiryTransaction.expire(2L)).thenReturn(true);
 
         // when
-        int expiredCount = service.expireDisconnected(BATCH_SIZE);
+        int expiredCount = service.expireDue(BATCH_SIZE);
 
         // then
         assertThat(expiredCount).isEqualTo(1);

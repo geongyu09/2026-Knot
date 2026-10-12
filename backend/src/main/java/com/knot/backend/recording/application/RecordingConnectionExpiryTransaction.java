@@ -22,7 +22,7 @@ public class RecordingConnectionExpiryTransaction {
             return false;
         }
         RecordingSession session = found.orElseThrow();
-        if (!session.expireIfDisconnected(
+        if (!session.expireIfDue(
                 clock.instant()
                         .truncatedTo(ChronoUnit.MICROS)
         )) {

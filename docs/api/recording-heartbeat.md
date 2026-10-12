@@ -8,10 +8,12 @@
 - 녹음을 시작한 최초 탭이 RECORDING·PAUSED 동안 30초마다 보낸다.
 - 서버는 마지막 유효 신호(`lastSeenAt`)부터 120초가 지나면 연결이 끊긴 것으로 본다. 판정은 서버 시각으로만 한다.
 - 연결이 끊긴 녹음은 `ENDED`, `endReason=CONNECTION_EXPIRED`, `endedAt = lastSeenAt + 120초`로 확정한다. `lastSeenAt`은 마지막 유효 신호 시각 그대로 둔다.
-- 신호·일시정지·재개·종료·시작 재요청·새 시작이 모두 같은 판정을 먼저 한다. 늦게 도착한 요청은 끊긴 녹음을 되살리지 않는다.
+- 일시정지를 뺀 누적 녹음 시간이 2시간에 닿으면 `ENDED`, `endReason=MAX_DURATION`, `endedAt = 상한에 닿은 시각`으로 확정한다.
+  연결 만료와 상한 중 먼저 닿은 시각으로 끝내고, 두 시각이 같으면 `MAX_DURATION`이다. 종료 15분 전 안내는 FE가 2시간을 상수로 두고 `elapsedMillis`로 계산한다.
+- 신호·일시정지·재개·종료·시작 재요청·새 시작이 모두 같은 판정을 먼저 한다. 늦게 도착한 요청은 끝난 녹음을 되살리지 않는다.
 - 일반 조회(`GET .../recordings/current`, [단건 조회](recording-detail.md))는 생존 신호가 아니다.
-- 신호나 제어 요청이 아예 오지 않는 녹음은 서버 주기 작업이 회수한다([#385](https://github.com/woowacourse-teams/2026-Knot/issues/385)). 기본 1초 간격으로 한 번에 100건씩 찾는다.
-  작업이 늦게 돌아도 종료 시각은 `lastSeenAt + 120초`다. 설정: `RECORDING_CONNECTION_EXPIRY_ENABLED`·`_INTERVAL`·`_BATCH_SIZE`.
+- 요청이 오지 않는 녹음은 서버 주기 작업이 연결 만료와 상한을 함께 회수한다([#385](https://github.com/woowacourse-teams/2026-Knot/issues/385)). 기본 1초 간격으로 한 번에 100건씩 찾는다.
+  작업이 늦게 돌아도 종료 시각은 위에서 정한 시각이다. 설정: `RECORDING_CONNECTION_EXPIRY_ENABLED`·`_INTERVAL`·`_BATCH_SIZE`.
 
 ## 요청
 
@@ -44,11 +46,11 @@
 | 필드 | 설명 |
 | --- | --- |
 | `status` | `RECORDING`, `PAUSED`, `ENDED`, `DISCARDED` |
-| `elapsedMillis` | 일시정지를 뺀 서버 기준 녹음 시간 |
+| `elapsedMillis` | 일시정지를 뺀 서버 기준 녹음 시간. 최대 2시간(`7200000`) |
 | `lastSeenAt` | 서버가 받은 마지막 유효 신호 시각 |
 | `expiresAt` | 이 시각까지 신호가 없으면 연결 만료로 종료된다. 종료된 녹음은 `null` |
 | `endedAt` | 종료 시각. 진행 중이면 `null` |
-| `endReason` | `USER_ENDED`, `CONNECTION_EXPIRED`. 진행 중이거나 이 기능 이전에 종료된 녹음은 `null` |
+| `endReason` | `USER_ENDED`, `CONNECTION_EXPIRED`, `MAX_DURATION`. 진행 중이거나 이 기능 이전에 종료된 녹음은 `null` |
 | `serverNow` | 응답을 만든 서버 시각 |
 
 이미 종료된 녹음에 보낸 신호도 `200`이다. 이때는 `lastSeenAt`을 갱신하지 않고 종료 상태를 그대로 돌려준다. FE는 `status`가 `ENDED`이면 수집을 멈춘다.
@@ -67,12 +69,11 @@
 
 ## 다른 API에 생기는 변화
 
-- 일시정지·재개: 연결이 끊긴 녹음이면 만료 종료를 저장한 뒤 `409 RECORDING_ALREADY_ENDED`를 반환한다.
-- 종료: 연결이 끊긴 녹음이면 요청 시각이 아니라 `lastSeenAt + 120초`를 `endedAt`으로 반환한다.
-- 시작 재요청: 연결이 끊긴 녹음이면 만료를 저장하고 `status=ENDED`인 기존 결과를 반환한다.
-- 새 시작: 다른 Workspace에 남은 본인 녹음도 연결이 끊겼다면 회수한 뒤 시작한다. 살아 있으면 기존처럼 `409 ACTIVE_RECORDING_ALREADY_EXISTS`다.
+- 일시정지·재개: 연결이 끊겼거나 상한에 닿은 녹음이면 종료를 저장한 뒤 `409 RECORDING_ALREADY_ENDED`를 반환한다.
+- 종료: 연결이 끊겼거나 상한에 닿은 녹음이면 요청 시각이 아니라 위 규칙의 종료 시각을 `endedAt`으로 반환한다.
+- 시작 재요청: 연결이 끊겼거나 상한에 닿은 녹음이면 종료를 저장하고 `status=ENDED`인 기존 결과를 반환한다.
+- 새 시작: 다른 Workspace에 남은 본인 녹음도 연결이 끊겼거나 상한에 닿았다면 회수한 뒤 시작한다. 살아 있으면 기존처럼 `409 ACTIVE_RECORDING_ALREADY_EXISTS`다.
 
 ## 이번 범위 밖
 
-- 일시정지를 뺀 누적 2시간 상한(#385 작업 B)
 - 새로고침 뒤 오디오 보존과 수집 재개
