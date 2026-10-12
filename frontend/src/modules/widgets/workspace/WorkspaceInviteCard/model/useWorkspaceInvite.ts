@@ -1,6 +1,6 @@
 import useTimeout from "@hooks/common/useTimeout";
 import useCopyWorkspaceInvite from "@hooks/domain/workspace/useCopyWorkspaceInvite";
-import useNavigateToWorkspaceNotionConnection from "@hooks/domain/workspace/useNavigateToWorkspaceNotionConnection";
+import useNavigateToWorkspaceHome from "@hooks/domain/workspace/useNavigateToWorkspaceHome";
 import useWorkspaceAccessGuard from "@hooks/domain/workspace/useWorkspaceAccessGuard";
 import { useParams } from "react-router";
 
@@ -25,8 +25,7 @@ export const useWorkspaceInvite = () => {
 
   useWorkspaceAccessGuard({ error });
 
-  const { navigateToWorkspaceNotionConnection } =
-    useNavigateToWorkspaceNotionConnection();
+  const { navigateToWorkspaceHome } = useNavigateToWorkspaceHome();
   const { start: startCodeTimeout, isTimedOut: isCodeCopied } = useTimeout({
     timeout: TIMEOUT_DURATION,
   });
@@ -55,7 +54,7 @@ export const useWorkspaceInvite = () => {
   const handleNext = () => {
     if (!workspaceId) return;
 
-    navigateToWorkspaceNotionConnection(workspaceId);
+    navigateToWorkspaceHome({ workspaceId });
   };
 
   return {

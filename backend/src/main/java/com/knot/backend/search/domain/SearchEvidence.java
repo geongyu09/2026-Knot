@@ -25,7 +25,7 @@ public class SearchEvidence {
             int rank
     ) {
         if (rank < 1 || rank > 3) {
-            throw new IllegalArgumentException("evidence rank must be between 1 and 3");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         SearchEvidence evidence = new SearchEvidence();
         evidence.id = SearchEvidenceId.of(

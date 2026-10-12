@@ -5,6 +5,7 @@ import com.knot.backend.recording.domain.RecordingSessionRepository;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.RecordingStatus;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -38,21 +39,32 @@ public class RecordingSessionRepositoryAdapter implements RecordingSessionReposi
     }
 
     @Override
-    public Optional<RecordingSession> findByMemberIdAndRequestId(
+    public Optional<RecordingSession> findByMemberIdAndRequestIdForUpdate(
             long memberId,
             UUID requestId
     ) {
-        return recordingSessionJpaRepository.findByMemberIdAndRequestId(
+        return recordingSessionJpaRepository.findWithLockByMemberIdAndRequestId(
                 memberId,
                 requestId
         );
     }
 
     @Override
-    public boolean existsActiveByMemberId(long memberId) {
-        return recordingSessionJpaRepository.existsByMemberIdAndStatusIn(
+    public List<RecordingSession> findAllActiveByMemberIdForUpdate(long memberId) {
+        return recordingSessionJpaRepository.findAllByMemberIdAndStatusInOrderByIdAsc(
                 memberId,
                 RecordingStatus.ACTIVE_STATUSES
+        );
+    }
+
+    @Override
+    public List<Long> findActiveIdsLastSeenAtOrBefore(
+            Instant threshold,
+            int limit
+    ) {
+        return recordingSessionJpaRepository.findActiveIdsLastSeenAtOrBefore(
+                threshold,
+                limit
         );
     }
 
