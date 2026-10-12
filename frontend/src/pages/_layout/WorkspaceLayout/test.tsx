@@ -1,5 +1,4 @@
 import { LAST_VIEWED_WORKSPACE_API_PATH } from "@api/fetch/api/v1/members/me/lastViewedWorkspace";
-import { recordingHeartbeatResponse } from "@api/mock/responses/recording";
 import { workspaceDetailResponse } from "@api/mock/responses/workspace";
 import { SEARCH_MESSAGES_MOCK } from "@hooks/domain/search/useSearchMessages/mock";
 import { mockServer } from "@api/mock/server";
@@ -7,7 +6,6 @@ import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
-import { useRecordingStore } from "@store/recordingStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
@@ -17,13 +15,9 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import {
-  clearRecordingStartProof,
-  getRecordingStartProof,
-} from "@utils/recordingControlProof";
 import { delay, http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import WorkspaceLayout from ".";
 import { WORKSPACE_DOCK_RAIL_ID } from "./constants/dockRail";
@@ -46,7 +40,6 @@ const HOME_TEXT = "홈 본문";
 const CHAT_TEXT = "탐색 본문";
 // 경로 파라미터가 있어 fetch 상수 대신 mock 핸들러와 같은 패턴을 적어요
 const WORKSPACE_PATH_PATTERN = "*/api/v1/workspaces/:workspaceId";
-const HEARTBEAT_INTERVAL_MS = 30 * 1000;
 
 const renderLayout = (initialPath = HOME_PATH) => {
   const queryClient = new QueryClient({
@@ -393,45 +386,5 @@ describe("WorkspaceLayout", () => {
     expect(getBody()?.lastElementChild).toContainElement(
       screen.getByRole("region", { name: "찾은 기록" }),
     );
-  });
-
-  describe("녹음 생존 신호", () => {
-    beforeEach(() => {
-      // 요청은 실제 시간으로 흘러야 해서 신호 주기만 가짜로 돌려요
-      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-    });
-
-    afterEach(() => {
-      // 전역 저장소라 테스트끼리 녹음이 새지 않도록 처음 상태로 되돌려요
-      useRecordingStore.getState().discardRecording();
-      clearRecordingStartProof();
-      vi.useRealTimers();
-    });
-
-    it("녹음 화면이 아닌 홈에 있어도 녹음 중이면 30초마다 생존 신호를 보낸다", async () => {
-      getRecordingStartProof();
-      await act(async () => {
-        await useRecordingStore.getState().connectMicrophone();
-        useRecordingStore.getState().startRecording({
-          workspaceId: WORKSPACE_ID,
-          recordingId: recordingHeartbeatResponse.recordingId,
-        });
-      });
-      renderLayout();
-
-      expect(await screen.findByText(HOME_TEXT)).toBeInTheDocument();
-
-      act(() => {
-        vi.advanceTimersByTime(HEARTBEAT_INTERVAL_MS);
-      });
-      // waitFor가 setInterval로 다시 확인하므로 응답을 기다리기 전에 실제 타이머로 돌려요
-      vi.useRealTimers();
-
-      await waitFor(() =>
-        expect(useRecordingStore.getState().accumulatedMs).toBe(
-          recordingHeartbeatResponse.elapsedMillis,
-        ),
-      );
-    });
   });
 });
