@@ -3,7 +3,7 @@ import styled from "@emotion/styled";
 import { useLabelId } from "../model/useLabelId";
 
 /**
- * 문서가 하나도 없을 때 보여 주는 문서 목록. 머리말은 그대로 두고, 폴더 자리에 안내를 둬요.
+ * 문서가 하나도 없을 때 보여 주는 문서 목록. 머리말은 그대로 두고, 그 아래 남은 자리의 가운데에 안내를 둬요.
  *
  * 틀과 머리말까지 여기서 그려요. 문서를 받은 모습(`DocumentTree`)과 따로 바뀔 수 있어, 틀을 함께 쓰지 않아요.
  */
@@ -18,9 +18,13 @@ export default function DocumentTreeEmpty() {
   );
 }
 
-/** 피그마 Sidebar/Docs: 머리말과 폴더 묶음 사이 12px */
+/**
+ * 피그마 Sidebar/Docs: 머리말과 내용 영역 사이 12px.
+ * 사이드바에서 남은 높이를 모두 채워요. 안내를 그 가운데에 놓기 위해서예요
+ */
 const Container = styled.nav`
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 0.75rem; /* 12px */
 `;
@@ -32,9 +36,13 @@ const Label = styled.span`
   color: ${({ theme }) => theme.neutral[600]};
 `;
 
-/** 시안이 없어 머리말과 왼쪽을 맞춰요(왼쪽 10px) */
+/** 피그마 Sidebar/Docs 「빈 상태」: 내용 영역이 남은 높이를 채우고, 안내는 그 정가운데에 있어요 */
 const Notice = styled.p`
   ${({ theme }) => theme.text.caption02};
-  padding: 0 0.5rem 0 0.625rem; /* 0 8px 0 10px */
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
   color: ${({ theme }) => theme.neutral[600]};
+  text-align: center;
 `;

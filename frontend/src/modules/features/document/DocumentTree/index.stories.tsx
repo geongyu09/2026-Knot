@@ -70,8 +70,15 @@ const meta = {
             element={
               // 사이드바처럼 화면이 바뀌어도 문서 목록이 남도록, 화면들을 감싸는 자리에 둬요
               <>
-                {/* 사이드바의 안쪽 폭(280px - 좌우 여백 32px)이에요 */}
-                <div style={{ width: "15.5rem" }}>
+                {/* 사이드바의 안쪽 폭(280px - 좌우 여백 32px)이에요. 사이드바처럼 세로로 쌓아, 남은 높이를 채우는 화면이 `treeHeight`를 받게 해요 */}
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    width: "15.5rem",
+                    height: parameters.treeHeight,
+                  }}
+                >
                   <Story />
                 </div>
                 <Outlet />
@@ -108,13 +115,18 @@ export const CurrentDocument: Story = {
 };
 
 /**
- * 문서 목록을 불러오는 동안이에요. 머리말 「문서」는 그대로 두고, 폴더 자리를 회색 덩어리 3줄로 채워요.
- * 덩어리는 폴더 행과 높이 · 간격이 같아서, 불러온 뒤 내용이 움직이지 않아요. 요청 제한 시간(10초)이 지나면 불러오기 실패 모습으로 바뀌어요.
+ * 문서 목록을 불러오는 동안이에요. 머리말 「문서」는 그대로 두고, 폴더 이름과 문서 제목 자리를 회색 막대로 채워요.
+ * 폴더 네 개에 문서 행을 두 개 · 한 개 · 한 개 · 없음으로 둬요. 화살표 · 문서 수 · 세로선은 그리지 않아요.
+ * 행의 높이 · 간격이 실제 목록과 같아서, 불러온 뒤 내용이 움직이지 않아요. 요청 제한 시간(10초)이 지나면 불러오기 실패 모습으로 바뀌어요.
  */
 export const Loading: Story = {
   parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3989-41916",
+    },
     // 문서 페이지에서는 스토리를 한 화면에 함께 그려 응답이 섞이므로, 응답을 덮는 스토리는 따로 그려요
-    docs: { story: { inline: false, iframeHeight: 200 } },
+    docs: { story: { inline: false, iframeHeight: 360 } },
     msw: {
       handlers: {
         documents: http.get(DOCUMENTS_REQUEST, async () => {
@@ -128,11 +140,17 @@ export const Loading: Story = {
 
 /**
  * 워크스페이스에 문서가 하나도 없을 때예요. 예: 아직 한 번도 녹음하지 않은 워크스페이스.
- * 머리말 「문서」 아래에 「아직 문서가 없어요」를 보여 줘요.
+ * 머리말 「문서」 아래 남은 자리의 가운데에 「아직 문서가 없어요」를 보여 줘요.
+ * 사이드바에서는 머리말 아래 남은 높이 전체가 그 자리예요. 이 스토리는 문서 목록의 높이를 320px로 두고 보여 줘요.
  */
 export const NoDocuments: Story = {
   parameters: {
-    docs: { story: { inline: false, iframeHeight: 120 } },
+    treeHeight: "20rem",
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3989-42033",
+    },
+    docs: { story: { inline: false, iframeHeight: 360 } },
     msw: {
       handlers: {
         documents: http.get(DOCUMENTS_REQUEST, () =>
