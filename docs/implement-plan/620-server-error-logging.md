@@ -471,3 +471,11 @@ ServerErrorLogger는 알려진 외부 LLM·MCP·S3 실패를 WARN, 내부 오류
 Persona 종료 인증: 두 `report-filled`는 성공했다. `workflow finish implement`는 exit 1이며 `verification-failed`, `report-coverage-missing`, `java-role-read-coverage-missing`, `convention-toolchain-missing`, `workflow-loop-state-stale`, `pending-ticket`을 보고했다. 실제 Gradle 전체 검증 2,459개와 Spotless·bootJar 성공을 이 전역 인증 성공으로 해석하지 않는다. 기존 이력·pending은 보존했다.
 
 검증 범위는 로컬 코드·실제 라이브러리·PostgreSQL/Testcontainers·테스트 요청이다. 운영 host/proxy·로그 수집 도구·외부 모델의 실제 동작을 관측한 결과는 아니다. 설치된 MCP SDK 2.0.0의 DefaultMcpStatelessServerHandler는 재던진 예외 메시지를 기존 JSON-RPC error에 사용한다. 이번에는 그 응답 정책을 변경하지 않았으며 SDK 전체의 로그/오류 메시지 비노출을 보증하지 않는다.
+
+## 8. PR #626 CI의 SSE 테스트 실행 순서 보완 — 2026-10-12
+
+[실패한 Backend CI](https://github.com/woowacourse-teams/2026-knot/actions/runs/38250139213/job/114814001096)는 단위 1,314개 중 SearchSseLoggingMvcTest의 재연결 사례 1개가 isCommitted 검사에서 실패했다. MockMvc 요청 반환과 재연결 worker의 첫 snapshot 전송 사이에는 완료 순서가 보장되지 않았고, 테스트가 먼저 검사하면 아직 응답이 시작되지 않았다.
+
+단일 executor의 선행 작업을 latch로 막아 worker가 늦게 시작되는 조건에서 기존 검사의 실패를 같은 위치로 재현했다. 수정 후에는 worker를 해제하고, 실제 snapshot 전송 다음의 두 번째 snapshot 조회에 도달했음을 latch로 확인한 뒤 committed 상태와 첫 이벤트 본문을 검사한다. 예외 주입은 해당 확인 이후에 해제하며, 기존 상태·본문 유지·ERROR 1건·민감값 비노출 검사를 유지했다. production과 CI workflow는 변경하지 않았다.
+
+집중 테스트 2개 PASS 후 test task를 --rerun으로 10회 실행해 20개 사례가 모두 통과했다. 최종 ./gradlew test spotlessCheck bootJar --console=plain도 성공했으며, 전체 단위 1,314개 실패·오류·skip 0개다. bootJar는 production 무변경으로 UP-TO-DATE였다. 기존 통합·인수 통과 기록과 구분하며 이번 push의 원격 CI 결과는 별도 확인한다.
