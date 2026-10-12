@@ -60,9 +60,15 @@ interface GetFolderRowParams {
 const getDocumentTree = (page: Page) =>
   getSidebar(page).getByRole("navigation", { name: "문서" });
 
-/** 폴더 행의 접근성 이름은 `이름 + 문서 수`라 앞부분만 맞춰요. */
+/** 정규식에서 뜻이 있는 글자를 글자 그대로 맞추게 바꿔요. 폴더 이름은 AI가 분류한 자유로운 글이에요. */
+const escapeRegExp = (text: string) =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** 폴더 행의 접근성 이름은 `이름 + 문서 수`라, 이름 뒤에 숫자만 오는 행을 찾아요. */
 const getFolderRow = ({ page, name }: GetFolderRowParams) =>
-  getDocumentTree(page).getByRole("button", { name: new RegExp(`^${name}`) });
+  getDocumentTree(page).getByRole("button", {
+    name: new RegExp(`^${escapeRegExp(name)}\\s*\\d+$`),
+  });
 
 const getDock = (page: Page) =>
   page.getByRole("navigation", { name: "주요 화면 이동" });
