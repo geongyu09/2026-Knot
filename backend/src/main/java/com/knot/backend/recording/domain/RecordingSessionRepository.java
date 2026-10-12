@@ -20,8 +20,8 @@ public interface RecordingSessionRepository {
 
     List<RecordingSession> findAllActiveByMemberIdForUpdate(long memberId);
 
-    List<Long> findActiveIdsLastSeenAtOrBefore(
-            Instant threshold,
+    List<Long> findActiveIdsDueAt(
+            Instant now,
             int limit
     );
 
