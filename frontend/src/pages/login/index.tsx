@@ -15,7 +15,11 @@ import Stack from "@primitives/layout/Stack";
 export default function LoginPage() {
   return (
     <Container align="center">
-      <Title>팀의 결정을 모두의 기억으로</Title>
+      <Title>
+        {/* 줄을 나눠도 글로는 띄어 쓴 한 문장이 되도록 줄바꿈 앞에 빈칸을 둬요 */}
+        팀의 결정을 <br />
+        모두의 기억으로
+      </Title>
       <Spacing size={4.5} />
 
       <Actions>
