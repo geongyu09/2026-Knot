@@ -8,6 +8,7 @@ import com.knot.backend.global.exception.ProjectException;
 import com.knot.backend.global.exception.RetryAfterException;
 import com.knot.backend.workspace.application.WorkspaceInvitationPreviewRateLimiter;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
+import com.knot.backend.workspace.domain.WorkspaceException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -16,9 +17,27 @@ import java.time.ZoneOffset;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class InMemoryWorkspaceInvitationPreviewRateLimiterTest {
     private static final String REMOTE_ADDRESS = "203.0.113.10";
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1})
+    @DisplayName("주소 저장 한도가 2보다 작으면 초대 보안 설정 커스텀 오류로 거절한다")
+    void create_failure_invalidCapacity(int capacity) {
+        assertThatThrownBy(
+                () -> new InMemoryWorkspaceInvitationPreviewRateLimiter(
+                        Clock.systemUTC(),
+                        capacity
+                )
+        ).isInstanceOfSatisfying(
+                WorkspaceException.class,
+                exception -> assertThat(exception.getErrorCode())
+                        .isEqualTo(WorkspaceErrorCode.WORKSPACE_INVITATION_SECURITY_CONFIGURATION_INVALID)
+        );
+    }
 
     @DisplayName("같은 IP의 코드 조회는 고정 1분 창에서 30회까지 허용한다")
     @Test

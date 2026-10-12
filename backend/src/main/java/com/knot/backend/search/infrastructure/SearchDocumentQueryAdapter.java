@@ -1,6 +1,8 @@
 package com.knot.backend.search.infrastructure;
 
 import com.knot.backend.search.application.SearchToolScope;
+import com.knot.backend.search.application.SearchDocumentQuery;
+import com.knot.backend.search.application.dto.result.SearchDocumentRecord;
 import com.knot.backend.search.application.dto.query.SearchDocumentCursor;
 import com.knot.backend.search.application.dto.query.SearchDocumentParameters;
 import java.sql.ResultSet;
@@ -14,7 +16,7 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 @RequiredArgsConstructor
-public class SearchDocumentQueryAdapter {
+public class SearchDocumentQueryAdapter implements SearchDocumentQuery {
     private static final String SELECT = """
             SELECT d.id, d.title, d.topic, d.content, d.created_at, d.archived_at, r.started_at, 0 AS score
             FROM documents d JOIN recording_sessions r ON r.id = d.recording_session_id

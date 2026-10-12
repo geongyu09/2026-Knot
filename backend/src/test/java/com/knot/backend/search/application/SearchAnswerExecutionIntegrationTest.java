@@ -8,6 +8,7 @@ import static org.mockito.Mockito.doAnswer;
 
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.search.SearchMessageFixtures;
+import com.knot.backend.search.domain.SearchException;
 import com.knot.backend.search.application.dto.command.SearchQuestionCommand;
 import com.knot.backend.search.application.dto.result.SearchAnswerSnapshotResult;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
@@ -28,6 +29,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
@@ -214,54 +217,56 @@ class SearchAnswerExecutionIntegrationTest {
         assertThat(content()).isEqualTo("답변");
     }
 
-    @Test
-    @DisplayName("검색 후보에 없는 문서와 중복 또는 네 개 근거는 완료 저장 전에 거절한다")
-    void complete_failure_invalidEvidence() {
+    @ParameterizedTest
+    @ValueSource(strings = {"NOT_RETRIEVED", "DUPLICATE", "EXCESSIVE"})
+    @DisplayName("검색 후보에 없는 문서와 중복 또는 네 개 근거는 커스텀 오류로 거절한다")
+    void complete_failure_invalidEvidence(String scenario) {
         SearchAnswerWorkResult work = service.claim(accepted.answerMessageId())
                 .orElseThrow();
         long document = messages.saveDocument(
                 workspaceId,
                 memberId
         );
+        List<Long> ids = invalidEvidenceIds(
+                scenario,
+                document
+        );
+        Set<Long> candidates = Set.copyOf(ids);
+        if ("NOT_RETRIEVED".equals(scenario)) {
+            candidates = Set.of();
+        }
+        Set<Long> selected = candidates;
         assertThatThrownBy(
                 () -> service.complete(
                         work.answerId(),
                         work.token(),
-                        List.of(document),
-                        Set.of()
+                        ids,
+                        selected
                 )
-        ).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(
-                () -> service.complete(
-                        work.answerId(),
-                        work.token(),
-                        List.of(
-                                document,
-                                document
-                        ),
-                        Set.of(document)
-                )
-        ).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(
-                () -> service.complete(
-                        work.answerId(),
-                        work.token(),
-                        List.of(
-                                1L,
-                                2L,
-                                3L,
-                                4L
-                        ),
-                        Set.of(
-                                1L,
-                                2L,
-                                3L,
-                                4L
-                        )
-                )
-        ).isInstanceOf(IllegalArgumentException.class);
+        ).isInstanceOf(SearchException.class);
         assertThat(status()).isEqualTo("STREAMING");
         assertThat(evidenceCount()).isZero();
+    }
+
+    private List<Long> invalidEvidenceIds(
+            String scenario,
+            long document
+    ) {
+        if ("DUPLICATE".equals(scenario)) {
+            return List.of(
+                    document,
+                    document
+            );
+        }
+        if ("EXCESSIVE".equals(scenario)) {
+            return List.of(
+                    1L,
+                    2L,
+                    3L,
+                    4L
+            );
+        }
+        return List.of(document);
     }
 
     @Test
@@ -295,7 +300,7 @@ class SearchAnswerExecutionIntegrationTest {
                                 invalid
                         )
                 )
-        ).isInstanceOf(IllegalArgumentException.class);
+        ).isInstanceOf(SearchException.class);
         assertThat(status()).isEqualTo("STREAMING");
         assertThat(evidenceCount()).isZero();
     }

@@ -58,7 +58,7 @@ public class SearchMessage {
                 sequence
         );
         if (createdAt == null) {
-            throw new IllegalArgumentException("createdAt is required");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         this.conversationId = conversationId;
         this.sequence = sequence;
@@ -74,14 +74,7 @@ public class SearchMessage {
             String content,
             Instant createdAt
     ) {
-        try {
-            SearchQuestionText.validate(content);
-        } catch (SearchException exception) {
-            throw new IllegalArgumentException(
-                    "invalid question",
-                    exception
-            );
-        }
+        SearchQuestionText.validate(content);
         return new SearchMessage(
                 conversationId,
                 sequence,
@@ -110,7 +103,7 @@ public class SearchMessage {
     public void appendContent(String text) {
         requireStreamingAnswer();
         if (text == null) {
-            throw new IllegalArgumentException("text is required");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         content += text;
     }
@@ -118,7 +111,7 @@ public class SearchMessage {
     public void complete() {
         requireStreamingAnswer();
         if (content.isBlank()) {
-            throw new IllegalStateException("completed answer content is required");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         status = SearchMessageStatus.COMPLETED;
     }
@@ -126,7 +119,7 @@ public class SearchMessage {
     public void fail(String code) {
         requireStreamingAnswer();
         if (code == null || code.isBlank() || code.length() > 50) {
-            throw new IllegalArgumentException("failure code is required");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         failureCode = code;
         status = SearchMessageStatus.FAILED;
@@ -134,7 +127,7 @@ public class SearchMessage {
 
     private void requireStreamingAnswer() {
         if (role != SearchMessageRole.ASSISTANT || status != SearchMessageStatus.STREAMING) {
-            throw new IllegalStateException("answer is not streaming");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
     }
 
@@ -143,7 +136,7 @@ public class SearchMessage {
             int sequence
     ) {
         if (conversationId <= 0 || sequence <= 0) {
-            throw new IllegalArgumentException("invalid message identity");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
     }
 }
