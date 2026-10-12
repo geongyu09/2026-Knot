@@ -208,21 +208,21 @@ public class SearchMcpTools {
             Map<String, Object> properties,
             List<String> required
     ) {
-        return McpSchema.Tool.builder()
-                .name(name)
+        Map<String, Object> schema = Map.of(
+                "type",
+                "object",
+                "properties",
+                properties,
+                "required",
+                required,
+                "additionalProperties",
+                false
+        );
+        return McpSchema.Tool.builder(
+                name,
+                schema
+        )
                 .description(description)
-                .inputSchema(
-                        Map.of(
-                                "type",
-                                "object",
-                                "properties",
-                                properties,
-                                "required",
-                                required,
-                                "additionalProperties",
-                                false
-                        )
-                )
                 .build();
     }
 }

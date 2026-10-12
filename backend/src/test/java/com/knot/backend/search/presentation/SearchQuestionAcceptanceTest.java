@@ -123,7 +123,7 @@ class SearchQuestionAcceptanceTest {
     @Test
     @DisplayName("실제 HTTP에서 accepted를 먼저 받고 한글 delta·근거·제외 수·완료와 EOF를 받는다")
     void create_success_realSseAndUtf8() throws Exception {
-        long document = new SearchMessageFixtures(jdbc).saveDocument(
+        long document = saveArchivedDocument(
                 workspaceId,
                 memberId
         );
@@ -137,8 +137,8 @@ class SearchQuestionAcceptanceTest {
         );
         when(
                 retriever.retrieve(
-                        workspaceId,
-                        "질문"
+                        org.mockito.ArgumentMatchers.any(com.knot.backend.search.application.SearchToolScope.class),
+                        org.mockito.ArgumentMatchers.eq("질문")
                 )
         ).thenReturn(
                 new SearchRetrievalResult(
@@ -147,11 +147,12 @@ class SearchQuestionAcceptanceTest {
                 )
         );
         doAnswer(call -> {
-            Consumer<String> delta = call.getArgument(2);
+            Consumer<String> delta = call.getArgument(3);
             delta.accept("한글 😀");
             return List.of(document);
         }).when(generator)
                 .generate(
+                        org.mockito.ArgumentMatchers.any(com.knot.backend.search.application.SearchToolScope.class),
                         org.mockito.ArgumentMatchers.eq("질문"),
                         org.mockito.ArgumentMatchers.eq(documents),
                         org.mockito.ArgumentMatchers.any()
@@ -200,7 +201,7 @@ class SearchQuestionAcceptanceTest {
     void create_success_disconnectDoesNotCancel() throws Exception {
         CountDownLatch generating = new CountDownLatch(1);
         CountDownLatch resume = new CountDownLatch(1);
-        long document = new SearchMessageFixtures(jdbc).saveDocument(
+        long document = saveArchivedDocument(
                 workspaceId,
                 memberId
         );
@@ -214,8 +215,8 @@ class SearchQuestionAcceptanceTest {
         );
         when(
                 retriever.retrieve(
-                        workspaceId,
-                        "질문"
+                        org.mockito.ArgumentMatchers.any(com.knot.backend.search.application.SearchToolScope.class),
+                        org.mockito.ArgumentMatchers.eq("질문")
                 )
         ).thenReturn(
                 new SearchRetrievalResult(
@@ -224,7 +225,7 @@ class SearchQuestionAcceptanceTest {
                 )
         );
         doAnswer(call -> {
-            Consumer<String> delta = call.getArgument(2);
+            Consumer<String> delta = call.getArgument(3);
             delta.accept("부분 ");
             generating.countDown();
             assertThat(
@@ -237,6 +238,7 @@ class SearchQuestionAcceptanceTest {
             return List.of(document);
         }).when(generator)
                 .generate(
+                        org.mockito.ArgumentMatchers.any(com.knot.backend.search.application.SearchToolScope.class),
                         org.mockito.ArgumentMatchers.eq("질문"),
                         org.mockito.ArgumentMatchers.eq(docs),
                         org.mockito.ArgumentMatchers.any()
@@ -294,8 +296,8 @@ class SearchQuestionAcceptanceTest {
         UUID requestId = UUID.randomUUID();
         when(
                 retriever.retrieve(
-                        workspaceId,
-                        "질문"
+                        org.mockito.ArgumentMatchers.any(com.knot.backend.search.application.SearchToolScope.class),
+                        org.mockito.ArgumentMatchers.eq("질문")
                 )
         ).thenReturn(
                 new SearchRetrievalResult(
@@ -339,8 +341,8 @@ class SearchQuestionAcceptanceTest {
     void create_failure_afterAccepted() throws Exception {
         when(
                 retriever.retrieve(
-                        workspaceId,
-                        "질문"
+                        org.mockito.ArgumentMatchers.any(com.knot.backend.search.application.SearchToolScope.class),
+                        org.mockito.ArgumentMatchers.eq("질문")
                 )
         ).thenThrow(new IllegalStateException("private secret"));
         try (InputStream stream = connect(
@@ -480,8 +482,8 @@ class SearchQuestionAcceptanceTest {
         UUID requestId = UUID.randomUUID();
         when(
                 retriever.retrieve(
-                        workspaceId,
-                        "질문"
+                        org.mockito.ArgumentMatchers.any(com.knot.backend.search.application.SearchToolScope.class),
+                        org.mockito.ArgumentMatchers.eq("질문")
                 )
         ).thenReturn(
                 new SearchRetrievalResult(
@@ -716,5 +718,21 @@ class SearchQuestionAcceptanceTest {
                         .query(Long.class)
                         .single()
         ).isZero();
+    }
+    private long saveArchivedDocument(
+            long workspace,
+            long member
+    ) {
+        long id = new SearchMessageFixtures(jdbc).saveDocument(
+                workspace,
+                member
+        );
+        jdbc.sql("UPDATE documents SET status = 'ARCHIVED', archived_at = created_at WHERE id = :id")
+                .param(
+                        "id",
+                        id
+                )
+                .update();
+        return id;
     }
 }

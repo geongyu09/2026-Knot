@@ -19,11 +19,13 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Slf4j
 public class SearchAnswerWorker {
-    private static final String NO_DOCUMENT_GUIDANCE = "관련 문서를 찾지 못했어요. 내용을 녹음하고 문서 준비가 끝난 뒤 다시 질문해 주세요.";
+    private static final String NO_DOCUMENT_GUIDANCE = "현재 검색 가능한 회의 문서에서는 해당 내용을 확인하지 못했습니다. 내용을 녹음하고 문서 준비가 끝난 뒤 다시 질문해 주세요.";
 
     private final SearchAnswerExecutionService executions;
     private final ObjectProvider<SearchDocumentRetriever> retrievers;
     private final ObjectProvider<SearchAnswerGenerator> generators;
+    private final java.time.Clock clock;
+    private final com.knot.backend.global.config.SearchAgentProperties agentProperties;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void execute(long answerId) {
@@ -50,9 +52,15 @@ public class SearchAnswerWorker {
     }
 
     private void generate(SearchAnswerWorkResult work) {
+        java.time.Instant startedAt = clock.instant();
+        SearchToolScope scope = SearchToolScope.from(
+                work,
+                startedAt,
+                startedAt.plus(agentProperties.getBudget())
+        );
         SearchDocumentRetriever retriever = retrievers.getObject();
         SearchRetrievalResult retrieval = retriever.retrieve(
-                work.workspaceId(),
+                scope,
                 work.question()
         );
         if (!executions.recordRetrieval(
@@ -86,6 +94,7 @@ public class SearchAnswerWorker {
                 )
         )) {
             usedIds = generator.generate(
+                    scope,
                     work.question(),
                     documents,
                     content

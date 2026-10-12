@@ -12,7 +12,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(SearchWorkerProperties.class)
+@EnableConfigurationProperties({SearchWorkerProperties.class, SearchAgentProperties.class})
 public class SearchWorkerConfig {
 
     @Bean

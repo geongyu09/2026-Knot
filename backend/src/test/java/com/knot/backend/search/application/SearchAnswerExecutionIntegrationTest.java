@@ -9,6 +9,7 @@ import static org.mockito.Mockito.doAnswer;
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.search.SearchMessageFixtures;
 import com.knot.backend.search.domain.SearchException;
+import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.application.dto.command.SearchQuestionCommand;
 import com.knot.backend.search.application.dto.result.SearchAnswerSnapshotResult;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
@@ -166,15 +167,15 @@ class SearchAnswerExecutionIntegrationTest {
     void complete_success_usedEvidenceOnly() {
         SearchAnswerWorkResult work = service.claim(accepted.answerMessageId())
                 .orElseThrow();
-        long first = messages.saveDocument(
+        long first = archivedDocument(
                 workspaceId,
                 memberId
         );
-        long second = messages.saveDocument(
+        long second = archivedDocument(
                 workspaceId,
                 memberId
         );
-        long candidate = messages.saveDocument(
+        long candidate = archivedDocument(
                 workspaceId,
                 memberId
         );
@@ -218,12 +219,12 @@ class SearchAnswerExecutionIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"NOT_RETRIEVED", "DUPLICATE", "EXCESSIVE"})
-    @DisplayName("검색 후보에 없는 문서와 중복 또는 네 개 근거는 커스텀 오류로 거절한다")
+    @ValueSource(strings = {"NOT_RETRIEVED", "DUPLICATE", "NULL"})
+    @DisplayName("검색 후보에 없는 문서와 중복 또는 null 근거는 커스텀 오류로 거절한다")
     void complete_failure_invalidEvidence(String scenario) {
         SearchAnswerWorkResult work = service.claim(accepted.answerMessageId())
                 .orElseThrow();
-        long document = messages.saveDocument(
+        long document = archivedDocument(
                 workspaceId,
                 memberId
         );
@@ -231,7 +232,10 @@ class SearchAnswerExecutionIntegrationTest {
                 scenario,
                 document
         );
-        Set<Long> candidates = Set.copyOf(ids);
+        Set<Long> candidates = Set.of();
+        if (ids != null) {
+            candidates = Set.copyOf(ids);
+        }
         if ("NOT_RETRIEVED".equals(scenario)) {
             candidates = Set.of();
         }
@@ -258,13 +262,8 @@ class SearchAnswerExecutionIntegrationTest {
                     document
             );
         }
-        if ("EXCESSIVE".equals(scenario)) {
-            return List.of(
-                    1L,
-                    2L,
-                    3L,
-                    4L
-            );
+        if ("NULL".equals(scenario)) {
+            return null;
         }
         return List.of(document);
     }
@@ -274,7 +273,7 @@ class SearchAnswerExecutionIntegrationTest {
     void complete_failure_otherWorkspaceEvidence() {
         SearchAnswerWorkResult work = service.claim(accepted.answerMessageId())
                 .orElseThrow();
-        long valid = messages.saveDocument(
+        long valid = archivedDocument(
                 workspaceId,
                 memberId
         );
@@ -283,7 +282,7 @@ class SearchAnswerExecutionIntegrationTest {
                 otherWorkspace,
                 memberId
         );
-        long invalid = messages.saveDocument(
+        long invalid = archivedDocument(
                 otherWorkspace,
                 memberId
         );
@@ -363,8 +362,8 @@ class SearchAnswerExecutionIntegrationTest {
     void execute_success_noDocuments() {
         when(
                 retriever.retrieve(
-                        workspaceId,
-                        "질문"
+                        org.mockito.ArgumentMatchers.any(com.knot.backend.search.application.SearchToolScope.class),
+                        org.mockito.ArgumentMatchers.eq("질문")
                 )
         ).thenAnswer(call -> {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
@@ -375,7 +374,8 @@ class SearchAnswerExecutionIntegrationTest {
         });
         worker.execute(accepted.answerMessageId());
         assertThat(status()).isEqualTo("COMPLETED");
-        assertThat(content()).contains("녹음");
+        assertThat(content()).startsWith("현재 검색 가능한 회의 문서에서는 해당 내용을 확인하지 못했습니다.")
+                .contains("녹음");
         assertThat(evidenceCount()).isZero();
         assertThat(
                 jdbc.sql("SELECT excluded_count FROM search_answer_executions")
@@ -388,7 +388,7 @@ class SearchAnswerExecutionIntegrationTest {
     @Test
     @DisplayName("생성은 TX 밖에서 진행하며 delta와 실제 사용 문서만 저장한다")
     void execute_success_generatorOutsideTransaction() {
-        long document = messages.saveDocument(
+        long document = archivedDocument(
                 workspaceId,
                 memberId
         );
@@ -402,8 +402,8 @@ class SearchAnswerExecutionIntegrationTest {
         );
         when(
                 retriever.retrieve(
-                        workspaceId,
-                        "질문"
+                        org.mockito.ArgumentMatchers.any(com.knot.backend.search.application.SearchToolScope.class),
+                        org.mockito.ArgumentMatchers.eq("질문")
                 )
         ).thenReturn(
                 new SearchRetrievalResult(
@@ -413,12 +413,13 @@ class SearchAnswerExecutionIntegrationTest {
         );
         doAnswer(call -> {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
-            Consumer<String> delta = call.getArgument(2);
+            Consumer<String> delta = call.getArgument(3);
             delta.accept("한글 ");
             delta.accept("😀");
             return List.of(document);
         }).when(generator)
                 .generate(
+                        org.mockito.ArgumentMatchers.any(com.knot.backend.search.application.SearchToolScope.class),
                         org.mockito.ArgumentMatchers.eq("질문"),
                         org.mockito.ArgumentMatchers.eq(candidates),
                         org.mockito.ArgumentMatchers.any()
@@ -434,8 +435,8 @@ class SearchAnswerExecutionIntegrationTest {
     void execute_failure_retrievalError() {
         when(
                 retriever.retrieve(
-                        workspaceId,
-                        "질문"
+                        org.mockito.ArgumentMatchers.any(com.knot.backend.search.application.SearchToolScope.class),
+                        org.mockito.ArgumentMatchers.eq("질문")
                 )
         ).thenThrow(new IllegalStateException("비공개 공급자 오류"));
         worker.execute(accepted.answerMessageId());
@@ -491,7 +492,7 @@ class SearchAnswerExecutionIntegrationTest {
     @Test
     @DisplayName("생성 중 오류가 발생하면 이미 저장한 본문은 남기고 근거를 만들지 않는다")
     void execute_failure_preservesGeneratedPartial() {
-        long document = messages.saveDocument(
+        long document = archivedDocument(
                 workspaceId,
                 memberId
         );
@@ -505,8 +506,8 @@ class SearchAnswerExecutionIntegrationTest {
         );
         when(
                 retriever.retrieve(
-                        workspaceId,
-                        "질문"
+                        org.mockito.ArgumentMatchers.any(com.knot.backend.search.application.SearchToolScope.class),
+                        org.mockito.ArgumentMatchers.eq("질문")
                 )
         ).thenReturn(
                 new SearchRetrievalResult(
@@ -515,11 +516,12 @@ class SearchAnswerExecutionIntegrationTest {
                 )
         );
         doAnswer(call -> {
-            Consumer<String> delta = call.getArgument(2);
+            Consumer<String> delta = call.getArgument(3);
             delta.accept("이미 생성한 부분 😀");
             throw new IllegalStateException("공급자 연결 오류");
         }).when(generator)
                 .generate(
+                        org.mockito.ArgumentMatchers.any(com.knot.backend.search.application.SearchToolScope.class),
                         org.mockito.ArgumentMatchers.eq("질문"),
                         org.mockito.ArgumentMatchers.eq(candidates),
                         org.mockito.ArgumentMatchers.any()
@@ -560,6 +562,88 @@ class SearchAnswerExecutionIntegrationTest {
                 .single();
     }
 
+    @Test
+    @DisplayName("실제 사용한 네 문서는 모두 저장하고 SSE 카드에는 상위 세 개만 노출한다")
+    void complete_success_allEvidenceAndThreeCards() {
+        SearchAnswerWorkResult work = service.claim(accepted.answerMessageId())
+                .orElseThrow();
+        List<Long> documents = java.util.stream.LongStream.range(
+                0,
+                4
+        )
+                .map(
+                        index -> archivedDocument(
+                                workspaceId,
+                                memberId
+                        )
+                )
+                .boxed()
+                .toList();
+        service.append(
+                work.answerId(),
+                work.token(),
+                "네 회의 종합"
+        );
+        assertThat(
+                service.complete(
+                        work.answerId(),
+                        work.token(),
+                        documents,
+                        new java.util.HashSet<>(documents)
+                )
+        ).isTrue();
+        assertThat(evidenceCount()).isEqualTo(4);
+        assertThat(
+                snapshots.read(
+                        workspaceId,
+                        memberId,
+                        work.answerId()
+                )
+                        .evidences()
+        ).hasSize(3);
+    }
+
+    @Test
+    @DisplayName("미보관 문서는 실제 사용 근거로 저장할 수 없다")
+    void complete_failure_draftEvidence() {
+        SearchAnswerWorkResult work = service.claim(accepted.answerMessageId())
+                .orElseThrow();
+        long draft = messages.saveDocument(
+                workspaceId,
+                memberId
+        );
+        assertThatThrownBy(
+                () -> service.complete(
+                        work.answerId(),
+                        work.token(),
+                        List.of(draft),
+                        Set.of(draft)
+                )
+        ).isInstanceOf(SearchException.class)
+                .satisfies(
+                        exception -> assertThat(((SearchException) exception).getErrorCode())
+                                .isEqualTo(SearchErrorCode.INVALID_SEARCH_STATE)
+                );
+        assertThat(evidenceCount()).isZero();
+    }
+
+    private long archivedDocument(
+            long workspace,
+            long member
+    ) {
+        long id = messages.saveDocument(
+                workspace,
+                member
+        );
+        jdbc.sql("UPDATE documents SET status = 'ARCHIVED', archived_at = created_at WHERE id = :id")
+                .param(
+                        "id",
+                        id
+                )
+                .update();
+        return id;
+    }
+
     private long evidenceCount() {
         return jdbc.sql("SELECT COUNT(*) FROM search_evidences")
                 .query(Long.class)
@@ -572,8 +656,8 @@ class SearchAnswerExecutionIntegrationTest {
         assertThat(repository.findQueuedAnswerIds(20)).containsExactly(accepted.answerMessageId());
         when(
                 retriever.retrieve(
-                        workspaceId,
-                        "질문"
+                        org.mockito.ArgumentMatchers.any(com.knot.backend.search.application.SearchToolScope.class),
+                        org.mockito.ArgumentMatchers.eq("질문")
                 )
         ).thenReturn(
                 new SearchRetrievalResult(

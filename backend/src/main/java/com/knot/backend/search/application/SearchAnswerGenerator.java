@@ -7,6 +7,7 @@ import java.util.function.Consumer;
 public interface SearchAnswerGenerator {
 
     List<Long> generate(
+            SearchToolScope scope,
             String question,
             List<SearchDocumentResult> documents,
             Consumer<String> onDelta

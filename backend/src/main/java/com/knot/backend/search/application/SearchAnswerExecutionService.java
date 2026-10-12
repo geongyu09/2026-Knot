@@ -258,18 +258,21 @@ public class SearchAnswerExecutionService {
             long workspaceId,
             long documentId
     ) {
-        documents.findByWorkspaceIdAndIdForUpdate(
+        com.knot.backend.document.domain.Document document = documents.findByWorkspaceIdAndIdForUpdate(
                 workspaceId,
                 documentId
         )
                 .orElseThrow(() -> new SearchException(SearchErrorCode.INVALID_SEARCH_STATE));
+        if (document.getStatus() != com.knot.backend.document.domain.DocumentStatus.ARCHIVED) {
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
+        }
     }
 
     private void validateUsedDocuments(
             List<Long> ids,
             Set<Long> candidates
     ) {
-        if (ids == null || ids.size() > 3) {
+        if (ids == null) {
             throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         if (new HashSet<>(ids).size() != ids.size()) {
