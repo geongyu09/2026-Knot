@@ -73,6 +73,13 @@ public class SearchConversation {
         }
     }
 
+    public void recordMessageActivity(Instant occurredAt) {
+        validateAcceptedAt(occurredAt);
+        if (occurredAt.isAfter(updatedAt)) {
+            updatedAt = occurredAt;
+        }
+    }
+
     private static void validateIdentifier(long id) {
         if (id <= 0) {
             throw new SearchException(SearchErrorCode.INVALID_PARAMETER);
