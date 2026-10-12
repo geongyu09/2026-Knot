@@ -108,6 +108,11 @@ public class SearchMessage {
         content += text;
     }
 
+    public void stop() {
+        requireStreamingAnswer();
+        status = SearchMessageStatus.STOPPED;
+    }
+
     public void complete() {
         requireStreamingAnswer();
         if (content.isBlank()) {

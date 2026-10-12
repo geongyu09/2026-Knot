@@ -275,11 +275,16 @@ class SearchMcpClientTest {
     @Test
     void json_failure_responseByteLimit() throws Exception {
         try (LlmHttpServer server = new LlmHttpServer();
+                com.knot.backend.search.infrastructure.SearchTransportCancellation cancellation = new com.knot.backend.search.infrastructure.SearchTransportCancellation(
+                        mock(com.knot.backend.search.application.SearchToolAccess.class),
+                        java.time.Duration.ofMillis(250)
+                );
                 SearchAgentHttp transport = new SearchAgentHttp(
                         HttpClient.newHttpClient(),
                         mapper,
                         clock,
-                        32
+                        32,
+                        cancellation
                 )) {
             server.respond(
                     200,

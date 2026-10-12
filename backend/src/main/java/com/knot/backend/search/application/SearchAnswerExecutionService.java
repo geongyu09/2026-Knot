@@ -3,6 +3,7 @@ package com.knot.backend.search.application;
 import com.knot.backend.document.domain.DocumentRepository;
 import com.knot.backend.global.config.SearchWorkerProperties;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
+import com.knot.backend.search.application.dto.result.SearchAnswerStopResult;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.domain.SearchAnswerExecution;
 import com.knot.backend.search.domain.SearchConversation;
@@ -11,6 +12,10 @@ import com.knot.backend.search.domain.SearchException;
 import com.knot.backend.search.domain.SearchEvidence;
 import com.knot.backend.search.domain.SearchMessage;
 import com.knot.backend.search.domain.SearchMessageStatus;
+import com.knot.backend.search.domain.SearchMessageRole;
+import com.knot.backend.search.domain.SearchExecutionState;
+import com.knot.backend.search.domain.SearchException;
+import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.SearchRepository;
 import com.knot.backend.workspace.domain.WorkspaceRepository;
 import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
@@ -35,6 +40,116 @@ public class SearchAnswerExecutionService {
     private final DocumentRepository documents;
     private final SearchWorkerProperties properties;
     private final Clock clock;
+
+    public SearchAnswerStopResult stop(
+            long workspaceId,
+            long memberId,
+            long conversationId,
+            long answerId
+    ) {
+        SearchConversation conversation = repository.findConversation(conversationId)
+                .orElseThrow(() -> new SearchException(SearchErrorCode.ANSWER_NOT_FOUND));
+        validateStopAccess(
+                workspaceId,
+                memberId,
+                conversation
+        );
+        workspaces.findIncludingDeletedByIdForUpdate(workspaceId)
+                .orElseThrow(() -> new SearchException(SearchErrorCode.SEARCH_ACCESS_DENIED));
+        SearchConversation locked = repository.findConversationForUpdate(conversationId)
+                .orElseThrow(() -> new SearchException(SearchErrorCode.ANSWER_NOT_FOUND));
+        validateStopAccess(
+                workspaceId,
+                memberId,
+                locked
+        );
+        SearchMessage answer = repository.findMessage(answerId)
+                .orElseThrow(() -> new SearchException(SearchErrorCode.ANSWER_NOT_FOUND));
+        validateStopAnswer(
+                answer,
+                conversationId
+        );
+        SearchAnswerExecution execution = repository.findExecutionForUpdate(answerId)
+                .orElseThrow(() -> new SearchException(SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE));
+        validateStopExecution(
+                execution,
+                answer
+        );
+        if (answer.getStatus() == SearchMessageStatus.STOPPED) {
+            return stoppedResult(answer);
+        }
+        if (answer.getStatus() != SearchMessageStatus.STREAMING) {
+            throw new SearchException(SearchErrorCode.ANSWER_NOT_RUNNING);
+        }
+        if (execution.getState() == SearchExecutionState.FINISHED) {
+            throw new SearchException(SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE);
+        }
+        answer.stop();
+        execution.stop();
+        recordTerminalActivity(
+                locked,
+                execution,
+                SearchMessageStatus.STOPPED
+        );
+        repository.flush();
+        return stoppedResult(answer);
+    }
+
+    private SearchAnswerStopResult stoppedResult(SearchMessage answer) {
+        return new SearchAnswerStopResult(
+                answer.getId(),
+                answer.getStatus(),
+                answer.getContent()
+        );
+    }
+
+    private void validateStopAccess(
+            long workspaceId,
+            long memberId,
+            SearchConversation conversation
+    ) {
+        if (conversation.getWorkspaceId() != workspaceId) {
+            throw new SearchException(SearchErrorCode.SEARCH_ACCESS_DENIED);
+        }
+        if (conversation.getMemberId() != memberId) {
+            throw new SearchException(SearchErrorCode.SEARCH_ACCESS_DENIED);
+        }
+        if (!memberships.existsByWorkspaceIdAndMemberId(
+                workspaceId,
+                memberId
+        )) {
+            throw new SearchException(SearchErrorCode.SEARCH_ACCESS_DENIED);
+        }
+    }
+
+    private void validateStopAnswer(
+            SearchMessage answer,
+            long conversationId
+    ) {
+        if (answer.getRole() != SearchMessageRole.ASSISTANT) {
+            throw new SearchException(SearchErrorCode.ANSWER_NOT_FOUND);
+        }
+        if (answer.getConversationId() != conversationId) {
+            throw new SearchException(SearchErrorCode.ANSWER_NOT_FOUND);
+        }
+    }
+
+    private void validateStopExecution(
+            SearchAnswerExecution execution,
+            SearchMessage answer
+    ) {
+        if (execution.getConversationId() != answer.getConversationId()) {
+            throw new SearchException(SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE);
+        }
+        SearchMessage question = repository.findMessage(execution.getQuestionId())
+                .orElseThrow(() -> new SearchException(SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE));
+        if (question.getConversationId() != answer.getConversationId()) {
+            throw new SearchException(SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE);
+        }
+        if (question.getRole() != SearchMessageRole.USER || question.getSequence() + 1 != answer.getSequence()) {
+            throw new SearchException(SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE);
+        }
+    }
 
     public Optional<SearchAnswerWorkResult> claim(long answerId) {
         Optional<SearchAnswerExecution> locked = lockExecution(answerId);

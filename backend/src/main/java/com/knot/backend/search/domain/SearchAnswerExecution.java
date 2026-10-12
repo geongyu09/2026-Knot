@@ -106,6 +106,13 @@ public class SearchAnswerExecution {
         stage = SearchProgressStage.GENERATING;
     }
 
+    public void stop() {
+        if (state == SearchExecutionState.FINISHED) {
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
+        }
+        state = SearchExecutionState.FINISHED;
+    }
+
     public void finish() {
         if (state != SearchExecutionState.RUNNING) {
             throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);

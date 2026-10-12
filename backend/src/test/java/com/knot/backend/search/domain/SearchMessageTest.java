@@ -15,6 +15,66 @@ class SearchMessageTest {
     private static final Instant TIME = Instant.parse("2026-10-11T00:00:00Z");
 
     @Test
+    @DisplayName("중지는 부분 본문을 그대로 보존하고 늦은 출력을 거절한다")
+    void stop_success_preservesContent() {
+        SearchMessage answer = SearchMessage.startAnswer(
+                1,
+                2,
+                TIME
+        );
+        answer.appendContent("부분 😀\n본문");
+
+        answer.stop();
+
+        assertThat(answer.getStatus()).isEqualTo(SearchMessageStatus.STOPPED);
+        assertThat(answer.getContent()).isEqualTo("부분 😀\n본문");
+        assertThat(answer.getFailureCode()).isNull();
+        assertThatExceptionOfType(SearchException.class).isThrownBy(() -> answer.appendContent("늦은 출력"));
+        assertThatExceptionOfType(SearchException.class).isThrownBy(answer::complete);
+        assertThatExceptionOfType(SearchException.class).isThrownBy(() -> answer.fail("FAILURE"));
+    }
+
+    @Test
+    @DisplayName("출력 전 중지는 빈 본문을 보존한다")
+    void stop_success_emptyContent() {
+        SearchMessage answer = SearchMessage.startAnswer(
+                1,
+                2,
+                TIME
+        );
+        answer.stop();
+        assertThat(answer.getContent()).isEmpty();
+        assertThat(answer.getStatus()).isEqualTo(SearchMessageStatus.STOPPED);
+    }
+
+    @Test
+    @DisplayName("질문과 완료·실패 답변은 중지할 수 없다")
+    void stop_failure_notStreamingAnswer() {
+        SearchMessage question = SearchMessage.receiveQuestion(
+                1,
+                1,
+                "질문",
+                TIME
+        );
+        SearchMessage completed = SearchMessage.startAnswer(
+                1,
+                2,
+                TIME
+        );
+        completed.appendContent("완료");
+        completed.complete();
+        SearchMessage failed = SearchMessage.startAnswer(
+                1,
+                4,
+                TIME
+        );
+        failed.fail("FAILURE");
+        assertThatExceptionOfType(SearchException.class).isThrownBy(question::stop);
+        assertThatExceptionOfType(SearchException.class).isThrownBy(completed::stop);
+        assertThatExceptionOfType(SearchException.class).isThrownBy(failed::stop);
+    }
+
+    @Test
     @DisplayName("질문은 원문을 보존한 RECEIVED USER 메시지로 만들어진다")
     void receiveQuestion_success_preservesContent() {
         SearchMessage question = SearchMessage.receiveQuestion(

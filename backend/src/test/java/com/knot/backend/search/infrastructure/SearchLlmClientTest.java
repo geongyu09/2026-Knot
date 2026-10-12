@@ -2,6 +2,10 @@ package com.knot.backend.search.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import com.knot.backend.search.application.SearchToolAccess;
+import java.time.Duration;
+import org.junit.jupiter.api.AfterEach;
 import com.knot.backend.global.config.LlmProperties;
 import com.knot.backend.search.application.SearchToolScope;
 import com.knot.backend.testsupport.LlmHttpServer;
@@ -17,6 +21,16 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 class SearchLlmClientTest {
+
+    private final SearchTransportCancellation cancellation = new SearchTransportCancellation(
+            mock(SearchToolAccess.class),
+            Duration.ofMillis(250)
+    );
+
+    @AfterEach
+    void tearDown() {
+        cancellation.close();
+    }
 
     @Test
     @DisplayName("도구 호출 요청은 모델 tools를 전달하고 공급자의 tool_calls를 그대로 돌려준다")
@@ -284,7 +298,8 @@ class SearchLlmClientTest {
                 JsonMapper.builder()
                         .build(),
                 Clock.systemUTC(),
-                262144
+                262144,
+                cancellation
         );
     }
 
