@@ -24,8 +24,8 @@
 | 필드 | 설명 |
 | --- | --- |
 | `status` | 세션 상태 `RECORDING`·`PAUSED`·`ENDED`·`DISCARDED`. 전사·문서 처리 상태가 아니다 |
-| `elapsedMillis` | 일시정지를 뺀 서버 기준 녹음 시간. 진행 중이면 응답 시점까지 센다 |
-| `endedAt`·`endReason` | 종료 시각과 사유(`USER_ENDED`·`CONNECTION_EXPIRED`). 진행 중이면 `null`. 이 기능 이전에 종료된 녹음의 사유는 `null` |
+| `elapsedMillis` | 일시정지를 뺀 서버 기준 녹음 시간. 진행 중이면 응답 시점까지 세며 최대 2시간(`7200000`)이다 |
+| `endedAt`·`endReason` | 종료 시각과 사유(`USER_ENDED`·`CONNECTION_EXPIRED`·`MAX_DURATION`). 진행 중이면 `null`. 이 기능 이전에 종료된 녹음의 사유는 `null` |
 | `audioUploadStatus` | 최종 오디오 업로드 예약이 없으면 `null`. 예약되면 `RESERVED`, 저장 확인 뒤 `COMPLETED` |
 
 세션과 업로드 예약은 한 시점의 값이다. 진행 중 상태와 업로드 정보가 섞인 조합(`RECORDING` + `COMPLETED` 등)은 반환하지 않는다.

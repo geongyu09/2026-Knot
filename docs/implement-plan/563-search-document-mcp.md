@@ -1,5 +1,9 @@
 # #563 탐색 Document 도구·MCP·LLM 실행 계획
 
+## 2026-10-12 migration 번호 갱신
+
+#607의 녹음 V44 병합 이후 미병합 탐색 migration은 V45 접수 기록 → V46 답변 실행 → V47 전체 근거 rank → 후속 #568의 V48 선점 전 종료 제약으로 재배치한다. 기존 develop SQL은 유지하고 outOfOrder로 우회하지 않는다. 아래 V43 등은 최초 구현 당시 번호 기록이다. 운영 적용 이력과 모델 의미 품질은 별도 확인 대상이다.
+
 ## 2026-10-12 기본 시스템 프롬프트 적용
 
 사용자가 제공한 Knot Search Assistant 프롬프트를 `backend/src/main/resources/prompts/search-answer-system.md`에 등록한다. 이번 지정 프롬프트는 현재 답변의 서로 다른 참조 문서를 최대 3개로 제한한다. 이전 계획의 전체 근거 저장 구조·과거 데이터는 보존하되, 현재 generator는 3개 초과 응답을 거절한다.

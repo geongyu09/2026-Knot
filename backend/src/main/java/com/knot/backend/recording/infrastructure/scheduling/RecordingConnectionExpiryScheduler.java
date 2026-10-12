@@ -14,11 +14,11 @@ public class RecordingConnectionExpiryScheduler {
     private final RecordingConnectionExpiryProperties properties;
 
     @Scheduled(fixedDelayString = "${recording.connection-expiry.interval}")
-    public void expireDisconnectedRecordings() {
-        int expiredCount = expiryService.expireDisconnected(properties.batchSize());
+    public void expireDueRecordings() {
+        int expiredCount = expiryService.expireDue(properties.batchSize());
         if (expiredCount > 0) {
             log.info(
-                    "연결이 끊긴 녹음 {}건을 종료했습니다",
+                    "자동 종료 시각이 지난 녹음 {}건을 종료했습니다",
                     expiredCount
             );
         }
