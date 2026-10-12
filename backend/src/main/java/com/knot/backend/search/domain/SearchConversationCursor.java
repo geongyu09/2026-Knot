@@ -84,7 +84,10 @@ public class SearchConversationCursor {
             );
             return cursor;
         } catch (IllegalArgumentException | DateTimeException exception) {
-            throw new SearchException(SearchErrorCode.INVALID_PARAMETER);
+            throw new SearchException(
+                    SearchErrorCode.INVALID_PARAMETER,
+                    exception
+            );
         }
     }
 
