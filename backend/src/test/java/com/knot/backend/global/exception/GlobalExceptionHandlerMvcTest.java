@@ -3,6 +3,7 @@ package com.knot.backend.global.exception;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -68,6 +70,27 @@ class GlobalExceptionHandlerMvcTest {
                 .andExpect(jsonPath("$.code").value("REQUEST_PATH_NOT_FOUND"))
                 .andExpect(jsonPath("$.message").value("요청 경로를 찾을 수 없습니다"))
                 .andExpect(jsonPath("$.fieldErrors").doesNotExist());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"application/json", "text/event-stream"})
+    @DisplayName("지원하지 않는 메서드는 공통 JSON 405와 Allow로 응답한다")
+    void read_failure_methodNotAllowed(String accept) throws Exception {
+        // given
+        MockHttpServletRequestBuilder request = post("/api/v1/test/http-errors/ok");
+        request.accept(accept);
+
+        // when & then
+        mvc.perform(request)
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(
+                        header().string(
+                                HttpHeaders.ALLOW,
+                                "GET"
+                        )
+                )
+                .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
     }
 
     @Test
