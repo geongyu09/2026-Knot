@@ -12,6 +12,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
@@ -71,9 +73,12 @@ class SearchIntakeMigrationIntegrationTest {
         }
     }
 
-    @Test
-    @DisplayName("실행 token·기한 조합과 음수 제외 수는 PostgreSQL CHECK로 거절한다")
-    void migrate_success_enforcesExecutionConstraints() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"UPDATE search_answer_executions SET state = 'RUNNING'",
+            "UPDATE search_answer_executions SET excluded_count = -1",
+            "UPDATE search_messages SET failure_code = 'ERROR' WHERE role = 'USER'"})
+    @DisplayName("실행 token·기한 조합과 음수 제외 수 및 USER 오류 코드는 PostgreSQL CHECK로 거절한다")
+    void migrate_failure_enforcesExecutionConstraints(String invalidSql) throws Exception {
         flyway("42").migrate();
         try (Connection connection = connection()) {
             JdbcClient jdbc = jdbc(connection);
@@ -92,28 +97,6 @@ class SearchIntakeMigrationIntegrationTest {
             long answer = jdbc.sql("SELECT id FROM search_messages WHERE role = 'ASSISTANT'")
                     .query(Long.class)
                     .single();
-            assertThatThrownBy(
-                    () -> jdbc
-                            .sql(
-                                    """
-                                            INSERT INTO search_answer_executions(answer_id, conversation_id, question_id, state, created_at)
-                                            VALUES (:answer, :conversation, :question, 'RUNNING', CURRENT_TIMESTAMP)
-                                            """
-                            )
-                            .param(
-                                    "answer",
-                                    answer
-                            )
-                            .param(
-                                    "conversation",
-                                    conversation
-                            )
-                            .param(
-                                    "question",
-                                    question
-                            )
-                            .update()
-            ).isInstanceOf(DataIntegrityViolationException.class);
             jdbc.sql("""
                     INSERT INTO search_answer_executions(answer_id, conversation_id, question_id, state, created_at)
                     VALUES (:answer, :conversation, :question, 'QUEUED', CURRENT_TIMESTAMP)
@@ -132,11 +115,7 @@ class SearchIntakeMigrationIntegrationTest {
                     )
                     .update();
             assertThatThrownBy(
-                    () -> jdbc.sql("UPDATE search_answer_executions SET excluded_count = -1")
-                            .update()
-            ).isInstanceOf(DataIntegrityViolationException.class);
-            assertThatThrownBy(
-                    () -> jdbc.sql("UPDATE search_messages SET failure_code = 'ERROR' WHERE role = 'USER'")
+                    () -> jdbc.sql(invalidSql)
                             .update()
             ).isInstanceOf(DataIntegrityViolationException.class);
         }

@@ -2,8 +2,6 @@ package com.knot.backend.recording.application;
 
 import com.knot.backend.recording.application.dto.command.RecordingControlCommand;
 import com.knot.backend.recording.application.dto.result.RecordingEndResult;
-import com.knot.backend.recording.domain.RecordingErrorCode;
-import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.RecordingSession;
 import com.knot.backend.recording.domain.RecordingSessionRepository;
 import java.time.Clock;
@@ -15,9 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class RecordingEndService {
-    private final RecordingWorkspaceAccessValidator workspaceAccessValidator;
+    private final RecordingControlledSessionLoader controlledSessionLoader;
     private final RecordingSessionRepository recordingSessionRepository;
-    private final RecordingControlTokenHasher controlTokenHasher;
     private final Clock clock;
 
     @Transactional
@@ -27,22 +24,11 @@ public class RecordingEndService {
             long recordingId,
             RecordingControlCommand command
     ) {
-        workspaceAccessValidator.validateAndLock(
+        RecordingSession session = controlledSessionLoader.loadForUpdate(
                 workspaceId,
-                memberId
-        );
-        if (recordingId <= 0) {
-            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
-        }
-        RecordingSession session = recordingSessionRepository.findByIdForUpdate(recordingId)
-                .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND));
-        session.validateControlledBy(
-                workspaceId,
-                memberId
-        );
-        session.validateControlProof(
-                command.tabId(),
-                controlTokenHasher.hash(command.controlToken())
+                memberId,
+                recordingId,
+                command
         );
         session.end(
                 clock.instant()

@@ -86,15 +86,19 @@ public class SearchAnswerWorker {
             return;
         }
         SearchAnswerGenerator generator = generators.getObject();
-        List<Long> usedIds = generator.generate(
-                scope,
-                work.question(),
-                documents,
+        List<Long> usedIds;
+        try (SearchAnswerContentBuffer content = new SearchAnswerContentBuffer(
                 text -> append(
                         work,
                         text
                 )
-        );
+        )) {
+            usedIds = generator.generate(
+                    work.question(),
+                    documents,
+                    content
+            );
+        }
         Set<Long> candidates = documents.stream()
                 .map(SearchDocumentResult::documentId)
                 .collect(Collectors.toSet());
