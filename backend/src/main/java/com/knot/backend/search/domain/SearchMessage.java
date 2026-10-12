@@ -132,7 +132,7 @@ public class SearchMessage {
 
     public void retry() {
         if (role != SearchMessageRole.ASSISTANT || status != SearchMessageStatus.FAILED) {
-            throw new IllegalStateException("answer is not failed");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         content = "";
         failureCode = null;

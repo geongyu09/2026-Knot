@@ -115,7 +115,7 @@ public class SearchAnswerExecution {
 
     public void retry() {
         if (state != SearchExecutionState.FINISHED) {
-            throw new IllegalStateException("execution is not finished");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         executionToken = null;
         deadlineAt = null;
