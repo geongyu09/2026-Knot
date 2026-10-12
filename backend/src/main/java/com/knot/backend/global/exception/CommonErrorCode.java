@@ -25,6 +25,12 @@ public enum CommonErrorCode implements ErrorCode {
             "필수 요청 파라미터가 누락되었습니다"
     ),
 
+    REQUEST_PATH_NOT_FOUND(
+            ErrorCategory.NOT_FOUND,
+            "REQUEST_PATH_NOT_FOUND",
+            "요청 경로를 찾을 수 없습니다"
+    ),
+
     FORBIDDEN(
             ErrorCategory.FORBIDDEN,
             "FORBIDDEN",
