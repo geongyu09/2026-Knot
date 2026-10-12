@@ -24,7 +24,7 @@ public class SearchEvidenceId implements Serializable {
             long documentId
     ) {
         if (messageId <= 0 || documentId <= 0) {
-            throw new IllegalArgumentException("invalid evidence identity");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         SearchEvidenceId id = new SearchEvidenceId();
         id.messageId = messageId;
