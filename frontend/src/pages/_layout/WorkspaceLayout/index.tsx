@@ -2,6 +2,7 @@ import DockablePanel from "@composites/DockablePanel";
 import styled from "@emotion/styled";
 import SearchEvidenceToggle from "@features/search/SearchEvidenceToggle";
 import useRecordingLeaveWarning from "@hooks/domain/recording/useRecordingLeaveWarning";
+import useAbortSearchAnswerOnLeave from "@hooks/domain/search/useAbortSearchAnswerOnLeave";
 import useWorkspaceEntry from "@hooks/domain/workspace/useWorkspaceEntry";
 import useWorkspaceNav from "@hooks/domain/workspace/useWorkspaceNav";
 import DockColumn from "@primitives/layout/DockColumn";
@@ -40,6 +41,8 @@ import type { DockedPanelName } from "./types/dockedPanel";
  *
  * 녹음은 레이아웃 안의 어느 화면에서나 이어지므로, 녹음 중 새로고침·탭 닫기 경고도 이 범위에서 건다.
  *
+ * 탐색 답변도 독에서 보내 대화 화면에 그리므로 이 범위에서 이어지고, 다른 대화로 옮기거나 레이아웃을 나가면 끊는다.
+ *
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1364-6863 GNB/Floating
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=526-772 탐색 결과/채팅 세션 목록
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2106-28974 탐색/대화 목록 고정 + 찾은 기록 열림
@@ -51,6 +54,7 @@ export default function WorkspaceLayout() {
   const [pickedPanel, setPickedPanel] = useState<DockedPanelName>(null);
 
   useRecordingLeaveWarning();
+  useAbortSearchAnswerOnLeave();
 
   // 대화 목록 버튼은 탐색 화면에만 있으므로, 홈으로 나가면 고른 적 없던 것으로 봐요
   const dockedPanel =
