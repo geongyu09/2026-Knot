@@ -19,6 +19,7 @@ public class SearchWorkerProperties {
     private Duration executionLease = Duration.ofSeconds(150);
     private Duration streamPollInterval = Duration.ofMillis(100);
     private Duration streamTimeout = Duration.ofMinutes(3);
+    private Duration streamHeartbeatInterval = Duration.ofSeconds(15);
     private int streamConcurrency = 8;
 
     public void validate() {
@@ -29,6 +30,7 @@ public class SearchWorkerProperties {
         validateDuration(executionLease);
         validateDuration(streamPollInterval);
         validateDuration(streamTimeout);
+        validateDuration(streamHeartbeatInterval);
     }
 
     private void validateConcurrency() {

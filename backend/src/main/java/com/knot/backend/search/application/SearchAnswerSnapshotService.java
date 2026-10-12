@@ -5,6 +5,7 @@ import com.knot.backend.search.application.dto.result.SearchEvidenceItemResult;
 import com.knot.backend.search.domain.SearchAnswerExecution;
 import com.knot.backend.search.domain.SearchConversation;
 import com.knot.backend.search.domain.SearchMessage;
+import com.knot.backend.search.domain.SearchMessageRole;
 import com.knot.backend.search.domain.SearchRepository;
 import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.SearchException;
@@ -27,6 +28,40 @@ public class SearchAnswerSnapshotService {
     public SearchAnswerSnapshotResult read(
             long workspaceId,
             long memberId,
+            long conversationId,
+            long answerId
+    ) {
+        SearchConversation conversation = repository.findConversation(conversationId)
+                .orElseThrow(() -> new SearchException(SearchErrorCode.ANSWER_NOT_FOUND));
+        validateAccess(
+                workspaceId,
+                memberId,
+                conversation
+        );
+        SearchMessage answer = repository.findMessage(answerId)
+                .orElseThrow(() -> new SearchException(SearchErrorCode.ANSWER_NOT_FOUND));
+        validateAnswer(
+                answer,
+                conversationId
+        );
+        SearchAnswerExecution execution = repository.findExecution(answerId)
+                .orElseThrow(() -> new SearchException(SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE));
+        if (execution.getConversationId() != conversationId) {
+            throw new SearchException(SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE);
+        }
+        return readSnapshot(
+                workspaceId,
+                memberId,
+                conversationId,
+                answerId,
+                answer,
+                execution
+        );
+    }
+
+    public SearchAnswerSnapshotResult read(
+            long workspaceId,
+            long memberId,
             long answerId
     ) {
         SearchAnswerExecution execution = repository.findExecution(answerId)
@@ -40,10 +75,28 @@ public class SearchAnswerSnapshotService {
         );
         SearchMessage answer = repository.findMessage(answerId)
                 .orElseThrow();
-        List<SearchEvidenceItemResult> evidences = messages.findEvidences(
+        return readSnapshot(
                 workspaceId,
                 memberId,
                 conversation.getId(),
+                answerId,
+                answer,
+                execution
+        );
+    }
+
+    private SearchAnswerSnapshotResult readSnapshot(
+            long workspaceId,
+            long memberId,
+            long conversationId,
+            long answerId,
+            SearchMessage answer,
+            SearchAnswerExecution execution
+    ) {
+        List<SearchEvidenceItemResult> evidences = messages.findEvidences(
+                workspaceId,
+                memberId,
+                conversationId,
                 List.of(answerId)
         )
                 .getOrDefault(
@@ -60,6 +113,18 @@ public class SearchAnswerSnapshotService {
                 execution.getExcludedCount(),
                 List.copyOf(evidences)
         );
+    }
+
+    private void validateAnswer(
+            SearchMessage answer,
+            long conversationId
+    ) {
+        if (answer.getRole() != SearchMessageRole.ASSISTANT) {
+            throw new SearchException(SearchErrorCode.ANSWER_NOT_FOUND);
+        }
+        if (answer.getConversationId() != conversationId) {
+            throw new SearchException(SearchErrorCode.ANSWER_NOT_FOUND);
+        }
     }
 
     private void validateAccess(

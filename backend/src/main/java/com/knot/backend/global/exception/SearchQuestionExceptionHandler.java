@@ -2,7 +2,9 @@ package com.knot.backend.global.exception;
 
 import com.knot.backend.global.response.ErrorResponse;
 import com.knot.backend.search.presentation.SearchQuestionController;
+import com.knot.backend.search.presentation.SearchAnswerEventsController;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -13,7 +15,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
-@RestControllerAdvice(assignableTypes = SearchQuestionController.class)
+@RestControllerAdvice(assignableTypes = {SearchQuestionController.class, SearchAnswerEventsController.class})
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RequiredArgsConstructor
 public class SearchQuestionExceptionHandler {
@@ -23,9 +25,11 @@ public class SearchQuestionExceptionHandler {
     @ExceptionHandler(ProjectException.class)
     public ResponseEntity<ErrorResponse> handleProjectException(
             ProjectException exception,
-            HttpServletResponse response
+            HttpServletResponse response,
+            HttpServletRequest request
     ) {
         if (response.isCommitted()) {
+            completeAsyncRequest(request);
             return ResponseEntity.status(response.getStatus())
                     .build();
         }
@@ -45,13 +49,23 @@ public class SearchQuestionExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpectedException(
             Exception exception,
-            HttpServletResponse response
+            HttpServletResponse response,
+            HttpServletRequest request
     ) {
         if (response.isCommitted()) {
+            completeAsyncRequest(request);
             return ResponseEntity.status(response.getStatus())
                     .build();
         }
         return json(global.handleUnexpectedException(exception));
+    }
+
+    private void completeAsyncRequest(HttpServletRequest request) {
+        if (!request.isAsyncStarted()) {
+            return;
+        }
+        request.getAsyncContext()
+                .complete();
     }
 
     private ResponseEntity<ErrorResponse> json(ResponseEntity<ErrorResponse> response) {
