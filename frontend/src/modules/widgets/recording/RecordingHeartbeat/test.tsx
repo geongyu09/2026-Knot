@@ -2,7 +2,7 @@ import { PostRecordingHeartbeatResponseDto } from "@api/dto/recording";
 import { recordingHeartbeatResponse } from "@api/mock/responses/recording";
 import { useRecordingStore } from "@store/recordingStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import {
   clearRecordingStartProof,
   getRecordingStartProof,
@@ -24,7 +24,9 @@ const renderRecordingHeartbeat = () => {
 
   render(
     <QueryClientProvider client={queryClient}>
-      <RecordingHeartbeat />
+      <RecordingHeartbeat>
+        <p>감싼 화면</p>
+      </RecordingHeartbeat>
     </QueryClientProvider>,
   );
 };
@@ -58,6 +60,8 @@ describe("RecordingHeartbeat", () => {
   it("30초마다 생존 신호를 보내고, 녹음한 시간을 서버의 누적 시간으로 맞춘다", async () => {
     await startRecording();
     renderRecordingHeartbeat();
+
+    expect(screen.getByText("감싼 화면")).toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(HEARTBEAT_INTERVAL_MS - 1);
