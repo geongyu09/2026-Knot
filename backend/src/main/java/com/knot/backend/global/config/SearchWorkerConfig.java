@@ -17,12 +17,8 @@ public class SearchWorkerConfig {
 
     @Bean
     @ConditionalOnProperty(prefix = "knot.search.worker", name = "enabled", havingValue = "true")
-    public ThreadPoolTaskExecutor searchGenerationExecutor(
-            SearchWorkerProperties properties,
-            SearchGenerationAvailability availability
-    ) {
+    public ThreadPoolTaskExecutor searchGenerationExecutor(SearchWorkerProperties properties) {
         properties.validate();
-        availability.requireAvailable();
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(properties.getConcurrency());
         executor.setMaxPoolSize(properties.getConcurrency());
@@ -44,6 +40,14 @@ public class SearchWorkerConfig {
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
         executor.setWaitForTasksToCompleteOnShutdown(false);
         return executor;
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "knot.search.worker", name = "enabled", havingValue = "true")
+    public org.springframework.beans.factory.SmartInitializingSingleton searchGenerationReadiness(
+            SearchGenerationAvailability availability
+    ) {
+        return availability::requireAvailable;
     }
 
     @Bean

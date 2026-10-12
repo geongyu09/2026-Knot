@@ -66,7 +66,7 @@ size가 홀수이거나 1이면 질문·답변 쌍이 페이지 경계에서 나
 | items[].content | String | No | 원본 전체 본문. 공백·개행·이모지 보존, STREAMING은 빈 문자열 허용 | 문서 기준을 정리하면… |
 | items[].status | String | No | USER는 RECEIVED, ASSISTANT는 STREAMING/COMPLETED/FAILED/STOPPED | STREAMING |
 | items[].createdAt | Instant | No | 메시지 저장 시각 | 2026-10-11T00:00:00.123456Z |
-| items[].evidences | Array | No | 저장된 유효 Document 카드. 최대 3개, rank 오름차순. USER는 [] | 아래 예시 |
+| items[].evidences | Array | No | 실제 사용 근거 중 질문 관련도가 높은 최대 3개 카드, rank 오름차순. 실제 근거 전체는 서버에 보존. USER는 [] | 아래 예시 |
 | items[].evidences[].documentId | Long | No | 근거 Document ID | 81 |
 | items[].evidences[].title | String | No | 현재 문서 제목 | 문서 보관 정책 |
 | items[].evidences[].topic | String | No | 현재 문서 주제 | 문서 정책 |

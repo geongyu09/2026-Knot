@@ -1,11 +1,15 @@
 # 탐색 첫 질문 접수 API
 
+2026-10-12 저장 구조 정합성: develop의 녹음 V44 이후 탐색 접수 V45·실행 V46·실제 근거 rank V47을 적용한다. 후속 중지 API의 선점 전 종료 제약은 V48이다. 아래 migration 버전 설명은 최초 구현 당시 번호이며 API 요청·응답 계약은 동일하다.
+
 `POST /api/v1/workspaces/{workspaceId}/search/conversations`
 
-확인: 2026-10-11. 로컬 구현·검증 범위는 질문 접수, 영속 생성 작업, 부분 본문 저장과 SSE 전송이다.
-실제 검색 전략·색인 준비 상태·공급자 스트리밍 adapter는 미연결이다. 기본 worker 비활성 설정의 신규 요청은 접수 전에
-500 ANSWER_GENERATION_UNAVAILABLE로 거절된다. 테스트에서는 Mockito adapter와 실제 PostgreSQL·HTTP 서버를 사용했다.
-실제 모델의 답변 품질이나 운영 프록시 동작을 검증한 결과가 아니다.
+확인: 2026-10-11. 질문 접수·영속 생성 작업·SSE와 실제 MCP 문서 탐색·LLM 스트리밍 adapter를 구현했다.
+현재 Workspace의 ARCHIVED Document를 검색·목록·읽기 도구로 탐색한다. Transcript·오디오는 직접 검색하지 않는다.
+실제 사용 근거는 모두 저장하고 질문 관련도가 높은 최대 3개만 카드로 반환한다.
+별도 색인 없이 DB를 조회하므로 excluded_documents.count는 0이며 DRAFT·생성 Job을 포함하지 않는다.
+기본 worker·agent·LLM은 비활성이다. 활성화 설정 전 신규 요청은 접수 전에 500 ANSWER_GENERATION_UNAVAILABLE로 거절된다.
+실제 공급자와 테스트 PostgreSQL·HTTP·MCP를 연결한 두 합성 사례를 검증했다. 운영 배포·프록시 동작이나 일반적인 답변 품질을 보장하는 결과는 아니다.
 
 브라우저는 `credentials: "include"`를 사용한다. POST SSE는 fetch의 응답 스트림으로 읽는다.
 먼저 `GET /api/v1/auth/csrf`에서 token과 XSRF-TOKEN cookie를 받은 뒤 X-XSRF-TOKEN을 보낸다.
@@ -74,8 +78,8 @@
 | accepted | conversationId, questionMessageId, answerMessageId: Long | No | 항상 첫 이벤트. 신규 접수 또는 기존 접수의 ID | 아래 예시 |
 | progress | stage: String | No | SEARCHING 또는 GENERATING. 빠른 작업은 polling 사이 중간 단계를 건너뛸 수 있음 | GENERATING |
 | delta | answerMessageId: Long, text: String | No | DB에 저장된 이후 본문. 인접 조각이 합쳐져 전송될 수 있음 | 문서 기준은… |
-| evidence | answerMessageId: Long, items: Array | No | 종료 직전 사용 근거. 없으면 [] | 아래 예시 |
-| excluded_documents | count: Integer | No | 검색 adapter가 보고한 준비·실패 제외 수. 확보한 경우 한 연결에서 한 번 전송 | 2 |
+| evidence | answerMessageId: Long, items: Array | No | 실제 사용 근거 중 질문 관련도가 높은 최대 3개. 없으면 [] | 아래 예시 |
+| excluded_documents | count: Integer | No | 이번 DB 직접 탐색은 0. 확보한 경우 한 연결에서 한 번 전송. DRAFT·Job 미포함 | 0 |
 | completed | answerMessageId: Long, status: String | No | COMPLETED 종료 | COMPLETED |
 | failed | answerMessageId: Long, status: String, code: String | No | FAILED 종료. 공급자의 오류 원문을 노출하지 않음 | ANSWER_GENERATION_FAILED |
 | stopped | answerMessageId: Long, status: String | No | STOPPED 종료 상태의 전송 지원. 실제 중지 endpoint는 #568 범위 | STOPPED |
@@ -99,7 +103,7 @@ event:progress
 data:{"stage":"GENERATING"}
 
 event:excluded_documents
-data:{"count":2}
+data:{"count":0}
 
 event:delta
 data:{"answerMessageId":602,"text":"문서 기준을 정리하면…"}
@@ -152,19 +156,26 @@ JSON 필드의 출력 순서와 delta 조각 수는 계약이 아니다.
   이전 token이나 기한 이후 callback은 본문·종료 상태를 변경하지 못한다.
 - 첫 답변 FAILED는 대화 목록에서 숨긴다. 질문·부분 답변은 보존되며 소유자는 메시지 GET으로 읽을 수 있다.
 - 검색 없음은 녹음 안내 COMPLETED로 처리한다. 검색 오류는 FAILED로 구분한다.
-- 실제 사용 문서는 검색 후보의 부분집합이고 최대 3개다. 같은 Workspace의 Document만 연결한다.
+- 실제 사용 문서는 실제 읽은 Document의 부분집합이다. 같은 Workspace의 ARCHIVED Document만 연결하고 실제 근거 전체를 보존한다. SSE·메시지 GET은 질문 관련도가 높은 상위 3개 카드만 반환한다.
+- 2026-10-12 사용자 지정 [기본 시스템 프롬프트](../../backend/src/main/resources/prompts/search-answer-system.md)를 적용했다. 현재 생성 adapter는 서로 다른 참조 문서를 최대 3개로 제한하고 `evidenceIds`가 실제 제공된 문서에 속하는지 검증한다. 기존 전체 근거 저장 구조와 과거 근거는 유지한다.
+- 모델 입력은 `question`, 문맥용 `conversationHistory`, 사실 근거용 `evidence`로 구분한다. 모델의 JSON 응답에서 `answer`만 delta·메시지 본문으로 전달한다. 확인 질문이 별도 필드에 있으면 본문 뒤에 전달하며, `status`·`decisionState`는 이번 API의 새 응답 필드나 메시지 생성 상태가 아니다.
+- 잘린 JSON·중복 필드·잘못된 상태 조합·허용되지 않은 근거는 접수 후 생성 실패로 처리한다. 이미 전송한 답변 부분은 보존하고, JSON 외피와 내부 메타데이터는 본문으로 저장하지 않는다. 별도 LLM 근거 추출 호출은 사용하지 않는다.
   Transcript와 원문 인용은 저장·반환하지 않는다.
 - excluded_documents는 이 POST 전송의 정보다. 메시지 GET에 추가 필드를 제공하지 않는다.
 - 후속 질문·GET SSE 재연결·명시적 중지·실패 재시도는 각각 #566~#569에서 구현한다.
 
 ## 구현·운영 선행 조건
 
-실제 SearchDocumentRetriever·SearchAnswerGenerator 구현과 문서 준비 완료/제외 수 기준을 먼저 확정해야 worker를 활성화할 수 있다.
+production retriever/generator와 ARCHIVED·제외 수 0 기준을 구현했다. 활성화에는 `SEARCH_WORKER_ENABLED=true`,
+`SEARCH_AGENT_ENABLED=true`, `LLM_ENABLED=true`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_TOKEN`, 최소 32자
+`SEARCH_MCP_SIGNING_KEY`, 앱 내부의 `SEARCH_MCP_BASE_URL` 설정이 필요하다. 기본 MCP 주소는 현재 server.port의 IPv4 loopback이다.
+내부 HTTP 통신이 실제 배포 구조에 맞는지는 별도 확인한다. 토큰과 서명키를 브라우저·모델에 전달하지 않는다.
 현재 설정 기본값은 worker concurrency=2, 후보 조회=20, poll=1초, recovery=5초, 실행 기한=150초,
 SSE 연결=8개, snapshot poll=100ms, 연결 timeout=3분이다.
-이 값은 기술 운영 기본값이며 실제 공급자 timeout·취소 및 성능 평가는 아직 확인하지 않았다.
+탐색 기본값은 전체 예산120초·도구12회·읽기6,000 코드 포인트·문맥48,000 문자다. 공급자와 MCP의 응답 본문 정지도 전체 deadline으로 제한한다.
+이 값은 최적값이 아니라 기술 운영 기본값이다. 실제 모델 두 합성 사례의 시간은 약21초/115초였고 운영 성능 평가는 별도다.
 전송 timeout은 생성 취소를 의미하지 않는다.
 
-추가 migration은 V41 접수 기록·실패 code, V42 실행 상태다. 부모 Search 기반은 PR #572 리뷰에서 V39로 이동해
-Recording V37/V38과의 파일 버전 충돌을 해소했다. 준비한 순서는 녹음 V37/V38 → Search V39 → 근거 V40 → 접수 V41 → 실행 V42다.
+추가 migration은 V41 접수 기록·실패 code, V42 실행 상태, V43 실제 근거 양수 INTEGER rank다. 부모 Search 기반은 PR #572 리뷰에서 V39로 이동해
+Recording V37/V38과의 파일 버전 충돌을 해소했다. 준비한 순서는 녹음 V37/V38 → Search V39 → 근거 V40 → 접수 V41 → 실행 V42 → 전체 근거 rank V43이다.
 운영 DB 적용 이력은 미관측이며 운영 migration은 실행하지 않았다. 기존 Search V37을 이미 적용한 환경은 배포 전에 별도 확인한다.
