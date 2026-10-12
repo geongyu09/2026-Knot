@@ -34,6 +34,12 @@ interface UploadRecordedAudioParams {
   audio: Blob;
 }
 
+/** 녹음을 버리고 다음 녹음은 새 시작 요청으로 보내도록 증명을 지워요 */
+const clearRecording = () => {
+  useRecordingStore.getState().discardRecording();
+  clearRecordingStartProof();
+};
+
 // TODO: 실패 안내·재시도 정책은 기획 논의가 필요해요. 정해질 때까지 안내 UI 없이 콘솔에만 남겨요(#465)
 /**
  * 녹음을 시작·일시정지·이어서 녹음·끝내며 서버 녹음 세션과 맞추는 도메인 훅.
@@ -46,6 +52,7 @@ interface UploadRecordedAudioParams {
  * - 끝내기: 확인 창에서 [녹음 끝내기]를 고르면 종료 요청 → 업로드 URL 발급 → 오디오 PUT → 업로드 완료 확인 → 녹음 비우기 → 홈.
  *   끝내는 동안에는 확인 창을 다시 띄우지 않아요. 종료가 실패하면 녹음을 그대로 두고,
  *   업로드가 일시 실패하면 URL 발급부터 3번까지 다시 시도하고, 그래도 실패하면 오디오를 버리고 홈으로 가요.
+ *   워크스페이스를 옮길 때처럼 부른 쪽이 따로 확인받고 갈 곳도 정하면 `endRecordingWithoutConfirm`으로 끝내요.
  * - 서버에서 이미 끝났거나 버려진 녹음(409)이면 수집을 멈추고 오디오를 버린 뒤 홈으로 가요.
  *
  * 최초 탭 증명은 sessionStorage에 두고, 실패는 안내 없이 콘솔에만 남겨요.
@@ -67,11 +74,10 @@ const useRecordingControl = () => {
   const isStartingRef = useRef(false);
 
   //TODO: shared훅에서 라우팅 제거하기
-  /** 녹음을 버리고 다음 녹음은 새 시작 요청으로 보내도록 증명을 지운 뒤 홈으로 가요 */
+  /** 녹음을 비우고 홈으로 가요 */
   const closeRecording = useCallback(
     (workspaceId: number) => {
-      useRecordingStore.getState().discardRecording();
-      clearRecordingStartProof();
+      clearRecording();
       navigateToWorkspaceHome({
         workspaceId: String(workspaceId),
         replace: true,
@@ -239,38 +245,60 @@ const useRecordingControl = () => {
     [completeAudioUpload, issueAudioUploadUrl, uploadAudio],
   );
 
+  /**
+   * 확인 창 없이 녹음을 끝내 올린 뒤 비워요. 이동은 부른 쪽이 정해요.
+   * 끝냈으면 `true`를, 이미 끝내는 중이거나 종료 요청이 실패해 녹음을 이어 가면 `false`를 돌려줘요
+   */
+  const endRecordingWithoutConfirm = useCallback(async () => {
+    const { session, isEnding, beginEnding } = useRecordingStore.getState();
+    if (!session || isEnding) return false;
+
+    // 응답을 기다리는 동안 다시 눌러도 종료 요청이 겹치지 않게 먼저 표시해요
+    beginEnding();
+
+    try {
+      await endRecordingSession(session);
+    } catch (error) {
+      logRequestError("녹음 종료", error);
+
+      // 서버에서 이미 끝났거나 버려진 녹음이면 올릴 곳이 없어 오디오를 버리고 끝낸 것으로 봐요
+      if (isClosedRecordingError(error)) {
+        clearRecording();
+
+        return true;
+      }
+
+      useRecordingStore.getState().cancelEnding();
+
+      return false;
+    }
+
+    const audio = await useRecordingStore.getState().stopRecording();
+    await uploadRecordedAudio({ ...session, audio });
+    clearRecording();
+
+    return true;
+  }, [endRecordingSession, uploadRecordedAudio]);
+
   const endRecording = useCallback(() => {
     // 끝내는 동안 다시 눌러도 이미 끝내는 중이라 확인 창을 또 띄우지 않아요
     if (useRecordingStore.getState().isEnding) return;
 
     openEndRecordingDialog({
       onEnd: async () => {
-        const { session, isEnding, beginEnding } = useRecordingStore.getState();
-        if (!session || isEnding) return;
+        const { session } = useRecordingStore.getState();
+        if (!session || !(await endRecordingWithoutConfirm())) return;
 
-        // 응답을 기다리는 동안 다시 눌러도 종료 요청이 겹치지 않게 먼저 표시해요
-        beginEnding();
-
-        try {
-          await endRecordingSession(session);
-        } catch (error) {
-          useRecordingStore.getState().cancelEnding();
-          handleControlError({ action: "녹음 종료", error, ...session });
-
-          return;
-        }
-
-        const audio = await useRecordingStore.getState().stopRecording();
-        await uploadRecordedAudio({ ...session, audio });
-        closeRecording(session.workspaceId);
+        navigateToWorkspaceHome({
+          workspaceId: String(session.workspaceId),
+          replace: true,
+        });
       },
     });
   }, [
-    closeRecording,
-    endRecordingSession,
-    handleControlError,
+    endRecordingWithoutConfirm,
+    navigateToWorkspaceHome,
     openEndRecordingDialog,
-    uploadRecordedAudio,
   ]);
 
   return {
@@ -279,6 +307,7 @@ const useRecordingControl = () => {
     syncPause,
     resumeRecording,
     endRecording,
+    endRecordingWithoutConfirm,
   };
 };
 

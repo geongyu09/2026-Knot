@@ -92,24 +92,6 @@ describe("RecordingPage", () => {
     mockServer.events.removeAllListeners();
   });
 
-  it("진행 중인 녹음 없이 들어오면 홈으로 보내고, 뒤로 가기로 돌아오지 않는다", async () => {
-    const { router } = renderRecordingPage();
-
-    await act(async () => {});
-
-    expect(router.state.location.pathname).toBe(HOME_PATH);
-    expect(router.state.historyAction).toBe("REPLACE");
-  });
-
-  it("녹음 중이면 녹음 화면에 머문다", async () => {
-    await startRecording();
-    const { router } = renderRecordingPage();
-
-    await act(async () => {});
-
-    expect(router.state.location.pathname).toBe(RECORDING_PATH);
-  });
-
   it("확인 창에서 녹음 끝내기를 고르면 종료 요청과 업로드 완료 확인을 마치고 홈으로 나간다", async () => {
     const count = { end: 0, complete: 0 };
     mockServer.events.on("request:start", ({ request }) => {

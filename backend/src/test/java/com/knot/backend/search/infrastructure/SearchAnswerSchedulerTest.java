@@ -1,0 +1,138 @@
+package com.knot.backend.search.infrastructure;
+
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+
+import com.knot.backend.global.config.SearchWorkerProperties;
+import com.knot.backend.search.application.SearchAnswerExecutionService;
+import com.knot.backend.search.application.SearchAnswerWorker;
+import com.knot.backend.search.domain.SearchRepository;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.core.task.TaskRejectedException;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+
+class SearchAnswerSchedulerTest {
+    private static final Instant NOW = Instant.parse("2026-10-11T00:00:00Z");
+
+    private SearchRepository repository;
+    private SearchAnswerWorker worker;
+    private SearchAnswerExecutionService executions;
+    private ThreadPoolTaskExecutor executor;
+    private SearchAnswerScheduler scheduler;
+
+    @BeforeEach
+    void setUp() {
+        repository = mock(SearchRepository.class);
+        worker = mock(SearchAnswerWorker.class);
+        executions = mock(SearchAnswerExecutionService.class);
+        executor = mock(ThreadPoolTaskExecutor.class);
+        scheduler = new SearchAnswerScheduler(
+                repository,
+                worker,
+                executions,
+                new SearchWorkerProperties(),
+                executor,
+                Clock.fixed(
+                        NOW,
+                        ZoneOffset.UTC
+                )
+        );
+    }
+
+    @Test
+    @DisplayName("영속 대기 작업을 worker executor에 전달한다")
+    void dispatchQueued_success() {
+        when(repository.findQueuedAnswerIds(20)).thenReturn(
+                List.of(
+                        1L,
+                        2L
+                )
+        );
+        doAnswer(call -> {
+            Runnable task = call.getArgument(0);
+            task.run();
+            return null;
+        }).when(executor)
+                .execute(any());
+        scheduler.dispatchQueued();
+        verify(worker).execute(1L);
+        verify(worker).execute(2L);
+    }
+
+    @Test
+    @DisplayName("executor 용량 부족은 접수 작업을 실패로 바꾸지 않고 다음 poll로 남긴다")
+    void dispatchQueued_success_capacityDeferred() {
+        when(repository.findQueuedAnswerIds(20)).thenReturn(
+                List.of(
+                        1L,
+                        2L
+                )
+        );
+        doThrow(new TaskRejectedException("full")).when(executor)
+                .execute(any());
+        scheduler.dispatchQueued();
+        verify(
+                executor,
+                times(1)
+        ).execute(any());
+        verifyNoInteractions(
+                worker,
+                executions
+        );
+    }
+
+    @Test
+    @DisplayName("worker 내부 오류는 다른 후보의 전달을 막지 않는다")
+    void dispatchQueued_success_isolatesWorkerFailure() {
+        when(repository.findQueuedAnswerIds(20)).thenReturn(
+                List.of(
+                        1L,
+                        2L
+                )
+        );
+        doAnswer(call -> {
+            Runnable task = call.getArgument(0);
+            task.run();
+            return null;
+        }).when(executor)
+                .execute(any());
+        doThrow(new IllegalStateException("DB unavailable")).when(worker)
+                .execute(1);
+        scheduler.dispatchQueued();
+        verify(worker).execute(2);
+    }
+
+    @Test
+    @DisplayName("기한 지난 실행을 복구하며 한 건의 DB 오류는 다음 실행의 복구를 막지 않는다")
+    void recoverExpired_success() {
+        when(
+                repository.findExpiredAnswerIds(
+                        eq(NOW),
+                        eq(20)
+                )
+        ).thenReturn(
+                List.of(
+                        1L,
+                        2L
+                )
+        );
+        doThrow(new IllegalStateException("DB unavailable")).when(executions)
+                .expire(1);
+        scheduler.recoverExpired();
+        verify(executions).expire(2);
+        verifyNoInteractions(worker);
+    }
+}

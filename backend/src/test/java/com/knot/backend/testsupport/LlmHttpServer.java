@@ -54,8 +54,18 @@ public final class LlmHttpServer implements AutoCloseable {
     }
 
     public void respond(HttpHandler handler) {
-        server.createContext(
+        respond(
                 "/v1/chat/completions",
+                handler
+        );
+    }
+
+    public void respond(
+            String path,
+            HttpHandler handler
+    ) {
+        server.createContext(
+                path,
                 exchange -> {
                     requests.incrementAndGet();
                     requestBody = new String(

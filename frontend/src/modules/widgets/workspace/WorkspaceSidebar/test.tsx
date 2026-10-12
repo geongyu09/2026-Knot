@@ -4,6 +4,7 @@ import { documentsResponse } from "@api/mock/responses/document";
 import { workspaceDetailResponse } from "@api/mock/responses/workspace";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
+import { DialogProvider } from "@provider/context/dialogContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -39,7 +40,9 @@ const renderSidebar = () => {
   render(
     <ThemeProvider theme={theme}>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <DialogProvider>
+          <RouterProvider router={router} />
+        </DialogProvider>
       </QueryClientProvider>
     </ThemeProvider>,
   );
@@ -48,11 +51,14 @@ const renderSidebar = () => {
 };
 
 describe("WorkspaceSidebar", () => {
-  it("조회한 워크스페이스 이름과 문서 목록을 보여 준다", async () => {
+  it("워크스페이스 이름이 적힌 메뉴 버튼과 문서 목록을 보여 준다", async () => {
     const sidebar = renderSidebar();
 
     expect(
       await within(sidebar).findByText(expectedWorkspace.name),
+    ).toBeInTheDocument();
+    expect(
+      within(sidebar).getByRole("button", { name: "워크스페이스 메뉴" }),
     ).toBeInTheDocument();
 
     // 폴더 행의 이름은 폴더 이름과 문서 수를 이은 글이라 폴더 이름으로 시작하는 것을 찾아요
