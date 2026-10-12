@@ -7,6 +7,7 @@
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/pause
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/resume
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/end
+ * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/heartbeat
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-upload-url
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-upload-complete
  */
@@ -314,6 +315,77 @@ export class PostRecordingEndResponseDto {
     this.recordingId = raw.recordingId;
     this.status = raw.status;
     this.endedAt = raw.endedAt;
+  }
+}
+
+// POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/heartbeat
+
+/**
+ * 녹음이 끝난 사유. `USER_ENDED`는 사용자가 직접 끝냄, `CONNECTION_EXPIRED`는 생존 신호가 120초 동안 없어 서버가 끝냄,
+ * `MAX_DURATION`은 누적 녹음 시간이 2시간에 닿아 서버가 끝냄
+ */
+export type RecordingEndReason =
+  "USER_ENDED" | "CONNECTION_EXPIRED" | "MAX_DURATION";
+
+/** 녹음 생존 신호를 보낼 때 앱이 넘기는 값. 시작 때 보낸 증명 그대로 */
+export interface PostRecordingHeartbeatRequestInput {
+  tabId: string;
+  controlToken: string;
+}
+
+/** 녹음 생존 신호 요청 본문. 최초 녹음 탭임을 증명해요 */
+export class PostRecordingHeartbeatRequestDto {
+  /** 녹음을 시작한 최초 탭의 UUID */
+  tabId: string;
+  /** 녹음 시작 때 보낸 제어 증명(43자 Base64URL) */
+  controlToken: string;
+
+  constructor({ tabId, controlToken }: PostRecordingHeartbeatRequestInput) {
+    this.tabId = tabId;
+    this.controlToken = controlToken;
+  }
+}
+
+/** 녹음 생존 신호의 서버 응답 모양 */
+export interface PostRecordingHeartbeatResponseRaw {
+  recordingId: number;
+  status: RecordingSessionStatus;
+  elapsedMillis: number;
+  lastSeenAt: string;
+  expiresAt: string | null;
+  endedAt: string | null;
+  endReason: RecordingEndReason | null;
+  serverNow: string;
+}
+
+/** 녹음 생존 신호 응답. 이미 끝난 녹음에 보내도 오류가 아니라 200으로 끝난 상태를 그대로 돌려줘요 */
+export class PostRecordingHeartbeatResponseDto {
+  /** 녹음 세션 ID */
+  recordingId: number;
+  /** 지금의 녹음 세션 상태. `ENDED`나 `DISCARDED`면 서버가 이미 끝냈거나 버린 녹음이에요 */
+  status: RecordingSessionStatus;
+  /** 서버 기준 누적 녹음 시간(ms). 일시정지 구간은 빠지고 최대 2시간(7200000)이에요 */
+  elapsedMillis: number;
+  /** 서버가 받은 마지막 유효 신호 시각(ISO 8601). 끝난 녹음에 보낸 신호로는 바뀌지 않아요 */
+  lastSeenAt: string;
+  /** 이 시각(ISO 8601)까지 다음 신호가 없으면 서버가 녹음을 끝내요. 끝난 녹음이면 null */
+  expiresAt: string | null;
+  /** 녹음 종료 시각(ISO 8601). 진행 중이면 null */
+  endedAt: string | null;
+  /** 종료 사유. 진행 중이거나 이 값을 기록하기 전에 끝난 녹음이면 null */
+  endReason: RecordingEndReason | null;
+  /** 응답을 만든 서버 시각(ISO 8601) */
+  serverNow: string;
+
+  constructor(raw: PostRecordingHeartbeatResponseRaw) {
+    this.recordingId = raw.recordingId;
+    this.status = raw.status;
+    this.elapsedMillis = raw.elapsedMillis;
+    this.lastSeenAt = raw.lastSeenAt;
+    this.expiresAt = raw.expiresAt;
+    this.endedAt = raw.endedAt;
+    this.endReason = raw.endReason;
+    this.serverNow = raw.serverNow;
   }
 }
 
