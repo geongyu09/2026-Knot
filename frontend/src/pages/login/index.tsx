@@ -8,7 +8,7 @@ import Stack from "@primitives/layout/Stack";
  * 로그인 & 회원가입 화면 (`/login`)
  *
  * 서비스 진입점이다. 신규 사용자는 로그인 후 온보딩(`/onboarding`)으로 이어진다.
- * 배경과 화면 가운데 정렬, 로고는 `CenteredLayout`이 담당한다.
+ * 배경과 로고, 가로 가운데 정렬과 위쪽 28% 배치는 `CenteredLayout`이 담당한다.
  *
  * @see {@link https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1788-4727 로그인/기본}
  */
