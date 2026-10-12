@@ -55,7 +55,7 @@ class SearchRequestReceiptTest {
                         5,
                         now
                 )
-        ).isInstanceOf(IllegalArgumentException.class);
+        ).isInstanceOf(SearchException.class);
         assertThatThrownBy(
                 () -> SearchRequestReceipt.question(
                         1,
@@ -66,7 +66,7 @@ class SearchRequestReceiptTest {
                         5,
                         now
                 )
-        ).isInstanceOf(IllegalArgumentException.class);
+        ).isInstanceOf(SearchException.class);
         assertThatThrownBy(
                 () -> SearchRequestReceipt.question(
                         1,
@@ -77,7 +77,7 @@ class SearchRequestReceiptTest {
                         5,
                         now
                 )
-        ).isInstanceOf(IllegalArgumentException.class);
+        ).isInstanceOf(SearchException.class);
         assertThatThrownBy(
                 () -> SearchRequestReceipt.question(
                         1,
@@ -88,7 +88,7 @@ class SearchRequestReceiptTest {
                         5,
                         now
                 )
-        ).isInstanceOf(IllegalArgumentException.class);
+        ).isInstanceOf(SearchException.class);
         assertThatThrownBy(
                 () -> SearchRequestReceipt.question(
                         1,
@@ -99,7 +99,7 @@ class SearchRequestReceiptTest {
                         4,
                         now
                 )
-        ).isInstanceOf(IllegalArgumentException.class);
+        ).isInstanceOf(SearchException.class);
         assertThatThrownBy(
                 () -> SearchRequestReceipt.question(
                         1,
@@ -110,7 +110,7 @@ class SearchRequestReceiptTest {
                         5,
                         now
                 )
-        ).isInstanceOf(IllegalArgumentException.class);
+        ).isInstanceOf(SearchException.class);
         assertThatThrownBy(
                 () -> SearchRequestReceipt.question(
                         1,
@@ -121,6 +121,6 @@ class SearchRequestReceiptTest {
                         5,
                         null
                 )
-        ).isInstanceOf(IllegalArgumentException.class);
+        ).isInstanceOf(SearchException.class);
     }
 }

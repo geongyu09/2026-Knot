@@ -21,7 +21,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -110,24 +109,13 @@ class SearchStreamingAnswerGeneratorTest {
         );
     }
 
-    @Test
-    @DisplayName("읽지 않은 ID와 중복 ID는 실제 사용 근거로 인정하지 않는다")
-    void generate_failure_unreadAndDuplicateEvidence() {
-        AtomicInteger attempts = new AtomicInteger();
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"E99", "E1,E1"})
+    @DisplayName("읽지 않은 ID 또는 중복 ID는 실제 사용 근거로 인정하지 않는다")
+    void generate_failure_invalidEvidence(String ids) {
         doAnswer(call -> {
             Consumer<String> consumer = call.getArgument(2);
-            if (attempts.getAndIncrement() == 0) {
-                consumer.accept(response(List.of("E99")));
-                return null;
-            }
-            consumer.accept(
-                    response(
-                            List.of(
-                                    "E1",
-                                    "E1"
-                            )
-                    )
-            );
+            consumer.accept(response(List.of(ids.split(","))));
             return null;
         }).when(llm)
                 .stream(
@@ -135,15 +123,6 @@ class SearchStreamingAnswerGeneratorTest {
                         any(),
                         any()
                 );
-        assertThatThrownBy(
-                () -> generator.generate(
-                        scope,
-                        "변화",
-                        documents(),
-                        text -> {
-                        }
-                )
-        ).hasMessage("INVALID_MODEL_ANSWER");
         assertThatThrownBy(
                 () -> generator.generate(
                         scope,
