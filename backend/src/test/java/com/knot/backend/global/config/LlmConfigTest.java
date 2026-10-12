@@ -122,8 +122,21 @@ class LlmConfigTest {
                 )
                 .run(context -> {
                     assertThat(context).hasFailed();
-                    assertThat(context.getStartupFailure()).hasRootCauseInstanceOf(LlmException.class)
-                            .hasRootCauseMessage(LlmErrorCode.LLM_INVALID_CONFIGURATION.getMessage());
+                    Throwable failure = context.getStartupFailure();
+                    assertThat(failure).hasRootCauseInstanceOf(java.io.IOException.class);
+                    assertThat(findLlmFailure(failure).getErrorCode())
+                            .isEqualTo(LlmErrorCode.LLM_INVALID_CONFIGURATION);
                 });
+    }
+
+    private LlmException findLlmFailure(Throwable failure) {
+        Throwable current = failure;
+        while (current != null) {
+            if (LlmException.class.isInstance(current)) {
+                return LlmException.class.cast(current);
+            }
+            current = current.getCause();
+        }
+        throw new AssertionError("LLM 설정 예외가 원인 체인에 없습니다");
     }
 }
