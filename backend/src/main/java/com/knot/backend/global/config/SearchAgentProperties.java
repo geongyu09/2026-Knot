@@ -44,7 +44,7 @@ public class SearchAgentProperties {
 
     private void validateCancellationInterval() {
         if (cancellationPollInterval == null || cancellationPollInterval.toMillis() < 1) {
-            throw new IllegalStateException("search cancellation interval must be at least one millisecond");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_CONFIGURATION);
         }
     }
 

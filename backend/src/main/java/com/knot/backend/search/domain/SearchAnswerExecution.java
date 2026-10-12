@@ -108,7 +108,7 @@ public class SearchAnswerExecution {
 
     public void stop() {
         if (state == SearchExecutionState.FINISHED) {
-            throw new IllegalStateException("execution is already finished");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         state = SearchExecutionState.FINISHED;
     }
