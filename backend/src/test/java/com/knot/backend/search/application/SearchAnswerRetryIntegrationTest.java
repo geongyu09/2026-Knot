@@ -74,6 +74,57 @@ class SearchAnswerRetryIntegrationTest {
     private SearchQuestionAcceptedResult first;
     private SearchAnswerWorkResult old;
 
+    @ParameterizedTest
+    @ValueSource(strings = {"QUEUED", "WRONG_QUESTION"})
+    @DisplayName("실패 답변의 실행 연결 또는 종료 상태가 손상되면 재시도를 거절한다")
+    void retry_failure_invalidExecution(String scenario) {
+        if ("QUEUED".equals(scenario)) {
+            jdbc.sql(
+                    "UPDATE search_answer_executions SET state='QUEUED', execution_token=NULL, deadline_at=NULL, stage=NULL WHERE answer_id=:id"
+            )
+                    .param(
+                            "id",
+                            first.answerMessageId()
+                    )
+                    .update();
+        }
+        if ("WRONG_QUESTION".equals(scenario)) {
+            long question = jdbc.sql(
+                    "INSERT INTO search_messages(conversation_id,role,sequence,content,status,created_at) VALUES (:id,'USER',3,'다른 질문','RECEIVED',CURRENT_TIMESTAMP) RETURNING id"
+            )
+                    .param(
+                            "id",
+                            first.conversationId()
+                    )
+                    .query(Long.class)
+                    .single();
+            jdbc.sql("UPDATE search_answer_executions SET question_id=:q WHERE answer_id=:id")
+                    .param(
+                            "q",
+                            question
+                    )
+                    .param(
+                            "id",
+                            first.answerMessageId()
+                    )
+                    .update();
+        }
+        assertThatThrownBy(() -> retry(UUID.randomUUID())).isInstanceOf(SearchException.class)
+                .satisfies(
+                        exception -> assertThat(((SearchException) exception).getErrorCode())
+                                .isEqualTo(SearchErrorCode.INVALID_SEARCH_STATE)
+                );
+        assertThat(
+                jdbc.sql("SELECT status FROM search_messages WHERE id=:id")
+                        .param(
+                                "id",
+                                first.answerMessageId()
+                        )
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("FAILED");
+    }
+
     @BeforeEach
     void setUp() {
         jdbc.sql("TRUNCATE TABLE members, workspaces RESTART IDENTITY CASCADE")
