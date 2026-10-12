@@ -25,12 +25,22 @@ interface RecordingSessionJpaRepository extends JpaRepository<RecordingSession, 
 
     @Query(value = """
             SELECT id FROM recording_sessions
-            WHERE status IN ('RECORDING', 'PAUSED') AND last_seen_at <= :threshold
+            WHERE status IN ('RECORDING', 'PAUSED')
+              AND (
+                  last_seen_at <= :disconnectionThreshold
+                  OR (
+                      status = 'RECORDING'
+                      AND current_interval_started_at
+                          + (:maxRecordingMillis - accumulated_recording_millis) * INTERVAL '1 millisecond' <= :now
+                  )
+              )
             ORDER BY last_seen_at, id
             LIMIT :limit
             """, nativeQuery = true)
-    List<Long> findActiveIdsLastSeenAtOrBefore(
-            Instant threshold,
+    List<Long> findActiveIdsDueAt(
+            Instant disconnectionThreshold,
+            Instant now,
+            long maxRecordingMillis,
             int limit
     );
 

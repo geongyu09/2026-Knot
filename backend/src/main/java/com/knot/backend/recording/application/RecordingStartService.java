@@ -79,7 +79,7 @@ public class RecordingStartService {
         )) {
             throw new RecordingException(RecordingErrorCode.RECORDING_START_REQUEST_CONFLICT);
         }
-        if (session.expireIfDisconnected(now())) {
+        if (session.expireIfDue(now())) {
             recordingSessionRepository.save(session);
         }
         return RecordingStartResult.from(
@@ -91,7 +91,7 @@ public class RecordingStartService {
     private void reclaimDisconnectedOrRejectActive(long memberId) {
         Instant now = now();
         for (RecordingSession active : recordingSessionRepository.findAllActiveByMemberIdForUpdate(memberId)) {
-            if (!active.expireIfDisconnected(now)) {
+            if (!active.expireIfDue(now)) {
                 throw new RecordingException(RecordingErrorCode.ACTIVE_RECORDING_ALREADY_EXISTS);
             }
             recordingSessionRepository.save(active);

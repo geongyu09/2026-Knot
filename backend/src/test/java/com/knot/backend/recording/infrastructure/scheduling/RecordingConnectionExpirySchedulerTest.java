@@ -11,8 +11,8 @@ import org.junit.jupiter.api.Test;
 class RecordingConnectionExpirySchedulerTest {
 
     @Test
-    @DisplayName("주기 작업은 설정한 개수만큼 연결 만료 회수를 요청한다")
-    void expireDisconnectedRecordings_success_usesConfiguredBatchSize() {
+    @DisplayName("주기 작업은 설정한 개수만큼 자동 종료 회수를 요청한다")
+    void expireDueRecordings_success_usesConfiguredBatchSize() {
         // given
         RecordingConnectionExpiryService expiryService = mock(RecordingConnectionExpiryService.class);
         RecordingConnectionExpiryScheduler scheduler = new RecordingConnectionExpiryScheduler(
@@ -25,9 +25,9 @@ class RecordingConnectionExpirySchedulerTest {
         );
 
         // when
-        scheduler.expireDisconnectedRecordings();
+        scheduler.expireDueRecordings();
 
         // then
-        verify(expiryService).expireDisconnected(100);
+        verify(expiryService).expireDue(100);
     }
 }
