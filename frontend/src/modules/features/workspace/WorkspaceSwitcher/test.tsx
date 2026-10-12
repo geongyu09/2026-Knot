@@ -15,6 +15,10 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import {
+  clearRecordingStartProof,
+  getRecordingStartProof,
+} from "@utils/recordingControlProof";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -77,10 +81,14 @@ describe("WorkspaceSwitcher", () => {
   afterEach(() => {
     // 전역 저장소라 테스트끼리 녹음이 새지 않도록 처음 상태로 되돌려요
     useRecordingStore.getState().discardRecording();
+    clearRecordingStartProof();
     mockServer.events.removeAllListeners();
   });
 
+  /** 녹음은 독에서 증명을 만들어 시작하므로, 같은 순서로 미리 시작해 둬요 */
   const startRecording = async () => {
+    getRecordingStartProof();
+
     await act(async () => {
       await useRecordingStore.getState().connectMicrophone();
       useRecordingStore.getState().startRecording({

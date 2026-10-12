@@ -632,6 +632,7 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
         endRecordingApi({
           workspaceId: WORKSPACE_ID,
           recordingId: RECORDING_ID,
+          body: CONTROL_PROOF,
         }),
       ).resolves.toEqual(new PostRecordingEndResponseDto(recordingEndResponse));
     });

@@ -251,13 +251,14 @@ const useRecordingControl = () => {
    */
   const endRecordingWithoutConfirm = useCallback(async () => {
     const { session, isEnding, beginEnding } = useRecordingStore.getState();
-    if (!session || isEnding) return false;
+    const proof = getRecordingControlProof();
+    if (!session || !proof || isEnding) return false;
 
     // 응답을 기다리는 동안 다시 눌러도 종료 요청이 겹치지 않게 먼저 표시해요
     beginEnding();
 
     try {
-      await endRecordingSession(session);
+      await endRecordingSession({ ...session, ...proof });
     } catch (error) {
       logRequestError("녹음 종료", error);
 

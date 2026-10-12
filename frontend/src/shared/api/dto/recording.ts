@@ -294,6 +294,25 @@ export class PostRecordingResumeResponseDto {
 
 // POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/end
 
+/** 녹음 종료 시 앱이 넘기는 값. 시작 때 보낸 증명 그대로 */
+export interface PostRecordingEndRequestInput {
+  tabId: string;
+  controlToken: string;
+}
+
+/** 녹음 종료 요청 본문. 최초 녹음 탭임을 증명해요 */
+export class PostRecordingEndRequestDto {
+  /** 녹음을 시작한 최초 탭의 UUID */
+  tabId: string;
+  /** 녹음 시작 때 보낸 제어 증명(43자 Base64URL) */
+  controlToken: string;
+
+  constructor({ tabId, controlToken }: PostRecordingEndRequestInput) {
+    this.tabId = tabId;
+    this.controlToken = controlToken;
+  }
+}
+
 /** 녹음 종료의 서버 응답 모양 */
 export interface PostRecordingEndResponseRaw {
   recordingId: number;
@@ -301,7 +320,7 @@ export interface PostRecordingEndResponseRaw {
   endedAt: string;
 }
 
-/** 녹음 종료 응답. 요청 본문은 없고, 이미 종료된 녹음이면 처음 확정한 결과를 그대로 돌려줘요 */
+/** 녹음 종료 응답. 이미 종료된 녹음이면 처음 확정한 결과를 그대로 돌려줘요 */
 export class PostRecordingEndResponseDto {
   /** 녹음 세션 ID */
   recordingId: number;
