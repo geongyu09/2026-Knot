@@ -1,6 +1,7 @@
 import styled from "@emotion/styled";
 import RecordingCard from "@features/recording/RecordingCard";
 import RecorderBar from "@widgets/recording/RecorderBar";
+import RecordingHeartbeat from "@widgets/recording/RecordingHeartbeat";
 
 /**
  * 녹음 화면 (`/workspace/:workspaceId/recording`)
@@ -9,6 +10,7 @@ import RecorderBar from "@widgets/recording/RecorderBar";
  * 진행 중인 녹음 없이 들어오면 라우트의 `RecordingGuard`가 홈으로 보내요.
  * 녹음 상태는 워크스페이스 레이아웃이 들고 있어 다른 화면으로 옮겨 가도 녹음이 이어지고,
  * 그동안 하단 독이 녹음 시간과 이 화면으로 돌아오는 칩을 보여줘요.
+ * 이 화면에 있는 동안에는 30초마다 서버에 생존 신호를 보내요.
  *
  * 녹음 파일 업로드·문서 정리 요청은 아직 연결하지 않아, 끝낸 녹음은 버려요.
  *
@@ -17,12 +19,16 @@ import RecorderBar from "@widgets/recording/RecorderBar";
  */
 export default function RecordingPage() {
   return (
-    <Container>
-      <PageColumn>
-        <RecorderBar />
-        <RecordingCard />
-      </PageColumn>
-    </Container>
+    <>
+      <Container>
+        <PageColumn>
+          <RecorderBar />
+          <RecordingCard />
+        </PageColumn>
+      </Container>
+      {/* 녹음 생존 신호를 보내는 컴포넌트 */}
+      <RecordingHeartbeat />
+    </>
   );
 }
 
