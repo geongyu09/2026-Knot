@@ -61,7 +61,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 @Tag("acceptance")
 @ActiveProfiles("dev")
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+        "knot.search.worker.stream-timeout=3s"})
 @Import(TestcontainersConfiguration.class)
 @TestApplicationProperties
 @Timeout(30)
