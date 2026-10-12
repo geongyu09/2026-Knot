@@ -11,20 +11,24 @@ import { useRecordingStore } from "@store/recordingStore";
  */
 const useRecordingState = () => {
   const status = useRecordingStore((state) => state.status);
+  const session = useRecordingStore((state) => state.session);
   const isEnding = useRecordingStore((state) => state.isEnding);
   const analyser = useRecordingStore((state) => state.analyser);
   const isMicrophoneLost = useRecordingStore((state) => state.isMicrophoneLost);
   const clearMicrophoneLost = useRecordingStore(
     (state) => state.clearMicrophoneLost,
   );
+  const syncElapsedTime = useRecordingStore((state) => state.syncElapsedTime);
 
   return {
     status,
+    session,
     isRecordingActive: status !== "idle",
     analyser,
     isMicrophoneLost,
     isEnding,
     clearMicrophoneLost,
+    syncElapsedTime,
   };
 };
 
