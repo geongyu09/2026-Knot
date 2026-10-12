@@ -213,7 +213,9 @@ class SearchDocumentToolServiceIntegrationTest {
     @Test
     @DisplayName("멤버가 탈퇴하면 현재 작업의 문서 목록도 읽을 수 없다")
     void list_failure_membershipRemoved() {
-        jdbc.sql("DELETE FROM workspace_members WHERE workspace_id = :workspace AND member_id = :member")
+        jdbc.sql(
+                "UPDATE workspace_members SET left_at = CURRENT_TIMESTAMP WHERE workspace_id = :workspace AND member_id = :member"
+        )
                 .param(
                         "workspace",
                         workspaceId
@@ -255,6 +257,217 @@ class SearchDocumentToolServiceIntegrationTest {
                         20
                 )
         ).hasMessage("INVALID_TOOL_ARGUMENTS");
+    }
+
+    @Test
+    @DisplayName("문서 도구 권한 거절: finishedExecution")
+    void list_failure_finishedExecution() {
+        jdbc.sql("UPDATE search_answer_executions SET state = 'FINISHED' WHERE answer_id = :id")
+                .param(
+                        "id",
+                        scope.answerId()
+                )
+                .update();
+        SearchToolScope denied = scope;
+        assertThatThrownBy(
+                () -> service.list(
+                        denied,
+                        parameters(
+                                null,
+                                null,
+                                20
+                        )
+                )
+        ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class)
+                .hasMessage("SEARCH_ACCESS_DENIED");
+    }
+
+    @Test
+    @DisplayName("문서 도구 권한 거절: wrongExecutionToken")
+    void list_failure_wrongExecutionToken() {
+
+        SearchToolScope denied = new SearchToolScope(
+                workspaceId,
+                memberId,
+                scope.conversationId(),
+                scope.questionId(),
+                scope.answerId(),
+                UUID.randomUUID(),
+                scope.startedAt(),
+                scope.expiresAt()
+        );
+        assertThatThrownBy(
+                () -> service.list(
+                        denied,
+                        parameters(
+                                null,
+                                null,
+                                20
+                        )
+                )
+        ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class)
+                .hasMessage("SEARCH_ACCESS_DENIED");
+    }
+
+    @Test
+    @DisplayName("문서 도구 권한 거절: wrongQuestion")
+    void list_failure_wrongQuestion() {
+
+        SearchToolScope denied = new SearchToolScope(
+                workspaceId,
+                memberId,
+                scope.conversationId(),
+                scope.answerId(),
+                scope.answerId(),
+                scope.token(),
+                scope.startedAt(),
+                scope.expiresAt()
+        );
+        assertThatThrownBy(
+                () -> service.list(
+                        denied,
+                        parameters(
+                                null,
+                                null,
+                                20
+                        )
+                )
+        ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class)
+                .hasMessage("SEARCH_ACCESS_DENIED");
+    }
+
+    @Test
+    @DisplayName("문서 도구 권한 거절: otherOwner")
+    void list_failure_otherOwner() {
+        long other = fixtures.saveMember("다른 멤버");
+        fixtures.join(
+                workspaceId,
+                other
+        );
+        SearchToolScope denied = new SearchToolScope(
+                workspaceId,
+                other,
+                scope.conversationId(),
+                scope.questionId(),
+                scope.answerId(),
+                scope.token(),
+                scope.startedAt(),
+                scope.expiresAt()
+        );
+        assertThatThrownBy(
+                () -> service.list(
+                        denied,
+                        parameters(
+                                null,
+                                null,
+                                20
+                        )
+                )
+        ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class)
+                .hasMessage("SEARCH_ACCESS_DENIED");
+    }
+
+    @Test
+    @DisplayName("문서 도구 권한 거절: otherWorkspace")
+    void list_failure_otherWorkspace() {
+        long other = fixtures.saveWorkspace();
+        fixtures.join(
+                other,
+                memberId
+        );
+        SearchToolScope denied = new SearchToolScope(
+                other,
+                memberId,
+                scope.conversationId(),
+                scope.questionId(),
+                scope.answerId(),
+                scope.token(),
+                scope.startedAt(),
+                scope.expiresAt()
+        );
+        assertThatThrownBy(
+                () -> service.list(
+                        denied,
+                        parameters(
+                                null,
+                                null,
+                                20
+                        )
+                )
+        ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class)
+                .hasMessage("SEARCH_ACCESS_DENIED");
+    }
+
+    @Test
+    @DisplayName("문서 도구 권한 거절: expiredScope")
+    void list_failure_expiredScope() {
+        when(clock.instant()).thenReturn(scope.expiresAt());
+        SearchToolScope denied = scope;
+        assertThatThrownBy(
+                () -> service.list(
+                        denied,
+                        parameters(
+                                null,
+                                null,
+                                20
+                        )
+                )
+        ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class)
+                .hasMessage("SEARCH_ACCESS_DENIED");
+    }
+
+    @Test
+    @DisplayName("문서 도구 권한 거절: futureStarted")
+    void list_failure_futureStarted() {
+
+        SearchToolScope denied = new SearchToolScope(
+                workspaceId,
+                memberId,
+                scope.conversationId(),
+                scope.questionId(),
+                scope.answerId(),
+                scope.token(),
+                NOW.plusSeconds(1),
+                scope.expiresAt()
+        );
+        assertThatThrownBy(
+                () -> service.list(
+                        denied,
+                        parameters(
+                                null,
+                                null,
+                                20
+                        )
+                )
+        ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class)
+                .hasMessage("SEARCH_ACCESS_DENIED");
+    }
+
+    @Test
+    @DisplayName("문서 도구 권한 거절: deadlineExceeded")
+    void list_failure_deadlineExceeded() {
+
+        SearchToolScope denied = new SearchToolScope(
+                workspaceId,
+                memberId,
+                scope.conversationId(),
+                scope.questionId(),
+                scope.answerId(),
+                scope.token(),
+                NOW,
+                NOW.plusSeconds(86400)
+        );
+        assertThatThrownBy(
+                () -> service.list(
+                        denied,
+                        parameters(
+                                null,
+                                null,
+                                20
+                        )
+                )
+        ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class)
+                .hasMessage("SEARCH_ACCESS_DENIED");
     }
 
     private SearchDocumentParameters parameters(
