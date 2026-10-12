@@ -5,7 +5,7 @@ import WorkspaceInviteCard from "@widgets/workspace/WorkspaceInviteCard";
  *
  * 워크스페이스를 만든 직후 팀원을 부르는 화면이다.
  * 참여 코드와 초대 링크를 복사해 공유하고,
- * 다음 단계인 노션 연동(`/workspace/:workspaceId/notion-connection`)으로 이어진다.
+ * 「다음」으로 워크스페이스 홈(`/workspace/:workspaceId`)에 들어간다.
  *
  * 로고와 중앙 배치는 `CenteredLayout`이 담당하고, 이 페이지는 카드를 놓기만 한다.
  *
