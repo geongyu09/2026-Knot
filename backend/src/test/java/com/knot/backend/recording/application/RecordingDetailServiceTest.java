@@ -160,6 +160,38 @@ class RecordingDetailServiceTest {
     }
 
     @Test
+    @DisplayName("상한 회수 전에 조회해도 진행 중인 녹음의 경과 시간은 2시간을 넘지 않는다")
+    void find_success_capsElapsedAtMaxDuration() {
+        // given
+        prepareAccess();
+        when(
+                recordingDetailQuery.find(
+                        WORKSPACE_ID,
+                        RECORDING_ID
+                )
+        ).thenReturn(
+                Optional.of(
+                        snapshot(
+                                RecordingStatus.RECORDING,
+                                NOW.minusSeconds(7_200),
+                                null,
+                                null
+                        )
+                )
+        );
+
+        // when
+        RecordingDetailResult result = service.find(
+                WORKSPACE_ID,
+                MEMBER_ID,
+                RECORDING_ID
+        );
+
+        // then
+        assertThat(result.elapsedMillis()).isEqualTo(7_200_000L);
+    }
+
+    @Test
     @DisplayName("다른 회원의 녹음은 시작자가 아니라는 이유로 거절한다")
     void find_failure_otherMember() {
         // given
