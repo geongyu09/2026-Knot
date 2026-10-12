@@ -1,5 +1,7 @@
 # 탐색 첫 질문 접수 API
 
+2026-10-12 저장 구조 정합성: develop의 녹음 V44 이후 탐색 접수 V45·실행 V46·실제 근거 rank V47을 적용한다. 후속 중지 API의 선점 전 종료 제약은 V48이다. 아래 migration 버전 설명은 최초 구현 당시 번호이며 API 요청·응답 계약은 동일하다.
+
 `POST /api/v1/workspaces/{workspaceId}/search/conversations`
 
 확인: 2026-10-11. 질문 접수·영속 생성 작업·SSE와 실제 MCP 문서 탐색·LLM 스트리밍 adapter를 구현했다.
