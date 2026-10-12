@@ -12,6 +12,7 @@ import com.knot.backend.search.SearchMessageFixtures;
 import com.knot.backend.search.application.dto.command.SearchQuestionCommand;
 import com.knot.backend.search.application.dto.query.SearchDocumentParameters;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
+import com.knot.backend.search.application.dto.result.SearchQuestionAcceptedResult;
 import com.knot.backend.search.application.dto.result.SearchDocumentPage;
 import com.knot.backend.search.application.dto.result.SearchDocumentCard;
 import com.knot.backend.search.application.dto.result.SearchDocumentSlice;
@@ -26,10 +27,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.ArrayList;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
@@ -617,9 +621,10 @@ class SearchDocumentToolServiceIntegrationTest {
         ).isEqualTo(403);
     }
 
-    @Test
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
     @DisplayName("실제 MCP HTTP와 LLM HTTP 어댑터를 worker로 연결해 답변과 근거를 완료 저장한다")
-    void execute_success_actualMcpAndLlmHttp() throws Exception {
+    void execute_success_actualMcpAndLlmHttp(boolean followup) throws Exception {
         long document = saveDocument(
                 workspaceId,
                 "ARCHIVED",
@@ -640,7 +645,9 @@ class SearchDocumentToolServiceIntegrationTest {
                         cancellation
                 )) {
             java.util.concurrent.atomic.AtomicInteger turns = new java.util.concurrent.atomic.AtomicInteger();
+            List<JsonNode> captured = new ArrayList<>();
             server.respond(exchange -> {
+                captured.add(mapper.readTree(server.requestBody()));
                 int turn = turns.incrementAndGet();
                 String body = response(
                         turn,
@@ -701,15 +708,46 @@ class SearchDocumentToolServiceIntegrationTest {
                     clock,
                     properties
             );
-            long answer = intake.acceptFirst(
+            SearchQuestionAcceptedResult accepted = intake.acceptFirst(
                     workspaceId,
                     memberId,
                     new SearchQuestionCommand(
                             "결제 결정",
                             UUID.randomUUID()
                     )
-            )
-                    .answerMessageId();
+            );
+            if (followup) {
+                SearchAnswerWorkResult old = executions.claim(accepted.answerMessageId())
+                        .orElseThrow();
+                executions.append(
+                        old.answerId(),
+                        old.token(),
+                        "중지한 부분 답변"
+                );
+                executions.stop(
+                        workspaceId,
+                        memberId,
+                        accepted.conversationId(),
+                        old.answerId()
+                );
+                accepted = intake.acceptNext(
+                        workspaceId,
+                        memberId,
+                        accepted.conversationId(),
+                        new SearchQuestionCommand(
+                                "결제 결정",
+                                UUID.randomUUID()
+                        )
+                );
+                assertThat(
+                        executions.append(
+                                old.answerId(),
+                                old.token(),
+                                "늦은 이전 출력"
+                        )
+                ).isFalse();
+            }
+            long answer = accepted.answerMessageId();
             worker.execute(answer);
             assertThat(
                     jdbc.sql("SELECT status FROM search_messages WHERE id = :id")
@@ -764,6 +802,25 @@ class SearchDocumentToolServiceIntegrationTest {
                     generationInput.path("conversationHistory")
                             .isArray()
             ).isTrue();
+            if (followup) {
+                assertThat(
+                        captured.getFirst()
+                                .path("messages")
+                                .toString()
+                ).contains("중지한 부분 답변");
+                assertThat(
+                        generationInput.path("conversationHistory")
+                                .toString()
+                ).contains("중지한 부분 답변");
+                assertThat(
+                        generationInput.path("question")
+                                .asString()
+                ).isEqualTo("결제 결정");
+                assertThat(
+                        generationInput.path("conversationHistory")
+                                .toString()
+                ).doesNotContain("늦은 이전 출력");
+            }
             assertThat(
                     generationInput.path("evidence")
                             .get(0)
@@ -940,6 +997,36 @@ class SearchDocumentToolServiceIntegrationTest {
                         "중지 질문",
                         "부분 답변"
                 );
+        long otherWorkspace = fixtures.saveWorkspace();
+        jdbc.sql("UPDATE search_conversations SET workspace_id = :workspace WHERE id = :conversation")
+                .param(
+                        "workspace",
+                        otherWorkspace
+                )
+                .param(
+                        "conversation",
+                        scope.conversationId()
+                )
+                .update();
+        assertThat(history.beforeQuestion(scope)).isEmpty();
+        long otherMember = fixtures.saveMember("다른 대화 소유자");
+        jdbc.sql(
+                "UPDATE search_conversations SET workspace_id = :workspace, member_id = :member WHERE id = :conversation"
+        )
+                .param(
+                        "workspace",
+                        workspaceId
+                )
+                .param(
+                        "member",
+                        otherMember
+                )
+                .param(
+                        "conversation",
+                        scope.conversationId()
+                )
+                .update();
+        assertThat(history.beforeQuestion(scope)).isEmpty();
     }
 
     private String readArguments(long document) {
