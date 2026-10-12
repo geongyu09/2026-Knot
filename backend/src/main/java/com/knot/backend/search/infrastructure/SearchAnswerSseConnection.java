@@ -2,6 +2,8 @@ package com.knot.backend.search.infrastructure;
 
 import com.knot.backend.search.application.SearchAnswerSnapshotService;
 import com.knot.backend.search.application.dto.result.SearchAnswerSnapshotResult;
+import com.knot.backend.search.domain.SearchErrorCode;
+import com.knot.backend.search.domain.SearchException;
 import com.knot.backend.search.domain.SearchMessageStatus;
 import com.knot.backend.search.domain.SearchProgressStage;
 import java.io.IOException;
@@ -76,7 +78,7 @@ final class SearchAnswerSseConnection implements Runnable {
                 sendTerminal(snapshot);
                 return;
             }
-            Thread.sleep(interval);
+            reservation.awaitPoll(interval);
         }
     }
 
@@ -125,7 +127,7 @@ final class SearchAnswerSseConnection implements Runnable {
 
     private void sendContent(String content) throws IOException {
         if (content.length() < sentLength) {
-            throw new IllegalStateException("answer content was replaced");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         if (content.length() == sentLength) {
             return;

@@ -43,8 +43,12 @@ class SearchAnswerStreamTest {
         ArgumentCaptor<Runnable> task = ArgumentCaptor.forClass(Runnable.class);
         verify(executor).execute(task.capture());
         first.close();
-        task.getValue().run();
-        assertThatNoException().isThrownBy(() -> streams.reserve().close());
+        task.getValue()
+                .run();
+        assertThatNoException().isThrownBy(
+                () -> streams.reserve()
+                        .close()
+        );
     }
 
     @Test
@@ -62,7 +66,8 @@ class SearchAnswerStreamTest {
     @DisplayName("executor 거절 시 사용하지 못한 예약 용량을 반환한다")
     void reserve_failure_executorRejection() {
         ThreadPoolTaskExecutor executor = mock(ThreadPoolTaskExecutor.class);
-        doThrow(new TaskRejectedException("full")).when(executor).execute(any());
+        doThrow(new TaskRejectedException("full")).when(executor)
+                .execute(any());
         SearchAnswerStream streams = streams(executor);
         assertThatExceptionOfType(SearchException.class).isThrownBy(streams::reserve);
     }
@@ -71,14 +76,18 @@ class SearchAnswerStreamTest {
     @DisplayName("executor 거절 후 다음 예약은 정상적으로 허용된다")
     void reserve_success_afterExecutorRejection() {
         ThreadPoolTaskExecutor executor = mock(ThreadPoolTaskExecutor.class);
-        doThrow(new TaskRejectedException("full")).when(executor).execute(any());
+        doThrow(new TaskRejectedException("full")).when(executor)
+                .execute(any());
         SearchAnswerStream streams = streams(executor);
         try {
             streams.reserve();
         } catch (SearchException ignored) {
         }
         reset(executor);
-        assertThatNoException().isThrownBy(() -> streams.reserve().close());
+        assertThatNoException().isThrownBy(
+                () -> streams.reserve()
+                        .close()
+        );
     }
 
     @Test
@@ -94,15 +103,29 @@ class SearchAnswerStreamTest {
             try {
                 release.await();
             } catch (InterruptedException exception) {
-                Thread.currentThread().interrupt();
+                Thread.currentThread()
+                        .interrupt();
             }
         });
         executor.initialize();
         try {
-            SearchAnswerStream streams = new SearchAnswerStream(mock(SearchAnswerSnapshotService.class), executor, properties);
-            streams.reserve().close();
-            assertThat(retiring.await(2, TimeUnit.SECONDS)).isTrue();
-            assertThatNoException().isThrownBy(() -> streams.reserve().close());
+            SearchAnswerStream streams = new SearchAnswerStream(
+                    mock(SearchAnswerSnapshotService.class),
+                    executor,
+                    properties
+            );
+            streams.reserve()
+                    .close();
+            assertThat(
+                    retiring.await(
+                            2,
+                            TimeUnit.SECONDS
+                    )
+            ).isTrue();
+            assertThatNoException().isThrownBy(
+                    () -> streams.reserve()
+                            .close()
+            );
         } finally {
             release.countDown();
             executor.shutdown();
@@ -110,7 +133,11 @@ class SearchAnswerStreamTest {
     }
 
     private SearchAnswerStream streams(ThreadPoolTaskExecutor executor) {
-        return new SearchAnswerStream(mock(SearchAnswerSnapshotService.class), executor, properties());
+        return new SearchAnswerStream(
+                mock(SearchAnswerSnapshotService.class),
+                executor,
+                properties()
+        );
     }
 
     private SearchWorkerProperties properties() {

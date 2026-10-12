@@ -37,7 +37,7 @@ public class SearchAnswerStream {
             executor.execute(reservation);
             return reservation;
         } catch (RuntimeException exception) {
-            reservation.close();
+            reservation.reject();
             throw new SearchException(SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE);
         }
     }
