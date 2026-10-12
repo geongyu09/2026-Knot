@@ -27,6 +27,7 @@ import DocumentTree from ".";
 
 const expected = new GetDocumentsResponseDto(documentsResponse);
 const WORKSPACE_ID = "1";
+const OTHER_WORKSPACE_ID = "2";
 // 경로 파라미터 자리에 무엇이 와도 잡도록 fetch 상수 대신 패턴을 적어요
 const DOCUMENTS_REQUEST = "*/api/v1/workspaces/:workspaceId/documents";
 const LOADING_LABEL = "문서 목록을 불러오고 있어요";
@@ -264,6 +265,33 @@ describe("DocumentTree", () => {
     await act(() => router.navigate(documentPath(currentDocument.id)));
 
     expect(getFolderRow(secondTopic)).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("다른 워크스페이스로 옮기면 앞 워크스페이스에서 누른 기록을 따르지 않는다", async () => {
+    const { router } = renderDocumentTree(documentPath(currentDocument.id));
+
+    // 지금 보는 문서의 폴더는 접고, 다른 폴더는 펼쳐 둬요
+    fireEvent.click(await findFolderRow(secondTopic));
+    fireEvent.click(getFolderRow(firstTopic));
+
+    // mock은 워크스페이스와 무관하게 같은 문서를 줘서, 옮겨 간 워크스페이스에도 같은 이름의 폴더가 있어요
+    await act(() =>
+      router.navigate(
+        getRouterPath({
+          routeKey: "DOCUMENT",
+          params: {
+            workspaceId: OTHER_WORKSPACE_ID,
+            documentId: String(currentDocument.id),
+          },
+        }),
+      ),
+    );
+
+    expect(await findFolderRow(secondTopic)).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(getFolderRow(firstTopic)).toHaveAttribute("aria-expanded", "false");
   });
 
   it.each([

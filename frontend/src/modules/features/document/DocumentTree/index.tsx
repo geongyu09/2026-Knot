@@ -19,7 +19,7 @@ import DocumentTreeSkeleton from "./ui/DocumentTreeSkeleton";
  *
  * 폴더는 이름순, 폴더 안의 문서는 최신순이에요. 문서 목록 화면(`DocumentList`)과 같은 조회 · 같은 묶기를 써서 두 곳의 순서와 문서 수가 같아요.
  *
- * 지금 보는 문서의 폴더만 펼친 채로 시작해요. 사용자가 누른 폴더는 누른 대로 두고, 그 기록은 이 목록이 화면에 있는 동안만 남아요.
+ * 지금 보는 문서의 폴더만 펼친 채로 시작해요. 사용자가 누른 폴더는 누른 대로 두고, 그 기록은 워크스페이스마다 따로 두며 이 목록이 화면에 있는 동안만 남아요.
  *
  * 문서를 받지 못한 동안에는 상태 화면이 목록 전체를 대신 그려요.
  * - 불러오는 중: `DocumentTreeSkeleton`. 401 · 403 · 404로 다른 화면에 보내는 동안에도 이 화면이에요.
@@ -46,6 +46,7 @@ export default function DocumentTree() {
     ({ id }) => id === currentDocumentId,
   )?.topic;
   const { isFolderExpanded, toggleFolder } = useFolderExpansion({
+    workspaceId,
     currentTopic,
   });
 
