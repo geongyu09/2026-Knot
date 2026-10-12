@@ -39,7 +39,7 @@ const startQuestion = () => {
 
 describe("searchAnswerStore", () => {
   beforeEach(() => {
-    useSearchAnswerStore.getState().reset();
+    useSearchAnswerStore.getState().abort();
   });
 
   it("[SEARCH-R6] 접수 대기·생성 중에는 새 질문을 시작하지 않는다", () => {

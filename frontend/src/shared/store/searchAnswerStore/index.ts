@@ -55,9 +55,6 @@ interface SearchAnswerActions {
   /** 받고 있는 스트림을 끊고 처음 상태로 돌아가요. 서버는 답변을 계속 만들어요(SEARCH-R8) */
   abort: () => void;
 
-  /** 처음 상태로 돌아가요. 스트림은 끊지 않아요 */
-  reset: () => void;
-
   /** 입력창이 되돌릴 질문을 가져간 뒤 지워요 */
   clearRejectedQuestion: () => void;
 }
@@ -86,7 +83,7 @@ const IDLE_STATE: SearchAnswerState = {
  * 요청 하나가 끝나기 전에 끊거나 새 질문을 보내면 늦게 도착한 이벤트·결과가 새 답변을 덮어쓸 수 있어서,
  * 요청이 부르는 동작(`applyEvent`·`settle`·`fail`)은 받은 컨트롤러가 지금 컨트롤러와 같을 때만 반영해요.
  * 질문 전송 요청과 주소 이동은 `@hooks/domain/search/useSearchAnswerControl`이 맡아요.
- * 화면은 도메인 훅으로 읽고, 테스트는 답변이 테스트끼리 새지 않도록 여기서 직접 초기화해요.
+ * 화면은 도메인 훅으로 읽고, 테스트는 답변이 테스트끼리 새지 않도록 `abort`로 초기화해요.
  */
 export const useSearchAnswerStore = create<
   SearchAnswerState & SearchAnswerActions
@@ -135,7 +132,8 @@ export const useSearchAnswerStore = create<
 
       set({
         status: "FAILED",
-        failedCode: error instanceof SearchAnswerFailedError ? error.code : null,
+        failedCode:
+          error instanceof SearchAnswerFailedError ? error.code : null,
         controller: null,
       });
     },
@@ -144,8 +142,6 @@ export const useSearchAnswerStore = create<
       get().controller?.abort();
       set(IDLE_STATE);
     },
-
-    reset: () => set(IDLE_STATE),
 
     clearRejectedQuestion: () => set({ rejectedQuestion: null }),
   };
