@@ -2,6 +2,9 @@ package com.knot.backend.search.infrastructure.mcp;
 
 import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.search.application.SearchToolScope;
+import com.knot.backend.search.application.SearchToolTokens;
+import com.knot.backend.search.domain.SearchException;
+import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.application.dto.query.SearchDocumentParameters;
 import com.knot.backend.search.domain.SearchToolException;
 import java.nio.charset.StandardCharsets;
@@ -16,7 +19,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-public class SearchToolTokenCodec {
+public class SearchToolTokenCodec implements SearchToolTokens {
     private static final Base64.Encoder ENCODER = Base64.getUrlEncoder()
             .withoutPadding();
     private static final Base64.Decoder DECODER = Base64.getUrlDecoder();
@@ -85,6 +88,8 @@ public class SearchToolTokenCodec {
                     payload.path("payload"),
                     type
             );
+        } catch (SearchException exception) {
+            throw exception;
         } catch (RuntimeException exception) {
             throw invalid();
         }
@@ -130,8 +135,8 @@ public class SearchToolTokenCodec {
                             .digest(bytes)
             );
         } catch (GeneralSecurityException exception) {
-            throw new IllegalStateException(
-                    "SHA-256 unavailable",
+            throw new SearchException(
+                    SearchErrorCode.INVALID_SEARCH_CONFIGURATION,
                     exception
             );
         }
@@ -140,7 +145,7 @@ public class SearchToolTokenCodec {
     private byte[] sign(String text) {
         String key = properties.getSigningKey();
         if (key == null || key.length() < 32) {
-            throw new IllegalStateException("search signing key is not configured");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_CONFIGURATION);
         }
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
@@ -152,8 +157,8 @@ public class SearchToolTokenCodec {
             );
             return mac.doFinal(text.getBytes(StandardCharsets.UTF_8));
         } catch (GeneralSecurityException exception) {
-            throw new IllegalStateException(
-                    "HMAC unavailable",
+            throw new SearchException(
+                    SearchErrorCode.INVALID_SEARCH_CONFIGURATION,
                     exception
             );
         }

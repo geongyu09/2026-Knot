@@ -1,7 +1,7 @@
 package com.knot.backend.search.presentation;
 
 import com.knot.backend.auth.domain.AuthenticatedMember;
-import com.knot.backend.search.infrastructure.SearchAnswerStream;
+import com.knot.backend.search.presentation.stream.SearchAnswerStream;
 import java.nio.charset.StandardCharsets;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;

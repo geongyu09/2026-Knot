@@ -11,6 +11,8 @@ import com.knot.backend.search.infrastructure.SearchMcpDocumentRetriever;
 import com.knot.backend.search.infrastructure.SearchStreamingAnswerGenerator;
 import com.knot.backend.search.infrastructure.mcp.SearchMcpClient;
 import com.knot.backend.search.infrastructure.mcp.SearchToolTokenCodec;
+import com.knot.backend.search.domain.SearchException;
+import com.knot.backend.search.domain.SearchErrorCode;
 import java.net.http.HttpClient;
 import java.time.Clock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -46,7 +48,7 @@ public class SearchAgentConfig {
         llm.validateEnabledConfiguration();
         if (agent.getBudget()
                 .compareTo(worker.getExecutionLease()) >= 0) {
-            throw new IllegalStateException("search agent budget must be shorter than execution lease");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_CONFIGURATION);
         }
         HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(llm.getConnectTimeout())

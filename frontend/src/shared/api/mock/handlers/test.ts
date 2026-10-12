@@ -1,9 +1,6 @@
 import { GetCsrfTokenResponseDto, GetMeResponseDto } from "@api/dto/auth";
 import { GetChatMessagesResponseDto } from "@api/dto/chatMessage";
-import {
-  GetNotionConnectionResponseDto,
-  PostNotionOAuthAuthorizationResponseDto,
-} from "@api/dto/notionConnection";
+import { PostDocumentGenerationJobRetryResponseDto } from "@api/dto/documentGenerationJob";
 import {
   GetChatSessionsResponseDto,
   PostChatSessionResponseDto,
@@ -15,6 +12,8 @@ import {
   PutDocumentConfirmationResponseDto,
 } from "@api/dto/document";
 import {
+  GetCurrentRecordingResponseDto,
+  GetRecordingResponseDto,
   PostRecordingAudioUploadCompleteResponseDto,
   PostRecordingAudioUploadUrlResponseDto,
   PostRecordingEndResponseDto,
@@ -22,6 +21,15 @@ import {
   PostRecordingResponseDto,
   PostRecordingResumeResponseDto,
 } from "@api/dto/recording";
+import {
+  SearchStreamAcceptedDto,
+  SearchStreamCompletedDto,
+  SearchStreamDeltaDto,
+  SearchStreamEvidenceDto,
+  SearchStreamProgressDto,
+  type SearchStreamEvidenceItemRaw,
+  type SearchStreamStage,
+} from "@api/dto/search";
 import {
   GetWorkspaceResponseDto,
   GetWorkspacesResponseDto,
@@ -58,11 +66,13 @@ import { getDocumentApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/docum
 import { getDocumentConfirmationsApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documents/[documentId]/confirmations";
 import { confirmDocumentApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documents/[documentId]/confirmations/me";
 import { getWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitation";
-import { getNotionConnectionApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/notionConnection";
-import { startNotionOAuthApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/notionOauthAuthorizations";
+import { createSearchConversationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations";
+import { createSearchQuestionApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions";
 import { issueWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations";
 import { reissueWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations/reissue";
+import { retryDocumentGenerationJobApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documentGenerationJobs/[jobId]/retry";
 import { startRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings";
+import { getRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]";
 import { completeRecordingAudioUploadApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioUploadComplete";
 import {
   issueRecordingAudioUploadUrlApi,
@@ -71,12 +81,10 @@ import {
 import { endRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/end";
 import { pauseRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/pause";
 import { resumeRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/resume";
+import { getCurrentRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/current";
 import { HTTP_ERROR_TYPE } from "@api/httpClient/error";
 import { csrfTokenResponse, meResponse } from "@api/mock/responses/auth";
-import {
-  notionConnectionResponse,
-  notionOAuthAuthorizationResponse,
-} from "@api/mock/responses/notionConnection";
+import { documentGenerationJobRetryResponse } from "@api/mock/responses/documentGenerationJob";
 import { chatMessagesResponse } from "@api/mock/responses/chatMessage";
 import {
   chatSessionResponse,
@@ -88,13 +96,19 @@ import {
   documentsResponse,
 } from "@api/mock/responses/document";
 import {
+  currentRecordingResponse,
   recordingAudioUploadCompleteResponse,
   recordingAudioUploadUrlResponse,
+  recordingDetailsResponse,
   recordingEndResponse,
   recordingPauseResponse,
   recordingResumeResponse,
   recordingStartResponse,
 } from "@api/mock/responses/recording";
+import {
+  searchAnswerStreamResponse,
+  searchQuestionAnswerStreamResponse,
+} from "@api/mock/responses/search";
 import {
   workspaceCreateResponse,
   workspaceDetailResponse,
@@ -111,10 +125,54 @@ const WORKSPACE_ID = 1;
 const SESSION_ID = 100;
 const RECORDING_ID = 10;
 
+// 첫 질문 mock의 대화 ID와 달라야 경로 값으로 답하는지 드러나요
+const SEARCH_CONVERSATION_ID = 200;
+
 const CONTROL_PROOF = {
   tabId: "6f1c2a4e-1b2d-4c3e-9f80-1a2b3c4d5e6f",
   controlToken: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 };
+
+/** 스트림이 끝날 때까지 받아 이벤트를 순서대로 모아요 */
+const collectEvents = async <T>(stream: AsyncGenerator<T>) => {
+  const events: T[] = [];
+
+  for await (const event of stream) events.push(event);
+
+  return events;
+};
+
+interface ToAnswerEventsParams {
+  answerMessageId: number;
+  stages: SearchStreamStage[];
+  deltas: string[];
+  evidences: SearchStreamEvidenceItemRaw[];
+}
+
+/** 첫 질문·후속 질문이 accepted 뒤로 같은 순서로 내는 이벤트예요 */
+const toAnswerEvents = ({
+  answerMessageId,
+  stages,
+  deltas,
+  evidences,
+}: ToAnswerEventsParams) => [
+  ...stages.map((stage) => ({
+    event: "progress",
+    data: new SearchStreamProgressDto({ stage }),
+  })),
+  ...deltas.map((text) => ({
+    event: "delta",
+    data: new SearchStreamDeltaDto({ answerMessageId, text }),
+  })),
+  {
+    event: "evidence",
+    data: new SearchStreamEvidenceDto({ answerMessageId, items: evidences }),
+  },
+  {
+    event: "completed",
+    data: new SearchStreamCompletedDto({ answerMessageId, status: "COMPLETED" }),
+  },
+];
 
 // 기본 핸들러가 fetch 요청 함수와 같은 경로·메서드에 응답하는지 확인해요
 // 기대값은 mock 응답을 응답 DTO로 변환한 값이에요 (test-strategy.md 「기대값」)
@@ -457,22 +515,6 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
     });
   });
 
-  describe("Notion 연결", () => {
-    it("POST /api/v1/workspaces/:workspaceId/notion-oauth-authorizations는 notionOAuthAuthorizationResponse를 돌려준다", async () => {
-      await expect(startNotionOAuthApi(WORKSPACE_ID)).resolves.toEqual(
-        new PostNotionOAuthAuthorizationResponseDto(
-          notionOAuthAuthorizationResponse,
-        ),
-      );
-    });
-
-    it("GET /api/v1/workspaces/:workspaceId/notion-connection은 notionConnectionResponse를 돌려준다", async () => {
-      await expect(getNotionConnectionApi(WORKSPACE_ID)).resolves.toEqual(
-        new GetNotionConnectionResponseDto(notionConnectionResponse),
-      );
-    });
-  });
-
   describe("대화", () => {
     it("GET /api/v1/workspaces/:workspaceId/conversations는 chatSessionsResponse를 돌려준다", async () => {
       await expect(getChatSessionsApi(WORKSPACE_ID)).resolves.toEqual(
@@ -493,6 +535,53 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
     });
   });
 
+  describe("탐색", () => {
+    it("POST /api/v1/workspaces/:workspaceId/search/conversations는 searchAnswerStreamResponse를 순서대로 흘려보낸다", async () => {
+      const { answerMessageId, stages, deltas, evidences, ...accepted } =
+        searchAnswerStreamResponse;
+
+      await expect(
+        collectEvents(
+          createSearchConversationApi({
+            workspaceId: WORKSPACE_ID,
+            body: { content: "DB 기술 선정 관련 문서 있어?", requestId: "req-1" },
+          }),
+        ),
+      ).resolves.toEqual([
+        {
+          event: "accepted",
+          data: new SearchStreamAcceptedDto({ ...accepted, answerMessageId }),
+        },
+        ...toAnswerEvents({ answerMessageId, stages, deltas, evidences }),
+      ]);
+    });
+
+    it("POST .../search/conversations/:conversationId/questions는 searchQuestionAnswerStreamResponse를 경로의 대화 ID로 순서대로 흘려보낸다", async () => {
+      const { questionMessageId, answerMessageId, stages, deltas, evidences } =
+        searchQuestionAnswerStreamResponse;
+
+      await expect(
+        collectEvents(
+          createSearchQuestionApi({
+            workspaceId: WORKSPACE_ID,
+            conversationId: SEARCH_CONVERSATION_ID,
+            body: { content: "그럼 초기 스키마는 누가 정리했어?", requestId: "req-2" },
+          }),
+        ),
+      ).resolves.toEqual([
+        {
+          event: "accepted",
+          data: new SearchStreamAcceptedDto({
+            conversationId: SEARCH_CONVERSATION_ID,
+            questionMessageId,
+            answerMessageId,
+          }),
+        },
+        ...toAnswerEvents({ answerMessageId, stages, deltas, evidences }),
+      ]);
+    });
+  });
+
   describe("녹음", () => {
     it("POST /api/v1/workspaces/:workspaceId/recordings는 recordingStartResponse를 돌려준다", async () => {
       await expect(
@@ -503,7 +592,15 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
             ...CONTROL_PROOF,
           },
         }),
-      ).resolves.toEqual(new PostRecordingResponseDto(recordingStartResponse));
+      ).resolves.toEqual(
+        new PostRecordingResponseDto(recordingStartResponse, 201),
+      );
+    });
+
+    it("GET /api/v1/workspaces/:workspaceId/recordings/current는 currentRecordingResponse를 돌려준다", async () => {
+      await expect(getCurrentRecordingApi(WORKSPACE_ID)).resolves.toEqual(
+        new GetCurrentRecordingResponseDto(currentRecordingResponse),
+      );
     });
 
     it("POST .../recordings/:recordingId/pause는 recordingPauseResponse를 돌려준다", async () => {
@@ -573,6 +670,106 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
         new PostRecordingAudioUploadCompleteResponseDto(
           recordingAudioUploadCompleteResponse,
         ),
+      );
+    });
+
+    it("GET .../recordings/:recordingId는 recordingDetailsResponse에서 그 녹음을 찾아 돌려준다", async () => {
+      // 상태가 서로 다른 녹음을 모두 물어, 핸들러가 id로 골라 주는지 확인해요
+      for (const recording of recordingDetailsResponse) {
+        await expect(
+          getRecordingApi({
+            workspaceId: WORKSPACE_ID,
+            recordingId: recording.recordingId,
+          }),
+        ).resolves.toEqual(new GetRecordingResponseDto(recording));
+      }
+    });
+
+    it("recordingDetailsResponse에 없는 녹음을 물으면 404 RECORDING_NOT_FOUND로 답한다", async () => {
+      await expect(
+        getRecordingApi({ workspaceId: WORKSPACE_ID, recordingId: 999 }),
+      ).rejects.toMatchObject({
+        type: HTTP_ERROR_TYPE.notFound,
+        code: "RECORDING_NOT_FOUND",
+      });
+    });
+  });
+
+  describe("문서 생성 작업", () => {
+    // 정리 중인 녹음(작업 진행 중)과 문서 만들기에 실패한 녹음(작업 실패)
+    const [processingRecording, , failedRecording] = recordingDetailsResponse;
+    const failedJobParams = {
+      workspaceId: WORKSPACE_ID,
+      jobId: documentGenerationJobRetryResponse.jobId,
+    };
+    const failedRecordingParams = {
+      workspaceId: WORKSPACE_ID,
+      recordingId: failedRecording.recordingId,
+    };
+
+    it("POST .../document-generation-jobs/:jobId/retry는 실패한 작업을 접수하고 documentGenerationJobRetryResponse를 돌려준다", async () => {
+      await expect(
+        retryDocumentGenerationJobApi(failedJobParams),
+      ).resolves.toEqual(
+        new PostDocumentGenerationJobRetryResponseDto(
+          documentGenerationJobRetryResponse,
+        ),
+      );
+    });
+
+    it("다시 시도한 뒤에는 그 녹음의 상세가 정리 중으로 바뀌고 실패 사유가 지워진다", async () => {
+      await retryDocumentGenerationJobApi(failedJobParams);
+
+      await expect(
+        getRecordingApi(failedRecordingParams),
+      ).resolves.toMatchObject({
+        status: "PROCESSING",
+        documentGenerationStatus: "QUEUED",
+        failureStage: null,
+        failureReason: null,
+      });
+    });
+
+    it("이미 다시 시도해 실패 상태가 아닌 작업을 또 시도하면 409 RETRY_NOT_ALLOWED로 답한다", async () => {
+      await retryDocumentGenerationJobApi(failedJobParams);
+
+      await expect(
+        retryDocumentGenerationJobApi(failedJobParams),
+      ).rejects.toMatchObject({
+        type: HTTP_ERROR_TYPE.conflict,
+        code: "RETRY_NOT_ALLOWED",
+      });
+    });
+
+    it("진행 중인 작업을 다시 시도하면 409 RETRY_NOT_ALLOWED로 답한다", async () => {
+      await expect(
+        retryDocumentGenerationJobApi({
+          workspaceId: WORKSPACE_ID,
+          // mock 데이터에서 이 작업 ID가 사라지면 0이 되어 404로 실패하므로, 테스트가 알려 줘요
+          jobId: Number(processingRecording.documentGenerationJobId),
+        }),
+      ).rejects.toMatchObject({
+        type: HTTP_ERROR_TYPE.conflict,
+        code: "RETRY_NOT_ALLOWED",
+      });
+    });
+
+    it("없는 작업을 다시 시도하면 404 DOCUMENT_GENERATION_JOB_NOT_FOUND로 답한다", async () => {
+      await expect(
+        retryDocumentGenerationJobApi({
+          workspaceId: WORKSPACE_ID,
+          jobId: 999,
+        }),
+      ).rejects.toMatchObject({
+        type: HTTP_ERROR_TYPE.notFound,
+        code: "DOCUMENT_GENERATION_JOB_NOT_FOUND",
+      });
+    });
+
+    it("다시 시도한 기록은 테스트가 끝나면 지워져, 다음 테스트는 기본 응답을 받는다", async () => {
+      // 위 테스트들이 작업을 다시 시도했지만 vitest.setup의 afterEach가 기록을 지웠어요
+      await expect(getRecordingApi(failedRecordingParams)).resolves.toEqual(
+        new GetRecordingResponseDto(failedRecording),
       );
     });
   });

@@ -1,7 +1,9 @@
 /**
  * 녹음 DTO
  *
+ * - GET  /api/v1/workspaces/{workspaceId}/recordings/current
  * - POST /api/v1/workspaces/{workspaceId}/recordings
+ * - GET /api/v1/workspaces/{workspaceId}/recordings/{recordingId}
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/pause
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/resume
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/end
@@ -9,8 +11,48 @@
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-upload-complete
  */
 
-/** 녹음 세션 상태. 시작·일시정지·재개·종료 응답이 공유하는 서버 값 */
-export type RecordingSessionStatus = "RECORDING" | "PAUSED" | "ENDED";
+/** 녹음 세션 상태. 시작·일시정지·재개·종료 응답과 녹음 상세 조회의 `sessionStatus`가 공유하는 서버 값. `DISCARDED`는 서버가 버린 녹음이에요 */
+export type RecordingSessionStatus =
+  "RECORDING" | "PAUSED" | "ENDED" | "DISCARDED";
+
+// GET /api/v1/workspaces/{workspaceId}/recordings/current
+
+/**
+ * 현재 녹음의 화면용 종합 상태. `ENDED`는 종료 후 최종 오디오 업로드 확인 전,
+ * `PROCESSING`은 전사·문서 작업 중, `FAILED`는 처리 실패예요
+ */
+export type CurrentRecordingStatus =
+  "RECORDING" | "PAUSED" | "ENDED" | "PROCESSING" | "FAILED";
+
+/**
+ * 내 현재 녹음 조회의 서버 응답 모양.
+ * 명세의 종료 시각·실패 원인·단계별 처리 상태 필드는 화면에서 쓰지 않아 담지 않아요
+ */
+export interface GetCurrentRecordingResponseRaw {
+  recordingId: number;
+  status: CurrentRecordingStatus;
+  startedAt: string;
+  elapsedMillis: number;
+}
+
+/** 내 현재 녹음 조회 응답. 표시할 녹음이 없으면 서버가 본문 없이 204로 답하고 요청 함수가 `null`을 돌려줘요 */
+export class GetCurrentRecordingResponseDto {
+  /** 녹음 세션 ID */
+  recordingId: number;
+  /** 화면용 종합 상태. 녹음 중·일시정지인 녹음이 먼저 오고, 없으면 가장 최근의 종료·처리 중·실패 녹음이 와요 */
+  status: CurrentRecordingStatus;
+  /** 녹음 시작 시각(ISO 8601) */
+  startedAt: string;
+  /** 조회 시점까지 누적 녹음 시간(ms). 일시정지 구간은 빠져요 */
+  elapsedMillis: number;
+
+  constructor(raw: GetCurrentRecordingResponseRaw) {
+    this.recordingId = raw.recordingId;
+    this.status = raw.status;
+    this.startedAt = raw.startedAt;
+    this.elapsedMillis = raw.elapsedMillis;
+  }
+}
 
 // POST /api/v1/workspaces/{workspaceId}/recordings
 
@@ -52,11 +94,105 @@ export class PostRecordingResponseDto {
   status: RecordingSessionStatus;
   /** 서버가 확정한 녹음 시작 시각(ISO 8601) */
   startedAt: string;
+  /** 이 요청으로 새로 만든 녹음이면 `true`. 본문에는 없어 HTTP 상태(201)에서 읽어요 */
+  isCreated: boolean;
 
-  constructor(raw: PostRecordingResponseRaw) {
+  constructor(raw: PostRecordingResponseRaw, httpStatus: number) {
     this.recordingId = raw.recordingId;
     this.status = raw.status;
     this.startedAt = raw.startedAt;
+    this.isCreated = httpStatus === 201;
+  }
+}
+
+// GET /api/v1/workspaces/{workspaceId}/recordings/{recordingId}
+
+/**
+ * 녹음 하나의 화면용 종합 상태. 녹음 세션 상태에 업로드·전사·문서 생성 결과를 합친 값이에요.
+ *
+ * - `ENDED`: 녹음을 끝냈고 최종 오디오 업로드 확인 전
+ * - `PROCESSING`: 전사나 문서 생성이 대기 또는 진행 중
+ * - `COMPLETED`: 문서 생성 완료
+ * - `NO_CONTENT`: 전사 결과에 문서로 정리할 내용이 없음
+ * - `FAILED`: 업로드·전사·문서 생성 중 한 단계가 실패로 확정됨
+ */
+export type RecordingStatus =
+  | "RECORDING"
+  | "PAUSED"
+  | "ENDED"
+  | "PROCESSING"
+  | "COMPLETED"
+  | "NO_CONTENT"
+  | "FAILED";
+
+/** 녹음 상세가 알려 주는 최종 오디오 업로드 단계의 상태. 업로드 완료 확인 응답의 `RecordingAudioUploadStatus`와는 다른 값이에요 */
+export type RecordingAudioUploadStepStatus =
+  "NOT_STARTED" | "PENDING" | "COMPLETED" | "FAILED";
+
+/** 전사·문서 생성 작업의 상태 */
+export type RecordingJobStatus =
+  "NOT_STARTED" | "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+
+/** 실패한 단계 */
+export type RecordingFailureStage =
+  "AUDIO_UPLOAD" | "TRANSCRIPTION" | "DOCUMENT_GENERATION";
+
+/** 녹음 상세 조회의 서버 응답 모양 */
+export interface GetRecordingResponseRaw {
+  recordingId: number;
+  status: RecordingStatus;
+  sessionStatus: RecordingSessionStatus;
+  audioUploadStatus: RecordingAudioUploadStepStatus;
+  startedAt: string;
+  endedAt: string | null;
+  durationMillis: number | null;
+  transcriptionStatus: RecordingJobStatus;
+  documentGenerationStatus: RecordingJobStatus;
+  documentGenerationJobId: number | null;
+  failureStage: RecordingFailureStage | null;
+  failureReason: string | null;
+}
+
+/** 녹음 상세 조회 응답. 녹음을 끝낸 뒤 이 응답을 다시 조회해 문서 정리가 어디까지 됐는지 확인해요 */
+export class GetRecordingResponseDto {
+  /** 녹음 세션 ID */
+  recordingId: number;
+  /** 화면용 종합 상태. 정리 화면은 이 값으로 무엇을 보여 줄지 정해요 */
+  status: RecordingStatus;
+  /** 녹음 세션 상태. 전사·문서 생성이 실패해도 `ENDED`로 남아요 */
+  sessionStatus: RecordingSessionStatus;
+  /** 최종 오디오 업로드 단계의 상태 */
+  audioUploadStatus: RecordingAudioUploadStepStatus;
+  /** 녹음 시작 시각(ISO 8601) */
+  startedAt: string;
+  /** 녹음 종료 시각(ISO 8601). 끝나기 전이면 null */
+  endedAt: string | null;
+  /** 녹음 길이(ms). 끝나기 전이면 null */
+  durationMillis: number | null;
+  /** 전사 작업 상태 */
+  transcriptionStatus: RecordingJobStatus;
+  /** 문서 생성 작업 상태 */
+  documentGenerationStatus: RecordingJobStatus;
+  /** 문서 생성 작업 ID. 문서 만들기 재시도에 넘겨요. 작업이 만들어지기 전이거나 전사 실패로 작업이 없으면 null */
+  documentGenerationJobId: number | null;
+  /** 실패한 단계. 실패하지 않았으면 null */
+  failureStage: RecordingFailureStage | null;
+  /** 실패 원인 코드(예: `DOCUMENT_GENERATION_FAILED`). 실패하지 않았으면 null. 코드 목록은 명세에서 아직 초안이에요 */
+  failureReason: string | null;
+
+  constructor(raw: GetRecordingResponseRaw) {
+    this.recordingId = raw.recordingId;
+    this.status = raw.status;
+    this.sessionStatus = raw.sessionStatus;
+    this.audioUploadStatus = raw.audioUploadStatus;
+    this.startedAt = raw.startedAt;
+    this.endedAt = raw.endedAt;
+    this.durationMillis = raw.durationMillis;
+    this.transcriptionStatus = raw.transcriptionStatus;
+    this.documentGenerationStatus = raw.documentGenerationStatus;
+    this.documentGenerationJobId = raw.documentGenerationJobId;
+    this.failureStage = raw.failureStage;
+    this.failureReason = raw.failureReason;
   }
 }
 

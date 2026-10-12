@@ -1,5 +1,7 @@
 package com.knot.backend.global.config;
 
+import com.knot.backend.search.domain.SearchErrorCode;
+import com.knot.backend.search.domain.SearchException;
 import java.time.Duration;
 import lombok.Getter;
 import lombok.Setter;
@@ -33,25 +35,25 @@ public class SearchWorkerProperties {
 
     private void validateConcurrency() {
         if (concurrency < 1 || concurrency > 16) {
-            throw new IllegalArgumentException("invalid search worker concurrency");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_CONFIGURATION);
         }
     }
 
     private void validateCandidateLimit() {
         if (candidateLimit < concurrency || candidateLimit > 100) {
-            throw new IllegalArgumentException("invalid search worker candidate limit");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_CONFIGURATION);
         }
     }
 
     private void validateStreamConcurrency() {
         if (streamConcurrency < 1 || streamConcurrency > 100) {
-            throw new IllegalArgumentException("invalid search stream capacity");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_CONFIGURATION);
         }
     }
 
     private void validateDuration(Duration duration) {
         if (duration == null || duration.isNegative() || duration.isZero() || duration.toMillis() < 1) {
-            throw new IllegalArgumentException("invalid search worker duration");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_CONFIGURATION);
         }
     }
 }

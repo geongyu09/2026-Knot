@@ -16,7 +16,7 @@ interface StartRecordingApiParams {
 /**
  * @description 워크스페이스에서 내 녹음 세션을 시작합니다
  * @param params - 워크스페이스 ID·시작 요청 ID·최초 탭 ID·제어 증명
- * @returns 녹음 세션 ID·상태·서버가 확정한 시작 시각
+ * @returns 녹음 세션 ID·상태·서버가 확정한 시작 시각·새로 만든 녹음인지 여부
  * @example
  * const { recordingId } = await startRecordingApi({ workspaceId: 1, body });
  */
@@ -30,5 +30,5 @@ export const startRecordingApi = async ({
     data: body,
   });
 
-  return new PostRecordingResponseDto(response.data);
+  return new PostRecordingResponseDto(response.data, response.status);
 };
