@@ -2,6 +2,8 @@ package com.knot.backend.workspace.infrastructure.ratelimit;
 
 import com.knot.backend.workspace.application.WorkspaceInvitationPreviewRateLimitException;
 import com.knot.backend.workspace.application.WorkspaceInvitationPreviewRateLimiter;
+import com.knot.backend.workspace.domain.WorkspaceErrorCode;
+import com.knot.backend.workspace.domain.WorkspaceException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -41,7 +43,7 @@ public class InMemoryWorkspaceInvitationPreviewRateLimiter implements WorkspaceI
                 "clock"
         );
         if (maxTrackedAddresses < 2) {
-            throw new IllegalArgumentException("maxTrackedAddresses는 2 이상이어야 합니다");
+            throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_INVITATION_SECURITY_CONFIGURATION_INVALID);
         }
         this.maxTrackedAddresses = maxTrackedAddresses;
     }
