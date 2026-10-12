@@ -94,6 +94,7 @@ public class SearchAnswerWorker {
                 )
         )) {
             usedIds = generator.generate(
+                    scope,
                     work.question(),
                     documents,
                     content

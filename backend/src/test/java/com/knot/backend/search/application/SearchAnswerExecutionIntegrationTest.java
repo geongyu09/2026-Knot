@@ -9,6 +9,7 @@ import static org.mockito.Mockito.doAnswer;
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.search.SearchMessageFixtures;
 import com.knot.backend.search.domain.SearchException;
+import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.application.dto.command.SearchQuestionCommand;
 import com.knot.backend.search.application.dto.result.SearchAnswerSnapshotResult;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
@@ -218,8 +219,8 @@ class SearchAnswerExecutionIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"NOT_RETRIEVED", "DUPLICATE", "EXCESSIVE"})
-    @DisplayName("검색 후보에 없는 문서와 중복 또는 네 개 근거는 커스텀 오류로 거절한다")
+    @ValueSource(strings = {"NOT_RETRIEVED", "DUPLICATE", "NULL"})
+    @DisplayName("검색 후보에 없는 문서와 중복 또는 null 근거는 커스텀 오류로 거절한다")
     void complete_failure_invalidEvidence(String scenario) {
         SearchAnswerWorkResult work = service.claim(accepted.answerMessageId())
                 .orElseThrow();
@@ -231,7 +232,10 @@ class SearchAnswerExecutionIntegrationTest {
                 scenario,
                 document
         );
-        Set<Long> candidates = Set.copyOf(ids);
+        Set<Long> candidates = Set.of();
+        if (ids != null) {
+            candidates = Set.copyOf(ids);
+        }
         if ("NOT_RETRIEVED".equals(scenario)) {
             candidates = Set.of();
         }
@@ -258,13 +262,8 @@ class SearchAnswerExecutionIntegrationTest {
                     document
             );
         }
-        if ("EXCESSIVE".equals(scenario)) {
-            return List.of(
-                    1L,
-                    2L,
-                    3L,
-                    4L
-            );
+        if ("NULL".equals(scenario)) {
+            return null;
         }
         return List.of(document);
     }
@@ -620,7 +619,11 @@ class SearchAnswerExecutionIntegrationTest {
                         List.of(draft),
                         Set.of(draft)
                 )
-        ).isInstanceOf(IllegalArgumentException.class);
+        ).isInstanceOf(SearchException.class)
+                .satisfies(
+                        exception -> assertThat(((SearchException) exception).getErrorCode())
+                                .isEqualTo(SearchErrorCode.INVALID_SEARCH_STATE)
+                );
         assertThat(evidenceCount()).isZero();
     }
 
