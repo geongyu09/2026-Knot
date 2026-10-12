@@ -1,7 +1,7 @@
 # 운영 Notion API 후보와 백엔드 정합성
 
 현재 작업의 관련 원문·DB 속성은 [Notion 근거 탐색 기준](notion-context.md)에 따라 찾는다.
-아래 내용은 2026-10-01의 과거 검토 메모다. 현재 구현 상태를 이 메모에서 추정하지 않는다.
+날짜별 대조는 해당 시점의 관측이다. 과거 검토 메모에서 현재 구현 상태를 추정하지 않는다.
 
 ## 현재 동기화 방식 · 2026-10-08
 
@@ -13,6 +13,281 @@
    `implementation-plan-coach`도 같은 [탐색 기준](notion-context.md)을 따른다.
 5. queue는 [정합성 워크플로](../../docs/harness/notion-alignment.md#queue-완료-조건)의 비교·반영 조건을
    만족한 뒤 처리한다. 캐시 수집이나 DB의 구현 표시만으로 완료 처리하지 않는다.
+
+## 2026-10-12 문서 목록 정렬·사이드바 상태 대조
+
+13:02:16 KST 시작한 실행 `671487`은 1분 20.472초 뒤 성공했다.
+변경된 기획·도메인·API 10페이지의 본문과 필요한 DB 속성을 읽었다.
+[문서 목록](https://www.notion.so/3edb4351752281b2804dc5be8aaf76e3)의 revision은
+`2026-10-12T03:34:00Z`, [목록 API](https://www.notion.so/3ebb435175228015bf4dc8d04281b461)와
+[목록 UseCase](https://www.notion.so/dd8b4351752282e0913f81a76f2bef21)는 `01:57:00Z`다.
+
+- **확정된 표시 정책:** DOC-R15·R16은 주제 이름 오름차순, 주제 안 문서는 원본 녹음
+  시작 시각 내림차순으로 정했다. 목록 날짜도 녹음 시작 날짜이며 문서 탭·사이드바는 같은
+  순서를 사용한다. 생성 완료 시각·확인 여부로 재정렬하지 않고 같은 녹음의 최초 확정된
+  표시 순서를 유지한다. 최신 API도 같은 정책을 반영했다.
+- **미확정 기술 계약:** API 자체가 녹음 시작 시각 전달 필드·안정적인 동률 처리·커서 키의
+  보완 필요를 명시한다. 응답 표·예시는 여전히 `createdAt`만 제공한다. 새 필드명·동률 키·
+  커서 변경 방식을 임의로 정하지 않는다. 서로 다른 문자 종류의 주제명 정렬 세부 계약도
+  이번 자료로 보장하지 않는다.
+- **현재 로컬 구현 차이:** `DocumentListJpaRepository`는 주제에 `order by d.topic`,
+  카드·커서 경계에 `d.createdAt desc, d.id desc`를 사용한다. `DocumentListService`의
+  다음 커서도 `createdAt`·ID이며 `DocumentCardResponse`에는 녹음 시작 시각이 없다.
+  `RecordingSession.startedAt` 저장 필드는 존재하지만 목록 전달·정렬에 사용한다는 증거는 아니다.
+  닫힌 [#495](https://github.com/woowacourse-teams/2026-Knot/issues/495)와
+  [기존 목록 계획](../../docs/implement-plan/495-document-list.md)은 이전 생성 시각 계약이다.
+  새 정책 적용에는 해당 계약·조회·페이지 경계의 후속 비교가 필요하다. 기존 확인 상태
+  [Proposed ADR](../../docs/adr/496-document-my-confirmation-state.md)은 이 정렬 결정을 다루지 않는다.
+- **사이드바 상태 정책:** [문서 보기·원문](https://www.notion.so/3ddb43517522814c97e4e90111297141)과
+  [에러 페이지](https://www.notion.so/3ddb43517522812bb4dcdf3a6f771ba3)의 revision `01:59:00Z`는
+  DOC-R14·ERR-22를 추가했다. 트리를 본문·원문과 독립적으로 불러오고 재시도는 트리만 다시
+  조회한다. 헤더·문서 라벨을 유지한 행 스켈레톤, 가운데 한 줄 빈 상태, 작은 실패 안내를
+  사용한다. 실패 문구는 ‘목록을 불러오지 못했어요’, 문구 14·재시도 버튼 높이 30이다.
+  변경 로그의 같은 날 수정이 앞선 왼쪽 빈 상태·긴 문구를 대체한다.
+- 열린 [#609](https://github.com/woowacourse-teams/2026-Knot/issues/609)는 상태 시안 미확인과
+  긴 실패 문구를 포함한다. 현재 `WorkspaceSidebar`는 V1 Notion 트리를 사용하고 별도
+  로딩·실패·빈 상태 분기가 없다. `InlineError`에는 크기 변형이 없다. #609의 기존 401·403·404
+  이동과 받은 목록 유지 계약을 새 상태 시안만으로 변경하지 않는다. 화면·Figma 픽셀 검증은
+  수행하지 않았으며 원문의 시안 반영을 서비스 구현·배포 완료로 표현하지 않는다.
+- DB의 목록 API 구현 YES와 본문의 미구현 표시는 다르고, UseCase도 구현 안 됨으로 남아 있다.
+  상태 문자열로 구현을 판정하지 않는다. ‘래퍼런스’에 추가된 외부 연구 링크는 제품 정책으로
+  반영하지 않았다. pending 137개는 그대로 유지하며 새 후보는 실제 계약·구현 대조가 필요하다.
+
+## 2026-10-11 탐색 중지·재연결 API 대조
+
+23:35:19 KST 시작한 n8n 실행 `653207`은 11.967초 뒤 성공했다.
+[중지 API](https://www.notion.so/3ebb4351752280599f80c035a5644022)와
+[재연결 API](https://www.notion.so/3ebb4351752280e886cdc57d0fdf292c)의 본문·속성 revision은
+`2026-10-11T13:55:00Z`다. 이전 캐시에 빠졌던 Header·Path·응답·오류 표가 복구됐고,
+DB의 구현 속성은 둘 다 YES다. 본문은 여전히 미구현이라고 적혀 있어 서로 다르다.
+
+- [#568](https://github.com/woowacourse-teams/2026-Knot/issues/568),
+  [중지 구현 계약](../../docs/api/search-answer-stop.md), 로컬 `SearchAnswerStopController`·
+  `SearchAnswerExecutionService.stop`을 대조했다. 본문 없는 POST에 현재 소유·멤버십·답변 범위를
+  검사하고 부분 content와 STOPPED를 저장한다. 이미 STOPPED인 중복 요청은 200이며,
+  COMPLETED/FAILED가 먼저 확정됐으면 409 `ANSWER_NOT_RUNNING`이다.
+  원문의 ‘STREAMING이 아니면 409’는 중복 STOPPED까지 거절하는 규칙으로 적용하지 않는다.
+  원문의 먼저 확정된 종료 상태 반환 제안도 완료·실패에 200을 주는 새 결정으로 적용하지 않는다.
+- 중지 원문은 Content-Type을 필수로 표기하지만 로컬 Controller는 요청 본문과 `consumes` 제한이
+  없고 현재 구현 계약은 이를 선택 헤더로 명시한다. CSRF는 별도 필수 계약이다.
+  저장된 중지를 200으로 반환하는 시점과 공급자 내부 생성이 실제 끝나는 시점은 구분한다.
+- [#567](https://github.com/woowacourse-teams/2026-Knot/issues/567),
+  [재연결 구현 계약](../../docs/api/search-answer-events.md), 로컬 `SearchAnswerEventsController`·
+  `SearchAnswerSnapshotService`·`SearchAnswerReconnectConnection`을 대조했다.
+  snapshot을 먼저 보내고 같은 실행의 저장 본문 증가분을 delta로 보낸다. 근거가 있으면 최대 3개
+  카드를 보내며, 종료된 답변은 snapshot·근거·종료 이벤트 뒤 연결을 닫는다.
+  전체 이벤트 replay·Last-Event-ID 복원·제외 문서 수 전송을 추가하지 않는 기존 계약을 유지한다.
+- 원문의 제외 수 저장 설명은 현재 구현과 구분한다. `SearchMessage`와 별개인 실행 metadata에는
+  excludedCount가 있고 snapshot 내부 결과에도 포함되지만, 재연결 전송 코드는 이를 내보내지 않는다.
+  저장 존재를 FE에 제외 수를 다시 표시하라는 결정으로 해석하지 않는다.
+- 원문의 근거 최대 3개는 반환 카드 제한으로 적용한다. 현재 사용자 결정인 실제 사용 근거 전체
+  저장을 3개 저장으로 되돌리지 않는다. 두 Controller의 존재는 로컬 구현 근거이며,
+  Notion의 YES·GitHub OPEN 상태로 develop 병합이나 운영 배포를 추정하지 않는다.
+
+이번에는 소스·Issue·기존 계약을 읽어 대조했고 HTTP·모델·동시성 테스트는 새로 실행하지 않았다.
+기능 코드·진행 중인 구현 계획·ADR은 수정하지 않았다. 캐시 `--check`는 일치, 누락은 없으며
+기존 coverage 제한 26개는 동일하다. pending은 133행이고 verified 전환·삭제는 수행하지 않았다.
+
+## 2026-10-11 영역 내 실패 안내 정렬 대조
+
+22:31:24 KST 시작한 n8n 실행 `651734`은 16.169초 뒤 성공했다.
+[에러 정책 ERR-09](https://www.notion.so/3ddb43517522812bb4dcdf3a6f771ba3)의
+본문·속성 revision은 `2026-10-11T12:39:00Z`,
+[변경 로그](https://www.notion.so/3deb4351752281a99829f339cc9ceeb4)는 `2026-10-11T12:40:00Z`다.
+
+- 원문에 추가된 기준: `State/InlineError`는 해당 자리의 빈 상태 정렬을 따른다.
+  홈 카드 4종·문서 목록 전체를 대신할 때는 안내와 그 아래 재시도 버튼을 가운데에 둔다.
+  탐색 답변·원문 패널의 글 흐름 안에 들어갈 때는 왼쪽에 둔다.
+- 로컬 `frontend/src/shared/components/primitives/ui/InlineError/index.tsx`는
+  `align-items: flex-start`로 고정돼 있고 정렬 인자가 없다. 같은 디렉터리의 Storybook 설명도
+  목록 실패를 포함해 왼쪽 정렬로 안내하므로 새 원문과 차이가 있다.
+  가운데 정렬인 `RetryNotice`가 존재하지만, 이를 영역 내 실패 안내의 대체 컴포넌트로
+  사용한다는 확정 근거는 없다. 컴포넌트·사용처·스토리의 대조가 필요하다.
+- 조회 시 OPEN인 [#585](https://github.com/woowacourse-teams/2026-Knot/issues/585)는
+  최근 문서 카드의 독립 재조회·401 전환 계약을 포함한다. 새 정렬 기준은 화면 표시 규칙이며,
+  해당 요청·권한 계약을 바꾸거나 백엔드 endpoint·저장 필드를 추가하는 근거가 아니다.
+  관련 ADR에서 정렬 결정을 찾지 못했으며 새 ADR이나 제품 규칙을 만들지 않았다.
+
+이번 대조는 텍스트와 로컬 소스 기준이다. Figma 픽셀·실행 화면의 일치는 확인하지 않았고,
+기능 코드·구현 계획은 수정하지 않았다. 캐시 `--check`는 일치, 누락은 없고 기존 coverage 제한
+26개와 pending 131행은 동일하다. 후보의 verified 전환·삭제는 수행하지 않았다.
+
+## 2026-10-11 홈 카드별 조회 실패 대조
+
+20:27:52 KST 시작한 n8n 실행 `648827`은 17.416초 뒤 성공했다.
+[홈 요구사항](https://www.notion.so/3ddb4351752281229eb4cb22812ab6b1),
+[홈 화면](https://www.notion.so/3ddb4351752281b0b8efe6b6ac60fa2a),
+[에러 정책](https://www.notion.so/3ddb43517522812bb4dcdf3a6f771ba3),
+[변경 로그](https://www.notion.so/3deb4351752281a99829f339cc9ceeb4)의 본문·속성 revision은
+`2026-10-11T11:26:00Z`다. HOME-R6·ERR-09의 홈 적용을 기존 API·Issue·로컬 코드와 대조했다.
+
+- 실패 상태는 확인이 필요한 문서·최근 문서·진행 중인 녹음·팀원 초대의 4개 카드에 각각 적용한다.
+  실패 카드의 제목·높이는 유지하고 내용에 안내와 다시 시도를 둔다. 다시 시도는 그 카드만
+  요청하며 다른 카드를 사용할 수 있다. 홈 전체를 그릴 수 없을 때만 ERR-02·03을 따른다.
+  HOME-07의 스켈레톤은 문서·최근 문서·녹음의 3개 카드이며 팀원 초대는 그대로다.
+- 녹음 카드 조회 실패는 표시 실패다. 수집을 중단하거나 녹음 세션 상태를 FAILED로 바꾸는 근거가 아니다.
+  로컬 `RecordingCurrentService`는 멤버십 검사 후 활성 세션을 read-only로 조회한다.
+  [현재 녹음 API](https://www.notion.so/c45b43517522837aa1d081b71d43f645)의 종료 후 종합 상태 제안과
+  로컬 활성 세션 조회의 차이는 기존 검토 대상으로 남긴다. 새 홈 실패 규칙으로 그 차이가 해결되지는 않는다.
+- [#405](https://github.com/woowacourse-teams/2026-Knot/issues/405)는 미확인 문서에
+  `myConfirmation=PENDING`, 최근 문서에 `size=3`을 사용한다.
+  [목록 계약](../../docs/api/document-list.md)과 로컬 `DocumentController.findDocuments`·
+  `DocumentListService`에는 해당 필터·페이지 크기·권한 검사 경로가 있다.
+  새 화면 상태를 위해 홈 통합 endpoint나 저장 필드를 추가한다고 해석하지 않는다.
+- 조회 시 OPEN인 [#585](https://github.com/woowacourse-teams/2026-Knot/issues/585)는 최근 문서 카드만
+  재조회하는 실패 처리를 이미 포함하지만, 실패 시안이 없어 확인한다는 메모는 이번 원문 추가보다 이전 내용이다.
+  401의 로그인 전환 계약은 유지한다. 카드 내 실패 표시는 권한 오류를 무시하고 데이터를 보여주는 허용이 아니다.
+- 팀원 초대는 로컬 `WorkspaceInvitationController`의 `POST /invitations`로 새 코드·링크를 발급한다.
+  HOME-R6의 다시 시도를 기존 초대 원문 GET이나 자동 재발급 허용으로 해석하지 않는다.
+  현재 최소 MVP는 기존 초대 원문 재조회·채널별 재발급을 제외한다.
+  카드의 요청·실패 분류와 발급 응답 유실 시 재시도 처리는 이 계약 안에서 FE·BE가 대조할 항목이다.
+
+기존 ADR이나 권한·저장 계약을 새로 확정하지 않았다. 기능 코드·진행 중인 구현 계획은 수정하지 않았다.
+이미지의 픽셀은 이번 텍스트 대조 범위에 포함하지 않는다. 캐시 coverage 제한 26개는 동일하며,
+현재 pending은 131행이다. 캐시 갱신만으로 검증 상태 변경·완료 행 삭제를 수행하지 않았다.
+
+## 2026-10-11 탐색 목록·첫 질문 API 대조
+
+19:26:23 KST 시작한 n8n 실행 `647386`은 14.898초 뒤 성공했다.
+아래 세 API의 본문·속성 revision은 `2026-10-11T09:59:00Z`다. 목록 조회와 첫 질문의
+요청·응답 표가 이전 캐시의 헤더만 있는 상태에서 복구됐다. 이를 새 제품 결정으로 해석하지 않는다.
+[메시지 조회](https://www.notion.so/3ebb435175228009b53bef6680719a88)는 revision과 속성이 바뀌었지만
+본문은 이전 수집과 동일하다.
+
+- [목록 조회](https://www.notion.so/3ebb43517522808ab9f9e8c5d7e5fb1b)의 size 기본 20·최대 100,
+  `updatedAt DESC, id DESC`, 최초 USER 메시지에서 제목 도출, 회원·Workspace 소유 범위의 cursor는
+  [#564](https://github.com/woowacourse-teams/2026-Knot/issues/564)의 기존 계약과 일치한다.
+  로컬 `SearchConversationListParameters`도 기본 20·범위 1..100을 검사하고
+  `SearchConversationListService`는 현재 회원·Workspace 권한과 cursor 범위를 확인한다.
+  첫 답변 실패 대화는 목록에서 숨기고 재시도 성공 후 복구한다는 기존 계약을 유지한다.
+- [첫 질문](https://www.notion.so/3ebb4351752280a39871f288fbc275b6)의 JSON 요청·SSE 응답,
+  저장 commit 이후 `accepted`, 연결 종료와 독립된 생성, 실제 Document 근거 최대 3개는
+  [#563](https://github.com/woowacourse-teams/2026-Knot/issues/563) 및
+  [현재 구현 계약](../../docs/api/search-conversation-create.md)과 대조했다.
+  로컬 Controller와 IntakeService에는 대화·USER·ASSISTANT·requestId receipt·실행 queue 생성이 있다.
+  `requestId` 보관 기간과 질문 최대 길이는 노션에 미정으로 남아 있으나, 기존 결정은
+  대화 보관 기간 동안 receipt 유지와 공백 포함 Unicode code point 2,000개다.
+  [구현 계획](../../docs/implement-plan/563-search-conversation-create.md)의 확정 내용을 다시 미정으로 돌리지 않는다.
+- 원문의 V2 미구현 문구는 현재 로컬 조회·질문 접수 코드의 존재와 다르다.
+  다만 현재 구현 계약은 실제 검색 전략·색인 준비·모델 streaming adapter가 연결되지 않았고,
+  기본 worker 비활성 상태에서 새 요청은 접수 전 `ANSWER_GENERATION_UNAVAILABLE`로 거절된다고 명시한다.
+  코드 존재를 실제 검색 품질·운영 배포 완료로 보고하지 않는다.
+  Proposed [ADR 271](../../docs/adr/271-llm-search-architecture-benchmark.md)의 과거 벤치마크 후보를
+  현재 V2 검색 전략의 확정 결정으로 적용하지 않는다.
+
+메시지 이력의 제외 문서 수는 보장하지 않고 첫 SSE 연결에서만 제공한다는 기존 계약을 유지한다.
+노션의 보관·길이 미정 표시와 구현 상태 문구는 후속 원문 정합 대상이다.
+이번 대조만으로 pending 후보를 완료 처리하지 않는다. 확인한 pending 행은 130개이며,
+캐시 coverage 제한 26개는 이전과 동일하다.
+
+## 2026-10-11 녹음 단건 조회 계약 대조
+
+18:23:21 KST 시작한 n8n 실행 `645917`은 8.376초 뒤 성공했다.
+[녹음 단건 조회 원문](https://www.notion.so/3deb4351752280a4a9a3f04bff7d0ee4)의 본문과
+속성 revision은 모두 `2026-10-11T09:22:00Z`다. 변경 본문을
+[PR #546](https://github.com/woowacourse-teams/2026-Knot/pull/546)의 DTO·Service·조회 코드 및
+[#386의 범위 정리](https://github.com/woowacourse-teams/2026-Knot/issues/386#issuecomment-6077983404)와 대조했다.
+
+- `GET /api/v1/workspaces/{workspaceId}/recordings/{recordingId}`는
+  `status`, `elapsedMillis`, `endedAt`, `endReason`, `audioUploadStatus`만 제공한다.
+  status는 세션의 `RECORDING`·`PAUSED`·`ENDED`·`DISCARDED`이며,
+  전사·문서 생성의 종합 상태나 Job·실패 필드는 포함하지 않는다.
+  업로드 상태는 예약 전 `null`, 예약 후 `RESERVED`, 저장 확인 후 `COMPLETED`다.
+  `RESERVED`만으로 파일이 업로드되지 않았다고 단정하지 않는다.
+- 조회는 현재 Workspace 소속과 본인 녹음을 검사하며 생존 시각·제어 증명·세션을 변경하지 않는다.
+  PR의 `RecordingDetailService`는 다른 회원 녹음에 403, 다른 Workspace 또는 없는 녹음에 404를 반환한다.
+  세션과 업로드 예약은 한 JPQL 조회로 읽는다. 기존 `/recordings/current`의 종료 후 204는 유지한다.
+- 최초 탭은 heartbeat 응답, 다른 탭·화면은 단건 HTTP 조회로 상태를 받는다.
+  같은 recordingId의 ENDED·DISCARDED를 확인한 뒤 늦은 활성 응답으로 되돌리지 않는다.
+  ENDED는 수집 중단 후 저장 흐름, DISCARDED 및 Workspace 권한 상실 403·404는 수집 중단과
+  임시 버퍼 폐기다. 녹음 상태를 보는 권한은 최초 탭 제어권을 넘기지 않으며,
+  [#530 종료 제어 결정](../../docs/api/recording-end.md)과도 구분한다.
+- 9/30의 종합 상태·전사·문서 Job·실패 코드 제안은 원문에서 이전 계획으로 명시됐다.
+  현재 단건 조회 구현 계획에 그 필드를 다시 넣지 않는다. #386의 10/9 코멘트에 남은
+  `serverNow` 공통 필드 문구도 최신 원문과 PR DTO의 5개 필드 계약과 다르므로 후속 Issue 정합 대상으로 남긴다.
+- 확인 시 PR #546은 OPEN·미병합이며 head는 `df8c1af7730f012ba6fcd2ad1f2c304ed4d4590e`다.
+  이 checkout에는 `RecordingDetailController`·`RecordingDetailService` 및 해당 계약 문서가 없다.
+  원격 PR 구현을 로컬 적용·배포 완료로 보고하지 않는다. PR 작성자의 테스트 결과는 이번 실행의 검증 결과가 아니다.
+  #386은 OPEN이며 30초 heartbeat만으로 정상 통신의 종료 관측 5초 목표를 충족했다고 볼 수 없다.
+  추가 조회 주기·실제 FE 수집 정지·새로고침 복구와 #385의 실제 2시간 상한은 별도 검증 범위다.
+
+이번 변경은 기존 복구 ADR을 새로 확정하거나 pending 후보를 완료 처리하는 근거가 아니다.
+캐시 `--check`는 일치했고 기존 coverage 제한 26개는 동일하다.
+
+## 2026-10-11 녹음·원문·화면 기획 대조
+
+14:26:06 KST 시작한 n8n 실행 `640407`은 37.762초 뒤 성공했다. 같은 실행의
+전체 검색 속성과 sources를 대조해 기획 12페이지의 변경을 읽었다. API·도메인 본문에는
+이번 입력에서 변경이 없었다. 아래는 백엔드 작업에 필요한 선별 결과다.
+
+### 녹음 제어: 기존 결정과 일치한 부분과 남은 차이
+
+[다른 탭·기기 정책](https://www.notion.so/3edb4351752281799493d1e055be8327)은
+10/11 13:44 KST 수정됐으며 DB 상태는 `검증 전`이다.
+[변경 로그](https://www.notion.so/3deb4351752281a99829f339cc9ceeb4)의 같은 날 항목과
+[로드맵](https://www.notion.so/3e2b4351752281f1b470cbc00fa37ae0)을 함께 읽었다.
+
+- STT-R28·STT-20은 다른 탭·기기에 홈 카드와 독의 상태·경과 시간만 보여준다.
+  녹음 화면 진입·일시정지·재개·종료는 허용하지 않고 직접 URL 진입도 홈으로 보낸다.
+  다른 탭의 녹음 화면·종료(STT-17)는 이후 버전으로 옮겼다. 로드맵 DB 구분도 `이후 버전`이다.
+- 최초 탭만 종료한다는 방향은 이미 확정된 [#530](https://github.com/woowacourse-teams/2026-Knot/issues/530)과
+  [현재 종료 계약](../../docs/api/recording-end.md)에 일치한다. 로컬 `RecordingEndController`는
+  `{tabId, controlToken}` 본문을 받고 `RecordingEndService`는 소유자·제어 증명을 검증한다.
+  #530은 조회 시 OPEN이었다. 코드 존재를 배포·FE 연동 완료로 해석하지 않는다.
+- 운영 [종료 API](https://www.notion.so/3dfb43517522806c88ecc6f5376c79e0)는 여전히 본문 없음·다른 탭 종료 허용이다.
+  #381과 Proposed [ADR 378](../../docs/adr/378-recording-tab-recovery-and-expiry.md)도 이전 허용을 남긴다.
+  이 항목은 10/8 사용자 결정으로 대체됐으므로 기존 제어 증명을 제거하지 않는다.
+  운영 API·기존 Issue·ADR의 대체 관계 동기화가 남았다.
+- 새 기획의 새로고침 종료·로드마다 새 탭 ID는 #378·ADR 378의 같은 탭 증명 유지·복구와
+  여전히 다르다. 이번 기획 변경을 새로고침 복구 폐기의 승인으로 취급하지 않는다.
+  종료 신호 유실 시점도 기획에 미정으로 남아 있다. 무음 자동 종료를 원격 종료의 확정 대안으로
+  쓰지 않는다. 현재 제품 기준에서 무음 정책은 미정이다.
+
+### 시작·종료 실패 안내: 서버 결과와 화면 안내의 구분
+
+[시작·끝내기](https://www.notion.so/3edb43517522813d9fcfdcf2dea0831b)는
+10/11 13:24 KST 수정됐으며 DB 상태는 `개발 중`이다.
+[에러 페이지](https://www.notion.so/3ddb43517522812bb4dcdf3a6f771ba3)의 ERR-18~21도 대조했다.
+
+- STT-R29는 네트워크 시작 실패에 재시도, 그 밖의 실패에 새로고침을 안내한다.
+  응답 없음·타임아웃과 4xx의 분류는 원문에서도 기본안이며 5xx 분류는 확정되지 않았다.
+  R28의 중복 시작 토스트와 R29의 모든 비네트워크 오류 다이얼로그도 서로 다르다.
+- `RecordingStartService`는 같은 요청 키·Workspace·탭·증명의 재요청에 기존 상태를 반환하고
+  활성 중복 또는 같은 키의 다른 입력을 거절한다. 종료된 같은 요청을 오류로만 보는 화면 설명과
+  [#378](https://github.com/woowacourse-teams/2026-Knot/issues/378)의 ENDED 재반환 계약은 구분해야 한다.
+  재시도에서 새 키를 생성하는 규칙이나 새 서버 오류 코드를 만들지 않는다.
+- ERR-21은 종료 실패 시 계속 녹음하며 다시 종료하도록 안내한다. 응답 유실만으로 서버가
+  아직 RECORDING이라고 확정할 수는 없다. 현재 종료 API의 동일 증명 재시도·endedAt 불변 계약을
+  유지하고, 상태 재조회와 실패별 화면 매핑은 FE·BE 연동에서 확인할 항목으로 남긴다.
+
+### 원문과 로딩: 화면 요구를 API 변경으로 확대하지 않음
+
+[문서 보기·원문](https://www.notion.so/3ddb43517522814c97e4e90111297141)의
+10/11 13:24 KST 수정과 DB 상태 `개발 중`을 확인했다. DOC-R13·ERR-20은 원문 패널만
+로딩·실패·재시도로 바꾸고 문서 본문을 유지하며, 원문 없는 404도 같은 패널 안내를 사용한다.
+이는 HTTP 성공으로 바꾸거나 권한 오류를 무시하라는 계약이 아니다.
+
+[문서 원문 API](https://www.notion.so/3ebb4351752280528c05e37e9135d96a)와
+`DocumentController.findTranscript`·`DocumentTranscriptService`를 대조했다.
+현재 코드는 Workspace 멤버를 먼저 검사하고 연결 원문이 없으면 `TRANSCRIPT_NOT_FOUND`,
+저장된 본문·구간 계약 위반이면 `INVALID_TRANSCRIPT_DATA`를 반환한다.
+원문의 “controller 없음·구간 저장 미정”은 현재 코드와
+[#499 계획](../../docs/implement-plan/499-document-transcript.md)의 확정 범위와 다르다.
+조회 코드 존재는 실제 STT 저장 연결·배포 성공의 증거가 아니다. DOC-R7의 참여자 번호는
+Workspace 멤버와 연결하지 않는 기존 익명 화자 계약으로 읽는다.
+
+10/11 변경 로그 및 해당 화면 본문에서 확인한 로딩 범위는 다음과 같다.
+문서 목록(DOC-06)은 폴더·행, 문서 상세(DOC-07)는 문서와 원문 패널을 각각 불러온다.
+홈(HOME-07)은 세 카드별 독립 로딩·실패, 녹음(STT-19)은 상태 수신 전 제어 비활성이다.
+지난 대화(SEARCH-15)의 메시지 로딩은 답변 생성 중 화면과 구분하며,
+로그인(AUTH-03)은 OAuth 복귀 처리 중 버튼을 비활성화한다.
+이 화면 상태 추가만으로 새로운 BE endpoint나 저장 필드를 요구하지 않는다.
+근거는 [변경 로그](https://www.notion.so/3deb4351752281a99829f339cc9ceeb4)와 연결된 화면 문서다.
+
+캐시 입력 일치는 확인했지만 새 이미지가 포함된 화면 5개의 픽셀은 검토하지 않았다.
+첨부·unsupported 제한은 총 26페이지이며 텍스트 요구 대조와 시각 검토 완료를 구분한다.
+수집 후 pending 테이블은 126행이었다. 미정·원문 차이가 있어 이번 실행에서 후보 상태 변경이나
+삭제는 하지 않았으며, 모든 후보의 의미 검토가 완료된 것으로 보고하지 않는다.
 
 ## 2026-10-09 문서 확인 API 재수집 대조
 
@@ -128,7 +403,7 @@ revision은 `2026-10-08T17:06:00Z`인데 같은 실행 Search 출력의 속성 r
 | Endpoint 또는 주제 | candidate에 추가·정리된 내용 | 저장소 대조 상태 |
 | --- | --- | --- |
 | `GET /workspaces/{workspaceId}/documents` | `myConfirmationState`를 `PENDING`, `CONFIRMED`, `NOT_REQUIRED`로 구분하고 `myConfirmation` query로 필터링. 주제별 전체 개수와 cursor 기반 문서 목록을 제공하며 전체 비페이지 조회는 추가하지 않는 제안 | 문서 confirmation 범위와 페이지 크기 근거는 제품·FE 검토 후보. 구현 완료로 보지 않음 |
-| `GET /recordings/current`, `GET /recordings/{recordingId}` | session, audio upload, transcription, document generation 상태를 분리하고 `documentGenerationJobId`, `failureStage`, `failureReason` 제안 | heartbeat/종료·업로드 API와 상태 전이 연동을 검토 대상으로 기록. 코드 구현 아님 |
+| `GET /recordings/current`, `GET /recordings/{recordingId}` | 9/30에는 전사·문서 생성 상태와 Job·실패 필드를 제안했으나, 10/11 단건 조회 원문은 세션·업로드의 5개 필드로 대체하고 이전 계획임을 명시 | [10/11 단건 조회 대조](#2026-10-11-녹음-단건-조회-계약-대조) 적용. current는 종료 후 204 유지. PR #546 미병합·FE 연동 검증 별도 |
 | `GET /recordings/{recordingId}/transcript`, `GET /documents/{documentId}/transcript` | `transcriptId`, 전체 원문과 공통 `segments` 구조, `startMillis`, `endMillis`, `speakerNumber`, `text`를 제안 | 현 STT 저장 포맷과 성공 시 실제 timestamp 보장은 미정 |
 | `GET /document-generation-jobs` | `QUEUED`, `RUNNING`, `FAILED` 작업을 cursor 기반으로 복원·조회하는 제안 | 목록·재시도와 녹음 응답의 job ID 연결은 구현 전 확인 |
 | 탐색 이름 | 사용자-facing 용어 및 API 영역에서 `exploration` 대신 `search`로 통일하는 팀 메모 | 기존 endpoint와 계약 전환 범위는 검색 도메인에서 별도 확인; `frontend/`는 이번 작업에서 수정하지 않음 |
