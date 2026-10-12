@@ -143,7 +143,7 @@ class SearchMcpDocumentRetrieverTest {
     }
 
     @Test
-    @DisplayName("같은 도구 입력 반복과 호출 한도 초과는 실패한다")
+    @DisplayName("같은 도구 입력을 반복하면 실패한다")
     void retrieve_failure_repeatedToolCall() {
         when(
                 llm.complete(
@@ -176,6 +176,173 @@ class SearchMcpDocumentRetrieverTest {
                         "질문"
                 )
         ).hasMessage("REPEATED_TOOL_CALL");
+    }
+
+    @Test
+    void retrieve_success_exactToolLimit() {
+        properties.setToolCallLimit(1);
+        when(
+                llm.complete(
+                        eq(scope),
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                turn(
+                        "t1",
+                        "list_documents",
+                        "{}"
+                ),
+                mapper.readTree("{\"role\":\"assistant\",\"content\":\"끝\"}")
+        );
+        when(
+                mcp.call(
+                        eq(scope),
+                        eq("list_documents"),
+                        any()
+                )
+        ).thenReturn(mapper.readTree("{\"items\":[]}"));
+        assertThat(
+                retriever.retrieve(
+                        scope,
+                        "질문"
+                )
+                        .documents()
+        ).isEmpty();
+        org.mockito.Mockito.verify(mcp)
+                .call(
+                        eq(scope),
+                        eq("list_documents"),
+                        any()
+                );
+    }
+
+    @Test
+    void retrieve_failure_toolLimitPlusOne() {
+        properties.setToolCallLimit(1);
+        when(
+                llm.complete(
+                        eq(scope),
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                turn(
+                        "t1",
+                        "list_documents",
+                        "{}"
+                ),
+                turn(
+                        "t2",
+                        "list_documents",
+                        "{\"cursor\":\"next\"}"
+                )
+        );
+        when(
+                mcp.call(
+                        eq(scope),
+                        eq("list_documents"),
+                        any()
+                )
+        ).thenReturn(mapper.readTree("{\"items\":[]}"));
+        assertThatThrownBy(
+                () -> retriever.retrieve(
+                        scope,
+                        "질문"
+                )
+        ).hasMessage("SEARCH_TOOL_LIMIT_EXCEEDED");
+        org.mockito.Mockito.verify(mcp)
+                .call(
+                        eq(scope),
+                        eq("list_documents"),
+                        any()
+                );
+    }
+
+    @Test
+    void retrieve_success_largeWorkspaceUsesBoundedPages() {
+        when(
+                llm.complete(
+                        eq(scope),
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                turn(
+                        "t1",
+                        "list_documents",
+                        "{\"size\":100}"
+                ),
+                turn(
+                        "t2",
+                        "read_document",
+                        "{\"documentId\":1}"
+                ),
+                mapper.readTree("{\"role\":\"assistant\",\"content\":\"끝\"}")
+        );
+        List<Map<String, Object>> ninety = java.util.stream.IntStream.rangeClosed(
+                1,
+                90
+        )
+                .mapToObj(
+                        id -> Map.<String, Object>of(
+                                "documentId",
+                                id,
+                                "title",
+                                "회의",
+                                "snippet",
+                                "문서".repeat(200)
+                        )
+                )
+                .toList();
+        when(
+                mcp.call(
+                        eq(scope),
+                        eq("list_documents"),
+                        any()
+                )
+        ).thenAnswer(invocation -> {
+            Map<String, Object> arguments = invocation.getArgument(2);
+            int size = ((Number) arguments.get("size")).intValue();
+            return mapper.valueToTree(
+                    Map.of(
+                            "items",
+                            ninety.subList(
+                                    0,
+                                    size
+                            ),
+                            "nextCursor",
+                            "next-page"
+                    )
+            );
+        });
+        when(
+                mcp.call(
+                        eq(scope),
+                        eq("read_document"),
+                        any()
+                )
+        ).thenReturn(
+                mapper.readTree(
+                        "{\"document\":{\"documentId\":1,\"title\":\"회의\",\"topic\":\"결정\",\"contentRevision\":\"r1\"},\"content\":\"읽은 본문\",\"offset\":0,\"truncated\":false}"
+                )
+        );
+        assertThat(
+                retriever.retrieve(
+                        scope,
+                        "결정"
+                )
+                        .documents()
+        ).hasSize(1);
+        org.mockito.Mockito.verify(mcp)
+                .call(
+                        scope,
+                        "list_documents",
+                        Map.of(
+                                "size",
+                                20
+                        )
+                );
     }
 
     private JsonNode turn(
