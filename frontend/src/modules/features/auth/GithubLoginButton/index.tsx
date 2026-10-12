@@ -1,4 +1,5 @@
 import Button from "@primitives/ui/Button";
+import { useEffect, useState } from "react";
 
 import GithubIcon from "@/assets/icons/github.svg";
 
@@ -13,14 +14,33 @@ const GITHUB_OAUTH_URL = `${process.env.API_BASE_URL}/oauth2/authorization/githu
 
 /**
  * GitHub 계정으로 로그인을 시작하는 버튼.
+ *
+ * 누르면 GitHub으로 넘어갈 때까지 처리 중으로 바뀌어 다시 누를 수 없어요.
  */
 export default function GithubLoginButton() {
+  const [isRedirecting, setIsRedirecting] = useState(false);
+
+  // 뒤로 가기로 돌아오면 브라우저가 떠날 때의 화면을 그대로 되살려요. 처리 중이 남아 버튼을 누를 수 없게 되지 않도록 풀어요
+  useEffect(() => {
+    const handlePageShow = () => setIsRedirecting(false);
+
+    window.addEventListener("pageshow", handlePageShow);
+
+    return () => window.removeEventListener("pageshow", handlePageShow);
+  }, []);
+
   const handleClick = () => {
+    setIsRedirecting(true);
     window.location.href = GITHUB_OAUTH_URL;
   };
 
   return (
-    <Button size="lg" isFullWidth onClick={handleClick}>
+    <Button
+      size="lg"
+      isFullWidth
+      isLoading={isRedirecting}
+      onClick={handleClick}
+    >
       <GithubIcon />
       GitHub으로 시작하기
     </Button>
