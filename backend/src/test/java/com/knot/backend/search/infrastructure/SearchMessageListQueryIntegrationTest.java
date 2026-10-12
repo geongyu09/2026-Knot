@@ -70,6 +70,145 @@ class SearchMessageListQueryIntegrationTest {
     }
 
     @Test
+    @DisplayName("같은 페이지의 여러 답변에 각각 상위 세 카드를 반환한다")
+    void findEvidences_success_multipleAnswersInOnePage() {
+        search.saveMessage(
+                conversationId,
+                "USER",
+                3,
+                "후속 질문",
+                "RECEIVED"
+        );
+        search.saveMessage(
+                conversationId,
+                "ASSISTANT",
+                4,
+                "후속 답변",
+                "COMPLETED"
+        );
+        long first = messages.messageId(
+                conversationId,
+                2
+        );
+        long second = messages.messageId(
+                conversationId,
+                4
+        );
+        for (int rank = 1; rank <= 5; rank++) {
+            messages.saveEvidence(
+                    first,
+                    messages.saveDocument(
+                            workspaceId,
+                            memberId
+                    ),
+                    rank
+            );
+            messages.saveEvidence(
+                    second,
+                    messages.saveDocument(
+                            workspaceId,
+                            memberId
+                    ),
+                    rank
+            );
+        }
+        Map<Long, List<SearchEvidenceItemResult>> result = query.findEvidences(
+                workspaceId,
+                memberId,
+                conversationId,
+                List.of(
+                        first,
+                        second
+                )
+        );
+        assertThat(result.get(first)).extracting(SearchEvidenceItemResult::rank)
+                .containsExactly(
+                        1,
+                        2,
+                        3
+                );
+        assertThat(result.get(second)).extracting(SearchEvidenceItemResult::rank)
+                .containsExactly(
+                        1,
+                        2,
+                        3
+                );
+    }
+
+    @Test
+    @DisplayName("실제 근거는 모두 보존하고 각 답변의 관련도 상위 세 카드만 조회한다")
+    void findEvidences_success_threeCardsPerAnswer() {
+        long firstAnswer = messages.messageId(
+                conversationId,
+                2
+        );
+        long secondConversation = search.saveConversation(
+                workspaceId,
+                memberId,
+                "후속 질문",
+                "답변"
+        );
+        long secondAnswer = messages.messageId(
+                secondConversation,
+                2
+        );
+        for (int rank = 1; rank <= 5; rank++) {
+            messages.saveEvidence(
+                    firstAnswer,
+                    messages.saveDocument(
+                            workspaceId,
+                            memberId
+                    ),
+                    rank
+            );
+            messages.saveEvidence(
+                    secondAnswer,
+                    messages.saveDocument(
+                            workspaceId,
+                            memberId
+                    ),
+                    rank
+            );
+        }
+        Map<Long, List<SearchEvidenceItemResult>> first = query.findEvidences(
+                workspaceId,
+                memberId,
+                conversationId,
+                List.of(firstAnswer)
+        );
+        Map<Long, List<SearchEvidenceItemResult>> second = query.findEvidences(
+                workspaceId,
+                memberId,
+                secondConversation,
+                List.of(secondAnswer)
+        );
+        assertThat(first.get(firstAnswer)).extracting(SearchEvidenceItemResult::rank)
+                .containsExactly(
+                        1,
+                        2,
+                        3
+                );
+        assertThat(second.get(secondAnswer)).extracting(SearchEvidenceItemResult::rank)
+                .containsExactly(
+                        1,
+                        2,
+                        3
+                );
+        assertThat(
+                jdbc.sql("SELECT count(*) FROM search_evidences WHERE message_id IN (:ids)")
+                        .param(
+                                "ids",
+                                List.of(
+                                        firstAnswer,
+                                        secondAnswer
+                                )
+                        )
+                        .query(Long.class)
+                        .single()
+        ).isEqualTo(10);
+    }
+
+    @Test
     @DisplayName("목록에서 숨긴 대화도 단건 조회한다")
     void findConversation_success_hiddenConversation() {
         // given

@@ -15,7 +15,7 @@ public class SearchEvidence {
     private SearchEvidenceId id;
 
     @Column(nullable = false)
-    private short rank;
+    private int rank;
 
     protected SearchEvidence() {}
 
@@ -24,7 +24,7 @@ public class SearchEvidence {
             long documentId,
             int rank
     ) {
-        if (rank < 1 || rank > 3) {
+        if (rank < 1) {
             throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         SearchEvidence evidence = new SearchEvidence();
@@ -32,7 +32,7 @@ public class SearchEvidence {
                 messageId,
                 documentId
         );
-        evidence.rank = (short) rank;
+        evidence.rank = rank;
         return evidence;
     }
 }
