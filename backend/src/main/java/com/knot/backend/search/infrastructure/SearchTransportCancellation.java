@@ -1,6 +1,7 @@
 package com.knot.backend.search.infrastructure;
 
 import com.knot.backend.search.domain.SearchException;
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.SearchToolScope;
@@ -13,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+@lombok.extern.slf4j.Slf4j
 public final class SearchTransportCancellation implements AutoCloseable {
 
     private final SearchToolAccess access;
@@ -77,6 +79,11 @@ public final class SearchTransportCancellation implements AutoCloseable {
         try {
             access.validate(scope);
         } catch (RuntimeException exception) {
+            ServerErrorLogger.record(
+                    log,
+                    "Search transport phase=access-monitor",
+                    exception
+            );
             registration.close();
         }
     }
