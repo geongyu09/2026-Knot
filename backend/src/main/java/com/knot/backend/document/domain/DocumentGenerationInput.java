@@ -28,7 +28,10 @@ public final class DocumentGenerationInput {
                     DocumentTopic.of(topic)
             );
         } catch (DocumentException exception) {
-            throw new DocumentException(DocumentErrorCode.INVALID_DOCUMENT_GENERATION_INPUT);
+            throw new DocumentException(
+                    DocumentErrorCode.INVALID_DOCUMENT_GENERATION_INPUT,
+                    exception
+            );
         }
     }
 
