@@ -1,5 +1,7 @@
 package com.knot.backend.global.config;
 
+import com.knot.backend.search.domain.SearchException;
+import com.knot.backend.search.domain.SearchErrorCode;
 import java.net.URI;
 import java.time.Duration;
 import lombok.Getter;
@@ -21,33 +23,33 @@ public class SearchAgentProperties {
 
     public void validate() {
         if (signingKey == null || signingKey.length() < 32) {
-            throw new IllegalStateException("search signing key must contain at least 32 characters");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_CONFIGURATION);
         }
         if (budget == null || budget.isNegative() || budget.isZero()) {
-            throw new IllegalStateException("search budget must be positive");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_CONFIGURATION);
         }
         if (toolCallLimit < 1 || toolCallLimit > 100) {
-            throw new IllegalStateException("invalid tool call limit");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_CONFIGURATION);
         }
         if (readCodePoints < 1 || readCodePoints > 12000) {
-            throw new IllegalStateException("invalid document slice limit");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_CONFIGURATION);
         }
         if (contextCharacterLimit < readCodePoints || contextCharacterLimit > 200000) {
-            throw new IllegalStateException("invalid search context limit");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_CONFIGURATION);
         }
         validateOrigin();
     }
 
     private void validateOrigin() {
         if (mcpBaseUrl == null || mcpBaseUrl.getHost() == null || mcpBaseUrl.getUserInfo() != null) {
-            throw new IllegalStateException("invalid MCP origin");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_CONFIGURATION);
         }
         if (mcpBaseUrl.getQuery() != null || mcpBaseUrl.getFragment() != null) {
-            throw new IllegalStateException("invalid MCP origin components");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_CONFIGURATION);
         }
         String path = mcpBaseUrl.getPath();
         if (path != null && !path.isEmpty() && !path.equals("/")) {
-            throw new IllegalStateException("MCP URL must be an origin");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_CONFIGURATION);
         }
         if ("https".equals(mcpBaseUrl.getScheme())) {
             return;
@@ -55,6 +57,6 @@ public class SearchAgentProperties {
         if ("http".equals(mcpBaseUrl.getScheme()) && "127.0.0.1".equals(mcpBaseUrl.getHost())) {
             return;
         }
-        throw new IllegalStateException("MCP must use HTTPS or IPv4 loopback HTTP");
+        throw new SearchException(SearchErrorCode.INVALID_SEARCH_CONFIGURATION);
     }
 }

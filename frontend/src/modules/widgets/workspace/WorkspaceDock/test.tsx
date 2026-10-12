@@ -1,4 +1,7 @@
-import { recordingEndResponse } from "@api/mock/responses/recording";
+import {
+  recordingEndResponse,
+  recordingStartResponse,
+} from "@api/mock/responses/recording";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
@@ -11,10 +14,12 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { useRecordingStore } from "@store/recordingStore";
+import { getRecordingStartProof } from "@utils/recordingControlProof";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import WorkspaceDock from ".";
@@ -307,6 +312,7 @@ describe("WorkspaceDock", () => {
     afterEach(() => {
       // 전역 저장소라 테스트끼리 녹음이 새지 않도록 처음 상태로 되돌려요
       useRecordingStore.getState().discardRecording();
+      mockServer.events.removeAllListeners();
     });
 
     const clickMic = async (name = "회의 녹음 시작") => {
@@ -330,6 +336,23 @@ describe("WorkspaceDock", () => {
       vi
         .spyOn(navigator.mediaDevices, "getUserMedia")
         .mockRejectedValueOnce(new DOMException("", "NotAllowedError"));
+
+    const END_RECORDING_DIALOG = "녹음을 끝낼까요?";
+
+    /** 끝내기 확인 창에서 버튼을 골라요. 「녹음 끝내기」는 녹음 칩의 중지에도 있어 창 안에서 찾아요. */
+    const chooseInEndRecordingDialog = async (name: string) => {
+      const dialog = screen.getByRole("dialog", { name: END_RECORDING_DIALOG });
+
+      await act(async () => {
+        fireEvent.click(within(dialog).getByRole("button", { name }));
+      });
+    };
+
+    /** 녹음 칩의 중지를 누르고 확인 창에서 「녹음 끝내기」를 골라요 */
+    const stopRecording = async () => {
+      await clickMic("녹음 끝내기");
+      await chooseInEndRecordingDialog("녹음 끝내기");
+    };
 
     it("접힌 독과 펼친 독 모두에 마이크가 있다", () => {
       renderDock();
@@ -435,6 +458,176 @@ describe("WorkspaceDock", () => {
       expect(router.state.location.pathname).toBe(RECORDING_PATH);
     });
 
+    describe("서버에 녹음을 열 때", () => {
+      const START_PATH = "*/api/v1/workspaces/:workspaceId/recordings";
+      const START_REFUSED = "녹음을 시작할 수 없어요";
+
+      type StartResponse = () => Response | Promise<Response>;
+
+      /** 시작 요청을 차례로 응답하고, 요청마다 보낸 requestId를 모아요 */
+      const respondStart = (...responses: StartResponse[]) => {
+        const requestIds: string[] = [];
+        mockServer.use(
+          http.post(START_PATH, async ({ request }) => {
+            const { requestId } = (await request.json()) as {
+              requestId: string;
+            };
+            requestIds.push(requestId);
+
+            return responses[requestIds.length - 1]();
+          }),
+        );
+
+        return requestIds;
+      };
+
+      const conflict = (code: string) => () =>
+        HttpResponse.json({ code }, { status: 409 });
+
+      const session =
+        (status: string, httpStatus = 200) =>
+        () =>
+          HttpResponse.json(
+            { ...recordingStartResponse, status },
+            { status: httpStatus },
+          );
+
+      /** 새로고침 전에 보냈던 시작 증명이 이 탭에 남아 있게 해요 */
+      const leaveStartProof = () => getRecordingStartProof().requestId;
+
+      const expectRefusedInPlace = (
+        router: ReturnType<typeof renderDock>["router"],
+      ) => {
+        expect(
+          screen.getByRole("dialog", { name: START_REFUSED }),
+        ).toBeInTheDocument();
+        expect(useRecordingStore.getState().status).toBe("idle");
+        expect(useRecordingStore.getState().analyser).toBeNull();
+        expect(router.state.location.pathname).toBe(HOME_PATH);
+      };
+
+      beforeEach(() => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+      });
+
+      it.each([
+        "ACTIVE_RECORDING_ALREADY_EXISTS",
+        "RECORDING_START_REQUEST_CONFLICT",
+      ])(
+        "409(%s)면 마이크를 끄고 모달을 띄운 뒤 시작 증명을 남긴다",
+        async (code) => {
+          const requestIds = respondStart(conflict(code));
+          const { router } = renderDock();
+
+          await clickMic();
+
+          await waitFor(() => expectRefusedInPlace(router));
+          expect(getRecordingStartProof().requestId).toBe(requestIds[0]);
+        },
+      );
+
+      it.each(["ENDED", "DISCARDED"])(
+        "남은 증명의 응답이 %s면 새 증명으로 한 번 더 보내 녹음을 시작한다",
+        async (status) => {
+          const leftoverRequestId = leaveStartProof();
+          const requestIds = respondStart(
+            session(status),
+            session("RECORDING", 201),
+          );
+          const { router } = renderDock();
+
+          await clickMic();
+
+          await waitFor(() =>
+            expect(router.state.location.pathname).toBe(RECORDING_PATH),
+          );
+          expect(useRecordingStore.getState().status).toBe("recording");
+          expect(requestIds).toHaveLength(2);
+          expect(requestIds[0]).toBe(leftoverRequestId);
+          expect(requestIds[1]).not.toBe(leftoverRequestId);
+        },
+      );
+
+      it("끝난 녹음 뒤 다시 보낸 시작도 409면 모달을 띄운다", async () => {
+        leaveStartProof();
+        const requestIds = respondStart(
+          session("ENDED"),
+          conflict("ACTIVE_RECORDING_ALREADY_EXISTS"),
+        );
+        const { router } = renderDock();
+
+        await clickMic();
+
+        await waitFor(() => expectRefusedInPlace(router));
+        expect(requestIds).toHaveLength(2);
+      });
+
+      it.each(["RECORDING", "PAUSED"])(
+        "남은 증명의 응답이 %s면 이어받지 않고 모달을 띄운 뒤 시작 증명을 남긴다",
+        async (status) => {
+          const leftoverRequestId = leaveStartProof();
+          respondStart(session(status));
+          const { router } = renderDock();
+
+          await clickMic();
+
+          await waitFor(() => expectRefusedInPlace(router));
+          expect(getRecordingStartProof().requestId).toBe(leftoverRequestId);
+        },
+      );
+
+      it("남은 증명으로 보낸 시작이 201 RECORDING이면 새 녹음으로 시작한다", async () => {
+        // 409·500으로 거절된 시작은 서버에 남지 않아, 같은 증명을 다시 보내면 새 녹음이 만들어져요
+        leaveStartProof();
+        respondStart(session("RECORDING", 201));
+        const { router } = renderDock();
+
+        await clickMic();
+
+        await waitFor(() =>
+          expect(router.state.location.pathname).toBe(RECORDING_PATH),
+        );
+        expect(useRecordingStore.getState().status).toBe("recording");
+      });
+
+      it("모달의 닫기는 모달만 닫고 제자리에 남는다", async () => {
+        respondStart(conflict("ACTIVE_RECORDING_ALREADY_EXISTS"));
+        const { router } = renderDock();
+        await clickMic();
+        await screen.findByRole("dialog", { name: START_REFUSED });
+
+        fireEvent.click(screen.getByRole("button", { name: "닫기" }));
+
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+        expect(router.state.location.pathname).toBe(HOME_PATH);
+      });
+
+      it("시작 요청이 오가는 중에 다시 눌러도 한 번만 보내고, 응답 뒤에는 다시 누를 수 있다", async () => {
+        let respondFirst = () => {};
+        const requestIds = respondStart(async () => {
+          await new Promise<void>((resolve) => {
+            respondFirst = resolve;
+          });
+
+          return conflict("ACTIVE_RECORDING_ALREADY_EXISTS")();
+        }, conflict("ACTIVE_RECORDING_ALREADY_EXISTS"));
+        renderDock();
+
+        await clickMic();
+        await waitFor(() => expect(requestIds).toHaveLength(1));
+        await clickMic();
+        await act(async () => respondFirst());
+        await screen.findByRole("dialog", { name: START_REFUSED });
+
+        expect(requestIds).toHaveLength(1);
+
+        fireEvent.click(screen.getByRole("button", { name: "닫기" }));
+        await clickMic();
+
+        await waitFor(() => expect(requestIds).toHaveLength(2));
+      });
+    });
+
     describe("녹음 화면이 아닌 곳에서 녹음 중이면", () => {
       beforeEach(async () => {
         await startRecording();
@@ -474,12 +667,39 @@ describe("WorkspaceDock", () => {
         ).not.toBeInTheDocument();
       });
 
-      it("중지를 누르면 녹음을 끝내고 제자리에서 마이크로 돌아간다", async () => {
+      it("중지를 누르면 확인 창을 띄우고 아직 끝내지 않는다", async () => {
+        let endRequestCount = 0;
+        mockServer.events.on("request:start", ({ request }) => {
+          if (request.url.endsWith("/end")) endRequestCount += 1;
+        });
+        renderDock();
+
+        await clickMic("녹음 끝내기");
+
+        expect(
+          screen.getByRole("dialog", { name: END_RECORDING_DIALOG }),
+        ).toBeInTheDocument();
+        expect(useRecordingStore.getState().status).toBe("recording");
+        expect(endRequestCount).toBe(0);
+      });
+
+      it("확인 창의 계속 녹음은 창만 닫고 녹음 칩을 그대로 둔다", async () => {
+        renderDock();
+
+        await clickMic("녹음 끝내기");
+        await chooseInEndRecordingDialog("계속 녹음");
+
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+        expect(useRecordingStore.getState().status).toBe("recording");
+        expect(
+          screen.getByRole("button", { name: "녹음 화면으로 이동" }),
+        ).toBeInTheDocument();
+      });
+
+      it("확인 창에서 녹음 끝내기를 고르면 녹음을 끝내고 제자리에서 마이크로 돌아간다", async () => {
         const { router } = renderDock();
 
-        await act(async () => {
-          fireEvent.click(screen.getByRole("button", { name: "녹음 끝내기" }));
-        });
+        await stopRecording();
 
         await waitFor(() =>
           expect(useRecordingStore.getState().status).toBe("idle"),
@@ -516,7 +736,7 @@ describe("WorkspaceDock", () => {
         });
       });
 
-      it("중지를 빠르게 두 번 눌러도 종료 요청은 한 번만 보낸다", async () => {
+      it("중지를 다시 눌러도 확인 창을 열지 않고 종료 요청은 한 번만 보낸다", async () => {
         let endRequestCount = 0;
         let respondEnd = () => {};
         mockServer.use(
@@ -531,12 +751,12 @@ describe("WorkspaceDock", () => {
         );
         renderDock();
 
-        const stopButton = screen.getByRole("button", { name: "녹음 끝내기" });
-        await act(async () => {
-          fireEvent.click(stopButton);
-          fireEvent.click(stopButton);
-        });
+        await stopRecording();
         await waitFor(() => expect(endRequestCount).toBe(1));
+        await clickMic("녹음 끝내기");
+
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
         await act(async () => respondEnd());
 
         await waitFor(() =>
@@ -557,18 +777,14 @@ describe("WorkspaceDock", () => {
         vi.spyOn(console, "error").mockImplementation(() => {});
         renderDock();
 
-        await act(async () => {
-          fireEvent.click(screen.getByRole("button", { name: "녹음 끝내기" }));
-        });
+        await stopRecording();
         await waitFor(() => expect(endRequestCount).toBe(1));
         await waitFor(() =>
           expect(useRecordingStore.getState().isEnding).toBe(false),
         );
         expect(useRecordingStore.getState().status).toBe("recording");
 
-        await act(async () => {
-          fireEvent.click(screen.getByRole("button", { name: "녹음 끝내기" }));
-        });
+        await stopRecording();
 
         await waitFor(() => expect(endRequestCount).toBe(2));
       });
