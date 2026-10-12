@@ -215,7 +215,9 @@ class SearchDocumentToolServiceIntegrationTest {
     @Test
     @DisplayName("멤버가 탈퇴하면 현재 작업의 문서 목록도 읽을 수 없다")
     void list_failure_membershipRemoved() {
-        jdbc.sql("DELETE FROM workspace_members WHERE workspace_id = :workspace AND member_id = :member")
+        jdbc.sql(
+                "UPDATE workspace_members SET left_at = CURRENT_TIMESTAMP WHERE workspace_id = :workspace AND member_id = :member"
+        )
                 .param(
                         "workspace",
                         workspaceId
@@ -260,162 +262,315 @@ class SearchDocumentToolServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("한글 검색은 제목 우선으로 후보를 찾고 검색 커서를 이어간다")
-    void search_success_koreanRankedPages() {
-        long body = saveDocument(
-                workspaceId,
-                "ARCHIVED",
-                "회고",
-                "결제 장애 원인"
-        );
-        long title = saveDocument(
-                workspaceId,
-                "ARCHIVED",
-                "결제 장애",
-                "복구 완료"
-        );
-        saveDocument(
-                workspaceId,
-                "DRAFT",
-                "결제 장애",
-                "미보관"
-        );
-        saveDocument(
-                fixtures.saveWorkspace(),
-                "ARCHIVED",
-                "결제 장애",
-                "외부"
-        );
-        SearchDocumentPage first = service.search(
-                scope,
-                parameters(
-                        "결제",
-                        null,
-                        1
-                )
-        );
-        assertThat(first.items()).extracting(SearchDocumentCard::documentId)
-                .containsExactly(title);
-        assertThat(
-                service.search(
-                        scope,
-                        parameters(
-                                "결제",
-                                first.nextCursor(),
-                                1
-                        )
-                )
-                        .items()
-        ).extracting(SearchDocumentCard::documentId)
-                .containsExactly(body);
-        assertThatThrownBy(
-                () -> service.search(
-                        scope,
-                        parameters(
-                                "장애",
-                                first.nextCursor(),
-                                1
-                        )
-                )
-        ).hasMessage("INVALID_TOOL_ARGUMENTS");
-        assertThat(
-                service.search(
-                        scope,
-                        parameters(
-                                "%",
-                                null,
-                                20
-                        )
-                )
-                        .items()
-        ).isEmpty();
-        assertThatThrownBy(
-                () -> service.search(
-                        scope,
-                        parameters(
-                                null,
-                                null,
-                                20
-                        )
-                )
-        ).hasMessage("INVALID_TOOL_ARGUMENTS");
+    @DisplayName("한글 검색은 제목의 관련도가 높은 문서를 먼저 반환한다")
+    void search_success_titleRankedFirst() {
+        saveDocument(workspaceId, "ARCHIVED", "회고", "결제 장애 원인");
+        long title = saveDocument(workspaceId, "ARCHIVED", "결제 장애", "복구 완료");
+        saveDocument(workspaceId, "DRAFT", "결제 장애", "미보관");
+        saveDocument(fixtures.saveWorkspace(), "ARCHIVED", "결제 장애", "외부");
+        assertThat(service.search(scope, parameters("결제", null, 1)).items())
+                .extracting(SearchDocumentCard::documentId).containsExactly(title);
     }
 
     @Test
-    @DisplayName("긴 본문은 이모지를 보존하며 이어 읽고 변경된 본문 커서는 거절한다")
-    void read_success_continuationAndRevision() {
+    @DisplayName("검색 커서는 다음 후보를 이어서 반환한다")
+    void search_success_nextPage() {
+        long body = saveDocument(workspaceId, "ARCHIVED", "회고", "결제 원인");
+        saveDocument(workspaceId, "ARCHIVED", "결제 장애", "복구");
+        SearchDocumentPage first = service.search(scope, parameters("결제", null, 1));
+        SearchDocumentPage next = service.search(scope, parameters("결제", first.nextCursor(), 1));
+        assertThat(next.items()).extracting(SearchDocumentCard::documentId).containsExactly(body);
+        assertThat(next.nextCursor()).isNull();
+    }
+
+    @Test
+    void search_failure_changedQueryCursor() {
+        String cursor = searchCursor();
+        assertThatThrownBy(() -> service.search(scope, parameters("변경", cursor, 1))).hasMessage("INVALID_TOOL_ARGUMENTS");
+    }
+
+    @Test
+    void search_success_literalWildcard() {
+        saveDocument(workspaceId, "ARCHIVED", "결제", "원인");
+        assertThat(service.search(scope, parameters("%", null, 20)).items()).isEmpty();
+    }
+
+    @Test
+    void search_failure_missingQuery() {
+        assertThatThrownBy(() -> service.search(scope, parameters(null, null, 20))).hasMessage("INVALID_TOOL_ARGUMENTS");
+    }
+
+    @Test
+    void read_success_unicodeContinuation() {
         properties.setReadCodePoints(3);
-        long document = saveDocument(
-                workspaceId,
-                "ARCHIVED",
-                "결정",
-                "가🙂나다😃라"
-        );
-        SearchDocumentSlice first = service.read(
-                scope,
-                document,
-                null
-        );
+        long document = saveDocument(workspaceId, "ARCHIVED", "결정", "가🙂나다😃라");
+        SearchDocumentSlice first = service.read(scope, document, null);
         assertThat(first.content()).isEqualTo("가🙂나");
         assertThat(first.truncated()).isTrue();
-        SearchDocumentSlice second = service.read(
-                scope,
-                document,
-                first.nextCursor()
-        );
-        assertThat(second.content()).isEqualTo("다😃라");
-        assertThat(second.nextCursor()).isNull();
-        jdbc.sql("UPDATE documents SET content = '변경됨' WHERE id = :id")
-                .param(
-                        "id",
-                        document
-                )
-                .update();
-        assertThatThrownBy(
-                () -> service.read(
-                        scope,
-                        document,
-                        first.nextCursor()
-                )
-        ).hasMessage("DOCUMENT_CHANGED");
+        SearchDocumentSlice next = service.read(scope, document, first.nextCursor());
+        assertThat(next.content()).isEqualTo("다😃라");
+        assertThat(next.nextCursor()).isNull();
     }
 
     @Test
-    @DisplayName("본문 읽기는 외부 Workspace와 미보관 문서를 찾았다고 노출하지 않는다")
-    void read_failure_unavailableDocument() {
-        long outside = saveDocument(
-                fixtures.saveWorkspace(),
-                "ARCHIVED",
-                "외부",
-                "비공개"
-        );
-        long draft = saveDocument(
+    void read_failure_changedRevision() {
+        properties.setReadCodePoints(3);
+        long document = saveDocument(workspaceId, "ARCHIVED", "결정", "가🙂나다😃라");
+        String cursor = service.read(scope, document, null).nextCursor();
+        jdbc.sql("UPDATE documents SET content = '변경됨' WHERE id = :id").param("id", document).update();
+        assertThatThrownBy(() -> service.read(scope, document, cursor)).hasMessage("DOCUMENT_CHANGED");
+    }
+
+    @Test
+    void read_failure_cursorForDifferentDocument() {
+        properties.setReadCodePoints(3);
+        long first = saveDocument(workspaceId, "ARCHIVED", "첫", "긴본문입니다");
+        long second = saveDocument(workspaceId, "ARCHIVED", "둘", "긴본문입니다");
+        String cursor = service.read(scope, first, null).nextCursor();
+        assertThatThrownBy(() -> service.read(scope, second, cursor)).hasMessage("INVALID_TOOL_ARGUMENTS");
+    }
+
+    @Test
+    void read_failure_searchCursor() {
+        String cursor = searchCursor();
+        long document = saveDocument(workspaceId, "ARCHIVED", "결정", "본문");
+        assertThatThrownBy(() -> service.read(scope, document, cursor)).hasMessage("INVALID_TOOL_ARGUMENTS");
+    }
+
+    @Test
+    void read_failure_foreignWorkspace() {
+        long document = saveDocument(fixtures.saveWorkspace(), "ARCHIVED", "외부", "비공개");
+        assertThatThrownBy(() -> service.read(scope, document, null)).hasMessage("DOCUMENT_NOT_FOUND");
+    }
+
+    @Test
+    void read_failure_draft() {
+        long document = saveDocument(workspaceId, "DRAFT", "초안", "비공개");
+        assertThatThrownBy(() -> service.read(scope, document, null)).hasMessage("DOCUMENT_NOT_FOUND");
+    }
+
+    @Test
+    void read_failure_invalidId() {
+        assertThatThrownBy(() -> service.read(scope, 0, null)).hasMessage("INVALID_TOOL_ARGUMENTS");
+    }
+
+    private String searchCursor() {
+        saveDocument(workspaceId, "ARCHIVED", "결제 하나", "본문");
+        saveDocument(workspaceId, "ARCHIVED", "결제 둘", "본문");
+        String cursor = service.search(scope, parameters("결제", null, 1)).nextCursor();
+        assertThat(cursor).isNotNull();
+        return cursor;
+    }
+
+    @Test
+    @DisplayName("문서 도구 권한 거절: finishedExecution")
+    void list_failure_finishedExecution() {
+        jdbc.sql("UPDATE search_answer_executions SET state = 'FINISHED' WHERE answer_id = :id")
+                .param(
+                        "id",
+                        scope.answerId()
+                )
+                .update();
+        SearchToolScope denied = scope;
+        assertThatThrownBy(
+                () -> service.list(
+                        denied,
+                        parameters(
+                                null,
+                                null,
+                                20
+                        )
+                )
+        ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class)
+                .hasMessage("SEARCH_ACCESS_DENIED");
+    }
+
+    @Test
+    @DisplayName("문서 도구 권한 거절: wrongExecutionToken")
+    void list_failure_wrongExecutionToken() {
+
+        SearchToolScope denied = new SearchToolScope(
                 workspaceId,
-                "DRAFT",
-                "초안",
-                "비공개"
+                memberId,
+                scope.conversationId(),
+                scope.questionId(),
+                scope.answerId(),
+                UUID.randomUUID(),
+                scope.startedAt(),
+                scope.expiresAt()
         );
         assertThatThrownBy(
-                () -> service.read(
-                        scope,
-                        outside,
-                        null
+                () -> service.list(
+                        denied,
+                        parameters(
+                                null,
+                                null,
+                                20
+                        )
                 )
-        ).hasMessage("DOCUMENT_NOT_FOUND");
+        ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class)
+                .hasMessage("SEARCH_ACCESS_DENIED");
+    }
+
+    @Test
+    @DisplayName("문서 도구 권한 거절: wrongQuestion")
+    void list_failure_wrongQuestion() {
+
+        SearchToolScope denied = new SearchToolScope(
+                workspaceId,
+                memberId,
+                scope.conversationId(),
+                scope.answerId(),
+                scope.answerId(),
+                scope.token(),
+                scope.startedAt(),
+                scope.expiresAt()
+        );
         assertThatThrownBy(
-                () -> service.read(
-                        scope,
-                        draft,
-                        null
+                () -> service.list(
+                        denied,
+                        parameters(
+                                null,
+                                null,
+                                20
+                        )
                 )
-        ).hasMessage("DOCUMENT_NOT_FOUND");
+        ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class)
+                .hasMessage("SEARCH_ACCESS_DENIED");
+    }
+
+    @Test
+    @DisplayName("문서 도구 권한 거절: otherOwner")
+    void list_failure_otherOwner() {
+        long other = fixtures.saveMember("다른 멤버");
+        fixtures.join(
+                workspaceId,
+                other
+        );
+        SearchToolScope denied = new SearchToolScope(
+                workspaceId,
+                other,
+                scope.conversationId(),
+                scope.questionId(),
+                scope.answerId(),
+                scope.token(),
+                scope.startedAt(),
+                scope.expiresAt()
+        );
         assertThatThrownBy(
-                () -> service.read(
-                        scope,
-                        0,
-                        null
+                () -> service.list(
+                        denied,
+                        parameters(
+                                null,
+                                null,
+                                20
+                        )
                 )
-        ).hasMessage("INVALID_TOOL_ARGUMENTS");
+        ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class)
+                .hasMessage("SEARCH_ACCESS_DENIED");
+    }
+
+    @Test
+    @DisplayName("문서 도구 권한 거절: otherWorkspace")
+    void list_failure_otherWorkspace() {
+        long other = fixtures.saveWorkspace();
+        fixtures.join(
+                other,
+                memberId
+        );
+        SearchToolScope denied = new SearchToolScope(
+                other,
+                memberId,
+                scope.conversationId(),
+                scope.questionId(),
+                scope.answerId(),
+                scope.token(),
+                scope.startedAt(),
+                scope.expiresAt()
+        );
+        assertThatThrownBy(
+                () -> service.list(
+                        denied,
+                        parameters(
+                                null,
+                                null,
+                                20
+                        )
+                )
+        ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class)
+                .hasMessage("SEARCH_ACCESS_DENIED");
+    }
+
+    @Test
+    @DisplayName("문서 도구 권한 거절: expiredScope")
+    void list_failure_expiredScope() {
+        when(clock.instant()).thenReturn(scope.expiresAt());
+        SearchToolScope denied = scope;
+        assertThatThrownBy(
+                () -> service.list(
+                        denied,
+                        parameters(
+                                null,
+                                null,
+                                20
+                        )
+                )
+        ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class)
+                .hasMessage("SEARCH_ACCESS_DENIED");
+    }
+
+    @Test
+    @DisplayName("문서 도구 권한 거절: futureStarted")
+    void list_failure_futureStarted() {
+
+        SearchToolScope denied = new SearchToolScope(
+                workspaceId,
+                memberId,
+                scope.conversationId(),
+                scope.questionId(),
+                scope.answerId(),
+                scope.token(),
+                NOW.plusSeconds(1),
+                scope.expiresAt()
+        );
+        assertThatThrownBy(
+                () -> service.list(
+                        denied,
+                        parameters(
+                                null,
+                                null,
+                                20
+                        )
+                )
+        ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class)
+                .hasMessage("SEARCH_ACCESS_DENIED");
+    }
+
+    @Test
+    @DisplayName("문서 도구 권한 거절: deadlineExceeded")
+    void list_failure_deadlineExceeded() {
+
+        SearchToolScope denied = new SearchToolScope(
+                workspaceId,
+                memberId,
+                scope.conversationId(),
+                scope.questionId(),
+                scope.answerId(),
+                scope.token(),
+                NOW,
+                NOW.plusSeconds(86400)
+        );
+        assertThatThrownBy(
+                () -> service.list(
+                        denied,
+                        parameters(
+                                null,
+                                null,
+                                20
+                        )
+                )
+        ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class)
+                .hasMessage("SEARCH_ACCESS_DENIED");
     }
 
     private SearchDocumentParameters parameters(
