@@ -10,6 +10,17 @@ interface SearchRequestReceiptJpaRepository extends JpaRepository<SearchRequestR
 
     @Query("""
             select r from SearchRequestReceipt r where r.workspaceId = :workspaceId and r.memberId = :memberId
+                and r.operation = 'QUESTION' and r.targetId = :conversationId and r.requestId = :requestId
+            """)
+    Optional<SearchRequestReceipt> findQuestionReceipt(
+            long workspaceId,
+            long memberId,
+            long conversationId,
+            UUID requestId
+    );
+
+    @Query("""
+            select r from SearchRequestReceipt r where r.workspaceId = :workspaceId and r.memberId = :memberId
                 and r.operation = 'FIRST_QUESTION' and r.targetId = 0 and r.requestId = :requestId
             """)
     Optional<SearchRequestReceipt> findFirstReceipt(

@@ -4,6 +4,8 @@ import com.knot.backend.search.domain.SearchAnswerExecution;
 import com.knot.backend.search.domain.SearchConversation;
 import com.knot.backend.search.domain.SearchEvidence;
 import com.knot.backend.search.domain.SearchMessage;
+import com.knot.backend.search.domain.SearchMessageRole;
+import com.knot.backend.search.domain.SearchMessageStatus;
 import com.knot.backend.search.domain.SearchRepository;
 import com.knot.backend.search.domain.SearchRequestReceipt;
 import jakarta.persistence.EntityManager;
@@ -60,6 +62,32 @@ public class SearchRepositoryAdapter implements SearchRepository {
 
     public Optional<SearchConversation> findConversation(long id) {
         return conversations.findById(id);
+    }
+
+    public Optional<SearchRequestReceipt> findQuestionReceipt(
+            long workspaceId,
+            long memberId,
+            long conversationId,
+            UUID requestId
+    ) {
+        return receipts.findQuestionReceipt(
+                workspaceId,
+                memberId,
+                conversationId,
+                requestId
+        );
+    }
+
+    public boolean existsStreamingAnswer(long conversationId) {
+        return messages.existsByConversationIdAndRoleAndStatus(
+                conversationId,
+                SearchMessageRole.ASSISTANT,
+                SearchMessageStatus.STREAMING
+        );
+    }
+
+    public Optional<SearchMessage> findLastMessage(long conversationId) {
+        return messages.findFirstByConversationIdOrderBySequenceDesc(conversationId);
     }
 
     public Optional<SearchConversation> findConversationForUpdate(long id) {

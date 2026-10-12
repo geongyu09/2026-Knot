@@ -28,6 +28,11 @@ public enum SearchErrorCode implements ErrorCode {
             "REQUEST_ID_CONFLICT",
             "다른 질문에 사용한 requestId입니다"
     ),
+    ANSWER_ALREADY_IN_PROGRESS(
+            ErrorCategory.CONFLICT,
+            "ANSWER_ALREADY_IN_PROGRESS",
+            "같은 대화의 답변이 아직 생성 중입니다"
+    ),
     ANSWER_GENERATION_UNAVAILABLE(
             ErrorCategory.INTERNAL_SERVER_ERROR,
             "ANSWER_GENERATION_UNAVAILABLE",
