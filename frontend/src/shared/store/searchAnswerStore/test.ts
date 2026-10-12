@@ -54,15 +54,17 @@ describe("searchAnswerStore", () => {
     expect(useSearchAnswerStore.getState().question).toBe(question);
   });
 
-  it("[SEARCH-R4] accepted 전에 실패하면 질문을 지우고 입력창에 되돌릴 질문으로 남긴다", () => {
+  it("[SEARCH-R4] accepted 전에 실패하면 질문을 지우고 접수 전 실패였다고 알린다", () => {
     const controller = startQuestion();
 
-    useSearchAnswerStore.getState().fail(controller, new Error("409"));
+    const isAcceptFailed = useSearchAnswerStore
+      .getState()
+      .fail(controller, new Error("409"));
 
     const state = useSearchAnswerStore.getState();
+    expect(isAcceptFailed).toBe(true);
     expect(state.status).toBe("IDLE");
     expect(state.question).toBe("");
-    expect(state.rejectedQuestion).toBe(question);
   });
 
   it("[SEARCH-R5] accepted 뒤에 실패하면 받은 답변을 두고 실패 코드를 남긴다", () => {
@@ -75,15 +77,15 @@ describe("searchAnswerStore", () => {
       status: "FAILED",
       code: "LLM_STREAM_FAILED",
     });
-    useSearchAnswerStore
+    const isAcceptFailed = useSearchAnswerStore
       .getState()
       .fail(controller, new SearchAnswerFailedError(failed));
 
     const state = useSearchAnswerStore.getState();
+    expect(isAcceptFailed).toBe(false);
     expect(state.status).toBe("FAILED");
     expect(state.failedCode).toBe(failed.code);
     expect(state.text).toBe(delta.data.text);
-    expect(state.rejectedQuestion).toBeNull();
   });
 
   it("[SEARCH-R8] 끊은 뒤 새 질문을 보내면 이전 요청의 늦은 이벤트·결과는 새 답변을 바꾸지 않는다", () => {

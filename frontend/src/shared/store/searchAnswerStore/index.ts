@@ -10,9 +10,6 @@ import type {
 import { reduceSearchStreamEvent } from "./reduceSearchStreamEvent";
 
 interface SearchAnswerState extends SearchAnswer {
-  /** 서버가 받기 전에 실패해 입력창에 되돌릴 질문. 입력창이 가져가면 다시 `null`이 돼요 */
-  rejectedQuestion: string | null;
-
   /**
    * 지금 받고 있는 요청의 컨트롤러. 질문을 보내고 끝나기 전까지만 값이 있어요.
    * 스트림을 끊는 데도 쓰고, 동작을 부른 요청이 지금 요청인지 가리는 표식으로도 써요.
@@ -47,16 +44,15 @@ interface SearchAnswerActions {
   ) => void;
 
   /**
-   * 요청 실패를 남겨요. accepted 전(접수 대기)이면 서버에 질문이 저장되지 않았으므로 질문을 지우고
-   * 입력창에 되돌릴 질문으로 남겨요(SEARCH-R4). accepted 뒤면 받은 답변을 두고 실패로 남겨요(SEARCH-R5).
+   * 요청 실패를 반영하고, accepted 전(접수 대기)에 실패했는지 돌려줘요.
+   * accepted 전이면 서버에 질문이 저장되지 않았으므로 질문을 지워요(SEARCH-R4).
+   * 입력창 복원과 안내는 질문을 보낸 쪽이 이 결과로 해요.
+   * accepted 뒤면 받은 답변을 두고 실패로 바꿔요(SEARCH-R5). 지금 요청이 아니면 아무것도 바꾸지 않고 `false`예요.
    */
-  fail: (controller: AbortController, error: unknown) => void;
+  fail: (controller: AbortController, error: unknown) => boolean;
 
   /** 받고 있는 스트림을 끊고 처음 상태로 돌아가요. 서버는 답변을 계속 만들어요(SEARCH-R8) */
   abort: () => void;
-
-  /** 입력창이 되돌릴 질문을 가져간 뒤 지워요 */
-  clearRejectedQuestion: () => void;
 }
 
 const IDLE_STATE: SearchAnswerState = {
@@ -70,7 +66,6 @@ const IDLE_STATE: SearchAnswerState = {
   stage: null,
   excludedDocumentCount: 0,
   failedCode: null,
-  rejectedQuestion: null,
   controller: null,
 };
 
@@ -123,11 +118,11 @@ export const useSearchAnswerStore = create<
     },
 
     fail: (controller, error) => {
-      if (!isCurrent(controller)) return;
+      if (!isCurrent(controller)) return false;
 
       if (get().status === "SENDING") {
-        set({ ...IDLE_STATE, rejectedQuestion: get().question });
-        return;
+        set(IDLE_STATE);
+        return true;
       }
 
       set({
@@ -136,13 +131,13 @@ export const useSearchAnswerStore = create<
           error instanceof SearchAnswerFailedError ? error.code : null,
         controller: null,
       });
+
+      return false;
     },
 
     abort: () => {
       get().controller?.abort();
       set(IDLE_STATE);
     },
-
-    clearRejectedQuestion: () => set({ rejectedQuestion: null }),
   };
 });
