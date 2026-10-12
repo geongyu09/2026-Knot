@@ -93,6 +93,29 @@ class GlobalExceptionHandlerMvcTest {
                 .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"application/json", "text/event-stream"})
+    @DisplayName("지원하지 않는 요청 형식은 공통 JSON 415와 지원 형식 헤더로 응답한다")
+    void create_failure_unsupportedMediaType(String accept) throws Exception {
+        // given
+        MockHttpServletRequestBuilder request = post("/api/v1/test/http-errors/json");
+        request.contentType(MediaType.TEXT_PLAIN);
+        request.content("ok");
+        request.accept(accept);
+
+        // when & then
+        mvc.perform(request)
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(
+                        header().string(
+                                HttpHeaders.ACCEPT,
+                                MediaType.APPLICATION_JSON_VALUE
+                        )
+                )
+                .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"));
+    }
+
     @Test
     @DisplayName("JSON 구문 오류는 415 대신 기존 400을 유지한다")
     void create_failure_malformedJson() throws Exception {
