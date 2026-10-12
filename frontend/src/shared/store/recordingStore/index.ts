@@ -47,6 +47,8 @@ interface RecordingActions {
   beginEnding: () => void;
   /** 종료 요청이 실패해 녹음을 이어 갈 때 끝내는 중 표시를 풀어요 */
   cancelEnding: () => void;
+  /** 녹음한 시간을 서버가 알려 준 누적 시간(ms)으로 맞춰요. 녹음 중이면 그 값에서 이어서 재요 */
+  syncElapsedTime: (elapsedMs: number) => void;
   /** 수집을 멈추고 지금까지 녹음한 오디오를 파일 하나로 돌려줘요. 녹음은 비우지 않아요 */
   stopRecording: () => Promise<Blob>;
   /** 녹음을 버리고 마이크를 꺼요 */
@@ -161,6 +163,17 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
       });
 
       return true;
+    },
+
+    syncElapsedTime: (elapsedMs) => {
+      const { status, resumedAt } = get();
+      if (status === "idle") return;
+
+      set({
+        accumulatedMs: elapsedMs,
+        // 일시정지처럼 멈춰 둔 시간이 다시 흐르지 않게, 재는 중일 때만 지금부터 다시 재요
+        resumedAt: resumedAt === null ? null : Date.now(),
+      });
     },
 
     beginEnding: () => set({ isEnding: true }),
