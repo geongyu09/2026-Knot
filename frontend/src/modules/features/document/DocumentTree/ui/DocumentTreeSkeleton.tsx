@@ -19,14 +19,14 @@ export default function DocumentTreeSkeleton() {
   return (
     <Container aria-labelledby={labelId}>
       <Label id={labelId}>문서</Label>
-      <Folders role="status" aria-label="문서 목록을 불러오고 있어요">
+      <FolderList role="status" aria-label="문서 목록을 불러오고 있어요">
         {FOLDER_NAME_WIDTHS.map((width) => (
           <FolderRow key={width}>
             {/* 폴더 이름 글자 높이 14px */}
             <Skeleton width={width} height={0.875} />
           </FolderRow>
         ))}
-      </Folders>
+      </FolderList>
     </Container>
   );
 }
@@ -46,7 +46,7 @@ const Label = styled.span`
 `;
 
 /** 피그마 DocTree: 폴더 사이 8px */
-const Folders = styled.div`
+const FolderList = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.5rem; /* 8px */

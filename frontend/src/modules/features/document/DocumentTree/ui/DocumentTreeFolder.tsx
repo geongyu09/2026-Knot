@@ -28,17 +28,17 @@ export default function DocumentTreeFolder({
   return (
     <Container>
       <FolderRow type="button" aria-expanded={isExpanded} onClick={onToggle}>
-        <NameGroup>
+        <NameContainer>
           {isExpanded ? (
             <ChevronDownIcon size={12} />
           ) : (
             <ChevronRightIcon size={12} />
           )}
           <Name>{topic}</Name>
-        </NameGroup>
+        </NameContainer>
         <DocumentCount>{documentCount}</DocumentCount>
       </FolderRow>
-      {isExpanded && <Rows>{children}</Rows>}
+      {isExpanded && <RowList>{children}</RowList>}
     </Container>
   );
 }
@@ -74,7 +74,7 @@ const FolderRow = styled.button`
 `;
 
 /** 피그마 TopicRow 안쪽: 화살표와 폴더 이름 사이 8px */
-const NameGroup = styled.span`
+const NameContainer = styled.span`
   display: flex;
   align-items: center;
   gap: 0.5rem; /* 8px */
@@ -104,7 +104,7 @@ const DocumentCount = styled.span`
  * 피그마 Indent · Docs: 왼쪽으로 14px 들여 세로선을 긋고, 문서 행을 2px 간격으로 쌓아요.
  * 피그마의 선은 자리를 차지하지 않아 문서 행이 14px에서 6px 떨어져요. CSS의 선은 1px을 차지하므로 안쪽 여백을 5px로 둬요
  */
-const Rows = styled.ul`
+const RowList = styled.ul`
   display: flex;
   flex-direction: column;
   gap: 0.125rem; /* 2px */

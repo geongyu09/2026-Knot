@@ -77,7 +77,7 @@ export default function DocumentTree() {
   return (
     <Container aria-labelledby={labelId}>
       <Label id={labelId}>문서</Label>
-      <Folders>
+      <FolderList>
         {folders.map(({ topic, documentCount, documents }) => (
           <DocumentTreeFolder
             key={topic}
@@ -102,7 +102,7 @@ export default function DocumentTree() {
             ))}
           </DocumentTreeFolder>
         ))}
-      </Folders>
+      </FolderList>
     </Container>
   );
 }
@@ -122,7 +122,7 @@ const Label = styled.span`
 `;
 
 /** 피그마 DocTree: 폴더 사이 8px */
-const Folders = styled.ul`
+const FolderList = styled.ul`
   display: flex;
   flex-direction: column;
   gap: 0.5rem; /* 8px */
