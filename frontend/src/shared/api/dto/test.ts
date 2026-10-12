@@ -18,10 +18,6 @@ import {
   PutDocumentConfirmationResponseDto,
 } from "./document";
 import {
-  GetNotionConnectionResponseDto,
-  PostNotionOAuthAuthorizationResponseDto,
-} from "./notionConnection";
-import {
   GetWorkspacesResponseDto,
   PostWorkspaceRequestDto,
   PutLastViewedWorkspaceRequestDto,
@@ -255,26 +251,6 @@ describe("DTO 생성자 변환", () => {
 
       expect(dto.confirmationSummary).toBeInstanceOf(ConfirmationSummaryDto);
       expect(dto).toEqual(raw);
-    });
-  });
-
-  describe("Notion 연결", () => {
-    it("연결 시작 응답의 authorizationUrl을 그대로 옮긴다", () => {
-      const raw = {
-        authorizationUrl:
-          "https://api.notion.com/v1/oauth/authorize?client_id=abc&state=xyz",
-      };
-
-      expect(new PostNotionOAuthAuthorizationResponseDto(raw)).toEqual(raw);
-    });
-
-    it("연결 상태 응답의 status를 그대로 옮긴다", () => {
-      expect(
-        new GetNotionConnectionResponseDto({ status: "CONNECTED" }),
-      ).toEqual({ status: "CONNECTED" });
-      expect(
-        new GetNotionConnectionResponseDto({ status: "REAUTH_REQUIRED" }),
-      ).toEqual({ status: "REAUTH_REQUIRED" });
     });
   });
 });

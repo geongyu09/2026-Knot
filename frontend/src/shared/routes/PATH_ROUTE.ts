@@ -13,14 +13,16 @@ export const PATH_ROUTE = {
   WORKSPACE_CODE: "/workspace/code",
   WORKSPACE_HOME: "/workspace/:workspaceId",
   WORKSPACE_INVITE: "/workspace/:workspaceId/invite",
-  WORKSPACE_NOTION_CONNECTION: "/workspace/:workspaceId/notion-connection",
   WORKSPACE_JOIN: "/workspace/:workspaceId/join",
 
   CHAT: "/workspace/:workspaceId/chat",
   CHAT_SESSION: "/workspace/:workspaceId/chat/:sessionId",
 
   RECORDING: "/workspace/:workspaceId/recording",
+  // 녹음을 끝낸 뒤 문서가 만들어질 때까지 보여 주는 정리 화면
+  RECORDING_DOCUMENTS: "/workspace/:workspaceId/recordings/:recordingId",
 
+  DOCUMENTS: "/workspace/:workspaceId/documents",
   DOCUMENT: "/workspace/:workspaceId/documents/:documentId",
 
   INVITE: "/invite/:token",
