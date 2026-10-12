@@ -130,13 +130,13 @@ class SearchTransportCancellationTest {
                         mock(SearchToolAccess.class),
                         Duration.ZERO
                 )
-        ).isInstanceOf(IllegalArgumentException.class);
+        ).isInstanceOf(com.knot.backend.search.domain.SearchException.class);
         assertThatThrownBy(
                 () -> new SearchTransportCancellation(
                         mock(SearchToolAccess.class),
                         Duration.ofNanos(1)
                 )
-        ).isInstanceOf(IllegalArgumentException.class);
+        ).isInstanceOf(com.knot.backend.search.domain.SearchException.class);
     }
 
     private SearchToolScope scope() {

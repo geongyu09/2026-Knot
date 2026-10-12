@@ -107,13 +107,13 @@ public class SearchRequestReceipt {
             Instant createdAt
     ) {
         if (workspaceId <= 0 || memberId <= 0 || conversationId <= 0) {
-            throw new IllegalArgumentException("invalid receipt scope");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         if (questionMessageId <= 0 || answerMessageId <= 0 || questionMessageId == answerMessageId) {
-            throw new IllegalArgumentException("invalid receipt messages");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         if (requestId == null || createdAt == null) {
-            throw new IllegalArgumentException("receipt requestId and time are required");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         SearchRequestReceipt receipt = new SearchRequestReceipt();
         receipt.workspaceId = workspaceId;

@@ -55,10 +55,10 @@ public class SearchAnswerExecution {
             Instant createdAt
     ) {
         if (conversationId <= 0 || questionId <= 0 || answerId <= 0 || questionId == answerId) {
-            throw new IllegalArgumentException("invalid execution messages");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         if (createdAt == null) {
-            throw new IllegalArgumentException("createdAt is required");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         SearchAnswerExecution execution = new SearchAnswerExecution();
         execution.conversationId = conversationId;
@@ -78,7 +78,7 @@ public class SearchAnswerExecution {
             return false;
         }
         if (token == null || now == null || lease == null || lease.isNegative() || lease.isZero()) {
-            throw new IllegalArgumentException("invalid execution lease");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         executionToken = token;
         deadlineAt = now.plus(lease);
@@ -100,7 +100,7 @@ public class SearchAnswerExecution {
 
     public void recordRetrieval(int count) {
         if (state != SearchExecutionState.RUNNING || count < 0) {
-            throw new IllegalStateException("invalid retrieval progress");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         excludedCount = count;
         stage = SearchProgressStage.GENERATING;
@@ -108,7 +108,7 @@ public class SearchAnswerExecution {
 
     public void stop() {
         if (state == SearchExecutionState.FINISHED) {
-            throw new IllegalStateException("execution is already finished");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         state = SearchExecutionState.FINISHED;
     }
@@ -126,7 +126,7 @@ public class SearchAnswerExecution {
 
     public void finish() {
         if (state != SearchExecutionState.RUNNING) {
-            throw new IllegalStateException("execution is not running");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         state = SearchExecutionState.FINISHED;
     }

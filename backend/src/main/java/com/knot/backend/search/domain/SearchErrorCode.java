@@ -8,6 +8,16 @@ import lombok.RequiredArgsConstructor;
 @Getter
 @RequiredArgsConstructor
 public enum SearchErrorCode implements ErrorCode {
+    INVALID_SEARCH_STATE(
+            ErrorCategory.INTERNAL_SERVER_ERROR,
+            "INVALID_SEARCH_STATE",
+            "탐색 데이터 또는 상태가 올바르지 않습니다"
+    ),
+    INVALID_SEARCH_CONFIGURATION(
+            ErrorCategory.INTERNAL_SERVER_ERROR,
+            "INVALID_SEARCH_CONFIGURATION",
+            "탐색 실행 설정이 올바르지 않습니다"
+    ),
     VALIDATION_ERROR(
             ErrorCategory.INVALID_INPUT,
             "VALIDATION_ERROR",

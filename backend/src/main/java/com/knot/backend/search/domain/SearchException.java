@@ -7,4 +7,14 @@ public final class SearchException extends ProjectException {
     public SearchException(SearchErrorCode errorCode) {
         super(errorCode);
     }
+
+    public SearchException(
+            SearchErrorCode errorCode,
+            Throwable cause
+    ) {
+        super(
+                errorCode,
+                cause
+        );
+    }
 }
