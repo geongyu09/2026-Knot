@@ -33,7 +33,7 @@ public class RecordingHeartbeatService {
         );
         Instant now = clock.instant()
                 .truncatedTo(ChronoUnit.MICROS);
-        if (!session.expireIfDisconnected(now)) {
+        if (!session.expireIfDue(now)) {
             session.recordHeartbeat(now);
         }
         return RecordingHeartbeatResult.of(
