@@ -141,7 +141,10 @@ public class SearchAnswerJsonStream {
             offset += length;
             return true;
         } catch (JacksonException exception) {
-            throw new SearchToolException("INVALID_MODEL_ANSWER");
+            throw new SearchToolException(
+                    "INVALID_MODEL_ANSWER",
+                    exception
+            );
         }
     }
 
