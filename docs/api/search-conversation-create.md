@@ -155,6 +155,7 @@ JSON 필드의 출력 순서와 delta 조각 수는 계약이 아니다.
 - 아직 실행하지 않은 QUEUED는 재시작 후 다시 선점한다. RUNNING은 기한까지 기다리고 만료 시 부분 본문 보존·FAILED 처리한다.
   이전 token이나 기한 이후 callback은 본문·종료 상태를 변경하지 못한다.
 - 첫 답변 FAILED는 대화 목록에서 숨긴다. 질문·부분 답변은 보존되며 소유자는 메시지 GET으로 읽을 수 있다.
+- 첫 답변 재시도 중에는 목록 숨김을 유지한다. 재시도가 COMPLETED 또는 STOPPED로 끝나면 빈 본문 여부와 관계없이 목록을 복원하며, 다시 FAILED로 끝나면 계속 숨긴다. 2026-10-12 사용자 결정과 PostgreSQL 통합 테스트 기준이다.
 - 검색 없음은 녹음 안내 COMPLETED로 처리한다. 검색 오류는 FAILED로 구분한다.
 - 실제 사용 문서는 실제 읽은 Document의 부분집합이다. 같은 Workspace의 ARCHIVED Document만 연결하고 실제 근거 전체를 보존한다. SSE·메시지 GET은 질문 관련도가 높은 상위 3개 카드만 반환한다.
 - 2026-10-12 사용자 지정 [기본 시스템 프롬프트](../../backend/src/main/resources/prompts/search-answer-system.md)를 적용했다. 현재 생성 adapter는 서로 다른 참조 문서를 최대 3개로 제한하고 `evidenceIds`가 실제 제공된 문서에 속하는지 검증한다. 기존 전체 근거 저장 구조와 과거 근거는 유지한다.
