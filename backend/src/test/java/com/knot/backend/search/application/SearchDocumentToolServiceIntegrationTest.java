@@ -12,6 +12,7 @@ import com.knot.backend.search.application.dto.query.SearchDocumentParameters;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.result.SearchDocumentPage;
 import com.knot.backend.search.application.dto.result.SearchDocumentCard;
+import com.knot.backend.search.application.dto.result.SearchDocumentSlice;
 import com.knot.backend.search.infrastructure.SearchDocumentQueryAdapter;
 import com.knot.backend.search.infrastructure.mcp.SearchToolTokenCodec;
 import com.knot.backend.testsupport.TestApplicationProperties;
@@ -59,6 +60,7 @@ class SearchDocumentToolServiceIntegrationTest {
     private SearchMessageFixtures messages;
     private SearchDocumentToolService service;
     private SearchToolScope scope;
+    private SearchAgentProperties properties;
     private long workspaceId;
     private long memberId;
 
@@ -91,7 +93,7 @@ class SearchDocumentToolServiceIntegrationTest {
                 NOW,
                 NOW.plusSeconds(120)
         );
-        SearchAgentProperties properties = new SearchAgentProperties();
+        properties = new SearchAgentProperties();
         properties.setSigningKey("test-signing-key-32-characters-minimum");
         service = new SearchDocumentToolService(
                 query,
@@ -257,6 +259,307 @@ class SearchDocumentToolServiceIntegrationTest {
                         20
                 )
         ).hasMessage("INVALID_TOOL_ARGUMENTS");
+    }
+
+    @Test
+    @DisplayName("한글 검색은 제목의 관련도가 높은 문서를 먼저 반환한다")
+    void search_success_titleRankedFirst() {
+        saveDocument(
+                workspaceId,
+                "ARCHIVED",
+                "회고",
+                "결제 장애 원인"
+        );
+        long title = saveDocument(
+                workspaceId,
+                "ARCHIVED",
+                "결제 장애",
+                "복구 완료"
+        );
+        saveDocument(
+                workspaceId,
+                "DRAFT",
+                "결제 장애",
+                "미보관"
+        );
+        saveDocument(
+                fixtures.saveWorkspace(),
+                "ARCHIVED",
+                "결제 장애",
+                "외부"
+        );
+        assertThat(
+                service.search(
+                        scope,
+                        parameters(
+                                "결제",
+                                null,
+                                1
+                        )
+                )
+                        .items()
+        ).extracting(SearchDocumentCard::documentId)
+                .containsExactly(title);
+    }
+
+    @Test
+    @DisplayName("검색 커서는 다음 후보를 이어서 반환한다")
+    void search_success_nextPage() {
+        long body = saveDocument(
+                workspaceId,
+                "ARCHIVED",
+                "회고",
+                "결제 원인"
+        );
+        saveDocument(
+                workspaceId,
+                "ARCHIVED",
+                "결제 장애",
+                "복구"
+        );
+        SearchDocumentPage first = service.search(
+                scope,
+                parameters(
+                        "결제",
+                        null,
+                        1
+                )
+        );
+        SearchDocumentPage next = service.search(
+                scope,
+                parameters(
+                        "결제",
+                        first.nextCursor(),
+                        1
+                )
+        );
+        assertThat(next.items()).extracting(SearchDocumentCard::documentId)
+                .containsExactly(body);
+        assertThat(next.nextCursor()).isNull();
+    }
+
+    @Test
+    void search_failure_changedQueryCursor() {
+        String cursor = searchCursor();
+        assertThatThrownBy(
+                () -> service.search(
+                        scope,
+                        parameters(
+                                "변경",
+                                cursor,
+                                1
+                        )
+                )
+        ).hasMessage("INVALID_TOOL_ARGUMENTS");
+    }
+
+    @Test
+    void search_success_literalWildcard() {
+        saveDocument(
+                workspaceId,
+                "ARCHIVED",
+                "결제",
+                "원인"
+        );
+        assertThat(
+                service.search(
+                        scope,
+                        parameters(
+                                "%",
+                                null,
+                                20
+                        )
+                )
+                        .items()
+        ).isEmpty();
+    }
+
+    @Test
+    void search_failure_missingQuery() {
+        assertThatThrownBy(
+                () -> service.search(
+                        scope,
+                        parameters(
+                                null,
+                                null,
+                                20
+                        )
+                )
+        ).hasMessage("INVALID_TOOL_ARGUMENTS");
+    }
+
+    @Test
+    void read_success_unicodeContinuation() {
+        properties.setReadCodePoints(3);
+        long document = saveDocument(
+                workspaceId,
+                "ARCHIVED",
+                "결정",
+                "가🙂나다😃라"
+        );
+        SearchDocumentSlice first = service.read(
+                scope,
+                document,
+                null
+        );
+        assertThat(first.content()).isEqualTo("가🙂나");
+        assertThat(first.truncated()).isTrue();
+        SearchDocumentSlice next = service.read(
+                scope,
+                document,
+                first.nextCursor()
+        );
+        assertThat(next.content()).isEqualTo("다😃라");
+        assertThat(next.nextCursor()).isNull();
+    }
+
+    @Test
+    void read_failure_changedRevision() {
+        properties.setReadCodePoints(3);
+        long document = saveDocument(
+                workspaceId,
+                "ARCHIVED",
+                "결정",
+                "가🙂나다😃라"
+        );
+        String cursor = service.read(
+                scope,
+                document,
+                null
+        )
+                .nextCursor();
+        jdbc.sql("UPDATE documents SET content = '변경됨' WHERE id = :id")
+                .param(
+                        "id",
+                        document
+                )
+                .update();
+        assertThatThrownBy(
+                () -> service.read(
+                        scope,
+                        document,
+                        cursor
+                )
+        ).hasMessage("DOCUMENT_CHANGED");
+    }
+
+    @Test
+    void read_failure_cursorForDifferentDocument() {
+        properties.setReadCodePoints(3);
+        long first = saveDocument(
+                workspaceId,
+                "ARCHIVED",
+                "첫",
+                "긴본문입니다"
+        );
+        long second = saveDocument(
+                workspaceId,
+                "ARCHIVED",
+                "둘",
+                "긴본문입니다"
+        );
+        String cursor = service.read(
+                scope,
+                first,
+                null
+        )
+                .nextCursor();
+        assertThatThrownBy(
+                () -> service.read(
+                        scope,
+                        second,
+                        cursor
+                )
+        ).hasMessage("INVALID_TOOL_ARGUMENTS");
+    }
+
+    @Test
+    void read_failure_searchCursor() {
+        String cursor = searchCursor();
+        long document = saveDocument(
+                workspaceId,
+                "ARCHIVED",
+                "결정",
+                "본문"
+        );
+        assertThatThrownBy(
+                () -> service.read(
+                        scope,
+                        document,
+                        cursor
+                )
+        ).hasMessage("INVALID_TOOL_ARGUMENTS");
+    }
+
+    @Test
+    void read_failure_foreignWorkspace() {
+        long document = saveDocument(
+                fixtures.saveWorkspace(),
+                "ARCHIVED",
+                "외부",
+                "비공개"
+        );
+        assertThatThrownBy(
+                () -> service.read(
+                        scope,
+                        document,
+                        null
+                )
+        ).hasMessage("DOCUMENT_NOT_FOUND");
+    }
+
+    @Test
+    void read_failure_draft() {
+        long document = saveDocument(
+                workspaceId,
+                "DRAFT",
+                "초안",
+                "비공개"
+        );
+        assertThatThrownBy(
+                () -> service.read(
+                        scope,
+                        document,
+                        null
+                )
+        ).hasMessage("DOCUMENT_NOT_FOUND");
+    }
+
+    @Test
+    void read_failure_invalidId() {
+        assertThatThrownBy(
+                () -> service.read(
+                        scope,
+                        0,
+                        null
+                )
+        ).hasMessage("INVALID_TOOL_ARGUMENTS");
+    }
+
+    private String searchCursor() {
+        saveDocument(
+                workspaceId,
+                "ARCHIVED",
+                "결제 하나",
+                "본문"
+        );
+        saveDocument(
+                workspaceId,
+                "ARCHIVED",
+                "결제 둘",
+                "본문"
+        );
+        String cursor = service.search(
+                scope,
+                parameters(
+                        "결제",
+                        null,
+                        1
+                )
+        )
+                .nextCursor();
+        assertThat(cursor).isNotNull();
+        return cursor;
     }
 
     @Test

@@ -29,6 +29,114 @@ public class SearchDocumentQueryAdapter implements SearchDocumentQuery {
 
     private final JdbcClient jdbc;
 
+    public java.util.Optional<SearchDocumentRecord> find(
+            SearchToolScope scope,
+            long documentId
+    ) {
+        String sql = """
+                SELECT d.id, d.title, d.topic, d.content, d.created_at, d.archived_at, r.started_at, 0 AS score
+                FROM documents d JOIN recording_sessions r ON r.id = d.recording_session_id
+                WHERE d.id = :id AND d.workspace_id = :workspace AND r.workspace_id = :workspace
+                  AND d.status = 'ARCHIVED' AND d.archived_at <= :cutoff
+                """;
+        return jdbc.sql(sql)
+                .param(
+                        "id",
+                        documentId
+                )
+                .param(
+                        "workspace",
+                        scope.workspaceId()
+                )
+                .param(
+                        "cutoff",
+                        Timestamp.from(scope.startedAt())
+                )
+                .query(this::map)
+                .optional();
+    }
+
+    public List<SearchDocumentRecord> searchPage(
+            SearchToolScope scope,
+            SearchDocumentParameters parameters,
+            SearchDocumentCursor cursor
+    ) {
+        List<String> terms = java.util.Arrays.stream(
+                parameters.query()
+                        .strip()
+                        .split("\\s+")
+        )
+                .distinct()
+                .limit(8)
+                .toList();
+        String score = scoreExpression(terms.size());
+        String sql = "SELECT * FROM (" + SELECT.replace(
+                "0 AS score",
+                score + " AS score"
+        ) + ") candidates WHERE score > 0";
+        if (cursor != null) {
+            sql += " AND (score, started_at, id) < (:lastScore, :lastTime, :lastId)";
+        }
+        sql += " ORDER BY score DESC, started_at DESC, id DESC LIMIT :limit";
+        JdbcClient.StatementSpec statement = filters(
+                jdbc.sql(sql),
+                scope,
+                parameters
+        );
+        for (int index = 0; index < terms.size(); index++) {
+            statement.param(
+                    "term" + index,
+                    "%" + escape(terms.get(index)) + "%"
+            );
+        }
+        if (cursor != null) {
+            statement.param(
+                    "lastScore",
+                    cursor.score()
+            )
+                    .param(
+                            "lastTime",
+                            Timestamp.from(cursor.recordedAt())
+                    )
+                    .param(
+                            "lastId",
+                            cursor.documentId()
+                    );
+        }
+        return statement.query(this::map)
+                .list();
+    }
+
+    private String scoreExpression(int count) {
+        List<String> scores = new java.util.ArrayList<>();
+        for (int index = 0; index < count; index++) {
+            String match = " ILIKE :term" + index + " ESCAPE '!'";
+            scores.add(
+                    "(CASE WHEN d.title" + match + " THEN 8 ELSE 0 END" + " + CASE WHEN d.topic" + match
+                            + " THEN 4 ELSE 0 END" + " + CASE WHEN d.content" + match + " THEN 1 ELSE 0 END)"
+            );
+        }
+        return String.join(
+                " + ",
+                scores
+        );
+    }
+
+    private String escape(String value) {
+        return value.replace(
+                "!",
+                "!!"
+        )
+                .replace(
+                        "%",
+                        "!%"
+                )
+                .replace(
+                        "_",
+                        "!_"
+                );
+    }
+
     public List<SearchDocumentRecord> listPage(
             SearchToolScope scope,
             SearchDocumentParameters parameters,
