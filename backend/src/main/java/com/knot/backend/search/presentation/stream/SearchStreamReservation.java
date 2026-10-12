@@ -1,4 +1,4 @@
-package com.knot.backend.search.infrastructure;
+package com.knot.backend.search.presentation.stream;
 
 import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.SearchException;

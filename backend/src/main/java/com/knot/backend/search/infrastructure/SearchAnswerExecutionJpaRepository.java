@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 
 interface SearchAnswerExecutionJpaRepository extends JpaRepository<SearchAnswerExecution, Long> {
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select e from SearchAnswerExecution e where e.answerId = :answerId")
     Optional<SearchAnswerExecution> findForUpdate(long answerId);
