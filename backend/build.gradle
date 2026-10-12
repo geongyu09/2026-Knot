@@ -73,6 +73,7 @@ spotless {
 
 tasks.withType(Test).configureEach {
 	systemProperty 'spring.test.context.cache.maxSize', '8'
+	maxHeapSize = '1g'
 }
 
 tasks.named('test') {

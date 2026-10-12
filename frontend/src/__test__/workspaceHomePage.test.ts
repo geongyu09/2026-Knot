@@ -3,10 +3,8 @@ import {
   GetWorkspaceResponseDto,
   GetWorkspacesResponseDto,
 } from "@api/dto/workspace";
-import { GetNotionImportStatusResponseDto } from "@api/dto/notionImport";
 import { PostWorkspaceInvitationResponseDto } from "@api/dto/workspaceInvitation";
 import { meResponse } from "@api/mock/responses/auth";
-import { notionImportStatusResponse } from "@api/mock/responses/notionImport";
 import {
   workspaceDetailResponse,
   workspacesResponse,
@@ -17,9 +15,9 @@ import { expect, test, type Page } from "@playwright/test";
 /**
  * 워크스페이스 홈 화면(`/workspace/:workspaceId`) E2E.
  *
- * 홈 진입, 사이드바 열고 닫기, 폴더 트리 펼침·접힘, 초대 링크·코드 복사, Notion 동기화,
+ * 홈 진입, 사이드바 열고 닫기, 폴더 트리 펼침·접힘, 초대 링크·코드 복사,
  * 하단 Dock으로 탐색 이동까지 홈 화면 위에서 사용자가 밟는 플로우를 페이지 단위로 확인해요.
- * 회원·워크스페이스·초대·노션 연결 상태·동기화는 dev 서버의 msw mock 응답(`API_MOCKING`)에서 오므로
+ * 회원·워크스페이스·초대는 dev 서버의 msw mock 응답(`API_MOCKING`)에서 오므로
  * 기대값도 같은 응답을 DTO로 변환해 가져와요. 사이드바 트리는 API가 아직 없어 위젯의 임시 상수예요.
  */
 
@@ -38,12 +36,6 @@ const CHAT_PATH = `${HOME_PATH}/chat`;
 const GREETING = `반가워요, ${expectedMe.nickname} 님`;
 const INVITE_CODE = expectedInvitation.code;
 const DISPLAY_INVITE_LINK = `/invite/${expectedInvitation.linkToken}`;
-
-// 연결 상태별 문구는 NotionSyncCard 위젯의 상수예요. mock 기본 응답이 CONNECTED라 연결됨 문구를 기대해요
-const NOTION_CONNECTED_LABEL = "노션이 연결되어 있어요";
-const SYNCED_DOCUMENT_COUNT = new GetNotionImportStatusResponseDto(
-  notionImportStatusResponse,
-).processedPageCount;
 
 const getSidebarToggle = (page: Page) =>
   page.getByRole("button", { name: "사이드바" });
@@ -85,16 +77,14 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe("홈 진입", () => {
-  test("인사말, 카드 2개, 하단 Dock을 보여주고 사이드바는 닫혀 있다", async ({
+  test("인사말, 팀원 초대 카드, 하단 Dock을 보여주고 사이드바는 닫혀 있다", async ({
     page,
   }) => {
     await expect(page.getByRole("heading", { name: GREETING })).toBeVisible();
 
-    const notionCard = getCard({ page, title: "Notion 동기화" });
-    await expect(notionCard.getByText(NOTION_CONNECTED_LABEL)).toBeVisible();
     await expect(
-      notionCard.getByRole("button", { name: "지금 동기화" }),
-    ).toBeEnabled();
+      page.getByRole("heading", { name: "Notion 동기화" }),
+    ).toBeHidden();
 
     const inviteCard = getCard({ page, title: "팀원 초대" });
     await expect(
@@ -273,32 +263,6 @@ test.describe("팀원 초대 카드", () => {
 
     // 2초 뒤 원래 `초대 코드 복사`로 돌아와요
     await expect(copyCodeButton).toBeVisible();
-  });
-});
-
-test.describe("Notion 동기화 카드", () => {
-  test("지금 동기화를 누르면 새로 들어온 문서 수와 비활성 완료 버튼이 보였다가 2초 뒤 기본 상태로 돌아온다", async ({
-    page,
-  }) => {
-    const notionCard = getCard({ page, title: "Notion 동기화" });
-    const syncButton = notionCard.getByRole("button", { name: "지금 동기화" });
-
-    await syncButton.click();
-
-    // mock 응답이 즉시 완료라 로딩은 순간이에요. 로딩 잠금은 위젯 통합 테스트가 확인해요
-    await expect(
-      notionCard.getByText(`문서 ${SYNCED_DOCUMENT_COUNT}개가 새로 들어왔어요`),
-    ).toBeVisible();
-    await expect(
-      notionCard.getByRole("button", { name: "완료" }),
-    ).toBeDisabled();
-    await expect(syncButton).toBeHidden();
-    await expect(notionCard.getByText(NOTION_CONNECTED_LABEL)).toBeHidden();
-
-    // 2초 뒤 원래 `지금 동기화`와 연결 상태 안내로 돌아와요
-    await expect(syncButton).toBeVisible();
-    await expect(syncButton).toBeEnabled();
-    await expect(notionCard.getByText(NOTION_CONNECTED_LABEL)).toBeVisible();
   });
 });
 
