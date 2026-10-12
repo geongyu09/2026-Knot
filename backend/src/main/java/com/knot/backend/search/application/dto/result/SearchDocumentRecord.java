@@ -1,4 +1,4 @@
-package com.knot.backend.search.infrastructure;
+package com.knot.backend.search.application.dto.result;
 
 import java.time.Instant;
 

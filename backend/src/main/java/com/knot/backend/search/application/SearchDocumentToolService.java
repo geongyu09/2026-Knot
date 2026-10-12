@@ -6,18 +6,16 @@ import com.knot.backend.search.application.dto.query.SearchDocumentParameters;
 import com.knot.backend.search.application.dto.result.SearchDocumentCard;
 import com.knot.backend.search.application.dto.result.SearchDocumentPage;
 import com.knot.backend.search.domain.SearchToolException;
-import com.knot.backend.search.infrastructure.SearchDocumentQueryAdapter;
-import com.knot.backend.search.infrastructure.SearchDocumentRecord;
-import com.knot.backend.search.infrastructure.mcp.SearchToolTokenCodec;
+import com.knot.backend.search.application.dto.result.SearchDocumentRecord;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor
 public class SearchDocumentToolService {
 
-    private final SearchDocumentQueryAdapter query;
+    private final SearchDocumentQuery query;
     private final SearchToolAccess access;
-    private final SearchToolTokenCodec tokens;
+    private final SearchToolTokens tokens;
     private final SearchAgentProperties properties;
 
     public SearchDocumentPage list(
