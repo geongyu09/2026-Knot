@@ -1,10 +1,12 @@
-package com.knot.backend.search.infrastructure;
+package com.knot.backend.search.presentation.stream;
 
 import com.knot.backend.global.config.SearchWorkerProperties;
 import com.knot.backend.search.application.SearchAnswerSnapshotService;
 import com.knot.backend.search.application.dto.result.SearchAnswerSnapshotResult;
 import com.knot.backend.search.application.dto.result.SearchEvidenceItemResult;
 import com.knot.backend.search.domain.SearchMessageStatus;
+import com.knot.backend.search.domain.SearchException;
+import com.knot.backend.search.domain.SearchErrorCode;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
@@ -115,7 +117,7 @@ final class SearchAnswerReconnectConnection implements Runnable {
                 return;
             }
             sendHeartbeatIfDue();
-            Thread.sleep(interval);
+            reservation.awaitPoll(interval);
         }
     }
 
@@ -129,7 +131,7 @@ final class SearchAnswerReconnectConnection implements Runnable {
 
     private void sendDelta(String content) throws IOException {
         if (!content.startsWith(sentContent)) {
-            throw new IllegalStateException("answer content was replaced");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         if (content.length() == sentContent.length()) {
             return;

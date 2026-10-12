@@ -1,4 +1,4 @@
-package com.knot.backend.search.infrastructure;
+package com.knot.backend.search.presentation.stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -30,7 +30,8 @@ class SearchStreamReservationTest {
     void attach_failure_ended() {
         SearchStreamReservation reservation = new SearchStreamReservation(new Semaphore(0));
         reservation.close();
-        assertThatThrownBy(() -> reservation.attach(mock(Runnable.class))).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> reservation.attach(mock(Runnable.class)))
+                .isInstanceOf(com.knot.backend.search.domain.SearchException.class);
     }
 
     @Test
