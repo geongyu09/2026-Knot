@@ -8,6 +8,15 @@ import org.springframework.data.jpa.repository.Query;
 
 interface SearchRequestReceiptJpaRepository extends JpaRepository<SearchRequestReceipt, Long> {
 
+    @Query("select r from SearchRequestReceipt r where r.workspaceId = :workspaceId and r.memberId = :memberId and r.operation = 'RETRY' and r.requestId = :requestId")
+    Optional<SearchRequestReceipt> findRetryReceipt(
+            long workspaceId,
+            long memberId,
+            UUID requestId
+    );
+
+    Optional<SearchRequestReceipt> findFirstByAnswerMessageIdOrderByIdDesc(long answerId);
+
     @Query("""
             select r from SearchRequestReceipt r where r.workspaceId = :workspaceId and r.memberId = :memberId
                 and r.operation = 'QUESTION' and r.targetId = :conversationId and r.requestId = :requestId

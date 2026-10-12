@@ -25,6 +25,21 @@ public interface SearchRepository {
 
     Optional<SearchConversation> findConversation(long conversationId);
 
+    Optional<SearchRequestReceipt> findRetryReceipt(
+            long workspaceId,
+            long memberId,
+            UUID requestId
+    );
+
+    Optional<SearchRequestReceipt> findLatestReceipt(long answerId);
+
+    Optional<SearchMessage> findMessageBySequence(
+            long conversationId,
+            int sequence
+    );
+
+    void deleteEvidences(long answerId);
+
     Optional<SearchRequestReceipt> findQuestionReceipt(
             long workspaceId,
             long memberId,

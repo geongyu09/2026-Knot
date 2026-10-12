@@ -22,6 +22,7 @@ final class SearchAnswerSseConnection implements Runnable {
     private final long memberId;
     private final long answerId;
     private final Duration interval;
+    private final long receiptId;
     private int sentLength;
     private SearchProgressStage sentStage;
     private boolean sentExcludedCount;
@@ -36,6 +37,28 @@ final class SearchAnswerSseConnection implements Runnable {
             long answerId,
             Duration interval
     ) {
+        this(
+                emitter,
+                reservation,
+                snapshots,
+                workspaceId,
+                memberId,
+                answerId,
+                interval,
+                0
+        );
+    }
+
+    SearchAnswerSseConnection(
+            SseEmitter emitter,
+            SearchStreamReservation reservation,
+            SearchAnswerSnapshotService snapshots,
+            long workspaceId,
+            long memberId,
+            long answerId,
+            Duration interval,
+            long receiptId
+    ) {
         this.emitter = emitter;
         this.reservation = reservation;
         this.snapshots = snapshots;
@@ -43,6 +66,7 @@ final class SearchAnswerSseConnection implements Runnable {
         this.memberId = memberId;
         this.answerId = answerId;
         this.interval = interval;
+        this.receiptId = receiptId;
     }
 
     @Override
@@ -68,6 +92,9 @@ final class SearchAnswerSseConnection implements Runnable {
                     memberId,
                     answerId
             );
+            if (snapshot.receiptId() != receiptId) {
+                return;
+            }
             if (changedExecution(snapshot.executionToken())) {
                 return;
             }

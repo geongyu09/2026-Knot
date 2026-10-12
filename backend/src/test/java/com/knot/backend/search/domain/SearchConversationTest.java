@@ -8,6 +8,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.EnumSource;
 
 class SearchConversationTest {
     private static final Instant TIME = Instant.parse("2026-10-10T00:00:00Z");
@@ -30,9 +31,10 @@ class SearchConversationTest {
         assertThat(conversation.isVisibleInList()).isTrue();
     }
 
-    @Test
-    @DisplayName("최초 실패는 숨기고 retry STREAMING도 숨김을 유지하며 성공하면 복원한다")
-    void recordFirstAnswerStatus_success() {
+    @ParameterizedTest
+    @EnumSource(value = SearchMessageStatus.class, names = {"COMPLETED", "STOPPED"})
+    @DisplayName("최초 실패와 retry STREAMING은 숨기고 완료 또는 사용자 중지로 끝나면 목록을 복원한다")
+    void recordFirstAnswerStatus_success(SearchMessageStatus terminalStatus) {
         // given
         SearchConversation conversation = SearchConversation.create(
                 1,
@@ -45,7 +47,7 @@ class SearchConversationTest {
         assertThat(conversation.isVisibleInList()).isFalse();
         conversation.recordFirstAnswerStatus(SearchMessageStatus.STREAMING);
         assertThat(conversation.isVisibleInList()).isFalse();
-        conversation.recordFirstAnswerStatus(SearchMessageStatus.COMPLETED);
+        conversation.recordFirstAnswerStatus(terminalStatus);
         assertThat(conversation.isVisibleInList()).isTrue();
     }
 

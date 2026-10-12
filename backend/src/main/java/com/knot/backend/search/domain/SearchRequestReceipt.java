@@ -74,6 +74,29 @@ public class SearchRequestReceipt {
         return receipt;
     }
 
+    public static SearchRequestReceipt retry(
+            long workspaceId,
+            long memberId,
+            UUID requestId,
+            long conversationId,
+            long questionMessageId,
+            long answerMessageId,
+            Instant createdAt
+    ) {
+        SearchRequestReceipt receipt = firstQuestion(
+                workspaceId,
+                memberId,
+                requestId,
+                conversationId,
+                questionMessageId,
+                answerMessageId,
+                createdAt
+        );
+        receipt.operation = SearchRequestOperation.RETRY;
+        receipt.targetId = questionMessageId;
+        return receipt;
+    }
+
     public static SearchRequestReceipt firstQuestion(
             long workspaceId,
             long memberId,

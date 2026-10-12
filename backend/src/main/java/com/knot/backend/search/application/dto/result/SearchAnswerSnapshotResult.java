@@ -13,6 +13,29 @@ public record SearchAnswerSnapshotResult(
         UUID executionToken,
         SearchProgressStage stage,
         Integer excludedCount,
-        List<SearchEvidenceItemResult> evidences
+        List<SearchEvidenceItemResult> evidences,
+        long receiptId
 ) {
+    public SearchAnswerSnapshotResult(
+            long answerId,
+            String content,
+            SearchMessageStatus status,
+            String failureCode,
+            UUID executionToken,
+            SearchProgressStage stage,
+            Integer excludedCount,
+            List<SearchEvidenceItemResult> evidences
+    ) {
+        this(
+                answerId,
+                content,
+                status,
+                failureCode,
+                executionToken,
+                stage,
+                excludedCount,
+                evidences,
+                0
+        );
+    }
 }

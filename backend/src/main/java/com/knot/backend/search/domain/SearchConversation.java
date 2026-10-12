@@ -68,7 +68,7 @@ public class SearchConversation {
             visibleInList = false;
             return;
         }
-        if (status == SearchMessageStatus.COMPLETED) {
+        if (status == SearchMessageStatus.COMPLETED || status == SearchMessageStatus.STOPPED) {
             visibleInList = true;
         }
     }

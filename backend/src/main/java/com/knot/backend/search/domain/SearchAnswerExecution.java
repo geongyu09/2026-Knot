@@ -113,6 +113,17 @@ public class SearchAnswerExecution {
         state = SearchExecutionState.FINISHED;
     }
 
+    public void retry() {
+        if (state != SearchExecutionState.FINISHED) {
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
+        }
+        executionToken = null;
+        deadlineAt = null;
+        stage = null;
+        excludedCount = null;
+        state = SearchExecutionState.QUEUED;
+    }
+
     public void finish() {
         if (state != SearchExecutionState.RUNNING) {
             throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);

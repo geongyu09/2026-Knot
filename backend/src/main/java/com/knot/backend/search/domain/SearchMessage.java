@@ -130,6 +130,15 @@ public class SearchMessage {
         status = SearchMessageStatus.FAILED;
     }
 
+    public void retry() {
+        if (role != SearchMessageRole.ASSISTANT || status != SearchMessageStatus.FAILED) {
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
+        }
+        content = "";
+        failureCode = null;
+        status = SearchMessageStatus.STREAMING;
+    }
+
     private void requireStreamingAnswer() {
         if (role != SearchMessageRole.ASSISTANT || status != SearchMessageStatus.STREAMING) {
             throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);

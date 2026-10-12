@@ -105,6 +105,9 @@ final class SearchAnswerReconnectConnection implements Runnable {
                     conversationId,
                     initial.answerId()
             );
+            if (snapshot.receiptId() != initial.receiptId()) {
+                return;
+            }
             if (changedExecution(snapshot.executionToken())) {
                 return;
             }

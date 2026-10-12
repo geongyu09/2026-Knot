@@ -7,6 +7,7 @@ import com.knot.backend.search.application.dto.result.SearchAnswerSnapshotResult
 import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.SearchException;
 import java.io.IOException;
+import java.util.Map;
 import java.util.concurrent.Semaphore;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -49,12 +50,50 @@ public class SearchAnswerStream {
             SearchQuestionAcceptedResult accepted,
             SearchStreamReservation reservation
     ) {
+        return open(
+                workspaceId,
+                memberId,
+                accepted,
+                reservation,
+                accepted
+        );
+    }
+
+    public SseEmitter openRetry(
+            long workspaceId,
+            long memberId,
+            SearchQuestionAcceptedResult accepted,
+            SearchStreamReservation reservation
+    ) {
+        return open(
+                workspaceId,
+                memberId,
+                accepted,
+                reservation,
+                Map.of(
+                        "questionId",
+                        accepted.questionMessageId(),
+                        "answerMessageId",
+                        accepted.answerMessageId(),
+                        "status",
+                        "STREAMING"
+                )
+        );
+    }
+
+    private SseEmitter open(
+            long workspaceId,
+            long memberId,
+            SearchQuestionAcceptedResult accepted,
+            SearchStreamReservation reservation,
+            Object acceptedData
+    ) {
         SseEmitter emitter = createEmitter(reservation);
         try {
             emitter.send(
                     SseEmitter.event()
                             .name("accepted")
-                            .data(accepted)
+                            .data(acceptedData)
             );
             reservation.attach(
                     new SearchAnswerSseConnection(
@@ -64,7 +103,8 @@ public class SearchAnswerStream {
                             workspaceId,
                             memberId,
                             accepted.answerMessageId(),
-                            properties.getStreamPollInterval()
+                            properties.getStreamPollInterval(),
+                            accepted.receiptId()
                     )
             );
             return emitter;
