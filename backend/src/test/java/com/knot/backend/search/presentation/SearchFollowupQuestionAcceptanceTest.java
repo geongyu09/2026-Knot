@@ -40,6 +40,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -47,6 +48,8 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
@@ -78,6 +81,9 @@ class SearchFollowupQuestionAcceptanceTest {
     private SearchAnswerWorker worker;
     @Autowired
     private SearchWorkerProperties streamLimits;
+    @Autowired
+    @Qualifier("searchStreamExecutor")
+    private ThreadPoolTaskExecutor streamExecutor;
     @MockitoBean
     private SearchGenerationAvailability availability;
     @MockitoBean
@@ -149,6 +155,22 @@ class SearchFollowupQuestionAcceptanceTest {
                         0
                 )
         );
+    }
+
+    @AfterEach
+    void awaitStreamsIdle() throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(5)
+                .toNanos();
+        while (!streamsAreIdle() && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+        }
+        assertThat(streamExecutor.getActiveCount()).as("다음 TRUNCATE 전에 이전 SSE 작업이 종료되어야 한다")
+                .isZero();
+        assertThat(streamExecutor.getQueueSize()).isZero();
+    }
+
+    private boolean streamsAreIdle() {
+        return streamExecutor.getActiveCount() == 0 && streamExecutor.getQueueSize() == 0;
     }
 
     @Test
