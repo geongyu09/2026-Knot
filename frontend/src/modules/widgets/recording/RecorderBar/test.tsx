@@ -14,6 +14,11 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import {
+  clearRecordingStartProof,
+  getRecordingControlProof,
+  getRecordingStartProof,
+} from "@utils/recordingControlProof";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -62,8 +67,10 @@ const renderRecorderBar = () => {
   return { router };
 };
 
-/** 녹음은 독에서 마이크를 받은 뒤 시작하므로, 녹음 화면에 들어오기 전에 미리 시작해 둬요. */
+/** 녹음은 독에서 증명을 만들고 마이크를 받은 뒤 시작하므로, 녹음 화면에 들어오기 전에 같은 순서로 미리 시작해 둬요. */
 const startRecording = async () => {
+  getRecordingStartProof();
+
   await act(async () => {
     await useRecordingStore.getState().connectMicrophone();
     useRecordingStore.getState().startRecording({
@@ -127,6 +134,7 @@ describe("RecorderBar", () => {
   afterEach(() => {
     // 전역 저장소라 테스트끼리 녹음이 새지 않도록 처음 상태로 되돌려요
     useRecordingStore.getState().discardRecording();
+    clearRecordingStartProof();
     mockServer.events.removeAllListeners();
     vi.useRealTimers();
   });
@@ -266,6 +274,30 @@ describe("RecorderBar", () => {
       await waitFor(() =>
         expect(stream.getTracks()[0].readyState).toBe("ended"),
       );
+    });
+
+    it("확인 창에서 녹음 끝내기를 고르면 최초 탭 증명을 실어 종료를 요청한다", async () => {
+      vi.useRealTimers();
+      const bodies: unknown[] = [];
+      mockServer.use(
+        http.post(
+          "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/end",
+          async ({ request }) => {
+            bodies.push(await request.json());
+
+            return HttpResponse.json(recordingEndResponse);
+          },
+        ),
+      );
+      await startRecording();
+      // 끝내고 나면 증명을 지우므로 끝내기 전에 읽어 둬요
+      const proof = getRecordingControlProof();
+      renderRecorderBar();
+
+      await clickEndRecording();
+      await chooseInEndRecordingDialog("녹음 끝내기");
+
+      await waitFor(() => expect(bodies).toEqual([proof]));
     });
 
     it("끝내는 중에 다시 눌러도 확인 창을 열지 않는다", async () => {
