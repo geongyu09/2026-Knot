@@ -157,12 +157,12 @@ public class SearchQuestionIntakeService {
 
     private int nextQuestionSequence(long conversationId) {
         SearchMessage last = repository.findLastMessage(conversationId)
-                .orElseThrow(() -> new IllegalStateException("stored conversation has no messages"));
+                .orElseThrow(() -> new SearchException(SearchErrorCode.INVALID_SEARCH_STATE));
         if (last.getRole() != SearchMessageRole.ASSISTANT) {
-            throw new IllegalStateException("stored conversation must end with an answer");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         if (last.getSequence() > Integer.MAX_VALUE - 2) {
-            throw new IllegalStateException("conversation sequence exhausted");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         return last.getSequence() + 1;
     }
