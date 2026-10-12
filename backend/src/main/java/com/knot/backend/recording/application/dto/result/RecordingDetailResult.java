@@ -2,6 +2,7 @@ package com.knot.backend.recording.application.dto.result;
 
 import com.knot.backend.recording.domain.RecordingAudioUploadStatus;
 import com.knot.backend.recording.domain.RecordingEndReason;
+import com.knot.backend.recording.domain.RecordingSession;
 import com.knot.backend.recording.domain.RecordingStatus;
 import java.time.Duration;
 import java.time.Instant;
@@ -42,9 +43,12 @@ public record RecordingDetailResult(
                 serverNow
         )
                 .toMillis();
-        return snapshot.accumulatedRecordingMillis() + Math.max(
-                0L,
-                currentIntervalMillis
+        return Math.min(
+                snapshot.accumulatedRecordingMillis() + Math.max(
+                        0L,
+                        currentIntervalMillis
+                ),
+                RecordingSession.MAX_RECORDING_MILLIS
         );
     }
 }
