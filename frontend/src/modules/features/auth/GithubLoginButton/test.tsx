@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import GithubLoginButton from ".";
 
 const GITHUB_OAUTH_PATH = /\/oauth2\/authorization\/github$/;
+// 넘어가지 못하고 화면이 남았을 때 처리 중을 푸는 데까지 기다리는 시간
+const REDIRECT_TIMEOUT_MS = 10_000;
 
 // jsdom은 다른 주소로 이동하지 못해요. 보내려는 주소를 받아 두는 가짜 location으로 바꿔, 어디로 몇 번 보냈는지 확인해요
 let visitedUrls: string[];
@@ -21,6 +23,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 const renderButton = () => {
@@ -38,6 +41,11 @@ const renderButton = () => {
 const returnByBackButton = () =>
   act(() => {
     window.dispatchEvent(new Event("pageshow"));
+  });
+
+const advanceTimers = (ms: number) =>
+  act(() => {
+    vi.advanceTimersByTime(ms);
   });
 
 describe("GithubLoginButton", () => {
@@ -67,6 +75,26 @@ describe("GithubLoginButton", () => {
 
     fireEvent.click(button);
     returnByBackButton();
+
+    expect(button).toHaveAttribute("aria-busy", "false");
+    expect(button).toBeEnabled();
+
+    fireEvent.click(button);
+
+    expect(visitedUrls).toHaveLength(2);
+  });
+
+  it("넘어가지 못하고 화면이 남으면 10초 뒤에 처리 중이 풀려 다시 누를 수 있다", () => {
+    vi.useFakeTimers();
+    const button = renderButton();
+
+    fireEvent.click(button);
+    advanceTimers(REDIRECT_TIMEOUT_MS - 1);
+
+    expect(button).toHaveAttribute("aria-busy", "true");
+    expect(button).toBeDisabled();
+
+    advanceTimers(1);
 
     expect(button).toHaveAttribute("aria-busy", "false");
     expect(button).toBeEnabled();
