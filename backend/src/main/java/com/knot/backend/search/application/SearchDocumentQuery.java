@@ -7,6 +7,17 @@ import java.util.List;
 
 public interface SearchDocumentQuery {
 
+    java.util.Optional<SearchDocumentRecord> find(
+            SearchToolScope scope,
+            long documentId
+    );
+
+    List<SearchDocumentRecord> searchPage(
+            SearchToolScope scope,
+            SearchDocumentParameters parameters,
+            SearchDocumentCursor cursor
+    );
+
     List<SearchDocumentRecord> listPage(
             SearchToolScope scope,
             SearchDocumentParameters parameters,
