@@ -8,6 +8,9 @@ import static org.mockito.Mockito.doNothing;
 
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.search.application.dto.command.SearchQuestionCommand;
+import com.knot.backend.search.application.dto.query.SearchConversationListParameters;
+import com.knot.backend.search.application.dto.result.SearchAnswerStopResult;
+import com.knot.backend.search.domain.SearchMessageStatus;
 import com.knot.backend.search.application.dto.result.SearchQuestionAcceptedResult;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.domain.SearchRepository;
@@ -21,6 +24,7 @@ import java.util.UUID;
 import java.time.Instant;
 import org.springframework.dao.InvalidDataAccessApiUsageException;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
@@ -58,6 +62,8 @@ class SearchAnswerRetryIntegrationTest {
     private SearchAnswerSnapshotService snapshots;
     @Autowired
     private SearchHistoryQuery history;
+    @Autowired
+    private SearchConversationListService conversations;
     @Autowired
     private JdbcClient jdbc;
     @MockitoSpyBean
@@ -279,6 +285,106 @@ class SearchAnswerRetryIntegrationTest {
         assertThat(visible()).isTrue();
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("첫 실패 재시도는 생성 전과 부분 생성 후 중지 모두 목록을 복원하고 후속 문맥을 보존한다")
+    void acceptRetry_success_stoppedRestoresVisibility(boolean partialAnswer) {
+        // given
+        SearchQuestionAcceptedResult accepted = retry(UUID.randomUUID());
+        assertThat(visible()).isFalse();
+        String content = appendRetryContent(partialAnswer);
+        // when
+        SearchAnswerStopResult stopped = executions.stop(
+                workspace,
+                member,
+                first.conversationId(),
+                accepted.answerMessageId()
+        );
+        // then
+        assertThat(stopped.status()).isEqualTo(SearchMessageStatus.STOPPED);
+        assertThat(stopped.content()).isEqualTo(content);
+        assertThat(visible()).isTrue();
+        assertThat(
+                conversations.find(
+                        workspace,
+                        member,
+                        new SearchConversationListParameters(
+                                null,
+                                20
+                        )
+                )
+                        .items()
+        ).extracting(item -> item.id())
+                .containsExactly(first.conversationId());
+        assertThat(count("search_messages")).isEqualTo(2);
+        assertThat(
+                executions.stop(
+                        workspace,
+                        member,
+                        first.conversationId(),
+                        accepted.answerMessageId()
+                )
+        ).isEqualTo(stopped);
+        assertError(
+                member,
+                first.questionMessageId(),
+                "ANSWER_NOT_FAILED"
+        );
+        SearchQuestionAcceptedResult next = intake.acceptNext(
+                workspace,
+                member,
+                first.conversationId(),
+                new SearchQuestionCommand(
+                        "이후 질문",
+                        UUID.randomUUID()
+                )
+        );
+        Instant startedAt = Instant.now();
+        assertThat(
+                history.beforeQuestion(
+                        new SearchToolScope(
+                                workspace,
+                                member,
+                                first.conversationId(),
+                                next.questionMessageId(),
+                                next.answerMessageId(),
+                                UUID.randomUUID(),
+                                startedAt,
+                                startedAt.plusSeconds(60)
+                        )
+                )
+        ).containsExactly(
+                Map.of(
+                        "role",
+                        "user",
+                        "content",
+                        "처음 질문"
+                ),
+                Map.of(
+                        "role",
+                        "assistant",
+                        "content",
+                        content
+                )
+        );
+    }
+
+    private String appendRetryContent(boolean partialAnswer) {
+        if (!partialAnswer) {
+            return "";
+        }
+        SearchAnswerWorkResult current = executions.claim(old.answerId())
+                .orElseThrow();
+        assertThat(
+                executions.append(
+                        current.answerId(),
+                        current.token(),
+                        "중지한 부분 답변"
+                )
+        ).isTrue();
+        return "중지한 부분 답변";
+    }
+
     @Test
     @DisplayName("동일 UUID는 생성 중·가용성 검사보다 먼저 기존 시도를 복구한다")
     void acceptRetry_success_idempotentBeforeBusy() {
@@ -304,6 +410,7 @@ class SearchAnswerRetryIntegrationTest {
                 current.token(),
                 "NEW_FAILURE"
         );
+        assertThat(visible()).isFalse();
         SearchQuestionAcceptedResult later = retry(UUID.randomUUID());
         assertThat(retry(request)).isEqualTo(accepted);
         assertThat(later.receiptId()).isNotEqualTo(accepted.receiptId());
