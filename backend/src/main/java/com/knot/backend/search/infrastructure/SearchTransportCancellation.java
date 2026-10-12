@@ -1,5 +1,7 @@
 package com.knot.backend.search.infrastructure;
 
+import com.knot.backend.search.domain.SearchException;
+import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.SearchToolScope;
 import java.io.InputStream;
@@ -23,7 +25,7 @@ public final class SearchTransportCancellation implements AutoCloseable {
             Duration interval
     ) {
         if (interval == null || interval.toMillis() < 1) {
-            throw new IllegalArgumentException("cancellation interval must be at least one millisecond");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_CONFIGURATION);
         }
         this.access = access;
         intervalMillis = interval.toMillis();

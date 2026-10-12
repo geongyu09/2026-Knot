@@ -81,7 +81,7 @@ public class SearchAnswerRetryService {
         }
         availability.requireAvailable();
         SearchAnswerExecution execution = repository.findExecutionForUpdate(answer.getId())
-                .orElseThrow(() -> new IllegalStateException("failed answer has no execution"));
+                .orElseThrow(() -> new SearchException(SearchErrorCode.INVALID_SEARCH_STATE));
         validateExecution(
                 execution,
                 conversationId,
@@ -173,10 +173,10 @@ public class SearchAnswerRetryService {
             long questionId
     ) {
         if (execution.getConversationId() != conversationId || execution.getQuestionId() != questionId) {
-            throw new IllegalStateException("retry execution does not match question");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         if (execution.getState() != SearchExecutionState.FINISHED) {
-            throw new IllegalStateException("failed answer execution is not finished");
+            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
     }
 

@@ -7,8 +7,8 @@ import com.knot.backend.search.presentation.dto.request.SearchAnswerRetryRequest
 import java.util.UUID;
 import com.knot.backend.search.application.dto.command.SearchQuestionCommand;
 import com.knot.backend.search.application.dto.result.SearchQuestionAcceptedResult;
-import com.knot.backend.search.infrastructure.SearchAnswerStream;
-import com.knot.backend.search.infrastructure.SearchStreamReservation;
+import com.knot.backend.search.presentation.stream.SearchAnswerStream;
+import com.knot.backend.search.presentation.stream.SearchStreamReservation;
 import com.knot.backend.search.presentation.dto.request.SearchQuestionRequest;
 import java.nio.charset.StandardCharsets;
 import lombok.RequiredArgsConstructor;

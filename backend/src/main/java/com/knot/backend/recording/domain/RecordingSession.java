@@ -21,8 +21,8 @@ import lombok.Getter;
 @Entity
 @Table(name = "recording_sessions")
 public class RecordingSession {
-
     private static final Pattern SHA_256_HEX_PATTERN = Pattern.compile("^[0-9a-f]{64}$");
+    private static final Duration CONNECTION_TIMEOUT = Duration.ofSeconds(120);
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -61,6 +61,10 @@ public class RecordingSession {
     @Column(name = "ended_at")
     private Instant endedAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "end_reason", length = 30)
+    private RecordingEndReason endReason;
+
     @Column(name = "last_seen_at", nullable = false)
     private Instant lastSeenAt;
 
@@ -95,6 +99,10 @@ public class RecordingSession {
         this.currentIntervalStartedAt = startedAt;
         this.lastSeenAt = startedAt;
         this.accumulatedRecordingMillis = 0L;
+    }
+
+    public static Instant disconnectionThreshold(Instant now) {
+        return now.minus(CONNECTION_TIMEOUT);
     }
 
     public static RecordingSession start(
@@ -162,6 +170,7 @@ public class RecordingSession {
 
     public void pause(Instant pausedAt) {
         ensureActive();
+        ensureConnected(pausedAt);
         if (status == RecordingStatus.PAUSED) {
             return;
         }
@@ -180,6 +189,7 @@ public class RecordingSession {
 
     public void resume(Instant resumedAt) {
         ensureActive();
+        ensureConnected(resumedAt);
         if (status == RecordingStatus.RECORDING) {
             return;
         }
@@ -202,10 +212,54 @@ public class RecordingSession {
             return;
         }
         ensureNotDiscarded();
+        if (expireIfDisconnected(endedAt)) {
+            return;
+        }
         stop(
                 RecordingStatus.ENDED,
                 endedAt
         );
+        endReason = RecordingEndReason.USER_ENDED;
+    }
+
+    public boolean expireIfDisconnected(Instant now) {
+        if (!isActive() || !isDisconnected(now)) {
+            return false;
+        }
+        Instant expiredAt = getExpiresAt();
+        if (status == RecordingStatus.RECORDING) {
+            accumulatedRecordingMillis += Duration.between(
+                    currentIntervalStartedAt,
+                    expiredAt
+            )
+                    .toMillis();
+        }
+        status = RecordingStatus.ENDED;
+        currentIntervalStartedAt = null;
+        endedAt = expiredAt;
+        endReason = RecordingEndReason.CONNECTION_EXPIRED;
+        return true;
+    }
+
+    public void recordHeartbeat(Instant receivedAt) {
+        if (!isActive()) {
+            return;
+        }
+        ensureConnected(receivedAt);
+        if (receivedAt.isAfter(lastSeenAt)) {
+            lastSeenAt = receivedAt;
+        }
+    }
+
+    public boolean isActive() {
+        return RecordingStatus.ACTIVE_STATUSES.contains(status);
+    }
+
+    public Instant getExpiresAt() {
+        if (!isActive()) {
+            return null;
+        }
+        return lastSeenAt.plus(CONNECTION_TIMEOUT);
     }
 
     public void discard(Instant discardedAt) {
@@ -266,6 +320,19 @@ public class RecordingSession {
             return lastSeenAt;
         }
         return pointInTime;
+    }
+
+    private boolean isDisconnected(Instant now) {
+        if (now == null) {
+            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_TIME);
+        }
+        return !now.isBefore(lastSeenAt.plus(CONNECTION_TIMEOUT));
+    }
+
+    private void ensureConnected(Instant now) {
+        if (isDisconnected(now)) {
+            throw new RecordingException(RecordingErrorCode.RECORDING_ALREADY_ENDED);
+        }
     }
 
     private void ensureActive() {

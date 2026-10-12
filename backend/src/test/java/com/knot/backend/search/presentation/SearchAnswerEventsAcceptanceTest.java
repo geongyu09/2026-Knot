@@ -600,7 +600,7 @@ class SearchAnswerEventsAcceptanceTest {
             long conversation,
             long answer
     ) throws Exception {
-        return client.send(
+        HttpResponse<InputStream> response = client.send(
                 request(
                         path(
                                 conversation,
@@ -610,6 +610,12 @@ class SearchAnswerEventsAcceptanceTest {
                 ),
                 HttpResponse.BodyHandlers.ofInputStream()
         );
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(
+                response.headers()
+                        .firstValue("Content-Type")
+        ).hasValueSatisfying(value -> assertThat(value).startsWith("text/event-stream"));
+        return response;
     }
 
     private HttpRequest request(

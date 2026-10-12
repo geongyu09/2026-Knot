@@ -65,6 +65,47 @@ class SearchFollowupQuestionIntakeIntegrationTest {
     private long member;
     private SearchQuestionAcceptedResult first;
 
+    @ParameterizedTest
+    @ValueSource(strings = {"EMPTY", "USER", "SEQUENCE"})
+    @DisplayName("손상된 대화의 후속 접수는 커스텀 오류로 거절하고 추가 저장하지 않는다")
+    void acceptNext_failure_invalidStoredConversation(String scenario) {
+        java.util.Optional<com.knot.backend.search.domain.SearchMessage> last = java.util.Optional.empty();
+        if ("USER".equals(scenario)) {
+            last = java.util.Optional.of(
+                    com.knot.backend.search.domain.SearchMessage.receiveQuestion(
+                            first.conversationId(),
+                            1,
+                            "질문",
+                            Instant.now()
+                    )
+            );
+        }
+        if ("SEQUENCE".equals(scenario)) {
+            last = java.util.Optional.of(
+                    com.knot.backend.search.domain.SearchMessage.startAnswer(
+                            first.conversationId(),
+                            Integer.MAX_VALUE,
+                            Instant.now()
+                    )
+            );
+        }
+        org.mockito.Mockito.doReturn(last)
+                .when(repository)
+                .findLastMessage(first.conversationId());
+        assertThatThrownBy(
+                () -> accept(
+                        UUID.randomUUID(),
+                        "후속 질문"
+                )
+        ).isInstanceOf(SearchException.class)
+                .satisfies(
+                        exception -> assertThat(((SearchException) exception).getErrorCode())
+                                .isEqualTo(SearchErrorCode.INVALID_SEARCH_STATE)
+                );
+        assertThat(count("search_messages")).isEqualTo(2);
+        assertThat(count("search_request_receipts")).isEqualTo(1);
+    }
+
     @BeforeEach
     void setUp() {
         jdbc.sql("TRUNCATE TABLE members, workspaces RESTART IDENTITY CASCADE")
@@ -522,7 +563,7 @@ class SearchFollowupQuestionIntakeIntegrationTest {
                         UUID.randomUUID(),
                         "후속"
                 )
-        ).isInstanceOf(IllegalStateException.class);
+        ).isInstanceOf(SearchException.class);
         assertUnchanged();
     }
 
@@ -542,7 +583,7 @@ class SearchFollowupQuestionIntakeIntegrationTest {
                         UUID.randomUUID(),
                         "후속"
                 )
-        ).isInstanceOf(IllegalStateException.class);
+        ).isInstanceOf(SearchException.class);
         assertUnchanged();
     }
 
@@ -581,7 +622,7 @@ class SearchFollowupQuestionIntakeIntegrationTest {
                                 "후속"
                         )
                 )
-        ).isInstanceOf(IllegalStateException.class);
+        ).isInstanceOf(SearchException.class);
         assertUnchanged();
     }
 

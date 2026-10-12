@@ -1,8 +1,7 @@
 package com.knot.backend.search.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
-import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -51,10 +50,10 @@ class SearchAnswerRetryTest {
                 NOW
         );
         // when & then
-        assertThatIllegalStateException().isThrownBy(streaming::retry);
-        assertThatIllegalStateException().isThrownBy(user::retry);
+        assertThatExceptionOfType(SearchException.class).isThrownBy(streaming::retry);
+        assertThatExceptionOfType(SearchException.class).isThrownBy(user::retry);
         streaming.stop();
-        assertThatIllegalStateException().isThrownBy(streaming::retry);
+        assertThatExceptionOfType(SearchException.class).isThrownBy(streaming::retry);
     }
 
     @Test
@@ -123,13 +122,13 @@ class SearchAnswerRetryTest {
                 NOW
         );
         // when & then
-        assertThatIllegalStateException().isThrownBy(execution::retry);
+        assertThatExceptionOfType(SearchException.class).isThrownBy(execution::retry);
         execution.claim(
                 UUID.randomUUID(),
                 NOW,
                 Duration.ofMinutes(1)
         );
-        assertThatIllegalStateException().isThrownBy(execution::retry);
+        assertThatExceptionOfType(SearchException.class).isThrownBy(execution::retry);
     }
 
     @Test
@@ -152,7 +151,7 @@ class SearchAnswerRetryTest {
         assertThat(receipt.getTargetId()).isEqualTo(4);
         assertThat(receipt.getQuestionMessageId()).isEqualTo(4);
         assertThat(receipt.getAnswerMessageId()).isEqualTo(5);
-        assertThatIllegalArgumentException().isThrownBy(
+        assertThatExceptionOfType(SearchException.class).isThrownBy(
                 () -> SearchRequestReceipt.retry(
                         1,
                         2,
