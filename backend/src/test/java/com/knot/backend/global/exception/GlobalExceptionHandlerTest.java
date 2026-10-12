@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -142,6 +143,78 @@ class GlobalExceptionHandlerTest {
                 response.getHeaders()
                         .getFirst(HttpHeaders.ALLOW)
         ).isNull();
+    }
+
+    @Test
+    @DisplayName("PATCH 요청의 미디어 오류는 Accept와 Accept-Patch를 함께 보존한다")
+    void handleMediaTypeNotSupported_success_patch() {
+        // given
+        HttpMediaTypeNotSupportedException exception = new HttpMediaTypeNotSupportedException(
+                MediaType.TEXT_PLAIN,
+                List.of(
+                        MediaType.APPLICATION_JSON,
+                        MediaType.APPLICATION_XML
+                ),
+                HttpMethod.PATCH
+        );
+
+        // when
+        ResponseEntity<ErrorResponse> response = handler.handleMediaTypeNotSupported(exception);
+
+        // then
+        assertHttpError(
+                response,
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                "UNSUPPORTED_MEDIA_TYPE",
+                "지원하지 않는 요청 본문 형식입니다"
+        );
+        assertThat(
+                response.getHeaders()
+                        .getAccept()
+        ).containsExactly(
+                MediaType.APPLICATION_JSON,
+                MediaType.APPLICATION_XML
+        );
+        assertThat(
+                response.getHeaders()
+                        .getAcceptPatch()
+        ).containsExactly(
+                MediaType.APPLICATION_JSON,
+                MediaType.APPLICATION_XML
+        );
+        assertThat(
+                exception.getHeaders()
+                        .getContentType()
+        ).isNull();
+    }
+
+    @Test
+    @DisplayName("지원 미디어 목록이 비어 있어도 415 JSON을 반환한다")
+    void handleMediaTypeNotSupported_success_emptyMediaTypes() {
+        // given
+        HttpMediaTypeNotSupportedException exception = new HttpMediaTypeNotSupportedException(
+                MediaType.TEXT_PLAIN,
+                List.of()
+        );
+
+        // when
+        ResponseEntity<ErrorResponse> response = handler.handleMediaTypeNotSupported(exception);
+
+        // then
+        assertHttpError(
+                response,
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                "UNSUPPORTED_MEDIA_TYPE",
+                "지원하지 않는 요청 본문 형식입니다"
+        );
+        assertThat(
+                response.getHeaders()
+                        .getAccept()
+        ).isEmpty();
+        assertThat(
+                response.getHeaders()
+                        .getAcceptPatch()
+        ).isEmpty();
     }
 
     @Test

@@ -37,6 +37,12 @@ public enum CommonErrorCode implements ErrorCode {
             "지원하지 않는 요청 메서드입니다"
     ),
 
+    UNSUPPORTED_MEDIA_TYPE(
+            ErrorCategory.UNSUPPORTED_MEDIA_TYPE,
+            "UNSUPPORTED_MEDIA_TYPE",
+            "지원하지 않는 요청 본문 형식입니다"
+    ),
+
     FORBIDDEN(
             ErrorCategory.FORBIDDEN,
             "FORBIDDEN",
