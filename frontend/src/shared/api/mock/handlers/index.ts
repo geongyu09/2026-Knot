@@ -24,6 +24,7 @@ import { workspaceSearchConversationQuestionsHandlers } from "./api/v1/workspace
 import { recordingAudioUploadCompleteHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioUploadComplete";
 import { recordingAudioUploadUrlHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioUploadUrl";
 import { recordingEndHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/end";
+import { recordingHeartbeatHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/heartbeat";
 import { recordingPauseHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/pause";
 import { recordingResumeHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/resume";
 import { currentRecordingHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/current";
@@ -47,6 +48,7 @@ export const handlers = [
   ...recordingPauseHandlers,
   ...recordingResumeHandlers,
   ...recordingEndHandlers,
+  ...recordingHeartbeatHandlers,
   ...recordingAudioUploadUrlHandlers,
   ...recordingAudioUploadCompleteHandlers,
   ...documentGenerationJobRetryHandlers,

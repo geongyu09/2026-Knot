@@ -17,6 +17,7 @@ import {
   PostRecordingAudioUploadCompleteResponseDto,
   PostRecordingAudioUploadUrlResponseDto,
   PostRecordingEndResponseDto,
+  PostRecordingHeartbeatResponseDto,
   PostRecordingPauseResponseDto,
   PostRecordingResponseDto,
   PostRecordingResumeResponseDto,
@@ -79,6 +80,7 @@ import {
   uploadRecordingAudioApi,
 } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioUploadUrl";
 import { endRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/end";
+import { sendRecordingHeartbeatApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/heartbeat";
 import { pauseRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/pause";
 import { resumeRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/resume";
 import { getCurrentRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/current";
@@ -101,6 +103,7 @@ import {
   recordingAudioUploadUrlResponse,
   recordingDetailsResponse,
   recordingEndResponse,
+  recordingHeartbeatResponse,
   recordingPauseResponse,
   recordingResumeResponse,
   recordingStartResponse,
@@ -624,6 +627,18 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
         }),
       ).resolves.toEqual(
         new PostRecordingResumeResponseDto(recordingResumeResponse),
+      );
+    });
+
+    it("POST .../recordings/:recordingId/heartbeat는 recordingHeartbeatResponse를 돌려준다", async () => {
+      await expect(
+        sendRecordingHeartbeatApi({
+          workspaceId: WORKSPACE_ID,
+          recordingId: RECORDING_ID,
+          body: CONTROL_PROOF,
+        }),
+      ).resolves.toEqual(
+        new PostRecordingHeartbeatResponseDto(recordingHeartbeatResponse),
       );
     });
 
