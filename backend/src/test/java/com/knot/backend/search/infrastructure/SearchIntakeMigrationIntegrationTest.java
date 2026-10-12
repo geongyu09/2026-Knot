@@ -35,7 +35,7 @@ class SearchIntakeMigrationIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"40", "44"})
-    @DisplayName("V40·V44에서 저장한 실패 답변과 부분 본문을 V45·V46 적용 뒤 보존한다")
+    @DisplayName("V40·V44에서 저장한 실패 답변과 부분 본문을 V45~V48 적용 뒤 보존한다")
     void migrate_success_preservesExistingMessages(String baseline) throws Exception {
         flyway(baseline).migrate();
         try (Connection connection = connection()) {
@@ -51,12 +51,12 @@ class SearchIntakeMigrationIntegrationTest {
             );
             jdbc.sql("UPDATE search_messages SET status = 'FAILED' WHERE role = 'ASSISTANT'")
                     .update();
-            assertThat(flyway("46").migrate().migrationsExecuted).isEqualTo(expectedMigrations(baseline));
+            assertThat(flyway("48").migrate().migrationsExecuted).isEqualTo(expectedMigrations(baseline));
             assertThat(
                     jdbc.sql("SELECT MAX(version::int) FROM flyway_schema_history WHERE success = TRUE")
                             .query(Integer.class)
                             .single()
-            ).isEqualTo(46);
+            ).isEqualTo(48);
             assertThat(
                     jdbc.sql("SELECT content FROM search_messages WHERE role = 'ASSISTANT' AND conversation_id = :id")
                             .param(
@@ -85,7 +85,7 @@ class SearchIntakeMigrationIntegrationTest {
             "UPDATE search_messages SET failure_code = 'ERROR' WHERE role = 'USER'"})
     @DisplayName("실행 token·기한 조합과 음수 제외 수 및 USER 오류 코드는 PostgreSQL CHECK로 거절한다")
     void migrate_failure_enforcesExecutionConstraints(String invalidSql) throws Exception {
-        flyway("46").migrate();
+        flyway("48").migrate();
         try (Connection connection = connection()) {
             JdbcClient jdbc = jdbc(connection);
             DocumentFixtures fixtures = new DocumentFixtures(jdbc);
@@ -129,9 +129,9 @@ class SearchIntakeMigrationIntegrationTest {
 
     private int expectedMigrations(String baseline) {
         if ("44".equals(baseline)) {
-            return 2;
+            return 4;
         }
-        return 3;
+        return 5;
     }
 
     private Flyway flyway(String target) {
