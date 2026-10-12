@@ -7,6 +7,7 @@ import useWorkspaceNav from "@hooks/domain/workspace/useWorkspaceNav";
 import DockColumn from "@primitives/layout/DockColumn";
 import LoadingIndicator from "@primitives/ui/LoadingIndicator";
 import ChatListDrawer from "@widgets/chat/ChatListDrawer";
+import RecordingHeartbeat from "@widgets/recording/RecordingHeartbeat";
 import SearchEvidenceList from "@widgets/search/SearchEvidenceList";
 import WorkspaceDock from "@widgets/workspace/WorkspaceDock";
 import WorkspaceGnb from "@widgets/workspace/WorkspaceGnb";
@@ -38,7 +39,7 @@ import type { DockedPanelName } from "./types/dockedPanel";
  * 들어갈 수 있는 워크스페이스인지도 이 레이아웃 범위에서 한 번만 판정한다(`useWorkspaceEntry`).
  * 조회에 성공하기 전에는 본문 대신 스피너를 두고, 401은 로그인으로, 403·404는 선택 화면으로 보낸다.
  *
- * 녹음은 레이아웃 안의 어느 화면에서나 이어지므로, 녹음 중 새로고침·탭 닫기 경고도 이 범위에서 건다.
+ * 녹음은 레이아웃 안의 어느 화면에서나 이어지므로, 녹음 중 새로고침·탭 닫기 경고를 이 범위에서 걸고 생존 신호도 여기서 보낸다.
  *
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1364-6863 GNB/Floating
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=526-772 탐색 결과/채팅 세션 목록
@@ -116,6 +117,9 @@ export default function WorkspaceLayout() {
           </EvidenceRail>
         )}
       </Body>
+
+      {/* 그리는 것은 없어요. 녹음 화면을 떠나도 신호가 끊기지 않게 레이아웃에 둬요 */}
+      <RecordingHeartbeat />
     </Container>
   );
 }
