@@ -34,7 +34,8 @@ import tools.jackson.databind.ObjectMapper;
 
 @Tag("integration")
 @ActiveProfiles("dev")
-@SpringBootTest
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+        "knot.search.agent.enabled=true", "knot.search.agent.signing-key=test-signing-key-32-characters-minimum"})
 @Import(TestcontainersConfiguration.class)
 @TestApplicationProperties
 class SearchDocumentToolServiceIntegrationTest {
@@ -63,6 +64,8 @@ class SearchDocumentToolServiceIntegrationTest {
     private SearchAgentProperties properties;
     private long workspaceId;
     private long memberId;
+    @org.springframework.boot.test.web.server.LocalServerPort
+    private int port;
 
     @BeforeEach
     void setUp() {
@@ -534,6 +537,111 @@ class SearchDocumentToolServiceIntegrationTest {
                         null
                 )
         ).hasMessage("INVALID_TOOL_ARGUMENTS");
+    }
+
+    @Test
+    @DisplayName("실제 MCP HTTP는 세 도구를 공개하고 답변별 인증 없이 호출할 수 없다")
+    void mcp_success_scopedHttpTools() throws Exception {
+        SearchToolTokenCodec codec = new SearchToolTokenCodec(
+                mapper,
+                properties,
+                clock
+        );
+        String bearer = codec.encode(
+                "knot-search-mcp",
+                scope
+        );
+        String init = "{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"test\",\"version\":\"1\"}}";
+        assertThat(
+                rpc(
+                        bearer,
+                        "initialize",
+                        init
+                ).statusCode()
+        ).isEqualTo(200);
+        java.net.http.HttpResponse<String> listed = rpc(
+                bearer,
+                "tools/list",
+                "{}"
+        );
+        assertThat(listed.statusCode()).isEqualTo(200);
+        assertThat(
+                mapper.readTree(listed.body())
+                        .path("result")
+                        .path("tools")
+        ).hasSize(3);
+        long doc = saveDocument(
+                workspaceId,
+                "ARCHIVED",
+                "결정",
+                "MCP 본문"
+        );
+        java.net.http.HttpResponse<String> read = rpc(
+                bearer,
+                "tools/call",
+                "{\"name\":\"read_document\",\"arguments\":{\"documentId\":" + doc + "}}"
+        );
+        assertThat(read.body()).contains("MCP 본문");
+        assertThat(
+                rpc(
+                        "invalid",
+                        "tools/list",
+                        "{}"
+                ).statusCode()
+        ).isEqualTo(401);
+        jdbc.sql("DELETE FROM workspace_members WHERE workspace_id = :w AND member_id = :m")
+                .param(
+                        "w",
+                        workspaceId
+                )
+                .param(
+                        "m",
+                        memberId
+                )
+                .update();
+        assertThat(
+                rpc(
+                        bearer,
+                        "tools/list",
+                        "{}"
+                ).statusCode()
+        ).isEqualTo(403);
+    }
+
+    private java.net.http.HttpResponse<String> rpc(
+            String bearer,
+            String method,
+            String params
+    ) throws Exception {
+        java.net.http.HttpRequest request = java.net.http.HttpRequest
+                .newBuilder(java.net.URI.create("http://127.0.0.1:" + port + "/internal/mcp"))
+                .header(
+                        "Authorization",
+                        "Bearer " + bearer
+                )
+                .header(
+                        "Accept",
+                        "application/json, text/event-stream"
+                )
+                .header(
+                        "Content-Type",
+                        "application/json"
+                )
+                .header(
+                        "MCP-Protocol-Version",
+                        "2025-06-18"
+                )
+                .POST(
+                        java.net.http.HttpRequest.BodyPublishers.ofString(
+                                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"" + method + "\",\"params\":" + params + "}"
+                        )
+                )
+                .build();
+        return java.net.http.HttpClient.newHttpClient()
+                .send(
+                        request,
+                        java.net.http.HttpResponse.BodyHandlers.ofString()
+                );
     }
 
     private String searchCursor() {
