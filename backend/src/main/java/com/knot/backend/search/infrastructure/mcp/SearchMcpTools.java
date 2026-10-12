@@ -1,5 +1,6 @@
 package com.knot.backend.search.infrastructure.mcp;
 
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.search.application.SearchDocumentToolService;
 import com.knot.backend.search.application.SearchToolScope;
 import com.knot.backend.search.application.dto.query.SearchDocumentParameters;
@@ -14,6 +15,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @RequiredArgsConstructor
+@lombok.extern.slf4j.Slf4j
 public class SearchMcpTools {
     private static final List<String> NAMES = List.of(
             "search_documents",
@@ -49,15 +51,32 @@ public class SearchMcpTools {
                     .isError(false)
                     .build();
         } catch (SearchToolException exception) {
+            ServerErrorLogger.record(
+                    log,
+                    "MCP phase=call",
+                    exception
+            );
             return McpSchema.CallToolResult.builder()
                     .addTextContent(exception.getCode())
                     .isError(true)
                     .build();
         } catch (IllegalArgumentException exception) {
+            ServerErrorLogger.error(
+                    log,
+                    "MCP phase=dispatch-or-serialize",
+                    exception
+            );
             return McpSchema.CallToolResult.builder()
                     .addTextContent("INVALID_TOOL_ARGUMENTS")
                     .isError(true)
                     .build();
+        } catch (RuntimeException exception) {
+            ServerErrorLogger.record(
+                    log,
+                    "MCP phase=dispatch-or-serialize",
+                    exception
+            );
+            throw exception;
         }
     }
 
@@ -68,19 +87,13 @@ public class SearchMcpTools {
         if ("search_documents".equals(request.name())) {
             return service.search(
                     scope,
-                    mapper.convertValue(
-                            request.arguments(),
-                            SearchDocumentParameters.class
-                    )
+                    parameters(request)
             );
         }
         if ("list_documents".equals(request.name())) {
             return service.list(
                     scope,
-                    mapper.convertValue(
-                            request.arguments(),
-                            SearchDocumentParameters.class
-                    )
+                    parameters(request)
             );
         }
         if ("read_document".equals(request.name())) {
@@ -96,6 +109,20 @@ public class SearchMcpTools {
             );
         }
         throw new SearchToolException("UNKNOWN_TOOL");
+    }
+
+    private SearchDocumentParameters parameters(McpSchema.CallToolRequest request) {
+        try {
+            return mapper.convertValue(
+                    request.arguments(),
+                    SearchDocumentParameters.class
+            );
+        } catch (IllegalArgumentException | tools.jackson.core.JacksonException exception) {
+            throw new SearchToolException(
+                    "INVALID_TOOL_ARGUMENTS",
+                    exception
+            );
+        }
     }
 
     private String nullableText(JsonNode value) {
