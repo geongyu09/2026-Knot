@@ -1,4 +1,4 @@
-package com.knot.backend.search.infrastructure;
+package com.knot.backend.search.presentation.stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
