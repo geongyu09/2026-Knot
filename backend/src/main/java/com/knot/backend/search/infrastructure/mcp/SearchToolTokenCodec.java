@@ -91,7 +91,7 @@ public class SearchToolTokenCodec implements SearchToolTokens {
         } catch (SearchException exception) {
             throw exception;
         } catch (RuntimeException exception) {
-            throw invalid();
+            throw invalid(exception);
         }
     }
 
@@ -166,5 +166,12 @@ public class SearchToolTokenCodec implements SearchToolTokens {
 
     private SearchToolException invalid() {
         return new SearchToolException("INVALID_TOOL_ARGUMENTS");
+    }
+
+    private SearchToolException invalid(Throwable cause) {
+        return new SearchToolException(
+                "INVALID_TOOL_ARGUMENTS",
+                cause
+        );
     }
 }
