@@ -321,8 +321,10 @@ describe("WorkspaceDock", () => {
       });
     };
 
-    /** 독에서 시작한 것처럼 마이크를 받고 서버 녹음 세션으로 녹음을 시작해 둬요 */
+    /** 독에서 시작한 것처럼 증명을 만들고 마이크를 받아 서버 녹음 세션으로 녹음을 시작해 둬요 */
     const startRecording = async () => {
+      getRecordingStartProof();
+
       await act(async () => {
         await useRecordingStore.getState().connectMicrophone();
         useRecordingStore.getState().startRecording({
@@ -727,6 +729,8 @@ describe("WorkspaceDock", () => {
         "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/end";
 
       beforeEach(async () => {
+        getRecordingStartProof();
+
         await act(async () => {
           await useRecordingStore.getState().connectMicrophone();
           useRecordingStore.getState().startRecording({
