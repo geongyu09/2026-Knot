@@ -94,7 +94,10 @@ const useRecordingControl = () => {
     [navigateToWorkspaceHome],
   );
 
-  /** 일시 실패면 URL 발급부터 최대 `AUDIO_UPLOAD_MAX_RETRIES`번 다시 시도해요. 최종 실패는 콘솔에만 남겨요 */
+  /**
+   * 일시 실패면 URL 발급부터 최대 `AUDIO_UPLOAD_MAX_RETRIES`번 다시 시도해요. 최종 실패는 콘솔에만 남겨요.
+   * 업로드 완료를 확인받았으면 `true`를 돌려줘요
+   */
   const uploadRecordedAudio = useCallback(
     async ({ workspaceId, recordingId, audio }: UploadRecordedAudioParams) => {
       for (let retryCount = 0; ; retryCount += 1) {
@@ -109,7 +112,7 @@ const useRecordingControl = () => {
           await uploadAudio({ uploadUrl, audio });
           await completeAudioUpload({ workspaceId, recordingId, uploadId });
 
-          return;
+          return true;
         } catch (error) {
           if (
             retryCount < AUDIO_UPLOAD_MAX_RETRIES &&
@@ -120,7 +123,7 @@ const useRecordingControl = () => {
 
           logRequestError("녹음 파일 업로드", error);
 
-          return;
+          return false;
         }
       }
     },
