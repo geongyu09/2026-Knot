@@ -1,5 +1,6 @@
 package com.knot.backend.search.infrastructure;
 
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.global.config.SearchWorkerProperties;
 import com.knot.backend.search.application.SearchAnswerExecutionService;
 import com.knot.backend.search.application.SearchAnswerWorker;
@@ -45,6 +46,18 @@ public class SearchAnswerScheduler {
 
     @Scheduled(fixedDelayString = "${knot.search.worker.poll-interval:1s}")
     public void dispatchQueued() {
+        try {
+            dispatchQueuedCandidates();
+        } catch (RuntimeException exception) {
+            ServerErrorLogger.record(
+                    log,
+                    "SearchAnswerScheduler phase=dispatchQueued-candidates",
+                    exception
+            );
+        }
+    }
+
+    private void dispatchQueuedCandidates() {
         for (long answerId : repository.findQueuedAnswerIds(properties.getCandidateLimit())) {
             try {
                 executor.execute(() -> execute(answerId));
@@ -56,6 +69,18 @@ public class SearchAnswerScheduler {
 
     @Scheduled(fixedDelayString = "${knot.search.worker.recovery-interval:5s}")
     public void recoverExpired() {
+        try {
+            recoverExpiredCandidates();
+        } catch (RuntimeException exception) {
+            ServerErrorLogger.record(
+                    log,
+                    "SearchAnswerScheduler phase=recoverExpired-candidates",
+                    exception
+            );
+        }
+    }
+
+    private void recoverExpiredCandidates() {
         for (long answerId : repository.findExpiredAnswerIds(
                 clock.instant(),
                 properties.getCandidateLimit()
@@ -63,9 +88,10 @@ public class SearchAnswerScheduler {
             try {
                 executions.expire(answerId);
             } catch (RuntimeException exception) {
-                log.warn(
-                        "Search answer recovery deferred: answerId={}",
-                        answerId
+                ServerErrorLogger.record(
+                        log,
+                        "Search recovery deferred answerId=" + answerId + " phase=recovery",
+                        exception
                 );
             }
         }
@@ -75,9 +101,10 @@ public class SearchAnswerScheduler {
         try {
             worker.execute(answerId);
         } catch (RuntimeException exception) {
-            log.warn(
-                    "Search answer execution deferred: answerId={}",
-                    answerId
+            ServerErrorLogger.record(
+                    log,
+                    "Search execution deferred answerId=" + answerId + " phase=execute",
+                    exception
             );
         }
     }

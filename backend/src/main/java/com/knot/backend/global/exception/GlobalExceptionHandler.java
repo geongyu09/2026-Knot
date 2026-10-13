@@ -1,6 +1,8 @@
 package com.knot.backend.global.exception;
 
 import com.knot.backend.global.response.ErrorResponse;
+import com.knot.backend.global.logging.ServerErrorLogger;
+import lombok.extern.slf4j.Slf4j;
 import com.knot.backend.global.response.FieldErrorResponse;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
@@ -24,12 +26,20 @@ import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(ProjectException.class)
     public ResponseEntity<ErrorResponse> handleProjectException(ProjectException exception) {
+        ServerErrorLogger.record(
+                log,
+                "HTTP project failure code=" + exception.getErrorCode()
+                        .getCode(),
+                exception
+        );
         ResponseEntity<ErrorResponse> response = respond(exception.getErrorCode());
-        if (exception instanceof RetryAfterException retryAfterException) {
+        if (RetryAfterException.class.isInstance(exception)) {
+            RetryAfterException retryAfterException = RetryAfterException.class.cast(exception);
             return ResponseEntity.status(response.getStatusCode())
                     .headers(response.getHeaders())
                     .header(
@@ -130,7 +140,12 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleUnexpectedException(Exception ignored) {
+    public ResponseEntity<ErrorResponse> handleUnexpectedException(Exception exception) {
+        ServerErrorLogger.record(
+                log,
+                "HTTP unexpected failure",
+                exception
+        );
         return respond(CommonErrorCode.INTERNAL_SERVER_ERROR);
     }
 

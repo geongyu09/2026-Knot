@@ -1,5 +1,6 @@
 package com.knot.backend.search.application;
 
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
@@ -37,11 +38,11 @@ public class SearchAnswerWorker {
         try {
             generate(work);
         } catch (RuntimeException exception) {
-            log.warn(
-                    "Search answer generation failed: answerId={}, exceptionType={}",
-                    answerId,
-                    exception.getClass()
-                            .getSimpleName()
+            ServerErrorLogger.recordTaskFailure(
+                    log,
+                    "Search generation failed workspaceId=" + work.workspaceId() + " answerId=" + answerId
+                            + " conversationId=" + work.conversationId() + " phase=generation",
+                    exception
             );
             executions.fail(
                     answerId,

@@ -1,5 +1,7 @@
 package com.knot.backend.auth.application;
 
+import ch.qos.logback.classic.Level;
+import com.knot.backend.testsupport.LogCapture;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
@@ -300,4 +302,51 @@ class AuthSessionRefreshServiceTest {
         when(member.isDeleted()).thenReturn(false);
         return member;
     }
+
+    @Test
+    @DisplayName("검증 중 내부 오류가 동시 재사용 분기에 소비되어도 원인을 한 번 기록한다")
+    void refresh_failure_internalCauseConsumedDuringReplay() {
+        AuthSession session = activeSession();
+        RefreshToken token = RefreshToken.of(
+                CURRENT_TOKEN_VALUE,
+                CURRENT_TOKEN_HASH
+        );
+        ConsumedRefreshToken consumed = ConsumedRefreshToken.create(
+                session.getId(),
+                CURRENT_TOKEN_HASH,
+                NOW
+        );
+        when(refreshTokenProvider.identify(CURRENT_TOKEN_VALUE)).thenReturn(token);
+        when(consumedRefreshTokenRepository.findByRefreshTokenHash(CURRENT_TOKEN_HASH)).thenReturn(
+                Optional.empty(),
+                Optional.of(consumed)
+        );
+        when(authSessionRepository.findByIdForUpdate(session.getId())).thenReturn(Optional.of(session));
+        doThrow(
+                new AuthException(
+                        AuthErrorCode.UNAUTHENTICATED,
+                        new AuthException(
+                                AuthErrorCode.AUTHENTICATION_INTERNAL_ERROR,
+                                new IllegalStateException("private-sql")
+                        )
+                )
+        ).when(refreshTokenProvider)
+                .validate(token);
+        try (LogCapture logs = new LogCapture(AuthSessionRefreshService.class)) {
+            assertThat(service.refresh(CURRENT_TOKEN_VALUE)).isEmpty();
+            assertThat(logs.events()).singleElement()
+                    .satisfies(event -> {
+                        assertThat(event.getLevel()).isEqualTo(Level.ERROR);
+                        assertThat(event.getFormattedMessage()).contains("IllegalStateException")
+                                .doesNotContain(
+                                        "private-sql",
+                                        CURRENT_TOKEN_VALUE,
+                                        CURRENT_TOKEN_HASH
+                                );
+                    });
+        }
+        assertThat(session.getRevokedAt()).isEqualTo(NOW);
+        verify(authSessionRepository).save(session);
+    }
+
 }

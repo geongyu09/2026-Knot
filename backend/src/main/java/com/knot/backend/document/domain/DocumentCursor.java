@@ -106,7 +106,10 @@ public class DocumentCursor {
             );
             return cursor;
         } catch (IllegalArgumentException | DateTimeException exception) {
-            throw new DocumentException(DocumentErrorCode.INVALID_PARAMETER);
+            throw new DocumentException(
+                    DocumentErrorCode.INVALID_PARAMETER,
+                    exception
+            );
         }
     }
 

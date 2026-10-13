@@ -63,7 +63,10 @@ public class DocumentGenerationWorkerProperties {
                 throw new DocumentException(DocumentErrorCode.INVALID_GENERATION_WORKER_CONFIGURATION);
             }
         } catch (ArithmeticException exception) {
-            throw new DocumentException(DocumentErrorCode.INVALID_GENERATION_WORKER_CONFIGURATION);
+            throw new DocumentException(
+                    DocumentErrorCode.INVALID_GENERATION_WORKER_CONFIGURATION,
+                    exception
+            );
         }
     }
 }

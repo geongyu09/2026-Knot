@@ -182,17 +182,29 @@ public class LmStudioClient implements LlmClient {
             );
         } catch (TimeoutException exception) {
             future.cancel(true);
-            throw new LlmException(LlmErrorCode.LLM_TIMEOUT);
+            throw new LlmException(
+                    LlmErrorCode.LLM_TIMEOUT,
+                    exception
+            );
         } catch (InterruptedException exception) {
             future.cancel(true);
             Thread.currentThread()
                     .interrupt();
-            throw new LlmException(LlmErrorCode.LLM_CALL_INTERRUPTED);
+            throw new LlmException(
+                    LlmErrorCode.LLM_CALL_INTERRUPTED,
+                    exception
+            );
         } catch (ExecutionException exception) {
             if (HttpTimeoutException.class.isInstance(exception.getCause())) {
-                throw new LlmException(LlmErrorCode.LLM_TIMEOUT);
+                throw new LlmException(
+                        LlmErrorCode.LLM_TIMEOUT,
+                        exception
+                );
             }
-            throw new LlmException(LlmErrorCode.LLM_UNAVAILABLE);
+            throw new LlmException(
+                    LlmErrorCode.LLM_UNAVAILABLE,
+                    exception
+            );
         }
     }
 
@@ -254,7 +266,10 @@ public class LmStudioClient implements LlmClient {
         try {
             root = mapper.readTree(responseBody);
         } catch (JacksonException exception) {
-            throw new LlmException(LlmErrorCode.LLM_INVALID_RESPONSE);
+            throw new LlmException(
+                    LlmErrorCode.LLM_INVALID_RESPONSE,
+                    exception
+            );
         }
         if (root == null || !root.isObject()) {
             throw new LlmException(LlmErrorCode.LLM_INVALID_RESPONSE);

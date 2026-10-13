@@ -1,6 +1,8 @@
 package com.knot.backend.global.exception;
 
 import com.knot.backend.global.response.ErrorResponse;
+import com.knot.backend.global.logging.ServerErrorLogger;
+import lombok.extern.slf4j.Slf4j;
 import com.knot.backend.search.presentation.SearchQuestionController;
 import com.knot.backend.search.presentation.SearchAnswerEventsController;
 import jakarta.servlet.http.HttpServletResponse;
@@ -18,6 +20,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 @RestControllerAdvice(assignableTypes = {SearchQuestionController.class, SearchAnswerEventsController.class})
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RequiredArgsConstructor
+@Slf4j
 public class SearchQuestionExceptionHandler {
 
     private final GlobalExceptionHandler global;
@@ -29,6 +32,11 @@ public class SearchQuestionExceptionHandler {
             HttpServletRequest request
     ) {
         if (response.isCommitted()) {
+            ServerErrorLogger.record(
+                    log,
+                    "SSE committed failure",
+                    exception
+            );
             completeAsyncRequest(request);
             return ResponseEntity.status(response.getStatus())
                     .build();
@@ -53,6 +61,11 @@ public class SearchQuestionExceptionHandler {
             HttpServletRequest request
     ) {
         if (response.isCommitted()) {
+            ServerErrorLogger.record(
+                    log,
+                    "SSE committed failure",
+                    exception
+            );
             completeAsyncRequest(request);
             return ResponseEntity.status(response.getStatus())
                     .build();

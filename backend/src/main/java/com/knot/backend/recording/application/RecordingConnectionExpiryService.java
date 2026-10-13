@@ -1,5 +1,6 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.recording.domain.RecordingSessionRepository;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
@@ -37,9 +38,9 @@ public class RecordingConnectionExpiryService {
         try {
             return expiryTransaction.expire(recordingId);
         } catch (RuntimeException exception) {
-            log.warn(
-                    "녹음 자동 종료 회수에 실패했습니다. recordingId={}",
-                    recordingId,
+            ServerErrorLogger.record(
+                    log,
+                    "Recording expiry recordingId=" + recordingId + " phase=expire",
                     exception
             );
             return false;

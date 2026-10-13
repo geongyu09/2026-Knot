@@ -64,7 +64,7 @@ public class LlmDocumentTopicClassifier implements DocumentTopicClassifier {
             }
             return root;
         } catch (JacksonException exception) {
-            throw invalidResponse();
+            throw invalidResponse(exception);
         }
     }
 
@@ -98,7 +98,7 @@ public class LlmDocumentTopicClassifier implements DocumentTopicClassifier {
         try {
             return DocumentTopic.of(topic);
         } catch (DocumentException exception) {
-            throw invalidResponse();
+            throw invalidResponse(exception);
         }
     }
 
@@ -108,5 +108,12 @@ public class LlmDocumentTopicClassifier implements DocumentTopicClassifier {
 
     private DocumentException invalidResponse() {
         return new DocumentException(DocumentErrorCode.INVALID_TOPIC_CLASSIFICATION_RESPONSE);
+    }
+
+    private DocumentException invalidResponse(Throwable cause) {
+        return new DocumentException(
+                DocumentErrorCode.INVALID_TOPIC_CLASSIFICATION_RESPONSE,
+                cause
+        );
     }
 }

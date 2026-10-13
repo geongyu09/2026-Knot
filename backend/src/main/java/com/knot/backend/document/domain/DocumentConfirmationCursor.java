@@ -93,7 +93,10 @@ public class DocumentConfirmationCursor {
             );
             return cursor;
         } catch (IllegalArgumentException exception) {
-            throw new DocumentException(DocumentErrorCode.INVALID_PARAMETER);
+            throw new DocumentException(
+                    DocumentErrorCode.INVALID_PARAMETER,
+                    exception
+            );
         }
     }
 

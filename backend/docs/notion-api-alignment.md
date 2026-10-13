@@ -14,6 +14,57 @@
 5. queue는 [정합성 워크플로](../../docs/harness/notion-alignment.md#queue-완료-조건)의 비교·반영 조건을
    만족한 뒤 처리한다. 캐시 수집이나 DB의 구현 표시만으로 완료 처리하지 않는다.
 
+## 2026-10-13 홈 확인 카드·목록 정렬 충돌 대조
+
+09:24:39 KST 시작한 실행 `698856`은 44.523초 뒤 성공했다. 같은 실행의 inventory와
+시스템 열을 포함한 sources CSV로 캐시를 갱신하고 `--check` 일치를 확인했다.
+앞선 실행 `687899`에서 발견한 변경 5페이지는 이번 수집에서도 동일했다.
+아래는 원문·관련 DB 속성·Issue·ADR·로컬 코드를 읽은 결과이며 서비스 배포 확인은 아니다.
+
+- **홈 표시 정책:** [HOME-R4](https://www.notion.so/3ddb4351752281229eb4cb22812ab6b1)의
+  revision `2026-10-12T15:45:00Z`는 확인할 문서를 개수 제한 없이 표시하도록 정했다.
+  높이 312와 제목을 유지하고, 공간을 넘으면 목록 영역만 스크롤한다. 스크롤 시작에 개수
+  기준은 없으며 제목 숫자는 전체 개수, 99 초과는 `99+`, 0개는 숫자를 숨긴다.
+  확인 완료 문서는 즉시 빠지고 전체 보기 링크는 두지 않는다.
+  [CONF-R7](https://www.notion.so/3ddb435175228162a20fed6d4e66ad95), revision `15:35:00Z`도
+  개수·순서를 HOME-R4에 위임한다. [HOME-02](https://www.notion.so/3ddb4351752281b0b8efe6b6ac60fa2a),
+  revision `15:45:00Z`는 문서가 없어도 확인 카드와 최근 문서 카드를 유지하고 안내를 표시한다.
+- **현재 조회 적용 기준:** 확인 카드는 `myConfirmation=PENDING` 필터를 사용한다.
+  최신 API는 `size`를 한 응답의 크기로 정의하고 `nextCursor`로 끝까지 이어 조회하게 한다.
+  전체 표시 정책을 페이지 없는 API 추가나 첫 페이지 크기 확대만으로 충족했다고 보지 않는다.
+  `topics[].documentCount`는 필터된 전체 수이며 페이지 범위가 적용되지 않는다.
+  생성 이후 가입자는 최신 API·기존 [Proposed ADR](../../docs/adr/496-document-my-confirmation-state.md)의
+  `NOT_REQUIRED`를 유지한다. 홈 원문에 남은 후기 가입자 미정 문구로 확인 대상을 늘리지 않는다.
+- 열린 [#405](https://github.com/woowacourse-teams/2026-Knot/issues/405)는 확인 카드에 PENDING,
+  최근 카드에만 `size=3`을 명시한다. 확인 카드도 3개라는 기존 확정 계약으로 읽지 않는다.
+  열린 [#585](https://github.com/woowacourse-teams/2026-Knot/issues/585)의 최근 문서 최대 3개는
+  이번 HOME-R4에서도 유지된다. 현재 로컬 프론트에서 확인 카드 구현을 찾지 못했으므로
+  전체 커서 연결·총수·확인 후 제거·내부 스크롤은 해당 카드 구현 시 대조할 항목으로 남긴다.
+- **정렬 출처 충돌:** [목록 API](https://www.notion.so/3ebb435175228015bf4dc8d04281b461)의
+  revision `2026-10-12T09:29:00Z`는 `createdAt` 내림차순·동률 `id` 내림차순이다.
+  10/12 오전에 있던 녹음 시작 시각 정렬과 전달 필드·커서 보완 설명은 삭제됐다.
+  반면 [DOC-R16](https://www.notion.so/3edb4351752281b2804dc5be8aaf76e3),
+  [목록 UseCase](https://www.notion.so/dd8b4351752282e0913f81a76f2bef21), HOME-R4와
+  [변경 로그](https://www.notion.so/3deb4351752281a99829f339cc9ceeb4)는 녹음 시작 시각순을 유지한다.
+  [사용자 지정 최신 API 우선 기준](../../docs/product/current-v2-mvp.md#2026-10-06-최신-api-기준)에
+  따라 현재 목록 조회·커서는 생성 시각·ID 계약을 적용한다. 녹음 시각순이 API에 반영됐다는
+  아래 10/12 기록은 당시 관측이며 현재 적용 기준으로 사용하지 않는다.
+- 로컬 `DocumentListJpaRepository`의 정렬·커서 경계와 `DocumentListService`의 다음 커서는
+  생성 시각·ID이고, 닫힌 [#495](https://github.com/woowacourse-teams/2026-Knot/issues/495)와
+  [기존 목록 계획](../../docs/implement-plan/495-document-list.md)도 같다.
+  현재 API와 이 부분은 일치한다. 녹음 시작 시각 응답 필드·동률 키·커서 변경을 새로 확정하지 않는다.
+  홈·문서 목록·사이드바의 기획 순서를 실제로 충족하려면 API·UseCase·기획의 정합 조정이 필요하다.
+  목록 API의 DB 구현 YES와 본문의 controller 미구현 표시는 여전히 다르므로 상태값으로 판정하지 않는다.
+- **사이드바 표시 보완:** 변경 로그 revision `15:45:00Z`는 헤더 아래 내용 영역 하나가
+  남은 높이를 채우고 빈 상태·실패 안내를 그 영역의 가로·세로 가운데에 두도록 명시한다.
+  Sidebar/Docs와 대화 없는 Sidebar/Chat에 같은 규칙을 적용한다. 기존 작은 실패 안내·행
+  스켈레톤·독립 재조회 정책도 유지한다. 열린 [#609](https://github.com/woowacourse-teams/2026-Knot/issues/609)의
+  시안 미확인·긴 실패 문구와 현재 V1 `WorkspaceSidebar`, 정렬·크기 인자가 없는 `InlineError`는
+  후속 대조가 필요하다. 기존 권한 이동·재조회 실패 시 받은 목록 유지 계약은 그대로 적용한다.
+
+pending 145개는 실제 후보별 비교·반영 확인 전까지 유지했다. 기능 코드·진행 중인 계획·ADR·
+원격 Issue는 변경하지 않았으며, 캐시 일치를 정제된 문서나 구현 전체의 완료로 판정하지 않았다.
+
 ## 2026-10-12 문서 목록 정렬·사이드바 상태 대조
 
 13:02:16 KST 시작한 실행 `671487`은 1분 20.472초 뒤 성공했다.
