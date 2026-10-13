@@ -1,5 +1,8 @@
 import { GetDocumentsResponseDto } from "@api/dto/document";
-import { documentsResponse } from "@api/mock/responses/document";
+import {
+  documentDetailsResponse,
+  documentsResponse,
+} from "@api/mock/responses/document";
 import { mockServer } from "@api/mock/server";
 import type {
   DocumentListItem,
@@ -15,11 +18,14 @@ import {
   render,
   screen,
   waitFor,
+  waitForElementToBeRemoved,
   within,
 } from "@testing-library/react";
 import { formatDate } from "@utils/formatDate";
+import DocumentViewer from "@widgets/document/DocumentViewer";
 import { delay, http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider, useParams } from "react-router";
+import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 
 import PendingDocumentsCard from ".";
@@ -27,8 +33,9 @@ import PendingDocumentsCard from ".";
 const WORKSPACE_ID = "1";
 // 경로 파라미터 자리에 무엇이 와도 잡도록 fetch 상수 대신 패턴을 적어요
 const DOCUMENTS_REQUEST = "*/api/v1/workspaces/:workspaceId/documents";
-const CONFIRMATION_REQUEST =
-  "*/api/v1/workspaces/:workspaceId/documents/:documentId/confirmations/me";
+const DOCUMENT_REQUEST =
+  "*/api/v1/workspaces/:workspaceId/documents/:documentId";
+const CONFIRMATION_REQUEST = `${DOCUMENT_REQUEST}/confirmations/me`;
 const CARD_TITLE = "확인이 필요한 문서";
 const LOADING_LABEL = "확인이 필요한 문서를 불러오고 있어요";
 const LOAD_FAILED_NOTICE = "목록을 불러오지 못했어요. 다시 시도해 주세요.";
@@ -52,15 +59,22 @@ function DocumentViewStub() {
   return <p>문서 보기 화면 {documentId}</p>;
 }
 
+interface RenderPendingDocumentsCardParams {
+  /** 문서 보기 경로에 그릴 화면. 넘기지 않으면 어느 문서로 갔는지만 표시해요 */
+  documentElement?: ReactNode;
+}
+
 // 이동을 확인할 수 있게 로그인 · 워크스페이스 선택 경로에도 표시만 하는 화면을 둬요
-const renderPendingDocumentsCard = () => {
+const renderPendingDocumentsCard = ({
+  documentElement = <DocumentViewStub />,
+}: RenderPendingDocumentsCardParams = {}) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const router = createMemoryRouter(
     [
       { path: PATH_ROUTE.WORKSPACE_HOME, element: <PendingDocumentsCard /> },
-      { path: PATH_ROUTE.DOCUMENT, element: <DocumentViewStub /> },
+      { path: PATH_ROUTE.DOCUMENT, element: documentElement },
       { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
       { path: PATH_ROUTE.WORKSPACE, element: <p>워크스페이스 선택 화면</p> },
     ],
@@ -81,6 +95,8 @@ const renderPendingDocumentsCard = () => {
       </QueryClientProvider>
     </ThemeProvider>,
   );
+
+  return { router };
 };
 
 const respondWith = (response: DocumentsResponse) =>
@@ -92,6 +108,34 @@ const findCard = () => screen.findByRole("region", { name: CARD_TITLE });
 
 // 제목 옆의 문서 수는 숫자만 있는 글이에요
 const queryCount = (card: HTMLElement) => within(card).queryByText(/^\d+$/);
+
+// 그 제목의 행이 한 번이라도 그려졌는지 지켜봐요.
+// 홈에 앞서 받아 둔 목록이 먼저 그려지면 방금 확인한 문서가 잠깐 보였다 사라져서, 마지막 모습만 봐서는 알 수 없어요
+const watchRow = (title: string) => {
+  let isShown = false;
+  const observer = new MutationObserver(() => {
+    const hasRow = screen
+      .queryAllByRole("listitem")
+      .some((item) => within(item).queryByText(title) !== null);
+
+    if (hasRow) isShown = true;
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+
+  return { wasShown: () => isShown, stop: () => observer.disconnect() };
+};
+
+// 내가 아직 확인하지 않았고 문서 보기를 열 수 있는(상세 mock이 있는) 문서
+const findConfirmableDocument = () => {
+  const [{ id: confirmableId }] = documentDetailsResponse;
+  const confirmable = expectedDocuments.find(({ id }) => id === confirmableId);
+
+  if (confirmable === undefined) {
+    throw new Error("확인할 문서를 찾지 못했어요");
+  }
+
+  return confirmable;
+};
 
 const clickRetry = async () =>
   fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
@@ -395,5 +439,110 @@ describe("PendingDocumentsCard", () => {
       await screen.findByText(`문서 보기 화면 ${target.id}`),
     ).toBeInTheDocument();
     expect(confirmationRequestCount).toBe(0);
+  });
+
+  it("문서 보기에서 문서를 확인하고 홈으로 돌아오면, 그 문서는 카드에 다시 보이지 않고 문서 수가 줄어 있다", async () => {
+    const target = findConfirmableDocument();
+    const { router } = renderPendingDocumentsCard({
+      documentElement: <DocumentViewer />,
+    });
+
+    const row = await findRow(target.title);
+    fireEvent.click(within(row).getByRole("button", { name: "확인하기" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "문서를 확인했어요" }),
+    );
+    // 확인이 끝나면 누를 수 없는 「확인했어요」로 바뀌어요
+    expect(
+      await screen.findByRole("button", { name: "확인했어요" }),
+    ).toBeDisabled();
+
+    const confirmedRow = watchRow(target.title);
+    await act(async () => {
+      await router.navigate(-1);
+    });
+
+    try {
+      expect(await screen.findAllByRole("listitem")).toHaveLength(
+        expectedDocuments.length - 1,
+      );
+      expect(
+        within(await findCard()).getByText(
+          String(expectedDocuments.length - 1),
+        ),
+      ).toBeInTheDocument();
+    } finally {
+      confirmedRow.stop();
+    }
+    expect(confirmedRow.wasShown()).toBe(false);
+  });
+
+  it("문서 보기에서 확인 대상이 아니라는 응답(409)을 받고 홈으로 돌아오면, 그 문서는 카드에 다시 보이지 않는다", async () => {
+    const target = findConfirmableDocument();
+    const [targetDetail] = documentDetailsResponse;
+    // 확인 요청을 받기 전에는 확인이 필요하다고, 받은 뒤에는 확인 대상이 아니라고 답해요
+    let isConfirmRequested = false;
+    mockServer.use(
+      http.get(DOCUMENTS_REQUEST, ({ request }) => {
+        const { searchParams } = new URL(request.url);
+
+        // 문서 보기도 같은 주소로 같은 녹음의 문서를 받아요. 확인 대기 문서 요청이 아니면 기본 응답에 맡겨요
+        if (searchParams.get("myConfirmation") !== "PENDING") return undefined;
+
+        return HttpResponse.json(
+          isConfirmRequested
+            ? {
+                ...pendingDocumentsResponse,
+                items: pendingItems.filter(({ id }) => id !== target.id),
+              }
+            : pendingDocumentsResponse,
+        );
+      }),
+      http.get(DOCUMENT_REQUEST, () =>
+        HttpResponse.json(
+          isConfirmRequested
+            ? { ...targetDetail, myConfirmationState: "NOT_REQUIRED" }
+            : targetDetail,
+        ),
+      ),
+      http.put(CONFIRMATION_REQUEST, () => {
+        isConfirmRequested = true;
+
+        return HttpResponse.json(
+          {
+            code: "CONFIRMATION_NOT_REQUIRED",
+            message: "확인 대상이 아닙니다.",
+          },
+          { status: 409 },
+        );
+      }),
+    );
+    const { router } = renderPendingDocumentsCard({
+      documentElement: <DocumentViewer />,
+    });
+
+    const row = await findRow(target.title);
+    fireEvent.click(within(row).getByRole("button", { name: "확인하기" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "문서를 확인했어요" }),
+    );
+    // 문서를 다시 받아 확인 대상이 아닌 것을 알면 확인 버튼이 사라져요
+    await waitForElementToBeRemoved(() =>
+      screen.queryByRole("button", { name: "문서를 확인했어요" }),
+    );
+
+    const notRequiredRow = watchRow(target.title);
+    await act(async () => {
+      await router.navigate(-1);
+    });
+
+    try {
+      expect(await screen.findAllByRole("listitem")).toHaveLength(
+        expectedDocuments.length - 1,
+      );
+    } finally {
+      notRequiredRow.stop();
+    }
+    expect(notRequiredRow.wasShown()).toBe(false);
   });
 });
