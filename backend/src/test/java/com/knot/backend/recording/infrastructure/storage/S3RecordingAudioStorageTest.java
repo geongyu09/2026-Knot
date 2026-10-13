@@ -18,6 +18,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
@@ -33,6 +36,7 @@ class S3RecordingAudioStorageTest {
     private HttpServer server;
     private final AtomicReference<String> lastRequest = new AtomicReference<>();
     private final AtomicReference<Integer> headStatus = new AtomicReference<>(200);
+    private final AtomicReference<String> versionId = new AtomicReference<>("version+one=");
     private S3RecordingAudioStorage storage;
 
     @BeforeEach
@@ -61,6 +65,13 @@ class S3RecordingAudioStorageTest {
                                     "Content-Length",
                                     "1024"
                             );
+                    if (versionId.get() != null) {
+                        exchange.getResponseHeaders()
+                                .add(
+                                        "x-amz-version-id",
+                                        versionId.get()
+                                );
+                    }
                     exchange.sendResponseHeaders(
                             headStatus.get(),
                             -1
@@ -85,6 +96,112 @@ class S3RecordingAudioStorageTest {
     @AfterEach
     void tearDown() {
         server.stop(0);
+    }
+
+    @Test
+    @DisplayName("확인한 S3 버전을 GET URL에 서명해 이후 같은 key가 덮어써져도 입력을 고정한다")
+    void presignDownloadPinsVersion() {
+        // given
+        versionId.set("version+one=");
+
+        // when
+        String url = storage.presignDownload(
+                "recordings/7/key",
+                "audio/webm",
+                1024
+        );
+
+        // then
+        assertThat(lastRequest.get()).isEqualTo("HEAD /knot-audio/recordings/7/key");
+        assertThat(url).contains("versionId=version%2Bone%3D")
+                .contains("X-Amz-Expires=900")
+                .contains("X-Amz-SignedHeaders=host");
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"null", " "})
+    @DisplayName("버전 없는 객체와 null 버전은 변경될 수 있어 전사 URL을 발급하지 않는다")
+    void presignDownloadRejectsMutableVersion(String value) {
+        // given
+        versionId.set(value);
+
+        // when
+        Throwable failure = catchThrowable(
+                () -> storage.presignDownload(
+                        "recordings/7/key",
+                        "audio/webm",
+                        1024
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+    }
+
+    @Test
+    @DisplayName("현재 버전의 크기가 예약과 다르면 전사 URL을 발급하지 않는다")
+    void presignDownloadRejectsWrongLength() {
+        // given
+        versionId.set("fixed-version");
+
+        // when
+        Throwable failure = catchThrowable(
+                () -> storage.presignDownload(
+                        "recordings/7/key",
+                        "audio/webm",
+                        2048
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+    }
+
+    @Test
+    @DisplayName("현재 버전의 형식이 예약과 다르면 전사 URL을 발급하지 않는다")
+    void presignDownloadRejectsWrongType() {
+        // given
+        versionId.set("fixed-version");
+
+        // when
+        Throwable failure = catchThrowable(
+                () -> storage.presignDownload(
+                        "recordings/7/key",
+                        "audio/wav",
+                        1024
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+    }
+
+    @Test
+    @DisplayName("원본 객체가 사라지면 전사 URL을 발급하지 않는다")
+    void presignDownloadRejectsMissingObject() {
+        // given
+        headStatus.set(404);
+
+        // when
+        Throwable failure = catchThrowable(
+                () -> storage.presignDownload(
+                        "recordings/7/key",
+                        "audio/webm",
+                        1024
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
     }
 
     @Test

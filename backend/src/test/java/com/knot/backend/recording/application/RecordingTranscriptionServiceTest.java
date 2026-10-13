@@ -840,8 +840,7 @@ class RecordingTranscriptionServiceTest {
                 "recording.webm",
                 "audio/webm",
                 100,
-                startedAt,
-                NOW.minusSeconds(1)
+                startedAt
         );
     }
     private AiTranscript transcript() {

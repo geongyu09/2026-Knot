@@ -3,10 +3,10 @@
 [#639](https://github.com/woowacourse-teams/2026-Knot/issues/639)는 #637의 통신과 #638의 결과 저장을 같은 PR에서 연결한다.
 AI 서버는 별도 PR #633의 계약을 사용한다. 1,000줄 강제 상한 대신 완결된 유스케이스를 기준으로 한다.
 
-현재 Draft의 미완료 항목은 불변 S3 입력 URL 발급이다. 완료 후에도 기존 PUT URL은 만료 전까지 같은 객체를
-덮어쓸 수 있다. S3 버전 고정 GET, PUT URL 만료 후 시작, 임시 복사본 중 사용자 선택을 기다린다.
-선택 전 `S3RecordingAudioStorage.presignDownload`는 `AUDIO_STORAGE_UNAVAILABLE`로 거절한다.
-따라서 실제 S3를 사용한 전사는 아직 실행할 수 없으며 아래 흐름의 저장소 경계는 mock으로 검증했다.
+2026-10-13 사용자 결정으로 S3 버전 고정 GET을 사용한다. worker가 시작할 때 HEAD로 버전·형식·크기를 확인하고
+그 versionId를 GET 서명에 포함한다. 이후 같은 key의 PUT은 전사 입력을 바꾸지 않는다.
+버전이 없거나 비어 있거나 literal `null` 버전이면 `AUDIO_STORAGE_UNAVAILABLE`로 거절한다.
+실제 버킷의 버전 관리·연결 경로는 아직 검증하지 않았으며 버킷 설정을 변경하지 않았다.
 
 ## 실행 흐름
 
@@ -42,6 +42,11 @@ AI 서버는 별도 PR #633의 계약을 사용한다. 1,000줄 강제 상한 �
 
 기한을 넘긴 실행은 다음 검사에서 실패한다. 진행 중인 요청 하나는 자신의 요청 제한 시간까지 걸릴 수 있다.
 AI 응답은 256MiB로 제한하고 리다이렉트를 따르지 않는다. URL·토큰·원문·공급자 오류 메시지는 로그에 복사하지 않는다.
+
+저장소는 기존 `recording.audio-storage.*` 설정을 사용한다. 전사하려는 객체에 실제 S3 versionId가 있어야 하고,
+서명 주체에 해당 버전의 `s3:GetObjectVersion` 권한이 필요하다. GET 유효 기간은 기존 업로드 URL TTL을 사용한다.
+AI downloader가 허용하는 AWS S3 HTTPS endpoint를 사용해야 하며 NCP·임의 endpoint는 허용하지 않는다.
+Backend 재시작은 진행 시도를 실패로 회수하므로 입력 버전을 별도 DB 컬럼에 저장하거나 자동 재개하지 않는다.
 
 Backend 프로세스 하나의 운영을 전제로 한다. DB admission은 동시 요청을 막지만 재기동 회수는 여러 인스턴스의
 lease 복구 프로토콜이 아니다. AI 취소 API가 없어 Backend의 제한 시간 이후 모델이 실행 중이면 다음 요청은 BUSY일 수 있다.
@@ -81,4 +86,8 @@ lease 복구 프로토콜이 아니다. AI 취소 API가 없어 Backend의 제�
 - `python3 -m unittest discover .github/scripts -p 'test_*.py' -v`: 8건 통과.
 - source hash gate 통과, 최종 변경 파일 자동 감사 위반 0건. 전체 소스 감사는 기존 1,163건을 보고해
   공통 `verify_backend.py --full`이 Gradle 전에 중단됐다. 위 Gradle task를 직접 실행해 검증했다.
-- 독립 정적 리뷰에서 추가 수정 항목을 발견하지 못했다. 입력 고정 미결정과 실제 S3·운영 경로 미검증은 남아 있다.
+- 독립 정적 리뷰에서 추가 수정 항목을 발견하지 못했다. 실제 S3·운영 경로 검증은 남아 있다.
+- 후속 버전 고정 GET 서명·버전 없음/`null`·메타데이터 불일치·객체 소실 거절과 HTTP→DB 연결 시험을 통과했다.
+  `spotlessCheck test --tests '*S3RecordingAudioStorageTest' --tests '*RecordingTranscriptionServiceTest'
+  integrationTest --tests '*RecordingTranscriptionStateIntegrationTest' --tests '*RecordingTranscriptionFlowIntegrationTest'
+  bootJar` 성공: 저장소 14건·worker 19건·상태 21건·연결 2건, 실패·오류 0건이다.

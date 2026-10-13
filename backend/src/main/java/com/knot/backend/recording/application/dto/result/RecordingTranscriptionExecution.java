@@ -10,7 +10,6 @@ public record RecordingTranscriptionExecution(
         String storageKey,
         String contentType,
         long contentLength,
-        Instant startedAt,
-        Instant uploadUrlExpiresAt
+        Instant startedAt
 ) {
 }

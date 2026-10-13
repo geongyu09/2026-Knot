@@ -240,8 +240,7 @@ public class RecordingTranscriptionStateService {
                 upload.getStorageKey(),
                 upload.getContentType(),
                 upload.getContentLength(),
-                transcription.getStartedAt(),
-                upload.getLastUploadUrlExpiresAt()
+                transcription.getStartedAt()
         );
     }
 
