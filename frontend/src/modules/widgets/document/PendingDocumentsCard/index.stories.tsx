@@ -40,6 +40,10 @@ const ISOLATED_DOCS = { story: { inline: false, iframeHeight: 360 } };
  * - 카드의 높이는 문서 수와 상관없이 같아요. 행은 3개까지 한 번에 보이고, 더 많으면 제목 줄은 그 자리에 둔 채 행만 카드 안에서 스크롤해요.
  * - 불러오는 중이거나 확인할 문서가 없을 때도 제목과 카드의 높이는 그대로 두고, 문서 수를 숨긴 채 행 자리만 바꿔요.
  *   불러오는 중의 회색 덩어리는 실제 행과 간격 · 높이가 같아서, 불러온 뒤 내용이 움직이지 않아요.
+ * - 서버 오류나 네트워크 문제로 못 불러오면 이 카드 안에서만 「목록을 불러오지 못했어요. 다시 시도해 주세요.」와 `다시 시도`를 보여 줘요. 홈의 다른 카드는 그대로예요.
+ *   `다시 시도`를 누르면 화면을 새로고침하지 않고 이 카드의 문서만 다시 받아요. 새로고침하면 진행 중인 녹음이 사라지기 때문이에요.
+ * - 문서를 한 번 받은 뒤에는 다시 불러오기만 실패해도 받은 문서를 계속 보여 줘요.
+ * - 로그인이 풀렸으면 로그인 화면으로, 워크스페이스 멤버가 아니거나 없는 워크스페이스면 워크스페이스 선택 화면으로 보내요.
  */
 const meta = {
   title: "Document/PendingDocumentsCard",
@@ -142,6 +146,28 @@ export const NoDocuments: Story = {
       handlers: {
         documents: http.get(DOCUMENTS_REQUEST, () =>
           HttpResponse.json(EMPTY_DOCUMENTS_RESPONSE),
+        ),
+      },
+    },
+  },
+};
+
+/**
+ * 확인할 문서를 불러오지 못했을 때예요. 서버 오류, 네트워크 문제, 잘못된 주소(400), 이어 받는 도중의 실패가 모두 이 모습이에요.
+ * 이 스토리에서는 「다시 시도」를 눌러도 계속 실패해요.
+ */
+export const LoadFailed: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3892-15733",
+    },
+    msw: {
+      handlers: {
+        documents: http.get(
+          DOCUMENTS_REQUEST,
+          () => new HttpResponse(null, { status: 500 }),
         ),
       },
     },

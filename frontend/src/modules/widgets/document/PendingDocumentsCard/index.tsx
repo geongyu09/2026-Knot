@@ -1,11 +1,13 @@
 import usePendingDocumentsQuery from "@api/queries/usePendingDocumentsQuery";
 import styled from "@emotion/styled";
 import useNavigateToDocument from "@hooks/domain/document/useNavigateToDocument";
+import useWorkspaceAccessGuard from "@hooks/domain/workspace/useWorkspaceAccessGuard";
 
 import { useTitleId } from "./model/useTitleId";
 import { useWorkspaceId } from "./model/useWorkspaceId";
 import PendingDocumentRow from "./ui/PendingDocumentRow";
 import PendingDocumentsEmpty from "./ui/PendingDocumentsEmpty";
+import PendingDocumentsLoadFailed from "./ui/PendingDocumentsLoadFailed";
 import PendingDocumentsSkeleton from "./ui/PendingDocumentsSkeleton";
 import { sumDocumentCounts } from "./utils/sumDocumentCounts";
 
@@ -17,16 +19,40 @@ import { sumDocumentCounts } from "./utils/sumDocumentCounts";
  * 문서가 많아도 카드의 높이는 그대로예요. 제목 줄은 그 자리에 두고 행만 카드 안에서 스크롤해요.
  *
  * 문서를 받지 못했거나 문서가 없을 때는 상태 화면이 카드 전체를 대신 그려요. 제목과 카드의 높이는 같고, 문서 수는 숨겨요.
- * - 불러오는 중: `PendingDocumentsSkeleton`.
+ * - 불러오는 중: `PendingDocumentsSkeleton`. 401 · 403 · 404로 다른 화면에 보내는 동안에도 이 화면이에요.
+ * - 불러오기 실패: `PendingDocumentsLoadFailed`. 이어 받는 도중에 실패한 경우도 받은 일부를 쓰지 않고 이 화면이에요. 「다시 시도」는 이 카드의 문서만 처음부터 다시 받아요.
  * - 확인할 문서 없음: `PendingDocumentsEmpty`.
+ *
+ * 문서를 한 번 받은 뒤에는 다시 불러오기만 실패해도 받은 문서를 계속 보여줘요.
  *
  * 주소의 워크스페이스 id는 숫자인지 확인하지 않고 그대로 요청해요. 잘못된 주소인지는 서버가 판단해요.
  */
 export default function PendingDocumentsCard() {
   const { titleId } = useTitleId();
   const { workspaceId } = useWorkspaceId();
-  const { data: pendingDocuments } = usePendingDocumentsQuery({ workspaceId });
+  const {
+    data: pendingDocuments,
+    error,
+    isError,
+    refetch,
+  } = usePendingDocumentsQuery({ workspaceId });
   const { navigateToDocument } = useNavigateToDocument();
+
+  // 로그인이 풀렸으면 로그인 화면으로, 워크스페이스에 들어갈 수 없으면 선택 화면으로 보내요
+  const { isRedirecting } = useWorkspaceAccessGuard({ error });
+
+  // 화면을 새로고침하지 않고 이 카드의 문서만 다시 조회해요. 새로고침하면 브라우저 안에만 있는 진행 중인 녹음이 사라져요
+  const handleRetry = () => {
+    refetch();
+  };
+
+  // 받은 문서가 없고 실패했을 때 실패 안내를 보여줘요. 다른 화면으로 보내는 중이면 가는 동안 안내가 잠깐 보이지 않게 빼요
+  const shouldShowLoadFailed =
+    pendingDocuments === undefined && isError && !isRedirecting;
+
+  if (shouldShowLoadFailed) {
+    return <PendingDocumentsLoadFailed onRetry={handleRetry} />;
+  }
 
   if (pendingDocuments === undefined) {
     return <PendingDocumentsSkeleton />;

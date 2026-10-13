@@ -9,7 +9,14 @@ import { ThemeProvider } from "@emotion/react";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { formatDate } from "@utils/formatDate";
 import { delay, http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider, useParams } from "react-router";
@@ -24,6 +31,7 @@ const CONFIRMATION_REQUEST =
   "*/api/v1/workspaces/:workspaceId/documents/:documentId/confirmations/me";
 const CARD_TITLE = "확인이 필요한 문서";
 const LOADING_LABEL = "확인이 필요한 문서를 불러오고 있어요";
+const LOAD_FAILED_NOTICE = "목록을 불러오지 못했어요. 다시 시도해 주세요.";
 
 const isPending = ({ myConfirmationState }: DocumentListItem) =>
   myConfirmationState === "PENDING";
@@ -44,6 +52,7 @@ function DocumentViewStub() {
   return <p>문서 보기 화면 {documentId}</p>;
 }
 
+// 이동을 확인할 수 있게 로그인 · 워크스페이스 선택 경로에도 표시만 하는 화면을 둬요
 const renderPendingDocumentsCard = () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -52,6 +61,8 @@ const renderPendingDocumentsCard = () => {
     [
       { path: PATH_ROUTE.WORKSPACE_HOME, element: <PendingDocumentsCard /> },
       { path: PATH_ROUTE.DOCUMENT, element: <DocumentViewStub /> },
+      { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
+      { path: PATH_ROUTE.WORKSPACE, element: <p>워크스페이스 선택 화면</p> },
     ],
     {
       initialEntries: [
@@ -81,6 +92,9 @@ const findCard = () => screen.findByRole("region", { name: CARD_TITLE });
 
 // 제목 옆의 문서 수는 숫자만 있는 글이에요
 const queryCount = (card: HTMLElement) => within(card).queryByText(/^\d+$/);
+
+const clickRetry = async () =>
+  fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
 
 // 행마다 「확인하기」가 있어, 행을 제목으로 먼저 찾아요
 const findRow = async (title: string) => {
@@ -232,6 +246,133 @@ describe("PendingDocumentsCard", () => {
     expect(queryCount(card)).not.toBeInTheDocument();
     expect(within(card).queryByRole("listitem")).not.toBeInTheDocument();
   });
+
+  it.each([
+    ["잘못된 요청(400)", () => new HttpResponse(null, { status: 400 })],
+    ["서버 오류(500)", () => new HttpResponse(null, { status: 500 })],
+    ["네트워크 오류", () => HttpResponse.error()],
+  ])(
+    "%s로 불러오지 못하면 제목은 그대로 두고 문서 수 없이 안내와 「다시 시도」를 보여 준다",
+    async (_, respond) => {
+      mockServer.use(http.get(DOCUMENTS_REQUEST, respond));
+
+      renderPendingDocumentsCard();
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        LOAD_FAILED_NOTICE,
+      );
+
+      // 실패한 뒤에는 실패 카드가 새로 그려져서, 안내가 보인 뒤에 카드를 찾아요
+      const card = await findCard();
+
+      expect(
+        within(card).getByRole("button", { name: "다시 시도" }),
+      ).toBeInTheDocument();
+      expect(
+        within(card).getByRole("heading", { level: 2, name: CARD_TITLE }),
+      ).toBeInTheDocument();
+      expect(queryCount(card)).not.toBeInTheDocument();
+    },
+  );
+
+  it("「다시 시도」를 누르면 다시 불러와 문서 행을 보여 준다", async () => {
+    let requestCount = 0;
+    mockServer.use(
+      http.get(DOCUMENTS_REQUEST, () => {
+        requestCount += 1;
+
+        return requestCount === 1
+          ? new HttpResponse(null, { status: 500 })
+          : HttpResponse.json(pendingDocumentsResponse);
+      }),
+    );
+
+    renderPendingDocumentsCard();
+    await clickRetry();
+
+    expect(await screen.findAllByRole("listitem")).toHaveLength(
+      expectedDocuments.length,
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(requestCount).toBe(2);
+  });
+
+  it("문서를 보는 동안 다시 불러오기가 서버 오류로 실패하면 받은 문서를 계속 보여 준다", async () => {
+    let failedRequestCount = 0;
+    renderPendingDocumentsCard();
+    await screen.findAllByRole("listitem");
+
+    mockServer.use(
+      http.get(DOCUMENTS_REQUEST, () => {
+        failedRequestCount += 1;
+
+        return new HttpResponse(null, { status: 500 });
+      }),
+    );
+    // 다른 탭에 다녀오면 문서를 다시 받아요
+    act(() => {
+      window.dispatchEvent(new Event("visibilitychange"));
+    });
+    await waitFor(() => expect(failedRequestCount).toBe(1));
+
+    expect(screen.getAllByRole("listitem")).toHaveLength(
+      expectedDocuments.length,
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("이어 받는 도중 한 번이라도 실패하면 받은 문서를 보여 주지 않고 불러오지 못했다고 알린다", async () => {
+    const [firstItem] = pendingItems;
+    mockServer.use(
+      http.get(DOCUMENTS_REQUEST, ({ request }) => {
+        const cursor = new URL(request.url).searchParams.get("cursor");
+
+        // 첫 페이지는 문서 하나와 다음 페이지가 있다는 표시를 주고, 다음 페이지 요청은 실패해요
+        return cursor === null
+          ? HttpResponse.json({
+              ...pendingDocumentsResponse,
+              items: [firstItem],
+              nextCursor: String(firstItem.id),
+            })
+          : new HttpResponse(null, { status: 500 });
+      }),
+    );
+
+    renderPendingDocumentsCard();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      LOAD_FAILED_NOTICE,
+    );
+    expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["로그인이 풀렸으면(401)", "로그인 화면", 401],
+    ["워크스페이스 멤버가 아니면(403)", "워크스페이스 선택 화면", 403],
+    ["없는 워크스페이스면(404)", "워크스페이스 선택 화면", 404],
+  ])(
+    "%s 불러오지 못했다는 안내를 보여 주지 않고 %s으로 보낸다",
+    async (_, destination, status) => {
+      mockServer.use(
+        http.get(DOCUMENTS_REQUEST, () => new HttpResponse(null, { status })),
+      );
+      // 다른 화면으로 가면 카드가 사라져, 간 뒤에는 안내가 있었는지 알 수 없어요. 가기 전까지 그려진 화면을 모두 지켜봐요
+      let isAlertShown = false;
+      const observer = new MutationObserver(() => {
+        if (screen.queryByRole("alert") !== null) isAlertShown = true;
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      renderPendingDocumentsCard();
+
+      try {
+        expect(await screen.findByText(destination)).toBeInTheDocument();
+      } finally {
+        observer.disconnect();
+      }
+      expect(isAlertShown).toBe(false);
+    },
+  );
 
   it("「확인하기」를 누르면 그 문서 보기로 이동하고, 확인 요청은 보내지 않는다", async () => {
     let confirmationRequestCount = 0;
