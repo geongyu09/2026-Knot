@@ -26,7 +26,6 @@ class RecordingTranscriptionTest {
         assertThat(transcription.getAttemptId()).isEqualTo(ATTEMPT);
         assertThat(transcription.getStatus()).isEqualTo(TranscriptionStatus.PROCESSING);
         assertThat(transcription.getFailureCode()).isNull();
-        assertThat(transcription.getTranscriptId()).isNull();
         assertThat(transcription.getFinishedAt()).isNull();
     }
 
@@ -40,21 +39,17 @@ class RecordingTranscriptionTest {
                 START
         );
         // when
-        boolean succeeded = transcription.succeed(
+        transcription.succeed(
                 ATTEMPT,
-                81,
                 START.plusSeconds(1)
         );
-        boolean failed = transcription.fail(
+        transcription.fail(
                 ATTEMPT,
                 "TIMEOUT",
                 START.plusSeconds(2)
         );
         // then
-        assertThat(succeeded).isTrue();
-        assertThat(failed).isFalse();
         assertThat(transcription.getStatus()).isEqualTo(TranscriptionStatus.SUCCEEDED);
-        assertThat(transcription.getTranscriptId()).isEqualTo(81);
         assertThat(transcription.getFailureCode()).isNull();
     }
 
@@ -105,19 +100,16 @@ class RecordingTranscriptionTest {
                 START.plusSeconds(1)
         );
         // when
-        boolean succeeded = transcription.succeed(
+        transcription.succeed(
                 ATTEMPT,
-                81,
                 START.plusSeconds(2)
         );
-        boolean failed = transcription.fail(
+        transcription.fail(
                 ATTEMPT,
                 "LATE",
                 START.plusSeconds(2)
         );
         // then
-        assertThat(succeeded).isFalse();
-        assertThat(failed).isFalse();
         assertThat(transcription.isProcessing(next)).isTrue();
     }
 
@@ -152,7 +144,6 @@ class RecordingTranscriptionTest {
         );
         transcription.succeed(
                 ATTEMPT,
-                81,
                 START
         );
         // when

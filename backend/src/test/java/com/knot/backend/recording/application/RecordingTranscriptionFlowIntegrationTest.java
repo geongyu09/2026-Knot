@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.recording.application.dto.result.RecordingDetailResult;
+import com.knot.backend.recording.application.dto.result.RecordingAudioUploadCompletionResult;
 import com.knot.backend.recording.application.dto.result.RecordingTranscriptionRetryResult;
 import com.knot.backend.recording.application.dto.result.StoredAudioObject;
 import com.knot.backend.recording.domain.RecordingAudioUpload;
@@ -304,6 +305,36 @@ class RecordingTranscriptionFlowIntegrationTest {
                 )
                         .transcriptionFailureCode()
         ).isNull();
+    }
+
+    @Test
+    @DisplayName("전사 접수 전 삭제된 오디오의 완료 통지는 전사를 새로 만들지 않는다")
+    void repeatedCompletionDoesNotTranscribeDeletedAudio() {
+        // given
+        Upload upload = reserveUpload();
+        transactions.executeWithoutResult(status -> {
+            RecordingAudioUpload audio = uploads.findById(upload.uploadId())
+                    .orElseThrow();
+            audio.complete(
+                    1024,
+                    "audio/webm",
+                    NOW
+            );
+            audio.recordDeleted(NOW);
+        });
+
+        // when
+        RecordingAudioUploadCompletionResult result = completion.complete(
+                workspaceId,
+                memberId,
+                upload.recordingId(),
+                upload.uploadId()
+        );
+
+        // then
+        assertThat(result.uploadStatus()).isEqualTo(RecordingAudioUploadStatus.COMPLETED);
+        assertThat(state.find(upload.recordingId())).isNull();
+        assertThat(SUBMITTED).isEmpty();
     }
 
     private Upload reserveUpload() {

@@ -4,22 +4,17 @@ CREATE TABLE recording_transcriptions (
     attempt_id UUID NOT NULL UNIQUE,
     status VARCHAR(20) NOT NULL,
     failure_code VARCHAR(100),
-    transcript_id BIGINT,
     started_at TIMESTAMPTZ NOT NULL,
     finished_at TIMESTAMPTZ,
-    CONSTRAINT fk_recording_transcriptions_transcript FOREIGN KEY (transcript_id, recording_session_id)
-        REFERENCES transcripts(id, recording_session_id) ON DELETE SET NULL (transcript_id),
     CONSTRAINT chk_recording_transcriptions_status CHECK (status IN ('PROCESSING', 'SUCCEEDED', 'FAILED')),
     CONSTRAINT chk_recording_transcriptions_state CHECK (
-        (status = 'PROCESSING' AND failure_code IS NULL AND transcript_id IS NULL AND finished_at IS NULL)
+        (status = 'PROCESSING' AND failure_code IS NULL AND finished_at IS NULL)
         OR (status = 'SUCCEEDED' AND failure_code IS NULL AND finished_at IS NOT NULL)
         OR (status = 'FAILED' AND failure_code IS NOT NULL AND length(trim(failure_code)) > 0
-            AND transcript_id IS NULL AND finished_at IS NOT NULL)
+            AND finished_at IS NOT NULL)
     ),
     CONSTRAINT chk_recording_transcriptions_time CHECK (finished_at IS NULL OR finished_at >= started_at)
 );
-
--- Transcript retention may clear transcript_id while preserving SUCCEEDED and its retry prohibition.
 
 -- The AI server retains one current result; save it before admitting the next recording.
 CREATE UNIQUE INDEX uk_recording_transcriptions_processing

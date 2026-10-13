@@ -59,40 +59,22 @@ public class RecordingAudioUploadCompletionTransaction {
                 recordingId,
                 uploadId
         );
-        if (upload.isCompleted()) {
-            registerTranscription(
-                    recordingId,
-                    upload
+        if (!upload.isCompleted()) {
+            if (!storedObject.exists()) {
+                throw new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_COMPLETED);
+            }
+            upload.complete(
+                    storedObject.contentLength(),
+                    storedObject.contentType(),
+                    clock.instant()
+                            .truncatedTo(ChronoUnit.MICROS)
             );
-            return RecordingAudioUploadCompletionResult.from(upload);
+            recordingAudioUploadRepository.save(upload);
         }
-        if (!storedObject.exists()) {
-            throw new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_COMPLETED);
+        if (transcriptionProperties.enabled() && upload.getDeletedAt() == null) {
+            transcriptionState.registerAutomatic(recordingId);
         }
-        upload.complete(
-                storedObject.contentLength(),
-                storedObject.contentType(),
-                clock.instant()
-                        .truncatedTo(ChronoUnit.MICROS)
-        );
-        recordingAudioUploadRepository.save(upload);
-        registerTranscription(
-                recordingId,
-                upload
-        );
         return RecordingAudioUploadCompletionResult.from(upload);
-    }
-
-    private void registerTranscription(
-            long recordingId,
-            RecordingAudioUpload upload
-    ) {
-        if (transcriptionProperties.enabled()) {
-            transcriptionState.registerAutomatic(
-                    recordingId,
-                    upload
-            );
-        }
     }
 
     private RecordingAudioUpload findValidatedUpload(

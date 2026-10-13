@@ -3,14 +3,16 @@ package com.knot.backend.recording.infrastructure.transcription;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import com.knot.backend.global.config.TranscriptionConfig;
 import com.knot.backend.global.config.TranscriptionProperties;
+import com.knot.backend.recording.application.dto.result.AiTranscript;
 import com.knot.backend.recording.application.dto.result.AiTranscriptionJob;
-import com.knot.backend.recording.domain.TranscriptionErrorCode;
-import com.knot.backend.recording.domain.TranscriptionException;
+import com.knot.backend.recording.domain.RecordingErrorCode;
+import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.testsupport.LlmHttpServer;
-import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -30,7 +32,7 @@ class AiTranscriptionHttpClientTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Test
-    @DisplayName("접수 계약의 세 필드와 인증 헤더를 전송하며 HTTP 202와 작업 상태를 구분한다")
+    @DisplayName("접수에 필요한 두 필드와 인증 헤더를 전송하며 HTTP 202와 작업 상태를 구분한다")
     void submit_success() throws Exception {
         // given
         try (LlmHttpServer server = new LlmHttpServer()) {
@@ -49,8 +51,7 @@ class AiTranscriptionHttpClientTest {
             // when
             AiTranscriptionJob job = client.submit(
                     ID,
-                    "https://audio.example/private?signature=secret",
-                    2
+                    "https://audio.example/private?signature=secret"
             );
 
             // then
@@ -62,7 +63,7 @@ class AiTranscriptionHttpClientTest {
             assertThat(method.get()).isEqualTo("POST");
             assertThat(server.authorization()).isEqualTo("Bearer test-secret");
             JsonNode request = mapper.readTree(server.requestBody());
-            assertThat(request.size()).isEqualTo(3);
+            assertThat(request.size()).isEqualTo(2);
             assertThat(
                     request.path("attemptId")
                             .asString()
@@ -71,43 +72,7 @@ class AiTranscriptionHttpClientTest {
                     request.path("downloadUrl")
                             .asString()
             ).isEqualTo("https://audio.example/private?signature=secret");
-            assertThat(
-                    request.path("speakerCount")
-                            .asInt()
-            ).isEqualTo(2);
             assertThat(server.requestCount()).isEqualTo(1);
-        }
-    }
-
-    @Test
-    @DisplayName("선택적인 화자 수 없이 접수하고 진행 중 상태를 조회한다")
-    void submit_success_optionalSpeaker() throws Exception {
-        // given
-        try (LlmHttpServer server = new LlmHttpServer()) {
-            respond(
-                    server,
-                    202,
-                    processing(),
-                    new AtomicReference<>()
-            );
-            AiTranscriptionHttpClient client = client(
-                    server,
-                    Duration.ofSeconds(2)
-            );
-
-            // when
-            AiTranscriptionJob job = client.submit(
-                    ID,
-                    "https://audio.example/file",
-                    null
-            );
-
-            // then
-            assertThat(job.status()).isEqualTo(AiTranscriptionJob.Status.PROCESSING);
-            assertThat(
-                    mapper.readTree(server.requestBody())
-                            .has("speakerCount")
-            ).isFalse();
         }
     }
 
@@ -155,18 +120,18 @@ class AiTranscriptionHttpClientTest {
         }
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"STT_FAILED", "INFERENCE_TIMEOUT", "CANCELED",
-            "untrusted response https://secret?token=secret"})
-    @DisplayName("실패 작업은 알려진 코드만 보존하고 공급자 임의 문자열은 정적 코드로 대체한다")
-    void get_success_failedJob(String failure) throws Exception {
+    @Test
+    @DisplayName("진행 중 작업은 결과 없이 반환한다")
+    void get_success_processing() throws Exception {
         // given
         try (LlmHttpServer server = new LlmHttpServer()) {
-            String body = "{\"attemptId\":\"" + ID + "\",\"status\":\"FAILED\",\"failureCode\":\"" + failure + "\"}";
             respond(
                     server,
                     200,
-                    body,
+                    jobBody(
+                            "PROCESSING",
+                            null
+                    ),
                     new AtomicReference<>()
             );
             AiTranscriptionHttpClient client = client(
@@ -178,9 +143,37 @@ class AiTranscriptionHttpClientTest {
             AiTranscriptionJob job = client.get(ID);
 
             // then
-            String expected = failure.startsWith("untrusted") ? "INFERENCE_FAILED" : failure;
+            assertThat(job.status()).isEqualTo(AiTranscriptionJob.Status.PROCESSING);
+            assertThat(job.result()).isNull();
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"STT_FAILED", "INFERENCE_TIMEOUT", "FUTURE_RUNNER_FAILURE"})
+    @DisplayName("실패 원인은 서버의 개별 오류 목록을 복제하지 않고 제한된 코드 형식으로 받는다")
+    void get_success_failedJob(String failure) throws Exception {
+        // given
+        try (LlmHttpServer server = new LlmHttpServer()) {
+            respond(
+                    server,
+                    200,
+                    jobBody(
+                            "FAILED",
+                            failure
+                    ),
+                    new AtomicReference<>()
+            );
+            AiTranscriptionHttpClient client = client(
+                    server,
+                    Duration.ofSeconds(2)
+            );
+
+            // when
+            AiTranscriptionJob job = client.get(ID);
+
+            // then
             assertThat(job.status()).isEqualTo(AiTranscriptionJob.Status.FAILED);
-            assertThat(job.failureCode()).isEqualTo(expected);
+            assertThat(job.failureCode()).isEqualTo(failure);
             assertThat(job.result()).isNull();
         }
     }
@@ -189,10 +182,10 @@ class AiTranscriptionHttpClientTest {
     @CsvSource({"401, AI_AUTHENTICATION_FAILED", "403, AI_AUTHENTICATION_FAILED", "404, AI_JOB_NOT_FOUND",
             "409, AI_BUSY", "503, AI_NOT_READY", "500, AI_UNAVAILABLE", "400, AI_INVALID_RESPONSE",
             "302, AI_INVALID_RESPONSE", "202, AI_INVALID_RESPONSE"})
-    @DisplayName("HTTP 오류를 정적 오류로 변환하며 재시도나 리다이렉트를 실행하지 않는다")
+    @DisplayName("HTTP 오류를 구분하고 자동 재시도나 리다이렉트 없이 정적 오류를 반환한다")
     void get_failure_status(
             int status,
-            TranscriptionErrorCode expected
+            RecordingErrorCode expected
     ) throws Exception {
         // given
         try (LlmHttpServer server = new LlmHttpServer()) {
@@ -211,10 +204,9 @@ class AiTranscriptionHttpClientTest {
             Throwable thrown = catchThrowable(() -> client.get(ID));
 
             // then
-            assertThat(thrown).isInstanceOf(TranscriptionException.class)
+            assertThat(thrown).isInstanceOf(RecordingException.class)
                     .satisfies(
-                            exception -> assertThat(((TranscriptionException) exception).getErrorCode())
-                                    .isEqualTo(expected)
+                            exception -> assertThat(((RecordingException) exception).getErrorCode()).isEqualTo(expected)
                     )
                     .hasMessage(expected.getMessage());
             assertThat(server.requestCount()).isEqualTo(1);
@@ -229,7 +221,10 @@ class AiTranscriptionHttpClientTest {
             respond(
                     server,
                     200,
-                    processing(),
+                    jobBody(
+                            "PROCESSING",
+                            null
+                    ),
                     new AtomicReference<>()
             );
             AiTranscriptionHttpClient client = client(
@@ -241,20 +236,24 @@ class AiTranscriptionHttpClientTest {
             Throwable thrown = catchThrowable(
                     () -> client.submit(
                             ID,
-                            "https://audio.example/file",
-                            null
+                            "https://audio.example/file"
                     )
             );
 
             // then
-            assertThat(thrown).hasMessage(TranscriptionErrorCode.AI_INVALID_RESPONSE.getMessage());
+            assertThat(thrown).hasMessage(RecordingErrorCode.AI_INVALID_RESPONSE.getMessage());
         }
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"null", "[]", "{}", "not-json", "{\"attemptId\":\"wrong\",\"status\":\"PROCESSING\"}",
-            "{\"status\":\"PROCESSING\",\"status\":\"FAILED\"}"})
-    @DisplayName("잘못된 작업 응답과 중복 JSON 필드를 거절한다")
+    @ValueSource(strings = {"null", "[]", "{}", "not-json",
+            "{\"attemptId\":\"019bbbc0-51ae-7000-8000-000000000002\",\"status\":\"PROCESSING\"}",
+            "{\"attemptId\":\"019bbbc0-51ae-7000-8000-000000000001\",\"status\":\"UNKNOWN\"}",
+            "{\"attemptId\":\"019bbbc0-51ae-7000-8000-000000000001\",\"status\":\"SUCCEEDED\"}",
+            "{\"attemptId\":\"019bbbc0-51ae-7000-8000-000000000001\",\"status\":\"FAILED\"}",
+            "{\"attemptId\":\"019bbbc0-51ae-7000-8000-000000000001\",\"status\":\"FAILED\","
+                    + "\"failureCode\":\"https://secret?token=secret\"}"})
+    @DisplayName("작업 ID와 상태 및 필수 결과가 잘못된 응답을 거절한다")
     void get_failure_invalidEnvelope(String body) throws Exception {
         // given
         try (LlmHttpServer server = new LlmHttpServer()) {
@@ -273,34 +272,7 @@ class AiTranscriptionHttpClientTest {
             Throwable thrown = catchThrowable(() -> client.get(ID));
 
             // then
-            assertThat(thrown).hasMessage(TranscriptionErrorCode.AI_INVALID_RESPONSE.getMessage());
-        }
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {"trailing", "mismatchedId", "unknownStatus", "processingWithResult", "failedWithoutCode",
-            "schema", "missingSchema", "raw", "rawDuplicate", "rawTrailing", "empty", "ord", "missingOrd", "speaker",
-            "text", "negative", "reverse", "duration", "stringTime", "nonfinite", "unsorted"})
-    @DisplayName("작업 상태와 결과 형태 및 전사 세그먼트 경계를 검증한다")
-    void get_failure_invalidResult(String corruption) throws Exception {
-        // given
-        try (LlmHttpServer server = new LlmHttpServer()) {
-            respond(
-                    server,
-                    200,
-                    corrupt(corruption),
-                    new AtomicReference<>()
-            );
-            AiTranscriptionHttpClient client = client(
-                    server,
-                    Duration.ofSeconds(2)
-            );
-
-            // when
-            Throwable thrown = catchThrowable(() -> client.get(ID));
-
-            // then
-            assertThat(thrown).hasMessage(TranscriptionErrorCode.AI_INVALID_RESPONSE.getMessage());
+            assertThat(thrown).hasMessage(RecordingErrorCode.AI_INVALID_RESPONSE.getMessage());
         }
     }
 
@@ -341,7 +313,7 @@ class AiTranscriptionHttpClientTest {
             Throwable thrown = catchThrowable(() -> client.get(ID));
 
             // then
-            assertThat(thrown).hasMessage(TranscriptionErrorCode.AI_TIMEOUT.getMessage());
+            assertThat(thrown).hasMessage(RecordingErrorCode.AI_TIMEOUT.getMessage());
         } finally {
             release.countDown();
         }
@@ -355,7 +327,10 @@ class AiTranscriptionHttpClientTest {
             respond(
                     server,
                     200,
-                    processing(),
+                    jobBody(
+                            "PROCESSING",
+                            null
+                    ),
                     new AtomicReference<>()
             );
             AiTranscriptionHttpClient client = client(
@@ -369,7 +344,7 @@ class AiTranscriptionHttpClientTest {
             Throwable thrown = catchThrowable(() -> client.get(ID));
 
             // then
-            assertThat(thrown).hasMessage(TranscriptionErrorCode.AI_INTERRUPTED.getMessage())
+            assertThat(thrown).hasMessage(RecordingErrorCode.AI_INTERRUPTED.getMessage())
                     .hasCauseInstanceOf(InterruptedException.class);
             assertThat(
                     Thread.currentThread()
@@ -401,140 +376,44 @@ class AiTranscriptionHttpClientTest {
             Throwable thrown = catchThrowable(() -> client.get(ID));
 
             // then
-            assertThat(thrown).hasMessage(TranscriptionErrorCode.AI_UNAVAILABLE.getMessage());
+            assertThat(thrown).hasMessage(RecordingErrorCode.AI_UNAVAILABLE.getMessage());
         }
     }
 
-    @Test
-    @DisplayName("리다이렉트를 허용하는 HTTP 클라이언트 설정은 거절한다")
-    void constructor_failure_redirects() throws Exception {
-        // given
-        try (LlmHttpServer server = new LlmHttpServer()) {
-            HttpClient httpClient = HttpClient.newBuilder()
-                    .followRedirects(HttpClient.Redirect.ALWAYS)
-                    .build();
-            TranscriptionProperties properties = properties(
-                    server,
-                    Duration.ofSeconds(2)
-            );
-
-            // when
-            Throwable thrown = catchThrowable(
-                    () -> new AiTranscriptionHttpClient(
-                            httpClient,
-                            mapper,
-                            properties
-                    )
-            );
-
-            // then
-            assertThat(thrown).hasMessage(TranscriptionErrorCode.AI_INVALID_CONFIGURATION.getMessage());
-        }
-    }
-
-    private String corrupt(String corruption) {
-        String body = succeeded();
-        return switch (corruption) {
-            case "trailing" -> body + " {}";
-            case "mismatchedId" -> body.replace(
-                    ID.toString(),
-                    UUID.randomUUID()
-                            .toString()
-            );
-            case "unknownStatus" -> body.replace(
-                    "SUCCEEDED",
-                    "EXPIRED"
-            );
-            case "processingWithResult" -> body.replace(
-                    "SUCCEEDED",
-                    "PROCESSING"
-            );
-            case "failedWithoutCode" -> "{\"attemptId\":\"" + ID + "\",\"status\":\"FAILED\"}";
-            case "schema" -> body.replace(
-                    "\"schemaVersion\":1",
-                    "\"schemaVersion\":2"
-            );
-            case "missingSchema" -> body.replace(
-                    "\"schemaVersion\":1,",
-                    ""
-            );
-            case "raw" -> body.replace(
-                    "{\\\"transcription\\\":[]}",
-                    "{}"
-            );
-            case "rawDuplicate" -> body.replace(
-                    "{\\\"transcription\\\":[]}",
-                    "{\\\"transcription\\\":[],\\\"transcription\\\":[]}"
-            );
-            case "rawTrailing" -> body.replace(
-                    "{\\\"transcription\\\":[]}",
-                    "{\\\"transcription\\\":[]} {}"
-            );
-            case "empty" -> body.replace(
-                    utterance(),
-                    ""
-            );
-            case "ord" -> body.replace(
-                    "\"ord\":0",
-                    "\"ord\":2"
-            );
-            case "missingOrd" -> body.replace(
-                    "\"ord\":0,",
-                    ""
-            );
-            case "speaker" -> body.replace(
-                    "화자 1",
-                    " "
-            );
-            case "text" -> body.replace(
-                    "안녕하세요",
-                    " "
-            );
-            case "negative" -> body.replace(
-                    "\"startSec\":0.5",
-                    "\"startSec\":-1"
-            );
-            case "reverse" -> body.replace(
-                    "\"endSec\":1.5",
-                    "\"endSec\":0.1"
-            );
-            case "duration" -> body.replace(
-                    "\"endSec\":1.5",
-                    "\"endSec\":7200.1"
-            );
-            case "stringTime" -> body.replace(
-                    "\"startSec\":0.5",
-                    "\"startSec\":\"0.5\""
-            );
-            case "nonfinite" -> body.replace(
-                    "\"endSec\":1.5",
-                    "\"endSec\":1e999"
-            );
-            case "unsorted" -> body.replace(
-                    utterance(),
-                    utterance() + "," + utterance().replace(
-                            "\"ord\":0",
-                            "\"ord\":1"
-                    )
-                            .replace(
-                                    "\"startSec\":0.5",
-                                    "\"startSec\":0.1"
-                            )
-            );
-            default -> throw new IllegalArgumentException(corruption);
-        };
-    }
-
-    private String utterance() {
-        return "{\"ord\":0,\"speakerLabel\":\"화자 1\",\"startSec\":0.5,\"endSec\":1.5,\"text\":\"안녕하세요\"}";
-    }
     private String succeeded() {
-        return "{\"attemptId\":\"" + ID
-                + "\",\"status\":\"SUCCEEDED\",\"failureCode\":null,\"result\":{\"schemaVersion\":1,"
-                + "\"rawWhisperJson\":\"{\\\"transcription\\\":[]}\",\"utterances\":[" + utterance() + "]}}";
+        return mapper.writeValueAsString(
+                new AiTranscriptionJob(
+                        ID,
+                        AiTranscriptionJob.Status.SUCCEEDED,
+                        null,
+                        new AiTranscript(
+                                1,
+                                "{\"transcription\":[]}",
+                                List.of(
+                                        new AiTranscript.Utterance(
+                                                0,
+                                                "화자 1",
+                                                .5,
+                                                1.5,
+                                                "안녕하세요"
+                                        )
+                                )
+                        )
+                )
+        );
     }
-    private String processing() {
-        return "{\"attemptId\":\"" + ID + "\",\"status\":\"PROCESSING\"}";
+    private String jobBody(
+            String status,
+            String failureCode
+    ) {
+        return mapper.writeValueAsString(
+                new AiTranscriptionJob(
+                        ID,
+                        AiTranscriptionJob.Status.valueOf(status),
+                        failureCode,
+                        null
+                )
+        );
     }
     private void respond(
             LlmHttpServer server,
@@ -546,6 +425,11 @@ class AiTranscriptionHttpClientTest {
                 PATH,
                 exchange -> {
                     method.set(exchange.getRequestMethod());
+                    exchange.getResponseHeaders()
+                            .set(
+                                    "Location",
+                                    server.baseUrl() + "/unexpected"
+                            );
                     byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
                     exchange.sendResponseHeaders(
                             status,
@@ -560,20 +444,7 @@ class AiTranscriptionHttpClientTest {
             LlmHttpServer server,
             Duration timeout
     ) {
-        return new AiTranscriptionHttpClient(
-                HttpClient.newHttpClient(),
-                mapper,
-                properties(
-                        server,
-                        timeout
-                )
-        );
-    }
-    private TranscriptionProperties properties(
-            LlmHttpServer server,
-            Duration timeout
-    ) {
-        return new TranscriptionProperties(
+        TranscriptionProperties properties = new TranscriptionProperties(
                 true,
                 server.baseUrl(),
                 "test-secret",
@@ -581,6 +452,10 @@ class AiTranscriptionHttpClientTest {
                 timeout,
                 Duration.ofSeconds(2),
                 Duration.ofHours(12)
+        );
+        return (AiTranscriptionHttpClient) new TranscriptionConfig().transcriptionClient(
+                properties,
+                mapper
         );
     }
 }

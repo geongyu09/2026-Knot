@@ -48,18 +48,11 @@ public class RecordingTranscriptionStateService {
     private final Clock clock;
 
     @Transactional(propagation = Propagation.MANDATORY)
-    public void registerAutomatic(
-            long recordingId,
-            RecordingAudioUpload upload
-    ) {
+    public void registerAutomatic(long recordingId) {
         if (transcriptions.findByRecordingSessionId(recordingId)
                 .isPresent()) {
             return;
         }
-        validateUpload(
-                recordingId,
-                upload
-        );
         transcriptions.lockAdmission();
         Instant now = now();
         RecordingTranscription transcription = RecordingTranscription.processing(
@@ -97,10 +90,7 @@ public class RecordingTranscriptionStateService {
         recording.validateEnded();
         RecordingAudioUpload upload = uploads.findByRecordingId(recordingId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
-        validateUpload(
-                recordingId,
-                upload
-        );
+        validateUpload(upload);
         RecordingTranscription transcription = transcriptions.findByRecordingSessionIdForUpdate(recordingId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED));
         if (transcription.getStatus() != TranscriptionStatus.FAILED) {
@@ -115,7 +105,6 @@ public class RecordingTranscriptionStateService {
                 UUID.randomUUID(),
                 now()
         );
-        transcriptions.saveAndFlush(transcription);
         return new RecordingTranscriptionRetryResult(
                 recordingId,
                 transcription.getAttemptId(),
@@ -143,7 +132,7 @@ public class RecordingTranscriptionStateService {
     }
 
     @Transactional
-    public boolean complete(
+    public void complete(
             RecordingTranscriptionExecution execution,
             AiTranscript result
     ) {
@@ -154,7 +143,7 @@ public class RecordingTranscriptionStateService {
                 .findByRecordingSessionIdForUpdate(execution.recordingId());
         if (found.isEmpty() || !found.orElseThrow()
                 .isProcessing(execution.attemptId())) {
-            return true;
+            return;
         }
         RecordingTranscription transcription = found.orElseThrow();
         if (!workspaceAvailable || recording.isEmpty() || !recording.orElseThrow()
@@ -167,7 +156,7 @@ public class RecordingTranscriptionStateService {
                     "RECORDING_UNAVAILABLE",
                     now()
             );
-            return true;
+            return;
         }
         validateTranscript(result);
         Instant now = now();
@@ -191,14 +180,12 @@ public class RecordingTranscriptionStateService {
         );
         transcription.succeed(
                 execution.attemptId(),
-                transcript.getId(),
                 now
         );
-        return true;
     }
 
     @Transactional
-    public boolean fail(
+    public void fail(
             RecordingTranscriptionExecution execution,
             String failureCode
     ) {
@@ -214,7 +201,6 @@ public class RecordingTranscriptionStateService {
                                 now()
                         )
                 );
-        return true;
     }
 
     @Transactional
@@ -244,11 +230,7 @@ public class RecordingTranscriptionStateService {
         );
     }
 
-    private void validateUpload(
-            long recordingId,
-            RecordingAudioUpload upload
-    ) {
-        upload.validateBelongsTo(recordingId);
+    private void validateUpload(RecordingAudioUpload upload) {
         if (!upload.isCompleted() || upload.getDeletedAt() != null) {
             throw new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_COMPLETED);
         }
@@ -261,10 +243,9 @@ public class RecordingTranscriptionStateService {
     }
 
     private void validateTranscript(AiTranscript result) {
-        // JSON syntax and schema are parsed at the HTTP boundary; persistence protects
-        // the accepted result's invariants.
+        // HTTP에서는 JSON을 매핑하고 결과 값은 저장 전에 한 번 검사한다.
         if (result == null || result.schemaVersion() != 1 || result.rawWhisperJson() == null || result.rawWhisperJson()
-                .isBlank() || result.utterances() == null || result.utterances()
+                .isBlank() || result.utterances()
                         .isEmpty()) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
         }
@@ -273,8 +254,9 @@ public class RecordingTranscriptionStateService {
                 .size(); index++) {
             AiTranscript.Utterance utterance = result.utterances()
                     .get(index);
-            if (utterance == null || utterance.ord() != index || utterance.startSec() < previousStart
-                    || utterance.endSec() < utterance.startSec()) {
+            if (utterance.ord() != index || !Double.isFinite(utterance.startSec())
+                    || !Double.isFinite(utterance.endSec()) || utterance.startSec() < 0 || utterance.endSec() > 7200
+                    || utterance.startSec() < previousStart || utterance.endSec() < utterance.startSec()) {
                 throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
             }
             previousStart = utterance.startSec();
@@ -305,20 +287,13 @@ public class RecordingTranscriptionStateService {
                     return TranscriptSegment.create(
                             transcriptId,
                             index,
-                            millis(utterance.startSec()),
-                            millis(utterance.endSec()),
+                            Math.round(utterance.startSec() * 1000),
+                            Math.round(utterance.endSec() * 1000),
                             speakerNumber,
                             utterance.text()
                     );
                 })
                 .toList();
-    }
-
-    private long millis(double seconds) {
-        if (!Double.isFinite(seconds) || seconds < 0 || seconds > 7200) {
-            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
-        }
-        return Math.round(seconds * 1000);
     }
 
     private Instant now() {

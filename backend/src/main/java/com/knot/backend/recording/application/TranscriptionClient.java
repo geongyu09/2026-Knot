@@ -6,8 +6,7 @@ import java.util.UUID;
 public interface TranscriptionClient {
     AiTranscriptionJob submit(
             UUID attemptId,
-            String downloadUrl,
-            Integer speakerCount
+            String downloadUrl
     );
     AiTranscriptionJob get(UUID attemptId);
 }

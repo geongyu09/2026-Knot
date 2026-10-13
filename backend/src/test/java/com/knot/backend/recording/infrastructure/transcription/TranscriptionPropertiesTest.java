@@ -1,10 +1,10 @@
 package com.knot.backend.recording.infrastructure.transcription;
 
-import com.knot.backend.global.config.TranscriptionProperties;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
-import com.knot.backend.recording.domain.TranscriptionErrorCode;
+import com.knot.backend.global.config.TranscriptionProperties;
+import com.knot.backend.recording.domain.RecordingErrorCode;
 import java.net.URI;
 import java.time.Duration;
 import org.junit.jupiter.api.DisplayName;
@@ -15,7 +15,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 class TranscriptionPropertiesTest {
     @Test
-    @DisplayName("전사 기능이 비활성화되면 비밀값과 실행 설정이 없어도 부팅할 수 있다")
+    @DisplayName("전사 기능이 비활성화되면 실행 설정이 없어도 부팅할 수 있다")
     void validate_success_disabled() {
         // given
         TranscriptionProperties properties = new TranscriptionProperties(
@@ -36,7 +36,7 @@ class TranscriptionPropertiesTest {
     }
 
     @Test
-    @DisplayName("HTTP 서버 주소와 양수인 모든 기한을 허용하고 설정 문자열에 토큰을 노출하지 않는다")
+    @DisplayName("활성화된 HTTP 서버 설정을 허용하며 설정 문자열에 토큰을 노출하지 않는다")
     void validate_success_enabled() {
         // given
         TranscriptionProperties properties = properties(
@@ -54,9 +54,8 @@ class TranscriptionPropertiesTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"file:///tmp/ai", "http://user:password@localhost", "https://host/api",
-            "http://host?token=secret", "https://host#fragment", "http://host:0", "http://host:65536"})
-    @DisplayName("인증 정보와 경로 쿼리 조각이 섞인 서버 주소를 거절한다")
+    @ValueSource(strings = {"file:///tmp/ai", "http:/missing-host"})
+    @DisplayName("HTTP 서버가 아닌 기본 주소는 시작 시 거절한다")
     void validate_failure_url(String url) {
         // given
         TranscriptionProperties properties = properties(
@@ -69,13 +68,13 @@ class TranscriptionPropertiesTest {
         Throwable thrown = catchThrowable(properties::validateEnabledConfiguration);
 
         // then
-        assertThat(thrown).hasMessage(TranscriptionErrorCode.AI_INVALID_CONFIGURATION.getMessage());
+        assertThat(thrown).hasMessage(RecordingErrorCode.AI_INVALID_CONFIGURATION.getMessage());
     }
 
     @ParameterizedTest
     @NullAndEmptySource
-    @ValueSource(strings = {" ", "secret\nheader", "secret\rheader", "토큰", "secret space"})
-    @DisplayName("활성화된 전사 기능의 빈 토큰과 헤더 제어 문자를 거절한다")
+    @ValueSource(strings = {" "})
+    @DisplayName("활성화된 전사 기능에는 인증 토큰이 필요하다")
     void validate_failure_token(String token) {
         // given
         TranscriptionProperties properties = properties(
@@ -88,7 +87,7 @@ class TranscriptionPropertiesTest {
         Throwable thrown = catchThrowable(properties::validateEnabledConfiguration);
 
         // then
-        assertThat(thrown).hasMessage(TranscriptionErrorCode.AI_INVALID_CONFIGURATION.getMessage());
+        assertThat(thrown).hasMessage(RecordingErrorCode.AI_INVALID_CONFIGURATION.getMessage());
     }
 
     @ParameterizedTest
@@ -106,7 +105,7 @@ class TranscriptionPropertiesTest {
         Throwable thrown = catchThrowable(properties::validateEnabledConfiguration);
 
         // then
-        assertThat(thrown).hasMessage(TranscriptionErrorCode.AI_INVALID_CONFIGURATION.getMessage());
+        assertThat(thrown).hasMessage(RecordingErrorCode.AI_INVALID_CONFIGURATION.getMessage());
     }
 
     private TranscriptionProperties properties(

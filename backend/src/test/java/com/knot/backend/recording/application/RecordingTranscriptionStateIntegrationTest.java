@@ -223,45 +223,6 @@ class RecordingTranscriptionStateIntegrationTest {
     }
 
     @Test
-    @DisplayName("잘못된 발화 시각은 부분 원문을 남기지 않는다")
-    void complete_failure_invalidSegmentRollback() {
-        // given
-        register(
-                workspaceId,
-                recordingId
-        );
-        RecordingTranscriptionExecution execution = state.findProcessing()
-                .orElseThrow();
-        AiTranscript invalid = new AiTranscript(
-                1,
-                "{}",
-                List.of(
-                        new AiTranscript.Utterance(
-                                0,
-                                "speaker",
-                                0,
-                                7201,
-                                "발화"
-                        )
-                )
-        );
-        // when
-        Throwable failure = catchThrowable(
-                () -> state.complete(
-                        execution,
-                        invalid
-                )
-        );
-        // then
-        assertThat(failure).isInstanceOf(RecordingException.class);
-        assertThat(count("transcripts")).isZero();
-        assertThat(
-                state.find(recordingId)
-                        .status()
-        ).isEqualTo(TranscriptionStatus.PROCESSING);
-    }
-
-    @Test
     @DisplayName("실패 재시도 후 이전 시도의 결과와 실패 통지는 무시한다")
     void retry_success_ignoresOldAttempt() {
         // given
@@ -579,44 +540,6 @@ class RecordingTranscriptionStateIntegrationTest {
     }
 
     @Test
-    @DisplayName("DB 제약은 다른 녹음의 원문을 성공 결과로 연결하지 못하게 한다")
-    void save_failure_mismatchedTranscriptRecording() {
-        // given
-        register(
-                workspaceId,
-                recordingId
-        );
-        long otherRecording = completedRecording(
-                workspaceId,
-                memberId
-        );
-        long otherTranscript = fixtures.saveTranscript(otherRecording);
-        // when
-        Throwable failure = catchThrowable(
-                () -> jdbc.sql("""
-                        UPDATE recording_transcriptions
-                        SET status = 'SUCCEEDED', transcript_id = :transcriptId, finished_at = started_at
-                        WHERE recording_session_id = :recordingId
-                        """)
-                        .param(
-                                "transcriptId",
-                                otherTranscript
-                        )
-                        .param(
-                                "recordingId",
-                                recordingId
-                        )
-                        .update()
-        );
-        // then
-        assertThat(failure).isInstanceOf(DataIntegrityViolationException.class);
-        assertThat(
-                state.find(recordingId)
-                        .status()
-        ).isEqualTo(TranscriptionStatus.PROCESSING);
-    }
-
-    @Test
     @DisplayName("DB 제약은 실패 코드 없는 실패 상태를 거부한다")
     void save_failure_inconsistentTerminalState() {
         // given
@@ -694,7 +617,7 @@ class RecordingTranscriptionStateIntegrationTest {
 
     @ParameterizedTest
     @MethodSource("invalidTranscripts")
-    @DisplayName("빈 원문·발화 또는 깨진 발화 순서는 부분 저장이나 문서 접수를 남기지 않는다")
+    @DisplayName("빈 원문·발화 또는 잘못된 순서·시각은 부분 저장이나 문서 접수를 남기지 않는다")
     void complete_failure_invalidTranscriptRollback(AiTranscript invalid) {
         // given
         register(
@@ -730,6 +653,84 @@ class RecordingTranscriptionStateIntegrationTest {
                 "첫 발화"
         );
         return Stream.of(
+                new AiTranscript(
+                        1,
+                        "{}",
+                        List.of(
+                                new AiTranscript.Utterance(
+                                        0,
+                                        "speaker",
+                                        -1,
+                                        2,
+                                        "음수 시각"
+                                )
+                        )
+                ),
+                new AiTranscript(
+                        1,
+                        "{}",
+                        List.of(
+                                new AiTranscript.Utterance(
+                                        0,
+                                        "speaker",
+                                        1,
+                                        7201,
+                                        "상한 초과"
+                                )
+                        )
+                ),
+                new AiTranscript(
+                        1,
+                        "{}",
+                        List.of(
+                                new AiTranscript.Utterance(
+                                        0,
+                                        "speaker",
+                                        Double.NaN,
+                                        2,
+                                        "잘못된 시각"
+                                )
+                        )
+                ),
+                new AiTranscript(
+                        1,
+                        "{}",
+                        List.of(
+                                new AiTranscript.Utterance(
+                                        0,
+                                        "speaker",
+                                        1,
+                                        Double.NaN,
+                                        "잘못된 종료"
+                                )
+                        )
+                ),
+                new AiTranscript(
+                        1,
+                        "{}",
+                        List.of(
+                                new AiTranscript.Utterance(
+                                        0,
+                                        "speaker",
+                                        Double.POSITIVE_INFINITY,
+                                        2,
+                                        "무한 시각"
+                                )
+                        )
+                ),
+                new AiTranscript(
+                        1,
+                        "{}",
+                        List.of(
+                                new AiTranscript.Utterance(
+                                        0,
+                                        "speaker",
+                                        1,
+                                        Double.POSITIVE_INFINITY,
+                                        "무한 종료"
+                                )
+                        )
+                ),
                 new AiTranscript(
                         1,
                         " ",
@@ -820,11 +821,7 @@ class RecordingTranscriptionStateIntegrationTest {
                     .orElseThrow();
             RecordingSession recording = recordings.findByIdForUpdate(recordingId)
                     .orElseThrow();
-            state.registerAutomatic(
-                    recording.getId(),
-                    uploads.findByRecordingId(recordingId)
-                            .orElseThrow()
-            );
+            state.registerAutomatic(recording.getId());
         });
     }
 

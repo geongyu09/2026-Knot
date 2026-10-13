@@ -1,21 +1,19 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.global.config.TranscriptionProperties;
 import com.knot.backend.global.exception.ProjectException;
 import com.knot.backend.global.logging.ServerErrorLogger;
+import com.knot.backend.recording.application.dto.result.AiTranscript;
 import com.knot.backend.recording.application.dto.result.AiTranscriptionJob;
 import com.knot.backend.recording.application.dto.result.RecordingTranscriptionExecution;
 import com.knot.backend.recording.application.dto.result.RecordingTranscriptionRetryResult;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
-import com.knot.backend.recording.domain.TranscriptionErrorCode;
-import com.knot.backend.recording.domain.TranscriptionException;
-import com.knot.backend.global.config.TranscriptionProperties;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -24,8 +22,6 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class RecordingTranscriptionService {
-    private static final long SHUTDOWN_WAIT_MILLIS = 10_000;
-
     private final RecordingTranscriptionStateService state;
     private final TranscriptionProperties properties;
     private final TranscriptionClient client;
@@ -48,7 +44,7 @@ public class RecordingTranscriptionService {
             throw new RecordingException(RecordingErrorCode.TRANSCRIPTION_DISABLED);
         }
         if (!accepting) {
-            throw new TranscriptionException(TranscriptionErrorCode.AI_NOT_READY);
+            throw new RecordingException(RecordingErrorCode.AI_NOT_READY);
         }
         RecordingTranscriptionRetryResult result = state.retry(
                 workspaceId,
@@ -63,42 +59,25 @@ public class RecordingTranscriptionService {
         if (!properties.enabled() || !accepting || worker != null) {
             return;
         }
-        Optional<RecordingTranscriptionExecution> execution = state.findProcessing();
-        if (execution.isEmpty()) {
-            return;
-        }
-        RecordingTranscriptionExecution current = execution.orElseThrow();
-        worker = Thread.ofPlatform()
-                .name("recording-transcription")
-                .unstarted(() -> execute(current));
-        try {
-            worker.start();
-        } catch (RuntimeException exception) {
-            logFailure(
-                    current,
-                    "start",
-                    exception
-            );
-            if (persistFailure(
-                    current,
-                    "EXECUTOR_REJECTED"
-            )) {
-                worker = null;
-            }
-        }
+        state.findProcessing()
+                .ifPresent(execution -> {
+                    worker = Thread.ofPlatform()
+                            .name("recording-transcription")
+                            .unstarted(() -> execute(execution));
+                    worker.start();
+                });
     }
 
     private void execute(RecordingTranscriptionExecution execution) {
-        boolean terminalPersisted = false;
         try {
             AiTranscriptionJob job = runRemote(execution);
             if (job.status() == AiTranscriptionJob.Status.SUCCEEDED) {
-                terminalPersisted = persistResult(
+                complete(
                         execution,
-                        job
+                        job.result()
                 );
             } else {
-                terminalPersisted = persistFailure(
+                fail(
                         execution,
                         job.failureCode()
                 );
@@ -106,28 +85,16 @@ public class RecordingTranscriptionService {
         } catch (RuntimeException exception) {
             logFailure(
                     execution,
-                    "remote",
                     exception
             );
-            terminalPersisted = persistFailure(
+            String code = exception instanceof ProjectException failure
+                    ? failure.getErrorCode()
+                            .getCode()
+                    : "INFERENCE_FAILED";
+            fail(
                     execution,
-                    failureCode(exception)
+                    code
             );
-        } finally {
-            synchronized (this) {
-                if (terminalPersisted) {
-                    worker = null;
-                    try {
-                        dispatch();
-                    } catch (RuntimeException exception) {
-                        logFailure(
-                                execution,
-                                "dispatch",
-                                exception
-                        );
-                    }
-                }
-            }
         }
     }
 
@@ -135,7 +102,7 @@ public class RecordingTranscriptionService {
         Instant deadline = execution.startedAt()
                 .plus(properties.jobTimeout());
         requireTime(deadline);
-        String downloadUrl = storage.presignDownload(
+        String url = storage.presignDownload(
                 execution.storageKey(),
                 execution.contentType(),
                 execution.contentLength()
@@ -145,28 +112,38 @@ public class RecordingTranscriptionService {
         try {
             job = client.submit(
                     execution.attemptId(),
-                    downloadUrl,
-                    null
+                    url
             );
-        } catch (TranscriptionException exception) {
-            if (exception.getErrorCode() != TranscriptionErrorCode.AI_TIMEOUT
-                    && exception.getErrorCode() != TranscriptionErrorCode.AI_UNAVAILABLE) {
+        } catch (RecordingException exception) {
+            if (exception.getErrorCode() != RecordingErrorCode.AI_TIMEOUT
+                    && exception.getErrorCode() != RecordingErrorCode.AI_UNAVAILABLE) {
                 throw exception;
             }
             requireTime(deadline);
             job = client.get(execution.attemptId());
         }
-        requireTime(deadline);
         while (job.status() == AiTranscriptionJob.Status.PROCESSING) {
             Duration remaining = Duration.between(
                     clock.instant(),
                     deadline
             );
-            Duration pause = remaining.compareTo(properties.pollInterval()) < 0 ? remaining : properties.pollInterval();
-            waitForPoll(pause);
+            if (remaining.isNegative() || remaining.isZero()) {
+                throw new RecordingException(RecordingErrorCode.AI_TIMEOUT);
+            }
+            try {
+                Thread.sleep(
+                        remaining.compareTo(properties.pollInterval()) < 0 ? remaining : properties.pollInterval()
+                );
+            } catch (InterruptedException exception) {
+                Thread.currentThread()
+                        .interrupt();
+                throw new RecordingException(
+                        RecordingErrorCode.AI_INTERRUPTED,
+                        exception
+                );
+            }
             requireTime(deadline);
             job = client.get(execution.attemptId());
-            requireTime(deadline);
         }
         return job;
     }
@@ -174,69 +151,53 @@ public class RecordingTranscriptionService {
     private void requireTime(Instant deadline) {
         if (Thread.currentThread()
                 .isInterrupted()) {
-            throw new TranscriptionException(TranscriptionErrorCode.AI_INTERRUPTED);
+            throw new RecordingException(RecordingErrorCode.AI_INTERRUPTED);
         }
         if (!clock.instant()
                 .isBefore(deadline)) {
-            throw new TranscriptionException(TranscriptionErrorCode.AI_TIMEOUT);
+            throw new RecordingException(RecordingErrorCode.AI_TIMEOUT);
         }
     }
 
-    private void waitForPoll(Duration duration) {
-        if (duration.isNegative() || duration.isZero()) {
-            throw new TranscriptionException(TranscriptionErrorCode.AI_TIMEOUT);
-        }
-        try {
-            Thread.sleep(duration);
-        } catch (InterruptedException exception) {
-            Thread.currentThread()
-                    .interrupt();
-            throw new TranscriptionException(
-                    TranscriptionErrorCode.AI_INTERRUPTED,
-                    exception
-            );
-        }
-    }
-
-    private boolean persistResult(
+    private synchronized void complete(
             RecordingTranscriptionExecution execution,
-            AiTranscriptionJob job
+            AiTranscript result
     ) {
         try {
-            return state.complete(
+            // DB 확정과 슬롯 해제를 묶어 다음 dispatch가 중간 상태를 보지 않게 한다.
+            state.complete(
                     execution,
-                    job.result()
+                    result
             );
+            worker = null;
         } catch (RuntimeException exception) {
             logFailure(
                     execution,
-                    "complete",
                     exception
             );
-            return persistFailure(
+            fail(
                     execution,
                     "RESULT_STORAGE_FAILED"
             );
         }
     }
 
-    private boolean persistFailure(
+    private synchronized void fail(
             RecordingTranscriptionExecution execution,
-            String failureCode
+            String code
     ) {
         boolean interrupted = Thread.interrupted();
         try {
-            return state.fail(
+            state.fail(
                     execution,
-                    failureCode
+                    code
             );
+            worker = null;
         } catch (RuntimeException exception) {
             logFailure(
                     execution,
-                    "fail",
                     exception
             );
-            return false;
         } finally {
             if (interrupted) {
                 Thread.currentThread()
@@ -245,23 +206,13 @@ public class RecordingTranscriptionService {
         }
     }
 
-    private String failureCode(RuntimeException exception) {
-        if (exception instanceof ProjectException failure) {
-            return failure.getErrorCode()
-                    .getCode();
-        }
-        return "INFERENCE_FAILED";
-    }
-
     private void logFailure(
             RecordingTranscriptionExecution execution,
-            String phase,
             RuntimeException exception
     ) {
         ServerErrorLogger.recordTaskFailure(
                 log,
-                "Transcription failure recordingId=" + execution.recordingId() + " attemptId=" + execution.attemptId()
-                        + " phase=" + phase,
+                "Transcription failure recordingId=" + execution.recordingId() + " attemptId=" + execution.attemptId(),
                 exception
         );
     }
@@ -278,7 +229,7 @@ public class RecordingTranscriptionService {
         }
         if (running != null) {
             try {
-                running.join(SHUTDOWN_WAIT_MILLIS);
+                running.join(10_000);
             } catch (InterruptedException exception) {
                 Thread.currentThread()
                         .interrupt();
