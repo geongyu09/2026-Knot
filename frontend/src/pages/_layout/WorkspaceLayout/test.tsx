@@ -1,13 +1,19 @@
 import { GetDocumentResponseDto } from "@api/dto/document";
+import { GetSearchMessagesResponseDto } from "@api/dto/search";
 import { LAST_VIEWED_WORKSPACE_API_PATH } from "@api/fetch/api/v1/members/me/lastViewedWorkspace";
 import { documentDetailsResponse } from "@api/mock/responses/document";
 import { workspaceDetailResponse } from "@api/mock/responses/workspace";
-import { SEARCH_MESSAGES_MOCK } from "@hooks/domain/search/useSearchMessages/mock";
+import {
+  searchAnswerStreamResponse,
+  searchMessagesResponse,
+  searchQuestionAnswerStreamResponse,
+} from "@api/mock/responses/search";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
+import { useSearchAnswerStore } from "@store/searchAnswerStore";
 import { useTranscriptPanelStore } from "@store/transcriptPanelStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -21,7 +27,9 @@ import {
 } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import SearchConversation from "@widgets/search/SearchConversation";
+import type { ReactNode } from "react";
 
 import WorkspaceLayout from ".";
 import { WORKSPACE_DOCK_RAIL_ID } from "./constants/dockRail";
@@ -58,9 +66,10 @@ const CHAT_PATH = getRouterPath({
   routeKey: "CHAT",
   params: { workspaceId: String(WORKSPACE_ID) },
 });
+const CONVERSATION_ID = "10";
 const CONVERSATION_PATH = getRouterPath({
   routeKey: "CHAT_SESSION",
-  params: { workspaceId: String(WORKSPACE_ID), sessionId: "10" },
+  params: { workspaceId: String(WORKSPACE_ID), sessionId: CONVERSATION_ID },
 });
 const ELSEWHERE_PATH = "/elsewhere";
 const HOME_TEXT = "홈 본문";
@@ -68,7 +77,13 @@ const CHAT_TEXT = "탐색 본문";
 // 경로 파라미터가 있어 fetch 상수 대신 mock 핸들러와 같은 패턴을 적어요
 const WORKSPACE_PATH_PATTERN = "*/api/v1/workspaces/:workspaceId";
 
-const renderLayout = (initialPath = HOME_PATH) => {
+/**
+ * @param chatElement - 탐색 화면 자리에 그릴 것. 탐색 흐름을 확인할 때만 실제 대화 칸을 넘겨요
+ */
+const renderLayout = (
+  initialPath = HOME_PATH,
+  chatElement: ReactNode = <p>{CHAT_TEXT}</p>,
+) => {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -82,8 +97,8 @@ const renderLayout = (initialPath = HOME_PATH) => {
         element: <WorkspaceLayout />,
         children: [
           { path: PATH_ROUTE.WORKSPACE_HOME, element: <p>{HOME_TEXT}</p> },
-          { path: PATH_ROUTE.CHAT, element: <p>{CHAT_TEXT}</p> },
-          { path: PATH_ROUTE.CHAT_SESSION, element: <p>{CHAT_TEXT}</p> },
+          { path: PATH_ROUTE.CHAT, element: chatElement },
+          { path: PATH_ROUTE.CHAT_SESSION, element: chatElement },
           { path: PATH_ROUTE.DOCUMENT, element: <p>{DOCUMENT_TEXT}</p> },
         ],
       },
@@ -103,10 +118,12 @@ const renderLayout = (initialPath = HOME_PATH) => {
     </ThemeProvider>,
   );
 
-  return { router };
+  return { router, queryClient };
 };
 
-const answers = SEARCH_MESSAGES_MOCK.filter(({ role }) => role === "ASSISTANT");
+const answers = new GetSearchMessagesResponseDto(
+  searchMessagesResponse,
+).items.filter(({ role }) => role === "ASSISTANT");
 const [answerWithEvidence] = answers.filter(
   ({ evidences }) => evidences.length > 0,
 );
@@ -537,5 +554,195 @@ describe("WorkspaceLayout의 원문 패널", () => {
       screen.queryByRole("button", { name: /^원문/ }),
     ).not.toBeInTheDocument();
     expect(queryTranscriptPanel()).not.toBeInTheDocument();
+  });
+});
+
+describe("WorkspaceLayout의 탐색 질문 흐름", () => {
+  const MESSAGES_PATH =
+    "*/api/v1/workspaces/:workspaceId/search/conversations/:conversationId/messages";
+  const SEARCH_CONVERSATIONS_PATH =
+    "*/api/v1/workspaces/:workspaceId/search/conversations";
+  const SEARCH_QUESTIONS_PATH =
+    "*/api/v1/workspaces/:workspaceId/search/conversations/:conversationId/questions";
+  const QUESTION = "DB는 뭘로 정했어?";
+  const FOLLOW_UP_QUESTION = "초기 스키마는 누가 정리했어?";
+
+  const encoder = new TextEncoder();
+
+  /** 서버가 보내는 SSE 프레임 한 개예요 */
+  const toFrame = (event: string, data: object) =>
+    `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+
+  /** 이번 테스트에서만 그 경로의 SSE 응답을 열어 두고, 테스트가 프레임을 하나씩 흘려보내게 해요 */
+  const respondWithControlledSse = (path: string) => {
+    let stream: ReadableStreamDefaultController<Uint8Array> | undefined;
+    mockServer.use(
+      http.post(
+        path,
+        () =>
+          new HttpResponse(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                stream = controller;
+              },
+            }),
+            { headers: { "Content-Type": "text/event-stream" } },
+          ),
+      ),
+    );
+
+    return {
+      waitForOpen: () => waitFor(() => expect(stream).toBeDefined()),
+      send: (event: string, data: object) =>
+        stream?.enqueue(encoder.encode(toFrame(event, data))),
+    };
+  };
+
+  /** 이번 테스트에서만 메시지 조회를 넘긴 메시지로 답하고, 조회 횟수를 세요 */
+  const respondMessages = (items: object[]) => {
+    const requests = { count: 0 };
+    mockServer.use(
+      http.get(MESSAGES_PATH, ({ params }) => {
+        requests.count += 1;
+
+        return HttpResponse.json({
+          ...searchMessagesResponse,
+          conversationId: Number(params.conversationId),
+          items,
+        });
+      }),
+    );
+
+    return requests;
+  };
+
+  /** 독에 질문을 적어 보내기를 눌러요 */
+  const sendFromDock = async (question: string) => {
+    fireEvent.change(
+      await screen.findByRole("textbox", { name: "무엇이든 요청하세요" }),
+      { target: { value: question } },
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "보내기" }));
+    });
+  };
+
+  const getConversation = () => screen.getByRole("region", { name: "대화" });
+
+  afterEach(() => {
+    // 전역 저장소라 테스트끼리 답변이 새지 않게 비워요
+    useSearchAnswerStore.getState().abort();
+  });
+
+  it("새 대화 화면에서 독으로 보낸 질문과 흘러드는 답변을 보여주고, 접수된 대화 주소로 옮겨 간다 (SEARCH-R1)", async () => {
+    const { conversationId, questionMessageId, answerMessageId, deltas, evidences } =
+      searchAnswerStreamResponse;
+    const answerText = deltas.join("");
+    const messagesRequests = respondMessages([
+      {
+        ...searchMessagesResponse.items[0],
+        id: questionMessageId,
+        content: QUESTION,
+      },
+      {
+        ...searchMessagesResponse.items[1],
+        id: answerMessageId,
+        content: answerText,
+        evidences,
+      },
+    ]);
+    const stream = respondWithControlledSse(SEARCH_CONVERSATIONS_PATH);
+    const { router, queryClient } = renderLayout(
+      CHAT_PATH,
+      <SearchConversation />,
+    );
+
+    await sendFromDock(QUESTION);
+    await stream.waitForOpen();
+
+    expect(within(getConversation()).getByText(QUESTION)).toBeInTheDocument();
+
+    stream.send("accepted", { conversationId, questionMessageId, answerMessageId });
+    await waitForPath(
+      router,
+      getRouterPath({
+        routeKey: "CHAT_SESSION",
+        params: {
+          workspaceId: String(WORKSPACE_ID),
+          sessionId: String(conversationId),
+        },
+      }),
+    );
+
+    stream.send("delta", { answerMessageId, text: deltas[0] });
+    expect(
+      await within(getConversation()).findByText(deltas[0].trim()),
+    ).toBeInTheDocument();
+
+    stream.send("delta", { answerMessageId, text: deltas[1] });
+    expect(
+      await within(getConversation()).findByText(
+        `${deltas[0]}${deltas[1]}`.trim(),
+      ),
+    ).toBeInTheDocument();
+
+    deltas
+      .slice(2)
+      .forEach((text) => stream.send("delta", { answerMessageId, text }));
+    stream.send("evidence", { answerMessageId, items: evidences });
+    stream.send("completed", { answerMessageId, status: "COMPLETED" });
+
+    expect(
+      await screen.findByRole("button", {
+        name: `기록 ${evidences.length}개에서 찾았어요`,
+      }),
+    ).toBeInTheDocument();
+    // 조회는 대화 주소로 옮겨 갈 때 한 번, 답변이 끝나 무효화한 뒤 한 번 해요
+    await waitFor(() => expect(messagesRequests.count).toBe(2));
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+    expect(
+      within(getConversation()).getAllByText(answerText),
+    ).toHaveLength(1);
+    expect(within(getConversation()).getAllByText(QUESTION)).toHaveLength(1);
+    expect(within(getConversation()).getAllByRole("article")).toHaveLength(1);
+  });
+
+  it("기존 대화에서 독으로 보낸 후속 질문과 답변은 저장된 턴 뒤에 이어진다 (SEARCH-R1)", async () => {
+    const { questionMessageId, answerMessageId, deltas } =
+      searchQuestionAnswerStreamResponse;
+    const savedQuestions = searchMessagesResponse.items.filter(
+      ({ role }) => role === "USER",
+    );
+    const stream = respondWithControlledSse(SEARCH_QUESTIONS_PATH);
+    const { router } = renderLayout(CONVERSATION_PATH, <SearchConversation />);
+    expect(
+      await within(await screen.findByRole("region", { name: "대화" })).findByText(
+        savedQuestions[0].content,
+      ),
+    ).toBeInTheDocument();
+
+    await sendFromDock(FOLLOW_UP_QUESTION);
+    await stream.waitForOpen();
+    stream.send("accepted", {
+      conversationId: Number(CONVERSATION_ID),
+      questionMessageId,
+      answerMessageId,
+    });
+    deltas.forEach((text) => stream.send("delta", { answerMessageId, text }));
+    stream.send("completed", { answerMessageId, status: "COMPLETED" });
+
+    const answerText = deltas.join("");
+    expect(
+      await within(getConversation()).findByText(answerText),
+    ).toBeInTheDocument();
+
+    const turns = within(getConversation()).getAllByRole("article");
+    const lastTurn = turns[turns.length - 1];
+
+    expect(turns).toHaveLength(savedQuestions.length + 1);
+    expect(within(lastTurn).getByText(FOLLOW_UP_QUESTION)).toBeInTheDocument();
+    expect(within(lastTurn).getByText(answerText)).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(CONVERSATION_PATH);
   });
 });
