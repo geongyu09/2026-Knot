@@ -47,21 +47,22 @@ export const getRecordingDocumentsStatus = ({
   transcriptionStatus,
   documentGeneration,
 }: GetRecordingDocumentsStatusParams) => {
+  // 문자열을 그대로 돌려주면 돌려주는 타입이 string으로 넓어져, 쓰는 쪽이 어떤 값이 오는지 알 수 없어요. 그래서 값마다 `as const`를 붙여요
   if (sessionStatus === "RECORDING" || sessionStatus === "PAUSED") {
-    return "recording";
+    return "recording" as const;
   }
 
-  if (sessionStatus !== "ENDED") return "unsupported";
+  if (sessionStatus !== "ENDED") return "unsupported" as const;
 
   // 전사가 실패하면 문서 생성이 접수되지 않아요. 이 값을 보지 않으면 결과가 계속 없는 것으로 보여 정리 중에서 끝나지 않아요
-  if (transcriptionStatus === "FAILED") return "failed";
+  if (transcriptionStatus === "FAILED") return "failed" as const;
 
-  if (documentGeneration === null) return "organizing";
+  if (documentGeneration === null) return "organizing" as const;
 
   // 타입에 없는 상태를 서버가 보내면 표에서 undefined가 나와요
   return (
     RECORDING_DOCUMENTS_STATUS_BY_DOCUMENT_GENERATION_STATUS[
       documentGeneration.status
-    ] ?? "unsupported"
+    ] ?? ("unsupported" as const)
   );
 };

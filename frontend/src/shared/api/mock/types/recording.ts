@@ -21,31 +21,47 @@ export interface RecordingStartResponse {
   startedAt: string;
 }
 
-/** 화면용 종합 상태 */
-export type RecordingStatus =
-  RecordingSessionStatus | "PROCESSING" | "COMPLETED" | "NO_CONTENT" | "FAILED";
+/** 전사 상태 */
+export type RecordingTranscriptionStatus =
+  "PROCESSING" | "SUCCEEDED" | "FAILED";
 
-/** 전사·문서 생성 작업의 상태 */
-export type RecordingJobStatus =
-  "NOT_STARTED" | "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+/** 주제 분류와 주제별 문서 생성을 합친 상태 */
+export type RecordingDocumentGenerationStatus =
+  "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "NO_CONTENT";
+
+export interface RecordingDocumentGenerationResponse {
+  status: RecordingDocumentGenerationStatus;
+  /** 생성에 성공한 문서 수 */
+  succeededCount: number;
+  /** 보존 기한 안의 실패 작업 ID. 없으면 빈 배열 */
+  failedJobIds: number[];
+}
 
 export interface RecordingDetailResponse {
-  recordingId: number;
-  status: RecordingStatus;
-  sessionStatus: RecordingSessionStatus;
-  audioUploadStatus: "NOT_STARTED" | "PENDING" | "COMPLETED" | "FAILED";
-  /** ISO 8601 */
-  startedAt: string;
-  /** 끝나기 전이면 null */
+  /** 세션 상태. `DISCARDED`는 서버가 버린 녹음 */
+  status: RecordingSessionStatus | "DISCARDED";
+  /** 일시정지를 뺀 서버 기준 녹음 시간(ms) */
+  elapsedMillis: number;
+  /** ISO 8601. 진행 중이면 null */
   endedAt: string | null;
-  /** 끝나기 전이면 null */
-  durationMillis: number | null;
-  transcriptionStatus: RecordingJobStatus;
-  documentGenerationStatus: RecordingJobStatus;
-  /** 문서 생성 작업이 없으면 null */
-  documentGenerationJobId: number | null;
-  failureStage: "AUDIO_UPLOAD" | "TRANSCRIPTION" | "DOCUMENT_GENERATION" | null;
-  failureReason: string | null;
+  /** 진행 중이면 null */
+  endReason: "USER_ENDED" | "CONNECTION_EXPIRED" | "MAX_DURATION" | null;
+  /** 업로드를 예약하기 전이면 null */
+  audioUploadStatus: RecordingAudioUploadStatus | null;
+  /** 전사를 시도하기 전이면 null */
+  transcriptionAttemptId: string | null;
+  /** 전사를 시도하기 전이면 null */
+  transcriptionStatus: RecordingTranscriptionStatus | null;
+  /** 전사가 실패하지 않았으면 null */
+  transcriptionFailureCode: string | null;
+  /** 문서 생성이 접수되기 전이면 null */
+  documentGeneration: RecordingDocumentGenerationResponse | null;
+}
+
+/** 녹음 상세 mock 하나. 서버 응답에는 녹음 ID가 없어서, 어느 녹음의 응답인지 함께 적어요 */
+export interface RecordingDetailEntry {
+  recordingId: number;
+  detail: RecordingDetailResponse;
 }
 
 export interface RecordingPauseResponse {

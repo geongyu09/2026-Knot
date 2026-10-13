@@ -1,7 +1,13 @@
 import { documentGenerationJobRetryResponse } from "@api/mock/responses/documentGenerationJob";
 import { recordingDetailsResponse } from "@api/mock/responses/recording";
 import type { DocumentGenerationJobRetryResponse } from "@api/mock/types/documentGenerationJob";
-import type { RecordingDetailResponse } from "@api/mock/types/recording";
+import type {
+  RecordingDetailEntry,
+  RecordingDetailResponse,
+} from "@api/mock/types/recording";
+
+// 기본 응답은 녹음마다 값이 그대로 타입이 되어 있어요(예: 빈 배열). 여기서는 응답 타입으로 넓혀 읽어요
+const recordingDetails: RecordingDetailEntry[] = recordingDetailsResponse;
 
 // 다시 시도를 접수한 문서 생성 작업의 ID.
 // 기본 응답(responses)은 테스트의 기대값으로도 쓰여서 바꾸지 않고, 바뀐 것만 여기에 적어요
@@ -12,46 +18,49 @@ export const resetRecordingMockState = () => {
   retriedJobIds.clear();
 };
 
-/** 녹음 상세. 문서 만들기를 다시 시도한 녹음은 다시 정리 중인 상태로 돌려줘요 */
+/** 녹음 상세. 실패한 작업을 다시 시도한 녹음은 그 작업이 실패 목록에서 빠지고 다시 정리 중인 상태로 돌려줘요 */
 export const findRecordingDetail = (recordingId: number) => {
-  const recording = recordingDetailsResponse.find(
-    (response) => response.recordingId === recordingId,
+  const recording = recordingDetails.find(
+    (entry) => entry.recordingId === recordingId,
   );
 
-  if (
-    recording === undefined ||
-    recording.documentGenerationJobId === null ||
-    !retriedJobIds.has(recording.documentGenerationJobId)
-  ) {
-    return recording;
+  if (recording === undefined) return undefined;
+
+  const { detail } = recording;
+
+  if (detail.documentGeneration === null) return detail;
+
+  const failedJobIds = detail.documentGeneration.failedJobIds.filter(
+    (jobId) => !retriedJobIds.has(jobId),
+  );
+
+  if (failedJobIds.length === detail.documentGeneration.failedJobIds.length) {
+    return detail;
   }
 
-  // 다시 시도를 접수하면 서버는 이전 실패 사유를 지우고 지금의 작업 상태를 돌려줘요
+  // 다시 시도를 접수하면 서버는 그 작업을 대기로 바꾸고, 문서 생성 결과도 대기로 돌려줘요
   return {
-    ...recording,
-    status: "PROCESSING",
-    documentGenerationStatus: "QUEUED",
-    failureStage: null,
-    failureReason: null,
+    ...detail,
+    documentGeneration: {
+      ...detail.documentGeneration,
+      status: "QUEUED",
+      failedJobIds,
+    },
   } satisfies RecordingDetailResponse;
 };
 
 /**
  * 문서 생성 작업의 다시 시도를 기록해요.
- * 없는 작업이면 `notFound`, 실패 상태가 아니면(진행 중 · 완료 · 이미 다시 시도함) `notAllowed`를 돌려줘요(서버와 같은 기준).
+ * 어느 녹음의 실패 작업도 아니면 `notFound`, 이미 다시 시도해 실패 상태가 아니면 `notAllowed`를 돌려줘요(서버와 같은 기준).
  */
 export const retryDocumentGenerationJob = (jobId: number) => {
-  const recording = recordingDetailsResponse.find(
-    ({ documentGenerationJobId }) => documentGenerationJobId === jobId,
+  const isFailedJob = recordingDetails.some(({ detail }) =>
+    detail.documentGeneration?.failedJobIds.includes(jobId),
   );
 
-  if (recording === undefined) return { result: "notFound" } as const;
+  if (!isFailedJob) return { result: "notFound" } as const;
 
-  const current = findRecordingDetail(recording.recordingId);
-
-  if (current?.documentGenerationStatus !== "FAILED") {
-    return { result: "notAllowed" } as const;
-  }
+  if (retriedJobIds.has(jobId)) return { result: "notAllowed" } as const;
 
   retriedJobIds.add(jobId);
 

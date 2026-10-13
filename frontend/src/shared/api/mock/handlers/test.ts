@@ -786,13 +786,10 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
 
     it("GET .../recordings/:recordingId는 recordingDetailsResponse에서 그 녹음을 찾아 돌려준다", async () => {
       // 상태가 서로 다른 녹음을 모두 물어, 핸들러가 id로 골라 주는지 확인해요
-      for (const recording of recordingDetailsResponse) {
+      for (const { recordingId, detail } of recordingDetailsResponse) {
         await expect(
-          getRecordingApi({
-            workspaceId: WORKSPACE_ID,
-            recordingId: recording.recordingId,
-          }),
-        ).resolves.toEqual(new GetRecordingResponseDto(recording));
+          getRecordingApi({ workspaceId: WORKSPACE_ID, recordingId }),
+        ).resolves.toEqual(new GetRecordingResponseDto(detail));
       }
     });
 
@@ -807,8 +804,8 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
   });
 
   describe("문서 생성 작업", () => {
-    // 정리 중인 녹음(작업 진행 중)과 문서 만들기에 실패한 녹음(작업 실패)
-    const [processingRecording, , failedRecording] = recordingDetailsResponse;
+    // 문서 만들기에 실패한 녹음. 실패한 작업이 다시 시도 mock 응답의 작업이에요
+    const [, , failedRecording] = recordingDetailsResponse;
     const failedJobParams = {
       workspaceId: WORKSPACE_ID,
       jobId: documentGenerationJobRetryResponse.jobId,
@@ -828,16 +825,13 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
       );
     });
 
-    it("다시 시도한 뒤에는 그 녹음의 상세가 정리 중으로 바뀌고 실패 사유가 지워진다", async () => {
+    it("다시 시도한 뒤에는 그 녹음의 문서 생성 결과가 대기로 바뀌고 그 작업이 실패 작업에서 빠진다", async () => {
       await retryDocumentGenerationJobApi(failedJobParams);
 
       await expect(
         getRecordingApi(failedRecordingParams),
       ).resolves.toMatchObject({
-        status: "PROCESSING",
-        documentGenerationStatus: "QUEUED",
-        failureStage: null,
-        failureReason: null,
+        documentGeneration: { status: "QUEUED", failedJobIds: [] },
       });
     });
 
@@ -846,19 +840,6 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
 
       await expect(
         retryDocumentGenerationJobApi(failedJobParams),
-      ).rejects.toMatchObject({
-        type: HTTP_ERROR_TYPE.conflict,
-        code: "RETRY_NOT_ALLOWED",
-      });
-    });
-
-    it("진행 중인 작업을 다시 시도하면 409 RETRY_NOT_ALLOWED로 답한다", async () => {
-      await expect(
-        retryDocumentGenerationJobApi({
-          workspaceId: WORKSPACE_ID,
-          // mock 데이터에서 이 작업 ID가 사라지면 0이 되어 404로 실패하므로, 테스트가 알려 줘요
-          jobId: Number(processingRecording.documentGenerationJobId),
-        }),
       ).rejects.toMatchObject({
         type: HTTP_ERROR_TYPE.conflict,
         code: "RETRY_NOT_ALLOWED",
@@ -880,7 +861,7 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
     it("다시 시도한 기록은 테스트가 끝나면 지워져, 다음 테스트는 기본 응답을 받는다", async () => {
       // 위 테스트들이 작업을 다시 시도했지만 vitest.setup의 afterEach가 기록을 지웠어요
       await expect(getRecordingApi(failedRecordingParams)).resolves.toEqual(
-        new GetRecordingResponseDto(failedRecording),
+        new GetRecordingResponseDto(failedRecording.detail),
       );
     });
   });

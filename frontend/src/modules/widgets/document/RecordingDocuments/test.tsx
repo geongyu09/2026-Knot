@@ -21,7 +21,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import RecordingDocuments from ".";
 
 const WORKSPACE_ID = 1;
-// 상태가 서로 다른 mock 녹음: 정리 중 · 내용 없음 · 문서 만들기 실패 · 전사 실패 · 정리 완료
+// 상태가 서로 다른 mock 녹음: 정리 중 · 내용 없음 · 문서 만들기 실패 · 전사 실패 · 정리 완료.
+// 서버 응답에는 녹음 ID가 없어서, 녹음 ID(`recordingId`)와 응답(`detail`)이 한 쌍으로 있어요
 const [
   organizingRecording,
   noContentRecording,
@@ -174,18 +175,18 @@ describe("RecordingDocuments", () => {
   it.each([
     { reason: "전사에 실패", recording: transcriptionFailedRecording },
     {
-      reason: "오디오 업로드에 실패",
-      recording: {
-        ...transcriptionFailedRecording,
-        audioUploadStatus: "FAILED",
-        transcriptionStatus: "NOT_STARTED",
-        failureStage: "AUDIO_UPLOAD",
-        failureReason: "AUDIO_UPLOAD_FAILED",
-      },
-    },
-    {
       reason: "문서 만들기에 실패했지만 다시 시도할 작업이 없음",
-      recording: { ...failedRecording, documentGenerationJobId: null },
+      recording: {
+        ...failedRecording,
+        detail: {
+          ...failedRecording.detail,
+          // 실패 작업의 보존 기한이 지나면 서버는 실패 결과만 남기고 작업 ID를 비워요
+          documentGeneration: {
+            ...failedRecording.detail.documentGeneration,
+            failedJobIds: [],
+          },
+        },
+      },
     },
   ])(
     "$reason: 설명과 다시 시도 없이 홈으로만 보여준다",
@@ -193,7 +194,7 @@ describe("RecordingDocuments", () => {
       mockServer.use(
         http.get(
           `*${RECORDING_API_PATH(WORKSPACE_ID, recording.recordingId)}`,
-          () => HttpResponse.json(recording),
+          () => HttpResponse.json(recording.detail),
         ),
       );
       renderRecordingDocuments(recording.recordingId);
@@ -212,6 +213,103 @@ describe("RecordingDocuments", () => {
     },
   );
 
+  it("문서가 일부만 만들어진 실패도 문서로 보내지 않고, 실패했다고 알리며 다시 시도 버튼을 보여준다", async () => {
+    mockServer.use(
+      http.get(RECORDING_REQUEST, () =>
+        HttpResponse.json({
+          ...failedRecording.detail,
+          documentGeneration: {
+            ...failedRecording.detail.documentGeneration,
+            succeededCount: 2,
+          },
+        }),
+      ),
+    );
+    renderRecordingDocuments(failedRecording.recordingId);
+
+    expect(
+      await screen.findByRole("heading", { level: 2, name: FAILED_TITLE }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "다시 시도" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("문서 화면")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    {
+      reason: "오디오 업로드를 아직 확인하지 못했으면",
+      detail: {
+        ...organizingRecording.detail,
+        audioUploadStatus: "RESERVED",
+        transcriptionAttemptId: null,
+        transcriptionStatus: null,
+        documentGeneration: null,
+      },
+    },
+    {
+      reason: "전사하는 중이면",
+      detail: {
+        ...organizingRecording.detail,
+        transcriptionStatus: "PROCESSING",
+        documentGeneration: null,
+      },
+    },
+    {
+      reason: "문서 만들기가 대기 중이면",
+      detail: {
+        ...organizingRecording.detail,
+        documentGeneration: {
+          ...organizingRecording.detail.documentGeneration,
+          status: "QUEUED",
+        },
+      },
+    },
+  ])("끝낸 녹음의 $reason 정리 중이라고 알린다", async ({ detail }) => {
+    mockServer.use(
+      http.get(RECORDING_REQUEST, () => HttpResponse.json(detail)),
+    );
+    renderRecordingDocuments(organizingRecording.recordingId);
+
+    expect(
+      await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE }),
+    ).toBeInTheDocument();
+  });
+
+  it("전사 상태와 문서 생성 결과가 없는 응답을 받으면 정리 중이라고 알리고 계속 조회한다", async () => {
+    let requestCount = 0;
+    // 전사와 문서 생성 결과를 아직 주지 않는 서버의 응답이에요. 세션 상태와 업로드 상태만 있어요
+    const {
+      transcriptionAttemptId: _transcriptionAttemptId,
+      transcriptionStatus: _transcriptionStatus,
+      transcriptionFailureCode: _transcriptionFailureCode,
+      documentGeneration: _documentGeneration,
+      ...sessionOnlyDetail
+    } = organizingRecording.detail;
+    mockServer.use(
+      http.get(RECORDING_REQUEST, () => {
+        requestCount += 1;
+        return HttpResponse.json(sessionOnlyDetail);
+      }),
+    );
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderRecordingDocuments(organizingRecording.recordingId);
+
+    expect(
+      await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE }),
+    ).toBeInTheDocument();
+    expect(requestCount).toBe(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+    });
+
+    await waitFor(() => expect(requestCount).toBe(2));
+    expect(
+      screen.getByRole("heading", { level: 2, name: ORGANIZING_TITLE }),
+    ).toBeInTheDocument();
+  });
+
   it("정리 중에는 3초마다 다시 조회하고, 결과가 정해지면 화면을 바꾸고 더 조회하지 않는다", async () => {
     let requestCount = 0;
     mockServer.use(
@@ -220,11 +318,8 @@ describe("RecordingDocuments", () => {
         // 두 번째 조회부터는 문서로 만들 내용이 없었다는 결과를 돌려줘요
         return HttpResponse.json(
           requestCount === 1
-            ? organizingRecording
-            : {
-                ...noContentRecording,
-                recordingId: organizingRecording.recordingId,
-              },
+            ? organizingRecording.detail
+            : noContentRecording.detail,
         );
       }),
     );
@@ -259,7 +354,7 @@ describe("RecordingDocuments", () => {
           requestCount += 1;
           // 두 번째 조회부터는 녹음이 없어졌거나 볼 수 없게 된 응답을 돌려줘요
           return requestCount === 1
-            ? HttpResponse.json(organizingRecording)
+            ? HttpResponse.json(organizingRecording.detail)
             : new HttpResponse(null, { status });
         }),
       );
@@ -294,7 +389,7 @@ describe("RecordingDocuments", () => {
       http.get(RECORDING_REQUEST, () => {
         requestCount += 1;
         return requestCount === 1
-          ? HttpResponse.json(organizingRecording)
+          ? HttpResponse.json(organizingRecording.detail)
           : new HttpResponse(null, { status: 500 });
       }),
     );
@@ -337,11 +432,8 @@ describe("RecordingDocuments", () => {
         // 두 번째 조회부터는 정리가 끝났다는 결과를 돌려줘요
         return HttpResponse.json(
           recordingRequestCount === 1
-            ? {
-                ...organizingRecording,
-                recordingId: completedRecording.recordingId,
-              }
-            : completedRecording,
+            ? organizingRecording.detail
+            : completedRecording.detail,
         );
       }),
       http.get(DOCUMENTS_REQUEST, () => {
@@ -410,11 +502,14 @@ describe("RecordingDocuments", () => {
       mockServer.use(
         http.get(RECORDING_REQUEST, () =>
           HttpResponse.json({
-            ...organizingRecording,
+            ...organizingRecording.detail,
             status,
-            sessionStatus: status,
             endedAt: null,
-            durationMillis: null,
+            endReason: null,
+            audioUploadStatus: null,
+            transcriptionAttemptId: null,
+            transcriptionStatus: null,
+            documentGeneration: null,
           }),
         ),
       );
@@ -467,11 +562,36 @@ describe("RecordingDocuments", () => {
     },
   );
 
-  it("서버가 화면이 모르는 녹음 상태를 주면 문서를 불러오지 못했다고 알린다", async () => {
+  it.each([
+    // 명세에 없는 상태예요. 서버에 상태가 늘었는데 화면이 아직 모르는 경우를 흉내 내요
+    { reason: "화면이 모르는 세션 상태를 주면", status: "ARCHIVED" },
+    { reason: "서버가 버린 녹음이면(DISCARDED)", status: "DISCARDED" },
+  ])("$reason 문서를 불러오지 못했다고 알린다", async ({ status }) => {
     mockServer.use(
       http.get(RECORDING_REQUEST, () =>
-        // 명세에 없는 상태예요. 서버에 상태가 늘었는데 화면이 아직 모르는 경우를 흉내 내요
-        HttpResponse.json({ ...organizingRecording, status: "ARCHIVED" }),
+        HttpResponse.json({ ...organizingRecording.detail, status }),
+      ),
+    );
+    renderRecordingDocuments(organizingRecording.recordingId);
+
+    expect(
+      await screen.findByRole("heading", {
+        level: 2,
+        name: LOAD_FAILED_TITLE,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("서버가 화면이 모르는 문서 생성 상태를 주면 문서를 불러오지 못했다고 알린다", async () => {
+    mockServer.use(
+      http.get(RECORDING_REQUEST, () =>
+        HttpResponse.json({
+          ...organizingRecording.detail,
+          documentGeneration: {
+            ...organizingRecording.detail.documentGeneration,
+            status: "CANCELLED",
+          },
+        }),
       ),
     );
     renderRecordingDocuments(organizingRecording.recordingId);
@@ -581,17 +701,22 @@ describe("RecordingDocuments", () => {
   it("다른 녹음의 주소로 가면 앞 녹음에서 거절된 다시 시도를 남기지 않고 다시 시도 버튼을 보여준다", async () => {
     // 문서 만들기에 실패한 또 다른 녹음이에요. 다시 시도할 작업도 달라요
     const anotherFailedRecording = {
-      ...failedRecording,
       recordingId: failedRecording.recordingId + 100,
-      documentGenerationJobId: ANOTHER_JOB_ID,
+      detail: {
+        ...failedRecording.detail,
+        documentGeneration: {
+          ...failedRecording.detail.documentGeneration,
+          failedJobIds: [ANOTHER_JOB_ID],
+        },
+      },
     };
     mockServer.use(
       http.post(RETRY_REQUEST, () => new HttpResponse(null, { status: 404 })),
       http.get(RECORDING_REQUEST, ({ params }) =>
         HttpResponse.json(
           Number(params.recordingId) === anotherFailedRecording.recordingId
-            ? anotherFailedRecording
-            : failedRecording,
+            ? anotherFailedRecording.detail
+            : failedRecording.detail,
         ),
       ),
     );
@@ -640,10 +765,9 @@ describe("RecordingDocuments", () => {
         }),
         // 다른 곳에서 먼저 다시 시도해, 서버의 녹음은 화면이 아는 실패 상태가 아니에요
         http.get(RECORDING_REQUEST, () =>
-          HttpResponse.json({
-            ...(isRetryRejected ? latestRecording : failedRecording),
-            recordingId,
-          }),
+          HttpResponse.json(
+            (isRetryRejected ? latestRecording : failedRecording).detail,
+          ),
         ),
       );
       renderRecordingDocuments(recordingId);
@@ -663,10 +787,7 @@ describe("RecordingDocuments", () => {
         return new HttpResponse(null, { status: 409 });
       }),
       http.get(RECORDING_REQUEST, () =>
-        HttpResponse.json({
-          ...latestRecording,
-          recordingId: failedRecording.recordingId,
-        }),
+        HttpResponse.json(latestRecording.detail),
       ),
     );
     vi.useFakeTimers({ shouldAdvanceTime: true });
