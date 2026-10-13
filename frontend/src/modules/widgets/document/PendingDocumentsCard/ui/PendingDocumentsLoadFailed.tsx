@@ -29,6 +29,7 @@ export default function PendingDocumentsLoadFailed({
         <InlineError
           message="목록을 불러오지 못했어요. 다시 시도해 주세요."
           onRetry={onRetry}
+          align="center"
         />
       </InlineErrorWrapper>
     </Container>

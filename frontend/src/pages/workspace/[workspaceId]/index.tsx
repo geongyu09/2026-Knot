@@ -1,5 +1,6 @@
 import styled from "@emotion/styled";
 import MemberGreeting from "@features/member/MemberGreeting";
+import PendingDocumentsCard from "@widgets/document/PendingDocumentsCard";
 import RecentDocumentsCard from "@widgets/document/RecentDocumentsCard";
 import RecordingListCard from "@widgets/recording/RecordingListCard";
 import WorkspaceInviteMemberCard from "@widgets/workspace/WorkspaceInviteMemberCard";
@@ -13,7 +14,7 @@ import WorkspaceInviteMemberCard from "@widgets/workspace/WorkspaceInviteMemberC
  *
  * GNB·사이드바·하단 Dock은 `WorkspaceLayout`이 담당하고, 이 페이지는 인사와 카드를 두 열로 놓기만 한다.
  * 윗줄(312px)은 확인이 필요한 문서 · 최근 추가된 문서, 아랫줄(214px)은 진행 중인 녹음 · 팀원 초대다(HOME-R2).
- * 확인이 필요한 문서 카드는 아직 없어 그 자리를 비워 둔다.
+ * 카드는 저마다 따로 불러와, 한 카드가 실패해도 그 카드 안에서만 알린다(HOME-R6).
  *
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1562-2616 홈/기본
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1917-18135 홈/처음 사용
@@ -25,7 +26,7 @@ export default function WorkspaceHomePage() {
       <PageColumn>
         <MemberGreeting />
         <CardGrid>
-          <PendingConfirmationSlot />
+          <PendingDocumentsCard />
           <RecentDocumentsCard />
           <RecordingListCard />
           <WorkspaceInviteMemberCard />
@@ -61,6 +62,3 @@ const CardGrid = styled.div`
   grid-template-columns: minmax(0, 40.75rem) minmax(0, 25rem); /* 652px 400px */
   gap: 1.75rem; /* 28px */
 `;
-
-/** 확인이 필요한 문서 카드가 놓일 왼쪽 위 칸. 카드가 생기기 전까지 비워 둬요 */
-const PendingConfirmationSlot = styled.div``;
