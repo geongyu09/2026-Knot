@@ -1,5 +1,6 @@
 package com.knot.backend.auth.presentation.handler;
 
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.auth.application.AuthService;
 import com.knot.backend.auth.application.dto.result.AuthLoginResult;
 import com.knot.backend.auth.domain.AuthErrorCode;
@@ -79,25 +80,38 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
             clearAuthentication(request);
             response.sendRedirect(loginProperties.getSuccessRedirectUri());
         } catch (AuthException exception) {
-            log.warn(
-                    "OAuth 인증 처리 실패: errorCode={}",
-                    exception.getErrorCode()
-            );
+            logAuthenticationFailure(exception);
             handleFailure(
                     request,
                     response
             );
         } catch (RuntimeException exception) {
-            log.error(
-                    "OAuth 인증 처리 중 예기치 않은 오류: type={}",
-                    exception.getClass()
-                            .getSimpleName()
+            ServerErrorLogger.error(
+                    log,
+                    "OAuth success processing failed",
+                    exception
             );
             handleFailure(
                     request,
                     response
             );
         }
+    }
+
+    private void logAuthenticationFailure(AuthException exception) {
+        if (ServerErrorLogger.isInternalFailure(exception)) {
+            ServerErrorLogger.record(
+                    log,
+                    "OAuth success processing failed",
+                    exception
+            );
+            return;
+        }
+        ServerErrorLogger.warn(
+                log,
+                "OAuth authentication rejected",
+                exception
+        );
     }
 
     private void handleFailure(

@@ -1,5 +1,6 @@
 package com.knot.backend.auth.presentation.handler;
 
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.auth.application.AuthService;
 import com.knot.backend.auth.domain.AuthErrorCode;
 import com.knot.backend.auth.presentation.AuthCookieManager;
@@ -38,8 +39,9 @@ public class JwtLogoutHandler implements LogoutHandler {
         try {
             authService.logout(refreshToken(request));
         } catch (RuntimeException exception) {
-            log.error(
-                    "로그아웃 중 인증 세션 폐기에 실패했습니다",
+            ServerErrorLogger.record(
+                    log,
+                    "Logout session revocation failed",
                     exception
             );
             request.setAttribute(
@@ -77,6 +79,11 @@ public class JwtLogoutHandler implements LogoutHandler {
                     new ErrorResponse(AuthErrorCode.AUTHENTICATION_INTERNAL_ERROR)
             );
         } catch (IOException exception) {
+            ServerErrorLogger.record(
+                    log,
+                    "Logout error response write failed",
+                    exception
+            );
             throw new UncheckedIOException(exception);
         }
     }

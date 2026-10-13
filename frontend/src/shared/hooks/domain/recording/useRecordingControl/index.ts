@@ -4,12 +4,14 @@ import useEndRecordingMutation from "@api/mutations/useEndRecordingMutation";
 import useIssueRecordingAudioUploadUrlMutation from "@api/mutations/useIssueRecordingAudioUploadUrlMutation";
 import usePauseRecordingMutation from "@api/mutations/usePauseRecordingMutation";
 import useResumeRecordingMutation from "@api/mutations/useResumeRecordingMutation";
+import useSendRecordingHeartbeatMutation from "@api/mutations/useSendRecordingHeartbeatMutation";
 import useStartRecordingMutation from "@api/mutations/useStartRecordingMutation";
 import useUploadRecordingAudioMutation from "@api/mutations/useUploadRecordingAudioMutation";
 import useNavigateToWorkspaceHome from "@hooks/domain/workspace/useNavigateToWorkspaceHome";
 import { useRecordingStore } from "@store/recordingStore";
 import { isClosedRecordingError } from "@utils/isClosedRecordingError";
 import { isRetryableAudioUploadError } from "@utils/isRetryableAudioUploadError";
+import { isUnreachableRecordingError } from "@utils/isUnreachableRecordingError";
 import { logRequestError } from "@utils/logRequestError";
 import {
   clearRecordingStartProof,
@@ -53,7 +55,11 @@ const clearRecording = () => {
  *   끝내는 동안에는 확인 창을 다시 띄우지 않아요. 종료가 실패하면 녹음을 그대로 두고,
  *   업로드가 일시 실패하면 URL 발급부터 3번까지 다시 시도하고, 그래도 실패하면 오디오를 버리고 홈으로 가요.
  *   워크스페이스를 옮길 때처럼 부른 쪽이 따로 확인받고 갈 곳도 정하면 `endRecordingWithoutConfirm`으로 끝내요.
- * - 서버에서 이미 끝났거나 버려진 녹음(409)이면 수집을 멈추고 오디오를 버린 뒤 홈으로 가요.
+ * - 생존 신호: 응답의 서버 상태를 따라가요. 서버가 끝낸 녹음(`ENDED`)이면 종료 요청 없이 여기까지의 오디오를 올리고,
+ *   버렸거나(`DISCARDED`) 더는 볼 수 없는 녹음(403 `WORKSPACE_ACCESS_DENIED`, 404)이면 오디오를 버려요. 둘 다 홈으로 가요.
+ *   그 밖의 실패는 다시 보내지 않고 부르는 쪽의 다음 주기에 맡겨요. 끝내는 중에는 보내지 않아요.
+ * - 일시정지나 이어서 녹음이 서버에서 이미 끝난 녹음(409 `RECORDING_ALREADY_ENDED`)이라고 거절되면 오디오를 버리지 않고
+ *   생존 신호를 바로 한 번 보내 그 응답대로 처리해요. 이미 버려진 녹음(409)이면 오디오를 버리고 홈으로 가요.
  *
  * 최초 탭 증명은 sessionStorage에 두고, 실패는 안내 없이 콘솔에만 남겨요.
  * 독의 마이크 끊김 알림처럼 효과 안에서 부르는 곳이 있어 동작의 참조를 고정해요.
@@ -65,6 +71,8 @@ const useRecordingControl = () => {
   const { mutateAsync: pauseRecordingSession } = usePauseRecordingMutation();
   const { mutateAsync: resumeRecordingSession } = useResumeRecordingMutation();
   const { mutateAsync: endRecordingSession } = useEndRecordingMutation();
+  const { mutateAsync: sendRecordingHeartbeat } =
+    useSendRecordingHeartbeatMutation();
   const { mutateAsync: issueAudioUploadUrl } =
     useIssueRecordingAudioUploadUrlMutation();
   const { mutateAsync: uploadAudio } = useUploadRecordingAudioMutation();
@@ -86,12 +94,96 @@ const useRecordingControl = () => {
     [navigateToWorkspaceHome],
   );
 
+  /** 일시 실패면 URL 발급부터 최대 `AUDIO_UPLOAD_MAX_RETRIES`번 다시 시도해요. 최종 실패는 콘솔에만 남겨요 */
+  const uploadRecordedAudio = useCallback(
+    async ({ workspaceId, recordingId, audio }: UploadRecordedAudioParams) => {
+      for (let retryCount = 0; ; retryCount += 1) {
+        try {
+          // 만료됐거나 PUT이 깨진 URL을 다시 쓰지 않도록 매번 새로 받아요. 쓰지 않은 예약이면 서버가 같은 uploadId를 줘요
+          const { uploadId, uploadUrl } = await issueAudioUploadUrl({
+            workspaceId,
+            recordingId,
+            contentType: audio.type,
+            contentLength: audio.size,
+          });
+          await uploadAudio({ uploadUrl, audio });
+          await completeAudioUpload({ workspaceId, recordingId, uploadId });
+
+          return;
+        } catch (error) {
+          if (
+            retryCount < AUDIO_UPLOAD_MAX_RETRIES &&
+            isRetryableAudioUploadError(error)
+          ) {
+            continue;
+          }
+
+          logRequestError("녹음 파일 업로드", error);
+
+          return;
+        }
+      }
+    },
+    [completeAudioUpload, issueAudioUploadUrl, uploadAudio],
+  );
+
+  /**
+   * 생존 신호를 보내고 응답의 서버 상태에 맞춰 녹음을 이어 가거나 닫아요.
+   * 실패는 콘솔에만 남기고 다시 보내지 않아요. 다음 신호는 부르는 쪽의 주기에 맡겨요
+   */
+  const sendHeartbeat = useCallback(async () => {
+    const { session, isEnding } = useRecordingStore.getState();
+    const proof = getRecordingControlProof();
+    if (!session || !proof || isEnding) return;
+
+    // 응답을 기다리는 사이 끝내기 시작했거나 닫은 녹음이면, 늦은 응답으로 지금 화면을 바꾸지 않아요
+    const isLateResponse = () => {
+      const current = useRecordingStore.getState();
+
+      return (
+        current.isEnding || current.session?.recordingId !== session.recordingId
+      );
+    };
+
+    try {
+      const { status, elapsedMillis } = await sendRecordingHeartbeat({
+        ...session,
+        ...proof,
+      });
+      if (isLateResponse()) return;
+
+      if (status === "ENDED") {
+        // 서버가 이미 끝낸 녹음이라 종료 요청 없이 여기까지의 오디오를 올려요
+        const audio = await useRecordingStore.getState().stopRecording();
+        await uploadRecordedAudio({ ...session, audio });
+        closeRecording(session.workspaceId);
+      } else if (status === "DISCARDED") {
+        closeRecording(session.workspaceId);
+      } else {
+        useRecordingStore.getState().syncElapsedTime(elapsedMillis);
+      }
+    } catch (error) {
+      logRequestError("녹음 생존 신호", error);
+      if (!isLateResponse() && isUnreachableRecordingError(error)) {
+        closeRecording(session.workspaceId);
+      }
+    }
+  }, [closeRecording, sendRecordingHeartbeat, uploadRecordedAudio]);
+
   const handleControlError = useCallback(
     ({ action, error, workspaceId }: HandleControlErrorParams) => {
       logRequestError(action, error);
+
+      // 서버가 끝낸 녹음은 오디오를 올려야 해서 버리지 않고, 생존 신호의 응답으로 마저 처리해요
+      if (isHttpError(error) && error.code === "RECORDING_ALREADY_ENDED") {
+        void sendHeartbeat();
+
+        return;
+      }
+
       if (isClosedRecordingError(error)) closeRecording(workspaceId);
     },
-    [closeRecording],
+    [closeRecording, sendHeartbeat],
   );
 
   /** 마이크를 받아 서버에 녹음을 열어요. 결과는 `started`·`microphoneUnavailable`·`refused`·`failed`예요 */
@@ -212,52 +304,20 @@ const useRecordingControl = () => {
     return true;
   }, [handleControlError, resumeRecordingSession]);
 
-  /** 일시 실패면 URL 발급부터 최대 `AUDIO_UPLOAD_MAX_RETRIES`번 다시 시도해요. 최종 실패는 콘솔에만 남겨요 */
-  const uploadRecordedAudio = useCallback(
-    async ({ workspaceId, recordingId, audio }: UploadRecordedAudioParams) => {
-      for (let retryCount = 0; ; retryCount += 1) {
-        try {
-          // 만료됐거나 PUT이 깨진 URL을 다시 쓰지 않도록 매번 새로 받아요. 쓰지 않은 예약이면 서버가 같은 uploadId를 줘요
-          const { uploadId, uploadUrl } = await issueAudioUploadUrl({
-            workspaceId,
-            recordingId,
-            contentType: audio.type,
-            contentLength: audio.size,
-          });
-          await uploadAudio({ uploadUrl, audio });
-          await completeAudioUpload({ workspaceId, recordingId, uploadId });
-
-          return;
-        } catch (error) {
-          if (
-            retryCount < AUDIO_UPLOAD_MAX_RETRIES &&
-            isRetryableAudioUploadError(error)
-          ) {
-            continue;
-          }
-
-          logRequestError("녹음 파일 업로드", error);
-
-          return;
-        }
-      }
-    },
-    [completeAudioUpload, issueAudioUploadUrl, uploadAudio],
-  );
-
   /**
    * 확인 창 없이 녹음을 끝내 올린 뒤 비워요. 이동은 부른 쪽이 정해요.
    * 끝냈으면 `true`를, 이미 끝내는 중이거나 종료 요청이 실패해 녹음을 이어 가면 `false`를 돌려줘요
    */
   const endRecordingWithoutConfirm = useCallback(async () => {
     const { session, isEnding, beginEnding } = useRecordingStore.getState();
-    if (!session || isEnding) return false;
+    const proof = getRecordingControlProof();
+    if (!session || !proof || isEnding) return false;
 
     // 응답을 기다리는 동안 다시 눌러도 종료 요청이 겹치지 않게 먼저 표시해요
     beginEnding();
 
     try {
-      await endRecordingSession(session);
+      await endRecordingSession({ ...session, ...proof });
     } catch (error) {
       logRequestError("녹음 종료", error);
 
@@ -306,6 +366,7 @@ const useRecordingControl = () => {
     pauseRecording,
     syncPause,
     resumeRecording,
+    sendHeartbeat,
     endRecording,
     endRecordingWithoutConfirm,
   };

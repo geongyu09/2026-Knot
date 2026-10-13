@@ -325,7 +325,10 @@ public class DocumentGenerationJob {
                 throw new DocumentException(DocumentErrorCode.INVALID_DOCUMENT_DATA);
             }
         } catch (DateTimeException exception) {
-            throw new DocumentException(DocumentErrorCode.INVALID_DOCUMENT_DATA);
+            throw new DocumentException(
+                    DocumentErrorCode.INVALID_DOCUMENT_DATA,
+                    exception
+            );
         }
     }
 
@@ -368,7 +371,10 @@ public class DocumentGenerationJob {
                 throw new DocumentException(DocumentErrorCode.RETRY_NOT_ALLOWED);
             }
         } catch (DateTimeException exception) {
-            throw new DocumentException(DocumentErrorCode.RETRY_NOT_ALLOWED);
+            throw new DocumentException(
+                    DocumentErrorCode.RETRY_NOT_ALLOWED,
+                    exception
+            );
         }
     }
 

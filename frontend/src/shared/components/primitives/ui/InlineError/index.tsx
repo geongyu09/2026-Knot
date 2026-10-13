@@ -8,7 +8,18 @@ interface InlineErrorProps {
   message: string;
   /** `다시 시도`를 눌렀을 때 실행할 동작 */
   onRetry: () => void;
+  /**
+   * 문구와 `다시 시도`의 가로 정렬. 그 자리의 빈 상태 안내와 같은 정렬을 골라요.
+   * 영역 전체를 대신할 때는 `center`(예: 홈 카드), 글 흐름 안에 들어갈 때는 `start`(예: 탐색 답변)예요.
+   * @default "start"
+   */
+  align?: keyof typeof ALIGN;
 }
+
+const ALIGN = {
+  start: "flex-start",
+  center: "center",
+} as const;
 
 /**
  * 화면 안 한 영역이나 한 동작만 실패했을 때, 그 내용이 있어야 할 자리에 남기는 안내.
@@ -17,9 +28,13 @@ interface InlineErrorProps {
  * 같은 실패를 토스트로 또 알리지 않아요.
  * 낭독기가 바로 읽도록 `role="alert"`를 붙였어요.
  */
-export default function InlineError({ message, onRetry }: InlineErrorProps) {
+export default function InlineError({
+  message,
+  onRetry,
+  align = "start",
+}: InlineErrorProps) {
   return (
-    <Container role="alert">
+    <Container role="alert" $align={align}>
       <MessageRow>
         <Icon aria-hidden size={18} />
         <Message>{message}</Message>
@@ -31,10 +46,10 @@ export default function InlineError({ message, onRetry }: InlineErrorProps) {
   );
 }
 
-const Container = styled.div`
+const Container = styled.div<{ $align: keyof typeof ALIGN }>`
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: ${({ $align }) => ALIGN[$align]};
   gap: 0.75rem; /* 12px */
 `;
 

@@ -103,7 +103,10 @@ public class DocumentGenerationPrompt {
             }
             return result;
         } catch (JacksonException exception) {
-            throw new LlmException(LlmErrorCode.LLM_INVALID_CONFIGURATION);
+            throw new LlmException(
+                    LlmErrorCode.LLM_INVALID_CONFIGURATION,
+                    exception
+            );
         }
     }
 
@@ -118,7 +121,10 @@ public class DocumentGenerationPrompt {
             }
             return value;
         } catch (IOException exception) {
-            throw new LlmException(LlmErrorCode.LLM_INVALID_CONFIGURATION);
+            throw new LlmException(
+                    LlmErrorCode.LLM_INVALID_CONFIGURATION,
+                    exception
+            );
         }
     }
 }

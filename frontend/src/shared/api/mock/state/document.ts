@@ -3,6 +3,7 @@ import {
   documentConfirmationsResponse,
   documentDetailsResponse,
   documentsResponse,
+  documentTranscriptsResponse,
 } from "@api/mock/responses/document";
 import type {
   DocumentConfirmationItem,
@@ -114,6 +115,17 @@ export const findDocumentDetail = (documentId: number) => {
     ...document,
     ...confirmedFields(document),
   } satisfies DocumentDetailResponse;
+};
+
+/** 문서를 만든 원문. 없는 문서이거나 그 문서가 가리키는 원문이 없으면 undefined예요 */
+export const findDocumentTranscript = (documentId: number) => {
+  const document = documentDetailsResponse.find(({ id }) => id === documentId);
+
+  if (document === undefined) return undefined;
+
+  return documentTranscriptsResponse.find(
+    ({ transcriptId }) => transcriptId === document.sourceTranscriptId,
+  );
 };
 
 /** 확인 대상. 확인을 누른 문서는 내 항목을 확인한 상태로 바꾸고 다시 정렬해서 돌려줘요 */

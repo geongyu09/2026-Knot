@@ -1,5 +1,8 @@
 package com.knot.backend.document.infrastructure;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import ch.qos.logback.classic.Level;
+import com.knot.backend.testsupport.LogCapture;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -151,4 +154,92 @@ class RetentionCleanupSchedulerTest {
                 never()
         ).findTaskForUpdate(10);
     }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"documents", "audio-retention", "audio-delete"})
+    @DisplayName("보존 정리의 세 후보 조회 오류는 기록 후 다음 실행을 계속한다")
+    void poll_failure_queryThenNextRun(String phase) {
+        IllegalStateException failure = new IllegalStateException("private-sql");
+        Runnable poll = configureFailingQuery(
+                phase,
+                failure
+        );
+        try (LogCapture logs = new LogCapture(RetentionCleanupScheduler.class)) {
+            poll.run();
+            poll.run();
+            assertThat(logs.events()).singleElement()
+                    .satisfies(event -> {
+                        assertThat(event.getLevel()).isEqualTo(Level.ERROR);
+                        assertThat(event.getFormattedMessage()).contains("phase=")
+                                .doesNotContain("private-sql");
+                        assertThat(event.getThrowableProxy()).isNull();
+                    });
+        }
+        verifyQueryTwice(phase);
+    }
+
+    private Runnable configureFailingQuery(
+            String phase,
+            IllegalStateException failure
+    ) {
+        if ("documents".equals(phase)) {
+            when(
+                    documents.findCandidates(
+                            NOW,
+                            20
+                    )
+            ).thenThrow(failure)
+                    .thenReturn(List.of());
+            return scheduler::cleanupExpiredData;
+        }
+        if ("audio-retention".equals(phase)) {
+            when(
+                    audio.findRetentionCandidates(
+                            NOW.minus(Duration.ofDays(30)),
+                            20
+                    )
+            ).thenThrow(failure)
+                    .thenReturn(List.of());
+            return scheduler::cleanupExpiredData;
+        }
+        when(
+                audio.findReadyTasks(
+                        NOW,
+                        20
+                )
+        ).thenThrow(failure)
+                .thenReturn(List.of());
+        return scheduler::dispatchAudioDeletion;
+    }
+
+    private void verifyQueryTwice(String phase) {
+        if ("documents".equals(phase)) {
+            verify(
+                    documents,
+                    org.mockito.Mockito.times(2)
+            ).findCandidates(
+                    NOW,
+                    20
+            );
+            return;
+        }
+        if ("audio-retention".equals(phase)) {
+            verify(
+                    audio,
+                    org.mockito.Mockito.times(2)
+            ).findRetentionCandidates(
+                    NOW.minus(Duration.ofDays(30)),
+                    20
+            );
+            return;
+        }
+        verify(
+                audio,
+                org.mockito.Mockito.times(2)
+        ).findReadyTasks(
+                NOW,
+                20
+        );
+    }
+
 }

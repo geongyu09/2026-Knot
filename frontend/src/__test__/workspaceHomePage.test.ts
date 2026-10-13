@@ -19,7 +19,7 @@ import { expect, test, type Page } from "@playwright/test";
  *
  * 홈 진입, 사이드바 열고 닫기, 문서 목록의 폴더 펼침·접힘과 문서 이동, 초대 링크·코드 복사,
  * 하단 Dock으로 탐색 이동까지 홈 화면 위에서 사용자가 밟는 플로우를 페이지 단위로 확인해요.
- * 회원·워크스페이스·초대·문서 목록은 dev 서버의 msw mock 응답(`API_MOCKING`)에서 오므로
+ * 회원·워크스페이스·초대·최근 문서·사이드바 문서 목록은 dev 서버의 msw mock 응답(`API_MOCKING`)에서 오므로
  * 기대값도 같은 응답을 DTO로 변환해 가져와요.
  */
 
@@ -42,6 +42,12 @@ const HOME_PATH = `/workspace/${WORKSPACE_ID}`;
 const CHAT_PATH = `${HOME_PATH}/chat`;
 
 const GREETING = `반가워요, ${expectedMe.nickname} 님`;
+// 최근 추가된 문서 카드는 최신순 문서 가운데 앞의 세 개를 보여 줘요
+const RECENT_DOCUMENT_TITLES = new GetDocumentsResponseDto(
+  documentsResponse,
+).items
+  .slice(0, 3)
+  .map(({ title }) => title);
 const INVITE_CODE = expectedInvitation.code;
 const DISPLAY_INVITE_LINK = `/invite/${expectedInvitation.linkToken}`;
 
@@ -95,7 +101,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe("홈 진입", () => {
-  test("인사말, 팀원 초대 카드, 하단 Dock을 보여주고 사이드바는 닫혀 있다", async ({
+  test("인사말, 카드 세 개, 하단 Dock을 보여주고 사이드바는 닫혀 있다", async ({
     page,
   }) => {
     await expect(page.getByRole("heading", { name: GREETING })).toBeVisible();
@@ -103,6 +109,18 @@ test.describe("홈 진입", () => {
     await expect(
       page.getByRole("heading", { name: "Notion 동기화" }),
     ).toBeHidden();
+
+    const recentDocumentsCard = getCard({ page, title: "최근 추가된 문서" });
+    await expect(
+      recentDocumentsCard.getByRole("link", { name: "전체 보기" }),
+    ).toBeVisible();
+    await expect(
+      recentDocumentsCard.getByRole("list").getByRole("link"),
+    ).toHaveText(
+      RECENT_DOCUMENT_TITLES.map((title) => new RegExp(`^${title}`)),
+    );
+
+    await expect(getCard({ page, title: "진행 중인 녹음" })).toBeVisible();
 
     const inviteCard = getCard({ page, title: "팀원 초대" });
     await expect(

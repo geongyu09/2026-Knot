@@ -1,5 +1,6 @@
 package com.knot.backend.document.infrastructure;
 
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.document.application.DocumentRetentionCleanupService;
 import com.knot.backend.document.domain.DocumentRetentionCandidate;
 import com.knot.backend.document.domain.DocumentRetentionRepository;
@@ -55,6 +56,18 @@ public class RetentionCleanupScheduler {
 
     @Scheduled(fixedDelayString = "${knot.retention.poll-interval:1m}")
     public void cleanupExpiredData() {
+        try {
+            cleanupExpiredDataCandidates();
+        } catch (RuntimeException exception) {
+            ServerErrorLogger.record(
+                    log,
+                    "RetentionCleanupScheduler phase=cleanupExpiredData-candidates",
+                    exception
+            );
+        }
+    }
+
+    private void cleanupExpiredDataCandidates() {
         for (DocumentRetentionCandidate candidate : documents.findCandidates(
                 clock.instant(),
                 properties.getCandidateLimit()
@@ -66,9 +79,11 @@ public class RetentionCleanupScheduler {
                         candidate.getBatchId()
                 );
             } catch (RuntimeException exception) {
-                log.warn(
-                        "Document retention cleanup deferred batchId={}",
-                        candidate.getBatchId()
+                ServerErrorLogger.record(
+                        log,
+                        "Document retention deferred workspaceId=" + candidate.getWorkspaceId() + " batchId="
+                                + candidate.getBatchId() + " phase=cleanup",
+                        exception
                 );
             }
         }
@@ -80,9 +95,10 @@ public class RetentionCleanupScheduler {
             try {
                 audioRetention.schedule(uploadId);
             } catch (RuntimeException exception) {
-                log.warn(
-                        "Audio retention scheduling deferred uploadId={}",
-                        uploadId
+                ServerErrorLogger.record(
+                        log,
+                        "Audio retention deferred uploadId=" + uploadId + " phase=schedule",
+                        exception
                 );
             }
         }
@@ -90,6 +106,18 @@ public class RetentionCleanupScheduler {
 
     @Scheduled(fixedDelayString = "${knot.retention.deletion-interval:5s}")
     public void dispatchAudioDeletion() {
+        try {
+            dispatchAudioDeletionCandidates();
+        } catch (RuntimeException exception) {
+            ServerErrorLogger.record(
+                    log,
+                    "RetentionCleanupScheduler phase=dispatchAudioDeletion-candidates",
+                    exception
+            );
+        }
+    }
+
+    private void dispatchAudioDeletionCandidates() {
         for (Long taskId : audio.findReadyTasks(
                 clock.instant(),
                 properties.getCandidateLimit()
@@ -106,9 +134,10 @@ public class RetentionCleanupScheduler {
         try {
             worker.execute(taskId);
         } catch (RuntimeException exception) {
-            log.warn(
-                    "Audio deletion result deferred taskId={}",
-                    taskId
+            ServerErrorLogger.record(
+                    log,
+                    "Audio result deferred taskId=" + taskId + " phase=execute",
+                    exception
             );
         }
     }

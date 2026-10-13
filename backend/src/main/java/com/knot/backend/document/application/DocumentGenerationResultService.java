@@ -117,7 +117,10 @@ public class DocumentGenerationResultService {
                     completedAt
             );
         } catch (DocumentException exception) {
-            throw new DocumentException(DocumentErrorCode.INVALID_DOCUMENT_GENERATION_RESPONSE);
+            throw new DocumentException(
+                    DocumentErrorCode.INVALID_DOCUMENT_GENERATION_RESPONSE,
+                    exception
+            );
         }
     }
 

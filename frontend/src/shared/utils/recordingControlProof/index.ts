@@ -60,7 +60,7 @@ export const getRecordingStartProof = () => {
 };
 
 /**
- * 일시정지·재개 요청에 실을 최초 탭 증명(탭 ID·제어 증명)을 돌려줘요. 시작한 적이 없으면 `null`이에요.
+ * 일시정지·재개·종료 요청에 실을 최초 탭 증명(탭 ID·제어 증명)을 돌려줘요. 시작한 적이 없으면 `null`이에요.
  */
 export const getRecordingControlProof = () => {
   const stored = readStartProof();

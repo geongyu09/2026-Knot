@@ -1,7 +1,9 @@
 package com.knot.backend.search.infrastructure;
 
-import java.util.concurrent.RejectedExecutionException;
 import static org.assertj.core.api.Assertions.assertThat;
+import ch.qos.logback.classic.Level;
+import com.knot.backend.testsupport.LogCapture;
+import java.util.concurrent.RejectedExecutionException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doThrow;
@@ -152,4 +154,51 @@ class SearchTransportCancellationTest {
                 now.plusSeconds(10)
         );
     }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    @DisplayName("실제 감시 task의 DB 실패는 취소와 함께 한 번 기록하고 접근 철회는 ERROR 없이 종료한다")
+    void watch_failure_recordsInternalOnce(boolean internal) throws Exception {
+        SearchToolAccess access = mock(SearchToolAccess.class);
+        doThrow(monitorFailure(internal)).when(access)
+                .validate(org.mockito.ArgumentMatchers.any(SearchToolScope.class));
+        try (LogCapture logs = new LogCapture(SearchTransportCancellation.class);
+                SearchTransportCancellation cancellation = new SearchTransportCancellation(
+                        access,
+                        Duration.ofMillis(10)
+                )) {
+            CompletableFuture<HttpResponse<InputStream>> pending = new CompletableFuture<>();
+            cancellation.watch(
+                    scope(),
+                    pending
+            );
+            assertThatThrownBy(
+                    () -> pending.get(
+                            2,
+                            TimeUnit.SECONDS
+                    )
+            ).isInstanceOf(CancellationException.class);
+            assertThat(logs.events()).singleElement()
+                    .satisfies(event -> {
+                        assertThat(event.getLevel()).isEqualTo(monitorLevel(internal));
+                        assertThat(event.getFormattedMessage()).contains("phase=access-monitor")
+                                .doesNotContain("private-sql");
+                    });
+        }
+    }
+
+    private RuntimeException monitorFailure(boolean internal) {
+        if (internal) {
+            return new IllegalStateException("private-sql");
+        }
+        return new com.knot.backend.search.domain.SearchToolException("SEARCH_ACCESS_DENIED");
+    }
+
+    private Level monitorLevel(boolean internal) {
+        if (internal) {
+            return Level.ERROR;
+        }
+        return Level.DEBUG;
+    }
+
 }

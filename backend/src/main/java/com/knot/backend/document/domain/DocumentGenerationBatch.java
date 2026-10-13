@@ -353,7 +353,10 @@ public class DocumentGenerationBatch {
                 throw new DocumentException(DocumentErrorCode.INVALID_DOCUMENT_DATA);
             }
         } catch (DateTimeException exception) {
-            throw new DocumentException(DocumentErrorCode.INVALID_DOCUMENT_DATA);
+            throw new DocumentException(
+                    DocumentErrorCode.INVALID_DOCUMENT_DATA,
+                    exception
+            );
         }
     }
 }

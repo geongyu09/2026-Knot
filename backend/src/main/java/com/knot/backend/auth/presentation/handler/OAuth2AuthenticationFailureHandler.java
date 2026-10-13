@@ -1,5 +1,6 @@
 package com.knot.backend.auth.presentation.handler;
 
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.auth.domain.AuthErrorCode;
 import com.knot.backend.auth.domain.AuthException;
 import com.knot.backend.global.config.OAuth2LoginProperties;
@@ -42,18 +43,53 @@ public class OAuth2AuthenticationFailureHandler implements AuthenticationFailure
             HttpServletResponse response,
             AuthenticationException exception
     ) throws IOException, ServletException {
-        String exceptionType = exception == null
-                ? "unknown"
-                : exception.getClass()
-                        .getSimpleName();
-        log.warn(
-                "OAuth 인증 실패: type={}",
-                exceptionType
-        );
+        logFailure(exception);
         handleFailure(
                 request,
                 response
         );
+    }
+
+    private void logFailure(AuthenticationException exception) {
+        if (exception == null) {
+            ServerErrorLogger.warn(
+                    log,
+                    "OAuth authentication rejected",
+                    null
+            );
+            return;
+        }
+        if (isCancelled(exception) && !ServerErrorLogger.isInternalFailure(exception)) {
+            ServerErrorLogger.debug(
+                    log,
+                    "OAuth authentication cancelled",
+                    exception
+            );
+            return;
+        }
+        if (ServerErrorLogger.isInternalFailure(exception)) {
+            ServerErrorLogger.record(
+                    log,
+                    "OAuth internal authentication failure",
+                    exception
+            );
+            return;
+        }
+        ServerErrorLogger.warn(
+                log,
+                "OAuth authentication rejected",
+                exception
+        );
+    }
+
+    private boolean isCancelled(AuthenticationException exception) {
+        if (!org.springframework.security.oauth2.core.OAuth2AuthenticationException.class.isInstance(exception)) {
+            return false;
+        }
+        org.springframework.security.oauth2.core.OAuth2AuthenticationException failure = org.springframework.security.oauth2.core.OAuth2AuthenticationException.class
+                .cast(exception);
+        org.springframework.security.oauth2.core.OAuth2Error error = failure.getError();
+        return "access_denied".equals(error.getErrorCode());
     }
 
     public void handleFailure(

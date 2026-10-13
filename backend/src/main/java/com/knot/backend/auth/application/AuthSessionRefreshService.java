@@ -1,5 +1,6 @@
 package com.knot.backend.auth.application;
 
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.auth.application.dto.result.AuthRefreshResult;
 import com.knot.backend.auth.domain.AuthErrorCode;
 import com.knot.backend.auth.domain.AuthException;
@@ -22,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@lombok.extern.slf4j.Slf4j
 public class AuthSessionRefreshService {
     private final AuthSessionRepository authSessionRepository;
     private final ConsumedRefreshTokenRepository consumedRefreshTokenRepository;
@@ -83,6 +85,7 @@ public class AuthSessionRefreshService {
                     currentToken,
                     now
             )) {
+                logConsumedValidationFailure(exception);
                 return true;
             }
             throw exception;
@@ -101,6 +104,17 @@ public class AuthSessionRefreshService {
                         )
                 )
                 .orElse(false);
+    }
+
+    private void logConsumedValidationFailure(AuthException exception) {
+        if (!ServerErrorLogger.isInternalFailure(exception)) {
+            return;
+        }
+        ServerErrorLogger.record(
+                log,
+                "Refresh validation failure consumed during replay",
+                exception
+        );
     }
 
     private boolean revokeSessionForReplay(

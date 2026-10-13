@@ -73,6 +73,24 @@ export interface RecordingEndResponse {
   endedAt: string;
 }
 
+export interface RecordingHeartbeatResponse {
+  recordingId: number;
+  /** `DISCARDED`는 서버가 버린 녹음 */
+  status: RecordingSessionStatus | "DISCARDED";
+  /** 일시정지를 뺀 서버 기준 누적 녹음 시간(ms) */
+  elapsedMillis: number;
+  /** ISO 8601 */
+  lastSeenAt: string;
+  /** ISO 8601. 끝난 녹음이면 null */
+  expiresAt: string | null;
+  /** ISO 8601. 진행 중이면 null */
+  endedAt: string | null;
+  /** 진행 중이면 null */
+  endReason: "USER_ENDED" | "CONNECTION_EXPIRED" | "MAX_DURATION" | null;
+  /** ISO 8601 */
+  serverNow: string;
+}
+
 export interface RecordingAudioUploadUrlResponse {
   uploadId: number;
   /** 객체 저장소에 직접 PUT할 절대 URL */
