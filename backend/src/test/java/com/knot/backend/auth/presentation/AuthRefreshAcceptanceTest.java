@@ -322,18 +322,21 @@ class AuthRefreshAcceptanceTest {
     }
 
     private String randomNickname() {
-        String candidates = (UUID.randomUUID()
+        String random = UUID.randomUUID()
                 .toString()
-                + UUID.randomUUID()
-                        .toString())
-                .replaceAll(
-                        "[^A-Za-z]",
+                .replace(
+                        "-",
                         ""
                 );
-        return "refresh" + candidates.substring(
-                0,
-                12
-        );
+        StringBuilder nickname = new StringBuilder("refresh");
+        for (int index = 0; index < 12; index++) {
+            int value = Character.digit(
+                    random.charAt(index),
+                    16
+            );
+            nickname.append((char) ('a' + value));
+        }
+        return nickname.toString();
     }
 
     private String expiredAccessToken() {

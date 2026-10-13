@@ -1,6 +1,8 @@
 package com.knot.backend.document.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import ch.qos.logback.classic.Level;
+import com.knot.backend.testsupport.LogCapture;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
@@ -195,4 +197,83 @@ class DocumentGenerationSchedulerTest {
                 )
         );
     }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    @DisplayName("문서 후보 조회 오류는 한 번 기록하고 다음 poll에서 정상 실행한다")
+    void poll_failure_queryThenNextRun(boolean expired) {
+        DocumentGenerationJobRepository jobs = mock(DocumentGenerationJobRepository.class);
+        IllegalStateException failure = new IllegalStateException("private-sql");
+        List<DocumentGenerationCandidate> ready = List.of(
+                new DocumentGenerationCandidate(
+                        1,
+                        2,
+                        1
+                )
+        );
+        if (expired) {
+            when(
+                    jobs.findExpiredCandidates(
+                            any(),
+                            anyInt()
+                    )
+            ).thenThrow(failure)
+                    .thenReturn(ready);
+        }
+        if (!expired) {
+            when(
+                    jobs.findReadyCandidates(
+                            any(),
+                            anyInt()
+                    )
+            ).thenThrow(failure)
+                    .thenReturn(ready);
+        }
+        ThreadPoolTaskExecutor executor = mock(ThreadPoolTaskExecutor.class);
+        DocumentGenerationRecoveryService recovery = mock(DocumentGenerationRecoveryService.class);
+        DocumentGenerationScheduler scheduler = scheduler(
+                jobs,
+                mock(DocumentGenerationWorker.class),
+                recovery,
+                executor
+        );
+        try (LogCapture logs = new LogCapture(DocumentGenerationScheduler.class)) {
+            poll(
+                    scheduler,
+                    expired
+            );
+            poll(
+                    scheduler,
+                    expired
+            );
+            assertThat(logs.events()).singleElement()
+                    .satisfies(event -> {
+                        assertThat(event.getLevel()).isEqualTo(Level.ERROR);
+                        assertThat(event.getFormattedMessage()).contains("phase=")
+                                .doesNotContain("private-sql");
+                        assertThat(event.getThrowableProxy()).isNull();
+                    });
+        }
+        if (expired) {
+            verify(recovery).recoverExpired(
+                    1,
+                    2,
+                    1
+            );
+            return;
+        }
+        verify(executor).execute(any(Runnable.class));
+    }
+
+    private void poll(
+            DocumentGenerationScheduler scheduler,
+            boolean expired
+    ) {
+        if (expired) {
+            scheduler.recoverExpired();
+            return;
+        }
+        scheduler.dispatchQueued();
+    }
+
 }

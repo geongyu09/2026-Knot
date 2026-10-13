@@ -1,5 +1,6 @@
 package com.knot.backend.recording.infrastructure.scheduling;
 
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.recording.application.RecordingConnectionExpiryService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -15,7 +16,17 @@ public class RecordingConnectionExpiryScheduler {
 
     @Scheduled(fixedDelayString = "${recording.connection-expiry.interval}")
     public void expireDueRecordings() {
-        int expiredCount = expiryService.expireDue(properties.batchSize());
+        int expiredCount;
+        try {
+            expiredCount = expiryService.expireDue(properties.batchSize());
+        } catch (RuntimeException exception) {
+            ServerErrorLogger.record(
+                    log,
+                    "Recording expiry phase=candidate-query",
+                    exception
+            );
+            return;
+        }
         if (expiredCount > 0) {
             log.info(
                     "자동 종료 시각이 지난 녹음 {}건을 종료했습니다",

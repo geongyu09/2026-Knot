@@ -12,9 +12,11 @@ import {
   DocumentConfirmationItemDto,
   DocumentListItemDto,
   DocumentTopicDto,
+  DocumentTranscriptSegmentDto,
   GetDocumentConfirmationsResponseDto,
   GetDocumentResponseDto,
   GetDocumentsResponseDto,
+  GetDocumentTranscriptResponseDto,
   PutDocumentConfirmationResponseDto,
 } from "./document";
 import {
@@ -251,6 +253,38 @@ describe("DTO 생성자 변환", () => {
 
       expect(dto.confirmationSummary).toBeInstanceOf(ConfirmationSummaryDto);
       expect(dto).toEqual(raw);
+    });
+
+    it("원문 응답의 구간을 DocumentTranscriptSegmentDto로 감싸고, 전체 텍스트와 isPartial은 옮기지 않는다", () => {
+      const segments = [
+        {
+          startMillis: 1200,
+          endMillis: 4600,
+          speakerNumber: 1,
+          text: "문서 보관 기준부터 정리하겠습니다.",
+        },
+        {
+          startMillis: 4800,
+          endMillis: null,
+          speakerNumber: null,
+          text: "좋습니다.",
+        },
+      ];
+
+      const dto = new GetDocumentTranscriptResponseDto({
+        transcriptId: 81,
+        isPartial: false,
+        recordingDurationSeconds: 1850,
+        transcriptText: "문서 보관 기준부터 정리하겠습니다. 좋습니다.",
+        segments,
+      });
+
+      expect(dto.segments[0]).toBeInstanceOf(DocumentTranscriptSegmentDto);
+      expect(dto).toEqual({
+        transcriptId: 81,
+        recordingDurationSeconds: 1850,
+        segments,
+      });
     });
   });
 });

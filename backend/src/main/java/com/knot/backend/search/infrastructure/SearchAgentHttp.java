@@ -1,5 +1,7 @@
 package com.knot.backend.search.infrastructure;
 
+import com.knot.backend.global.logging.ServerErrorLogger;
+
 import com.knot.backend.search.application.SearchToolScope;
 import com.knot.backend.search.domain.SearchToolException;
 import java.io.IOException;
@@ -23,6 +25,7 @@ import java.util.function.Consumer;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+@lombok.extern.slf4j.Slf4j
 public class SearchAgentHttp implements AutoCloseable {
 
     private final HttpClient client;
@@ -80,7 +83,10 @@ public class SearchAgentHttp implements AutoCloseable {
                                 )
                         );
                     } catch (IOException exception) {
-                        throw new SearchToolException("SEARCH_TRANSPORT_FAILED");
+                        throw new SearchToolException(
+                                "SEARCH_TRANSPORT_FAILED",
+                                exception
+                        );
                     }
                 },
                 200
@@ -165,7 +171,10 @@ public class SearchAgentHttp implements AutoCloseable {
                 }
             }
         } catch (IOException exception) {
-            throw new SearchToolException("SEARCH_TRANSPORT_FAILED");
+            throw new SearchToolException(
+                    "SEARCH_TRANSPORT_FAILED",
+                    exception
+            );
         }
         if (!completed) {
             throw new SearchToolException("INCOMPLETE_MODEL_STREAM");
@@ -230,14 +239,26 @@ public class SearchAgentHttp implements AutoCloseable {
         } catch (InterruptedException exception) {
             Thread.currentThread()
                     .interrupt();
-            throw new SearchToolException("SEARCH_TRANSPORT_INTERRUPTED");
+            throw new SearchToolException(
+                    "SEARCH_TRANSPORT_INTERRUPTED",
+                    exception
+            );
         } catch (TimeoutException exception) {
             pending.cancel(true);
-            throw new SearchToolException("SEARCH_TRANSPORT_TIMEOUT");
+            throw new SearchToolException(
+                    "SEARCH_TRANSPORT_TIMEOUT",
+                    exception
+            );
         } catch (ExecutionException | CancellationException exception) {
-            throw new SearchToolException("SEARCH_TRANSPORT_FAILED");
+            throw new SearchToolException(
+                    "SEARCH_TRANSPORT_FAILED",
+                    exception
+            );
         } catch (IOException exception) {
-            throw new SearchToolException("SEARCH_TRANSPORT_FAILED");
+            throw new SearchToolException(
+                    "SEARCH_TRANSPORT_FAILED",
+                    exception
+            );
         }
     }
 
@@ -256,8 +277,11 @@ public class SearchAgentHttp implements AutoCloseable {
         try {
             input.close();
         } catch (IOException exception) {
-            // The worker records the failed attempt; transport errors must not expose
-            // provider data.
+            ServerErrorLogger.debug(
+                    log,
+                    "Search transport phase=timeout-cleanup",
+                    exception
+            );
         }
     }
 

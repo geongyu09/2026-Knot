@@ -11,4 +11,15 @@ public class SearchToolException extends RuntimeException {
         super(code);
         this.code = code;
     }
+
+    public SearchToolException(
+            String code,
+            Throwable cause
+    ) {
+        super(
+                code,
+                cause
+        );
+        this.code = code;
+    }
 }

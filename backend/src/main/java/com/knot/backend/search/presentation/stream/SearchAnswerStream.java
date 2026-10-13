@@ -40,7 +40,10 @@ public class SearchAnswerStream {
             return reservation;
         } catch (RuntimeException exception) {
             reservation.reject();
-            throw new SearchException(SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE);
+            throw new SearchException(
+                    SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE,
+                    exception
+            );
         }
     }
 
@@ -111,7 +114,10 @@ public class SearchAnswerStream {
         } catch (IOException | RuntimeException exception) {
             reservation.close();
             emitter.completeWithError(exception);
-            throw new SearchException(SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE);
+            throw new SearchException(
+                    SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE,
+                    exception
+            );
         }
     }
 

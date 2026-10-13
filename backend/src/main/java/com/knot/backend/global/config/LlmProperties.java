@@ -144,7 +144,7 @@ public class LlmProperties {
                 throw invalidConfiguration();
             }
         } catch (ArithmeticException exception) {
-            throw invalidConfiguration();
+            throw invalidConfiguration(exception);
         }
     }
 
@@ -156,5 +156,12 @@ public class LlmProperties {
 
     private LlmException invalidConfiguration() {
         return new LlmException(LlmErrorCode.LLM_INVALID_CONFIGURATION);
+    }
+
+    private LlmException invalidConfiguration(Throwable cause) {
+        return new LlmException(
+                LlmErrorCode.LLM_INVALID_CONFIGURATION,
+                cause
+        );
     }
 }

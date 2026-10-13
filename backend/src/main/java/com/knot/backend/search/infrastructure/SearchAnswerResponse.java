@@ -99,7 +99,7 @@ public record SearchAnswerResponse(
                     .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
                     .readTree(json);
         } catch (JacksonException exception) {
-            throw invalid();
+            throw invalid(exception);
         }
     }
 
@@ -235,5 +235,12 @@ public record SearchAnswerResponse(
 
     private static SearchToolException invalid() {
         return new SearchToolException("INVALID_MODEL_ANSWER");
+    }
+
+    private static SearchToolException invalid(Throwable cause) {
+        return new SearchToolException(
+                "INVALID_MODEL_ANSWER",
+                cause
+        );
     }
 }

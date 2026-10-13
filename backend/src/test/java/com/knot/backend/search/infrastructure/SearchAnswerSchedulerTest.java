@@ -1,5 +1,8 @@
 package com.knot.backend.search.infrastructure;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import ch.qos.logback.classic.Level;
+import com.knot.backend.testsupport.LogCapture;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -135,4 +138,49 @@ class SearchAnswerSchedulerTest {
         verify(executions).expire(2);
         verifyNoInteractions(worker);
     }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    @DisplayName("탐색 후보 조회 오류는 한 번 기록하고 다음 poll을 계속한다")
+    void poll_failure_queryThenNextRun(boolean expired) {
+        IllegalStateException failure = new IllegalStateException("private-sql");
+        if (expired) {
+            when(
+                    repository.findExpiredAnswerIds(
+                            NOW,
+                            20
+                    )
+            ).thenThrow(failure)
+                    .thenReturn(List.of(1L));
+        }
+        if (!expired) {
+            when(repository.findQueuedAnswerIds(20)).thenThrow(failure)
+                    .thenReturn(List.of(1L));
+        }
+        try (LogCapture logs = new LogCapture(SearchAnswerScheduler.class)) {
+            poll(expired);
+            poll(expired);
+            assertThat(logs.events()).singleElement()
+                    .satisfies(event -> {
+                        assertThat(event.getLevel()).isEqualTo(Level.ERROR);
+                        assertThat(event.getFormattedMessage()).contains("phase=")
+                                .doesNotContain("private-sql");
+                        assertThat(event.getThrowableProxy()).isNull();
+                    });
+        }
+        if (expired) {
+            verify(executions).expire(1L);
+            return;
+        }
+        verify(executor).execute(any());
+    }
+
+    private void poll(boolean expired) {
+        if (expired) {
+            scheduler.recoverExpired();
+            return;
+        }
+        scheduler.dispatchQueued();
+    }
+
 }

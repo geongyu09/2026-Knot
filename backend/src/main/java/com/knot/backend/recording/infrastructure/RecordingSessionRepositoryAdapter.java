@@ -105,15 +105,21 @@ public class RecordingSessionRepositoryAdapter implements RecordingSessionReposi
     private RecordingException translateIntegrityViolation(DataIntegrityViolationException exception) {
         Throwable cause = exception;
         while (cause != null) {
-            if (cause instanceof ConstraintViolationException violation) {
+            if (ConstraintViolationException.class.isInstance(cause)) {
+                ConstraintViolationException violation = ConstraintViolationException.class.cast(cause);
                 return new RecordingException(switch (String.valueOf(violation.getConstraintName())) {
                     case "uk_recording_sessions_member_active" -> RecordingErrorCode.ACTIVE_RECORDING_ALREADY_EXISTS;
                     case "uk_recording_sessions_member_request" -> RecordingErrorCode.RECORDING_START_REQUEST_CONFLICT;
                     default -> RecordingErrorCode.INVALID_RECORDING_DATA;
-                });
+                },
+                        exception
+                );
             }
             cause = cause.getCause();
         }
-        return new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
+        return new RecordingException(
+                RecordingErrorCode.INVALID_RECORDING_DATA,
+                exception
+        );
     }
 }

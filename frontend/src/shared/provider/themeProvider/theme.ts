@@ -110,6 +110,8 @@ export const theme = {
 
   text,
 
+  shadow01:
+    "0 2px 6px -1px rgba(31, 30, 28, 0.08), 0 1px 1px 0 rgba(31, 30, 28, 0.04)",
   shadow02:
     "0 6px 16px -4px rgba(31, 30, 28, 0.08), 0 1px 2px 0 rgba(31, 30, 28, 0.04)",
   shadow03:

@@ -79,7 +79,7 @@ public class LlmDocumentGenerator implements DocumentGenerator {
             }
             return root;
         } catch (JacksonException exception) {
-            throw invalidResponse();
+            throw invalidResponse(exception);
         }
     }
 
@@ -157,5 +157,12 @@ public class LlmDocumentGenerator implements DocumentGenerator {
 
     private DocumentException invalidResponse() {
         return new DocumentException(DocumentErrorCode.INVALID_DOCUMENT_GENERATION_RESPONSE);
+    }
+
+    private DocumentException invalidResponse(Throwable cause) {
+        return new DocumentException(
+                DocumentErrorCode.INVALID_DOCUMENT_GENERATION_RESPONSE,
+                cause
+        );
     }
 }

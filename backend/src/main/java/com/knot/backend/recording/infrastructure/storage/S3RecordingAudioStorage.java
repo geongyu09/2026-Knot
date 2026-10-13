@@ -99,9 +99,15 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
             if (exception.statusCode() == NOT_FOUND_STATUS) {
                 return StoredAudioObject.missing();
             }
-            throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+            throw new RecordingException(
+                    RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE,
+                    exception
+            );
         } catch (SdkException exception) {
-            throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+            throw new RecordingException(
+                    RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE,
+                    exception
+            );
         }
     }
 
@@ -132,7 +138,10 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
                     null
             );
         } catch (SdkException exception) {
-            throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+            throw new RecordingException(
+                    RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE,
+                    exception
+            );
         }
     }
 

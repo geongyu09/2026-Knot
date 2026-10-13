@@ -280,7 +280,8 @@ class LmStudioClientTest {
             );
 
             // when & then
-            assertThatThrownBy(() -> client.complete(request())).hasMessage(LlmErrorCode.LLM_TIMEOUT.getMessage());
+            assertThatThrownBy(() -> client.complete(request())).hasMessage(LlmErrorCode.LLM_TIMEOUT.getMessage())
+                    .hasCauseInstanceOf(java.util.concurrent.TimeoutException.class);
             assertThat(server.requestCount()).isEqualTo(1);
         } finally {
             release.countDown();

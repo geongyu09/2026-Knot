@@ -4,6 +4,8 @@ import type {
   DocumentDetailResponse,
   DocumentListItem,
   DocumentsResponse,
+  DocumentTranscriptResponse,
+  DocumentTranscriptSegment,
 } from "@api/mock/types/document";
 
 const HOUR = 60 * 60 * 1000;
@@ -282,3 +284,94 @@ export const documentConfirmationsResponse = [
     nextCursor: null,
   },
 ] satisfies DocumentConfirmationsResponse[];
+
+const SECOND = 1000;
+const MINUTE = 60 * SECOND;
+
+// 녹음 42의 발화예요. 서버처럼 시작 시각 오름차순으로 두었어요.
+// 화자를 알 수 없는 구간(speakerNumber null)과 끝난 시각을 모르는 구간(endMillis null)을 하나씩 넣었어요
+const transcriptSegments = [
+  {
+    startMillis: 2 * MINUTE + 40 * SECOND,
+    endMillis: 2 * MINUTE + 46 * SECOND,
+    speakerNumber: 1,
+    text: "지난주에 이야기한 탈퇴 정책부터 정리할게요.",
+  },
+  {
+    startMillis: 4 * MINUTE + 12 * SECOND,
+    endMillis: 4 * MINUTE + 15 * SECOND,
+    speakerNumber: 1,
+    text: "탈퇴하면 게시글을 삭제할까요?",
+  },
+  {
+    startMillis: 5 * MINUTE + 30 * SECOND,
+    endMillis: 5 * MINUTE + 34 * SECOND,
+    speakerNumber: 2,
+    text: "댓글이 달린 글은 남겨야 하지 않나요?",
+  },
+  {
+    startMillis: 6 * MINUTE + 2 * SECOND,
+    endMillis: 6 * MINUTE + 8 * SECOND,
+    speakerNumber: 3,
+    text: "글은 남기고, 작성자는 '탈퇴한 사용자'로 표시하죠.",
+  },
+  {
+    startMillis: 7 * MINUTE + 45 * SECOND,
+    endMillis: 7 * MINUTE + 50 * SECOND,
+    speakerNumber: 2,
+    text: "첨부파일도 같이 남길지는 다음에 정해요.",
+  },
+  {
+    startMillis: 8 * MINUTE + 20 * SECOND,
+    endMillis: null,
+    speakerNumber: null,
+    text: "네, 좋아요.",
+  },
+  {
+    startMillis: 9 * MINUTE + 10 * SECOND,
+    endMillis: 9 * MINUTE + 15 * SECOND,
+    speakerNumber: 1,
+    text: "그럼 댓글 없는 글은 함께 삭제하는 걸로 해요.",
+  },
+  {
+    startMillis: 10 * MINUTE + 24 * SECOND,
+    endMillis: 10 * MINUTE + 28 * SECOND,
+    speakerNumber: 3,
+    text: "표시 문구는 '탈퇴한 사용자'로 통일해요.",
+  },
+  {
+    startMillis: 11 * MINUTE + 30 * SECOND,
+    endMillis: 11 * MINUTE + 35 * SECOND,
+    speakerNumber: 2,
+    text: "첨부파일은 다음 논의에서 확인하기로 해요.",
+  },
+  {
+    startMillis: 12 * MINUTE + 48 * SECOND,
+    endMillis: 12 * MINUTE + 52 * SECOND,
+    speakerNumber: 1,
+    text: "오늘 정한 내용은 문서로 정리해 둘게요.",
+  },
+  {
+    startMillis: 15 * MINUTE + 2 * SECOND,
+    endMillis: 15 * MINUTE + 6 * SECOND,
+    speakerNumber: 2,
+    text: "이어서 홈 화면 개편을 이야기할게요.",
+  },
+  {
+    startMillis: 21 * MINUTE + 37 * SECOND,
+    endMillis: 21 * MINUTE + 43 * SECOND,
+    speakerNumber: 3,
+    text: "홈은 아직 정하지 못했으니 다음 회의에서 다시 봐요.",
+  },
+] satisfies DocumentTranscriptSegment[];
+
+// 문서 상세 mock(101 · 102)이 가리키는 원문(sourceTranscriptId 81)이에요. 두 문서는 같은 녹음에서 나와 원문이 같아요
+export const documentTranscriptsResponse = [
+  {
+    transcriptId: memberWithdrawalDocument.sourceTranscriptId,
+    isPartial: false,
+    recordingDurationSeconds: memberWithdrawalDocument.recordingDurationSeconds,
+    transcriptText: transcriptSegments.map(({ text }) => text).join(" "),
+    segments: transcriptSegments,
+  },
+] satisfies DocumentTranscriptResponse[];
