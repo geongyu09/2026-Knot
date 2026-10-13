@@ -7,6 +7,10 @@ import { getRouterPath } from "@routes/PATH_ROUTE";
 import { useId } from "react";
 import { useParams } from "react-router";
 
+// 탐색 v2의 근거는 문서뿐이고 서버가 출처를 따로 주지 않아 고정해요.
+// 날짜도 아직 서버가 주지 않아 카드에 넘기지 않아요. BE가 두 필드를 주면 응답 값으로 바꿔요
+const EVIDENCE_SOURCE_TYPE = "문서";
+
 /**
  * 찾은 기록 패널. 지금 펼친 답변의 근거가 된 문서를 관련도 순으로 최대 3개 보여줘요.
  *
@@ -27,7 +31,7 @@ export default function SearchEvidenceList() {
       <Title id={titleId}>찾은 기록</Title>
 
       <List>
-        {evidences.map(({ documentId, title, sourceType, createdAt }) => (
+        {evidences.map(({ documentId, title }) => (
           <li key={documentId}>
             <CardLink
               href={getRouterPath({
@@ -37,8 +41,7 @@ export default function SearchEvidenceList() {
             >
               <SearchEvidenceCard
                 title={title}
-                sourceType={sourceType}
-                createdAt={createdAt}
+                sourceType={EVIDENCE_SOURCE_TYPE}
               />
             </CardLink>
           </li>

@@ -1,6 +1,6 @@
 export type SearchStreamStage = "SEARCHING" | "GENERATING";
 
-/** evidence 이벤트의 근거 항목. items[] 모양은 API 명세 미정이라 임시 가정이에요 */
+/** 답변의 근거 문서. 메시지 조회의 evidences[]와 같은 모양이에요. evidence 이벤트의 items[]는 API 명세 미정이라 이 모양으로 임시 가정해요 */
 export interface SearchEvidenceItem {
   documentId: number;
   title: string;
@@ -27,3 +27,23 @@ export type SearchQuestionAnswerStream = Omit<
   SearchAnswerStream,
   "conversationId"
 >;
+
+/** 탐색 메시지 하나 */
+export interface SearchMessage {
+  id: number;
+  role: "USER" | "ASSISTANT";
+  sequence: number;
+  content: string;
+  status: "RECEIVED" | "STREAMING" | "COMPLETED" | "FAILED" | "STOPPED";
+  createdAt: string;
+  /** 질문(USER)은 빈 배열이에요 */
+  evidences: SearchEvidenceItem[];
+}
+
+/** 탐색 메시지 조회 응답 */
+export interface SearchMessages {
+  conversationId: number;
+  items: SearchMessage[];
+  hasPrevious: boolean;
+  previousCursor: string | null;
+}

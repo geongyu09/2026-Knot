@@ -23,12 +23,13 @@ import {
   PostRecordingResumeResponseDto,
 } from "@api/dto/recording";
 import {
+  GetSearchMessagesResponseDto,
   SearchStreamAcceptedDto,
   SearchStreamCompletedDto,
   SearchStreamDeltaDto,
   SearchStreamEvidenceDto,
   SearchStreamProgressDto,
-  type SearchStreamEvidenceItemRaw,
+  type SearchEvidenceRaw,
   type SearchStreamStage,
 } from "@api/dto/search";
 import {
@@ -68,6 +69,7 @@ import { getDocumentConfirmationsApi } from "@api/fetch/api/v1/workspaces/[works
 import { confirmDocumentApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documents/[documentId]/confirmations/me";
 import { getWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitation";
 import { createSearchConversationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations";
+import { getSearchMessagesApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/messages";
 import { createSearchQuestionApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions";
 import { issueWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations";
 import { reissueWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations/reissue";
@@ -110,6 +112,7 @@ import {
 } from "@api/mock/responses/recording";
 import {
   searchAnswerStreamResponse,
+  searchMessagesResponse,
   searchQuestionAnswerStreamResponse,
 } from "@api/mock/responses/search";
 import {
@@ -149,7 +152,7 @@ interface ToAnswerEventsParams {
   answerMessageId: number;
   stages: SearchStreamStage[];
   deltas: string[];
-  evidences: SearchStreamEvidenceItemRaw[];
+  evidences: SearchEvidenceRaw[];
 }
 
 /** 첫 질문·후속 질문이 accepted 뒤로 같은 순서로 내는 이벤트예요 */
@@ -582,6 +585,20 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
         },
         ...toAnswerEvents({ answerMessageId, stages, deltas, evidences }),
       ]);
+    });
+
+    it("GET .../search/conversations/:conversationId/messages는 searchMessagesResponse를 경로의 대화 ID로 돌려준다 (근거 없음)", async () => {
+      await expect(
+        getSearchMessagesApi({
+          workspaceId: WORKSPACE_ID,
+          conversationId: SEARCH_CONVERSATION_ID,
+        }),
+      ).resolves.toEqual(
+        new GetSearchMessagesResponseDto({
+          ...searchMessagesResponse,
+          conversationId: SEARCH_CONVERSATION_ID,
+        }),
+      );
     });
   });
 
