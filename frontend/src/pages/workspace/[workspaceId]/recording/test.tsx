@@ -19,7 +19,7 @@ import {
 } from "@utils/recordingControlProof";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import RecordingPage from ".";
 
@@ -113,6 +113,32 @@ describe("RecordingPage", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe(HOME_PATH));
     expect(count).toEqual({ end: 1, complete: 1 });
   });
+
+  it.each(["RECORDING_ALREADY_ENDED", "RECORDING_ALREADY_DISCARDED"])(
+    "종료 요청이 이미 닫힌 녹음(409 %s)으로 거절되면 올리지 않고 홈으로 나간다",
+    async (code) => {
+      const count = { issue: 0 };
+      mockServer.events.on("request:start", ({ request }) => {
+        if (request.url.endsWith("/audio-upload-url")) count.issue += 1;
+      });
+      mockServer.use(
+        http.post(
+          "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/end",
+          () => HttpResponse.json({ code }, { status: 409 }),
+        ),
+      );
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      await startRecording();
+      const { router } = renderRecordingPage();
+
+      await confirmEndRecording();
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(HOME_PATH),
+      );
+      expect(count.issue).toBe(0);
+    },
+  );
 
   describe("최종 오디오 업로드", () => {
     const UPLOAD_URL_PATH =
