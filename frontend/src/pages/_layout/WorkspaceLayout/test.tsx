@@ -629,6 +629,13 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
 
   const getConversation = () => screen.getByRole("region", { name: "대화" });
 
+  /**
+   * 대화 칸에서 글자를 기다려요. 주소가 바뀌면 대화 칸이 새로 그려지므로, 기다리는 동안 대화 칸을 매번 다시 찾아요.
+   * 한 번 찾은 대화 칸 안에서만 기다리면 주소 이동 직후 사라질 이전 칸을 붙잡고 끝까지 찾지 못해요.
+   */
+  const findInConversation = (text: string) =>
+    waitFor(() => within(getConversation()).getByText(text));
+
   afterEach(() => {
     // 전역 저장소라 테스트끼리 답변이 새지 않게 비워요
     useSearchAnswerStore.getState().abort();
@@ -676,14 +683,12 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
 
     stream.send("delta", { answerMessageId, text: deltas[0] });
     expect(
-      await within(getConversation()).findByText(deltas[0].trim()),
+      await findInConversation(deltas[0].trim()),
     ).toBeInTheDocument();
 
     stream.send("delta", { answerMessageId, text: deltas[1] });
     expect(
-      await within(getConversation()).findByText(
-        `${deltas[0]}${deltas[1]}`.trim(),
-      ),
+      await findInConversation(`${deltas[0]}${deltas[1]}`.trim()),
     ).toBeInTheDocument();
 
     deltas
