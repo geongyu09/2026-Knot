@@ -35,5 +35,7 @@ jobs:
         run: pnpm --dir runner install --frozen-lockfile
       - name: Check runner types
         run: pnpm --dir runner typecheck
+      - name: Verify runner and supervisor
+        run: pnpm --dir runner test
       - name: Verify and build AI server
         run: ./gradlew check bootJar
