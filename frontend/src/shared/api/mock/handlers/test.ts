@@ -108,6 +108,7 @@ import {
   recordingResumeResponse,
   recordingStartResponse,
 } from "@api/mock/responses/recording";
+import type { RecordingDetailEntry } from "@api/mock/types/recording";
 import {
   searchAnswerStreamResponse,
   searchQuestionAnswerStreamResponse,
@@ -804,12 +805,23 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
   });
 
   describe("문서 생성 작업", () => {
-    // 문서 만들기에 실패한 녹음. 실패한 작업이 다시 시도 mock 응답의 작업이에요
-    const [, , failedRecording] = recordingDetailsResponse;
+    // 문서 만들기에 실패한 녹음(실패한 작업이 다시 시도 mock 응답의 작업) · 실패한 작업이 둘인 녹음 · 실패한 작업이 다시 시도 횟수를 다 쓴 녹음
+    const [
+      ,
+      ,
+      failedRecording,
+      ,
+      ,
+      twoJobsFailedRecording,
+      retryExhaustedRecording,
+    ] = recordingDetailsResponse;
     const failedJobParams = {
       workspaceId: WORKSPACE_ID,
       jobId: documentGenerationJobRetryResponse.jobId,
     };
+    // mock 녹음은 상태가 서로 달라 문서 생성 결과가 없는 녹음도 있어요. 그래서 없으면 빈 배열로 읽어요
+    const getFailedJobIds = ({ detail }: RecordingDetailEntry) =>
+      detail.documentGeneration?.failedJobIds ?? [];
     const failedRecordingParams = {
       workspaceId: WORKSPACE_ID,
       recordingId: failedRecording.recordingId,
@@ -844,6 +856,50 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
         type: HTTP_ERROR_TYPE.conflict,
         code: "RETRY_NOT_ALLOWED",
       });
+    });
+
+    it("실패한 작업이 여러 개인 녹음에서 한 작업만 다시 시도하면 문서 생성 결과가 대기로 바뀌고 그 작업만 실패 작업에서 빠진다", async () => {
+      const [retriedJobId, remainingJobId] = getFailedJobIds(
+        twoJobsFailedRecording,
+      );
+
+      await retryDocumentGenerationJobApi({
+        workspaceId: WORKSPACE_ID,
+        jobId: retriedJobId,
+      });
+
+      await expect(
+        getRecordingApi({
+          workspaceId: WORKSPACE_ID,
+          recordingId: twoJobsFailedRecording.recordingId,
+        }),
+      ).resolves.toMatchObject({
+        documentGeneration: {
+          status: "QUEUED",
+          failedJobIds: [remainingJobId],
+        },
+      });
+    });
+
+    it("다시 시도할 수 있는 횟수를 다 쓴 작업을 다시 시도하면 409 RETRY_NOT_ALLOWED로 답하고, 그 작업은 실패 작업에 남는다", async () => {
+      const exhaustedRecordingParams = {
+        workspaceId: WORKSPACE_ID,
+        recordingId: retryExhaustedRecording.recordingId,
+      };
+      const [exhaustedJobId] = getFailedJobIds(retryExhaustedRecording);
+
+      await expect(
+        retryDocumentGenerationJobApi({
+          workspaceId: WORKSPACE_ID,
+          jobId: exhaustedJobId,
+        }),
+      ).rejects.toMatchObject({
+        type: HTTP_ERROR_TYPE.conflict,
+        code: "RETRY_NOT_ALLOWED",
+      });
+      await expect(getRecordingApi(exhaustedRecordingParams)).resolves.toEqual(
+        new GetRecordingResponseDto(retryExhaustedRecording.detail),
+      );
     });
 
     it("없는 작업을 다시 시도하면 404 DOCUMENT_GENERATION_JOB_NOT_FOUND로 답한다", async () => {

@@ -2,7 +2,10 @@ import {
   documentDetailsResponse,
   documentsResponse,
 } from "@api/mock/responses/document";
-import { documentGenerationJobRetryResponse } from "@api/mock/responses/documentGenerationJob";
+import {
+  documentGenerationJobRetryResponse,
+  RETRY_EXHAUSTED_JOB_ID,
+} from "@api/mock/responses/documentGenerationJob";
 import type {
   CurrentRecordingResponse,
   RecordingAudioUploadCompleteResponse,
@@ -97,7 +100,8 @@ const [{ recordingSessionId: COMPLETED_RECORDING_ID }] =
   documentDetailsResponse;
 
 // 녹음을 끝낸 뒤의 상태를 녹음마다 하나씩 둬, 정리 화면 주소의 녹음 ID만 바꿔 각 상태를 볼 수 있어요.
-// 차례로 정리 중 · 문서로 만들 내용 없음 · 문서 만들기 실패 · 전사 실패 · 정리 완료예요.
+// 차례로 정리 중 · 문서로 만들 내용 없음 · 문서 만들기 실패 · 전사 실패 · 정리 완료 ·
+// 일부만 만들어진 실패(실패한 작업 둘) · 다시 시도 횟수를 다 쓴 실패예요.
 // 10은 녹음 시작·종료 mock과 같은 녹음이라, 끝낸 직후에 보게 되는 정리 중으로 뒀어요
 export const recordingDetailsResponse = [
   {
@@ -156,6 +160,30 @@ export const recordingDetailsResponse = [
             recordingSessionId === COMPLETED_RECORDING_ID,
         ).length,
         failedJobIds: [],
+      },
+    },
+  },
+  {
+    recordingId: 14,
+    detail: {
+      ...transcribedRecording,
+      // 주제 넷 가운데 둘은 문서가 만들어졌고, 나머지 둘의 작업이 실패했어요
+      documentGeneration: {
+        status: "FAILED",
+        succeededCount: 2,
+        failedJobIds: [89, 90],
+      },
+    },
+  },
+  {
+    recordingId: 15,
+    detail: {
+      ...transcribedRecording,
+      documentGeneration: {
+        status: "FAILED",
+        succeededCount: 0,
+        // 다시 시도하면 서버가 거절하는 작업이에요
+        failedJobIds: [RETRY_EXHAUSTED_JOB_ID],
       },
     },
   },

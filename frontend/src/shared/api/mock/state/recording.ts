@@ -1,4 +1,7 @@
-import { documentGenerationJobRetryResponse } from "@api/mock/responses/documentGenerationJob";
+import {
+  documentGenerationJobRetryResponse,
+  RETRY_EXHAUSTED_JOB_ID,
+} from "@api/mock/responses/documentGenerationJob";
 import { recordingDetailsResponse } from "@api/mock/responses/recording";
 import type { DocumentGenerationJobRetryResponse } from "@api/mock/types/documentGenerationJob";
 import type {
@@ -51,7 +54,7 @@ export const findRecordingDetail = (recordingId: number) => {
 
 /**
  * 문서 생성 작업의 다시 시도를 기록해요.
- * 어느 녹음의 실패 작업도 아니면 `notFound`, 이미 다시 시도해 실패 상태가 아니면 `notAllowed`를 돌려줘요(서버와 같은 기준).
+ * 어느 녹음의 실패 작업도 아니면 `notFound`, 이미 다시 시도해 실패 상태가 아니거나 다시 시도할 수 있는 횟수를 다 쓴 작업이면 `notAllowed`를 돌려줘요(서버와 같은 기준).
  */
 export const retryDocumentGenerationJob = (jobId: number) => {
   const isFailedJob = recordingDetails.some(({ detail }) =>
@@ -60,7 +63,9 @@ export const retryDocumentGenerationJob = (jobId: number) => {
 
   if (!isFailedJob) return { result: "notFound" } as const;
 
-  if (retriedJobIds.has(jobId)) return { result: "notAllowed" } as const;
+  if (jobId === RETRY_EXHAUSTED_JOB_ID || retriedJobIds.has(jobId)) {
+    return { result: "notAllowed" } as const;
+  }
 
   retriedJobIds.add(jobId);
 
