@@ -404,6 +404,22 @@ describe("RecordingHeartbeat", () => {
     expect(requests).toEqual(["heartbeat"]);
   });
 
+  it("서버 시간으로 맞춘 뒤 남은 시간을 넘겨서야 확인해도, 30초 주기를 기다리지 않고 신호를 보낸다", async () => {
+    const requests = collectRequests();
+    await startRecording();
+    renderRecordingHeartbeat();
+
+    // 맞출 때는 10ms가 남았는데, 20ms가 지나서야 남은 시간을 확인한 상황이에요
+    act(() =>
+      useRecordingStore.setState({
+        accumulatedMs: MAX_RECORDING_DURATION_MS - 10,
+        resumedAt: Date.now() - 20,
+      }),
+    );
+
+    await waitFor(() => expect(requests).toEqual(["heartbeat"]));
+  });
+
   it("2시간 신호가 실패하면 곧바로 다시 보내지 않고 녹음을 이어 간다", async () => {
     respondHeartbeatWithError(500, "INTERNAL_SERVER_ERROR");
     const requests = collectRequests();

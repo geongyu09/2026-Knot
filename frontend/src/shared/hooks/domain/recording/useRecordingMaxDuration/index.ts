@@ -33,13 +33,18 @@ const useRecordingMaxDuration = ({
     // TODO: 너무 useRecordingStore의 내부 로직에 의존적인 코드임. 수정 필요함.
     if (resumedAt === null) return;
 
+    // 상한을 이미 채운 시간으로 맞춰졌다면 기다리지 않아요. 바로 알리면 알림과 시간 맞추기가 쉬지 않고 되풀이돼요
+    if (accumulatedMs >= MAX_RECORDING_DURATION_MS) return;
+
     const remainingMs =
       MAX_RECORDING_DURATION_MS - accumulatedMs - (Date.now() - resumedAt);
-    // 상한을 이미 채운 시간으로 맞춰졌다면 기다리지 않아요. 바로 알리면 알림과 시간 맞추기가 쉬지 않고 되풀이돼요
-    if (remainingMs <= 0) return;
 
     // 남은 시간이 딱 지날 때 콜백을 실행시키도록 한다.
-    const timer = setTimeout(() => onReachedRef.current(), remainingMs);
+    // 맞춘 뒤 이 Effect가 늦게 실행돼 남은 시간을 이미 넘겼다면, 아직 알리지 않았으므로 바로 알려요
+    const timer = setTimeout(
+      () => onReachedRef.current(),
+      Math.max(remainingMs, 0),
+    );
 
     return () => clearTimeout(timer);
   }, [accumulatedMs, resumedAt]);
