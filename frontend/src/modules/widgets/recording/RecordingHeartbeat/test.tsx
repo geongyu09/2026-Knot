@@ -1,6 +1,7 @@
 import { PostRecordingHeartbeatResponseDto } from "@api/dto/recording";
 import { recordingHeartbeatResponse } from "@api/mock/responses/recording";
 import { mockServer } from "@api/mock/server";
+import { MAX_RECORDING_DURATION_MS } from "@constants/recording";
 import { DialogProvider } from "@provider/context/dialogContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
@@ -85,6 +86,19 @@ const passHeartbeatInterval = () => {
     vi.advanceTimersByTime(HEARTBEAT_INTERVAL_MS);
   });
 };
+
+/** 2시간을 기다리지 않도록, 서버 시간으로 맞출 때처럼 녹음한 시간을 상한까지 `remainingMs`만 남겨 둬요 */
+const leaveUntilMaxDuration = (remainingMs: number) => {
+  act(() =>
+    useRecordingStore
+      .getState()
+      .syncElapsedTime(MAX_RECORDING_DURATION_MS - remainingMs),
+  );
+};
+
+/** 남은 시간이 지나고 응답까지 처리할 틈을 줘요. 더 나간 요청이 없는지 볼 때 써요 */
+const waitPastMaxDuration = () =>
+  act(() => new Promise((resolve) => setTimeout(resolve, 150)));
 
 const respondHeartbeat = (resolver: HttpResponseResolver) => {
   mockServer.use(
@@ -314,5 +328,108 @@ describe("RecordingHeartbeat", () => {
     expect(requests).toEqual(["heartbeat"]);
     expect(useRecordingStore.getState().status).toBe("recording");
     expect(router.state.location.pathname).toBe(RECORDING_PATH);
+  });
+
+  it("녹음한 시간이 2시간에 닿으면 30초 주기를 기다리지 않고 생존 신호를 보내, 서버가 끝낸 녹음을 올리고 홈으로 간다", async () => {
+    respondHeartbeat(() =>
+      HttpResponse.json({
+        ...recordingHeartbeatResponse,
+        status: "ENDED",
+        endReason: "MAX_DURATION",
+      }),
+    );
+    const requests = collectRequests();
+    await startRecording();
+    const { router } = renderRecordingHeartbeat();
+
+    leaveUntilMaxDuration(50);
+
+    await waitFor(() => expect(router.state.location.pathname).toBe(HOME_PATH));
+    expect(requests).toEqual(["heartbeat", ...UPLOAD_REQUESTS]);
+    expect(useRecordingStore.getState().status).toBe("idle");
+  });
+
+  it("일시정지 중에는 2시간 신호를 보내지 않고, 이어서 녹음하면 남은 시간 뒤에 보낸다", async () => {
+    const requests = collectRequests();
+    await startRecording();
+    renderRecordingHeartbeat();
+    act(() => useRecordingStore.getState().pauseRecording());
+    leaveUntilMaxDuration(50);
+
+    await waitPastMaxDuration();
+    expect(requests).toEqual([]);
+
+    await act(() => useRecordingStore.getState().resumeRecording());
+
+    await waitFor(() => expect(requests).toEqual(["heartbeat"]));
+  });
+
+  it("2시간 신호에 서버가 아직 녹음 중이라고 답하면, 서버 시간으로 맞춘 남은 시간 뒤에 다시 보낸다", async () => {
+    const responses = [
+      {
+        ...recordingHeartbeatResponse,
+        elapsedMillis: MAX_RECORDING_DURATION_MS - 50,
+      },
+      {
+        ...recordingHeartbeatResponse,
+        status: "ENDED",
+        endReason: "MAX_DURATION",
+      },
+    ];
+    respondHeartbeat(() => HttpResponse.json(responses.shift()));
+    const requests = collectRequests();
+    await startRecording();
+    const { router } = renderRecordingHeartbeat();
+
+    leaveUntilMaxDuration(50);
+
+    await waitFor(() => expect(router.state.location.pathname).toBe(HOME_PATH));
+    expect(requests).toEqual(["heartbeat", "heartbeat", ...UPLOAD_REQUESTS]);
+  });
+
+  it("서버가 상한을 채운 시간으로 녹음 중이라고 답해도, 신호를 쉬지 않고 보내지 않는다", async () => {
+    respondHeartbeat(() =>
+      HttpResponse.json({
+        ...recordingHeartbeatResponse,
+        elapsedMillis: MAX_RECORDING_DURATION_MS,
+      }),
+    );
+    const requests = collectRequests();
+    await startRecording();
+    renderRecordingHeartbeat();
+
+    leaveUntilMaxDuration(50);
+
+    await waitPastMaxDuration();
+    expect(requests).toEqual(["heartbeat"]);
+  });
+
+  it("서버 시간으로 맞춘 뒤 남은 시간을 넘겨서야 확인해도, 30초 주기를 기다리지 않고 신호를 보낸다", async () => {
+    const requests = collectRequests();
+    await startRecording();
+    renderRecordingHeartbeat();
+
+    // 맞출 때는 10ms가 남았는데, 20ms가 지나서야 남은 시간을 확인한 상황이에요
+    act(() =>
+      useRecordingStore.setState({
+        accumulatedMs: MAX_RECORDING_DURATION_MS - 10,
+        resumedAt: Date.now() - 20,
+      }),
+    );
+
+    await waitFor(() => expect(requests).toEqual(["heartbeat"]));
+  });
+
+  it("2시간 신호가 실패하면 곧바로 다시 보내지 않고 녹음을 이어 간다", async () => {
+    respondHeartbeatWithError(500, "INTERNAL_SERVER_ERROR");
+    const requests = collectRequests();
+    await startRecording();
+    renderRecordingHeartbeat();
+
+    leaveUntilMaxDuration(50);
+
+    await waitPastMaxDuration();
+    expect(requests).toEqual(["heartbeat"]);
+    expect(useRecordingStore.getState().status).toBe("recording");
   });
 });
