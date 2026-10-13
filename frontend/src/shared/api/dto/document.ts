@@ -5,6 +5,7 @@
  * - GET /api/v1/workspaces/{workspaceId}/documents/{documentId}
  * - GET /api/v1/workspaces/{workspaceId}/documents/{documentId}/confirmations
  * - PUT /api/v1/workspaces/{workspaceId}/documents/{documentId}/confirmations/me
+ * - GET /api/v1/workspaces/{workspaceId}/documents/{documentId}/transcript
  */
 
 /** 문서 상태. 확인 대상이 모두 확인하거나 제외되면 ARCHIVED로 바뀌어요 */
@@ -314,6 +315,70 @@ export class PutDocumentConfirmationResponseDto {
     this.archivedAt = raw.archivedAt;
     this.confirmationSummary = new ConfirmationSummaryDto(
       raw.confirmationSummary,
+    );
+  }
+}
+
+// GET /api/v1/workspaces/{workspaceId}/documents/{documentId}/transcript
+
+/** 원문의 발화 구간 하나의 서버 응답 모양 */
+export interface DocumentTranscriptSegmentRaw {
+  startMillis: number;
+  endMillis: number | null;
+  speakerNumber: number | null;
+  text: string;
+}
+
+/** 원문의 발화 구간 하나. 문서 원문 조회 응답의 `segments`가 담아요 */
+export class DocumentTranscriptSegmentDto {
+  /** 녹음한 오디오의 시작을 0으로 한 발화 시작 위치(ms). 0 이상 */
+  startMillis: number;
+  /** 발화가 끝난 위치(ms). 알 수 없으면 null. 값이 있으면 `startMillis` 이상 */
+  endMillis: number | null;
+  /** 같은 원문 안에서만 쓰는 익명 화자 번호(1부터). 화자를 알 수 없으면 null. 멤버와 연결되지 않아요 */
+  speakerNumber: number | null;
+  /** 읽기 전용 발화 문장 */
+  text: string;
+
+  constructor(raw: DocumentTranscriptSegmentRaw) {
+    this.startMillis = raw.startMillis;
+    this.endMillis = raw.endMillis;
+    this.speakerNumber = raw.speakerNumber;
+    this.text = raw.text;
+  }
+}
+
+/**
+ * 문서 원문 조회의 서버 응답 모양. 백엔드 구현을 기준으로 적었어요.
+ *
+ * 노션 명세는 `segments`가 빈 배열일 수 있고 `startMillis`가 null일 수 있다고 적지만,
+ * 서버는 구간이 1개 이상이고 시작 시각이 있는 원문만 돌려주고, 구간이 없으면 500으로 답해요.
+ */
+export interface GetDocumentTranscriptResponseRaw {
+  transcriptId: number;
+  /** 지금은 늘 false */
+  isPartial: boolean;
+  recordingDurationSeconds: number;
+  /** 저장된 전체 원문 */
+  transcriptText: string;
+  segments: DocumentTranscriptSegmentRaw[];
+}
+
+/** 문서에 연결된 전사 원문 조회 응답. 녹음에 참여하지 않은 워크스페이스 멤버도 볼 수 있어요 */
+export class GetDocumentTranscriptResponseDto {
+  /** 문서에 연결된 전사 원문 ID. 문서 상세의 `sourceTranscriptId`와 같아요 */
+  transcriptId: number;
+  /** 원본 녹음 길이(초) */
+  recordingDurationSeconds: number;
+  /** 발화 구간. 1개 이상이고, 시작 시각 오름차순(같으면 저장된 순서)으로 와요 */
+  segments: DocumentTranscriptSegmentDto[];
+
+  // 화면은 구간만 그리므로 전체 원문(transcriptText)과 늘 false인 isPartial은 옮기지 않아요
+  constructor(raw: GetDocumentTranscriptResponseRaw) {
+    this.transcriptId = raw.transcriptId;
+    this.recordingDurationSeconds = raw.recordingDurationSeconds;
+    this.segments = raw.segments.map(
+      (segment) => new DocumentTranscriptSegmentDto(segment),
     );
   }
 }

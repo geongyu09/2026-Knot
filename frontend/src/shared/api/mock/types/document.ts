@@ -85,3 +85,23 @@ export interface DocumentMyConfirmationResponse {
   archivedAt: string | null;
   confirmationSummary: DocumentConfirmationSummary;
 }
+
+export interface DocumentTranscriptSegment {
+  /** 녹음한 오디오의 시작을 0으로 한 발화 시작 위치(ms) */
+  startMillis: number;
+  /** 알 수 없으면 null */
+  endMillis: number | null;
+  /** 화자를 알 수 없으면 null */
+  speakerNumber: number | null;
+  text: string;
+}
+
+export interface DocumentTranscriptResponse {
+  transcriptId: number;
+  /** 지금은 늘 false */
+  isPartial: boolean;
+  recordingDurationSeconds: number;
+  transcriptText: string;
+  /** 1개 이상. 시작 시각 오름차순 */
+  segments: DocumentTranscriptSegment[];
+}

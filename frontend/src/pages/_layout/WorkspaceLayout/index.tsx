@@ -1,6 +1,8 @@
 import DockablePanel from "@composites/DockablePanel";
 import styled from "@emotion/styled";
+import TranscriptToggle from "@features/document/TranscriptToggle";
 import SearchEvidenceToggle from "@features/search/SearchEvidenceToggle";
+import useTranscriptPanel from "@hooks/domain/document/useTranscriptPanel";
 import useRecordingLeaveWarning from "@hooks/domain/recording/useRecordingLeaveWarning";
 import useAbortSearchAnswerOnLeave from "@hooks/domain/search/useAbortSearchAnswerOnLeave";
 import useWorkspaceEntry from "@hooks/domain/workspace/useWorkspaceEntry";
@@ -8,6 +10,7 @@ import useWorkspaceNav from "@hooks/domain/workspace/useWorkspaceNav";
 import DockColumn from "@primitives/layout/DockColumn";
 import LoadingIndicator from "@primitives/ui/LoadingIndicator";
 import ChatListDrawer from "@widgets/chat/ChatListDrawer";
+import TranscriptPanel from "@widgets/document/TranscriptPanel";
 import SearchEvidenceList from "@widgets/search/SearchEvidenceList";
 import WorkspaceDock from "@widgets/workspace/WorkspaceDock";
 import WorkspaceGnb from "@widgets/workspace/WorkspaceGnb";
@@ -36,6 +39,9 @@ import type { DockedPanelName } from "./types/dockedPanel";
  * 탐색 화면에서는 찾은 기록 패널이 본문 오른쪽 레일을 차지해, 열리면 본문 영역이 줄어 같은 규칙을 따른다.
  * 찾은 기록은 GNB 오른쪽 버튼과 답변 아래 버튼이 주소(`?messageId=`)로 여닫는다.
  *
+ * 문서 하나를 보는 화면에서는 원문 패널이 같은 오른쪽 자리를 쓴다. GNB 오른쪽의 원문 버튼으로 여닫고,
+ * 회원이 마지막에 둔 상태를 다음 문서에도 그대로 적용한다(DOC-R3 · DOC-R4).
+ *
  * 들어갈 수 있는 워크스페이스인지도 이 레이아웃 범위에서 한 번만 판정한다(`useWorkspaceEntry`).
  * 조회에 성공하기 전에는 본문 대신 스피너를 두고, 401은 로그인으로, 403·404는 선택 화면으로 보낸다.
  *
@@ -46,11 +52,13 @@ import type { DockedPanelName } from "./types/dockedPanel";
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1364-6863 GNB/Floating
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=526-772 탐색 결과/채팅 세션 목록
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2106-28974 탐색/대화 목록 고정 + 찾은 기록 열림
+ * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-36104 문서/원문 열림
  */
 export default function WorkspaceLayout() {
-  const { workspaceId } = useParams();
+  const { workspaceId, documentId } = useParams();
   const { isReady } = useWorkspaceEntry({ workspaceId: Number(workspaceId) });
   const { isChatActive } = useWorkspaceNav();
+  const { isTranscriptPanelOpen } = useTranscriptPanel();
   const [pickedPanel, setPickedPanel] = useState<DockedPanelName>(null);
 
   useRecordingLeaveWarning();
@@ -63,6 +71,9 @@ export default function WorkspaceLayout() {
   const pickPanel =
     (panel: Exclude<DockedPanelName, null>) => (isDocked: boolean) =>
       setPickedPanel(isDocked ? panel : null);
+
+  // 원문 패널은 주소의 documentId로 원문을 불러오므로, documentId가 있는 화면(문서 하나를 보는 화면)에만 버튼과 자리를 둬요
+  const isDocumentActive = documentId !== undefined;
 
   return (
     <Container>
@@ -93,7 +104,12 @@ export default function WorkspaceLayout() {
               )}
             </>
           }
-          right={isChatActive && <SearchEvidenceToggle />}
+          right={
+            <>
+              {isChatActive && <SearchEvidenceToggle />}
+              {isDocumentActive && <TranscriptToggle />}
+            </>
+          }
         />
       </GnbSlot>
 
@@ -118,6 +134,13 @@ export default function WorkspaceLayout() {
           <EvidenceRail>
             <SearchEvidenceList />
           </EvidenceRail>
+        )}
+
+        {isDocumentActive && (
+          <TranscriptRail>
+            {/* 본문처럼, 들어갈 수 있는 워크스페이스인지 알기 전에는 원문을 불러오지 않아요 */}
+            {isReady && isTranscriptPanelOpen && <TranscriptPanel />}
+          </TranscriptRail>
         )}
       </Body>
     </Container>
@@ -207,6 +230,16 @@ const EvidenceRail = styled.div`
   @media (prefers-reduced-motion: reduce) {
     transition: none;
   }
+`;
+
+/**
+ * 원문 패널이 놓이는 오른쪽 레일. 찾은 기록 레일과 같은 자리(GNB 아래 40px, 화면 오른쪽 40px, 폭 400px)를 써요(DOC-R4).
+ *
+ * 원문이 길면 패널이 레일 높이까지만 커지고 패널 안의 발화 목록이 스크롤돼요.
+ * 아래 여백은 왼쪽 레일(`DockRail`)과 같게 둬서, 패널이 가장 길 때 왼쪽 사이드바와 같은 높이에서 끝나요.
+ */
+const TranscriptRail = styled(EvidenceRail)`
+  padding-bottom: 8.5rem; /* 136px */
 `;
 
 const Main = styled.main`
