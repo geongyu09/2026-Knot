@@ -1,4 +1,7 @@
-import { recordingEndResponse } from "@api/mock/responses/recording";
+import {
+  recordingEndResponse,
+  recordingHeartbeatResponse,
+} from "@api/mock/responses/recording";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
@@ -117,6 +120,16 @@ const countControlRequests = () => {
   });
 
   return count;
+};
+
+/** 보낸 요청을 경로의 마지막 마디로 순서대로 모아요 */
+const collectRequests = () => {
+  const requests: string[] = [];
+  mockServer.events.on("request:start", ({ request }) => {
+    requests.push(new URL(request.url).pathname.split("/").pop() ?? "");
+  });
+
+  return requests;
 };
 
 /** 녹음 시간은 1초마다 다시 그려지므로, 시계를 앞당긴 뒤 그 변화를 반영해요. */
@@ -331,6 +344,78 @@ describe("RecorderBar", () => {
         expect(router.state.location.pathname).toBe(HOME_PATH),
       );
       expect(count.end).toBe(1);
+    });
+  });
+
+  describe("서버가 이미 끝낸 녹음이라 조작이 거절되면(409 RECORDING_ALREADY_ENDED)", () => {
+    const UPLOADED_AFTER_HEARTBEAT = [
+      "heartbeat",
+      "audio-upload-url",
+      "audio",
+      "audio-upload-complete",
+    ];
+
+    /** 서버가 녹음을 끝낸 뒤라 조작은 409로 거절하고, 생존 신호에는 끝난 상태를 돌려줘요 */
+    const refuseAsEnded = (action: "pause" | "resume") => {
+      // 실패는 안내 없이 콘솔에만 남기므로, 테스트 출력에 섞이지 않게 막아요
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      mockServer.use(
+        http.post(
+          `*/api/v1/workspaces/:workspaceId/recordings/:recordingId/${action}`,
+          () =>
+            HttpResponse.json(
+              { code: "RECORDING_ALREADY_ENDED" },
+              { status: 409 },
+            ),
+        ),
+        http.post(
+          "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/heartbeat",
+          () =>
+            HttpResponse.json({
+              ...recordingHeartbeatResponse,
+              status: "ENDED",
+            }),
+        ),
+      );
+    };
+
+    it("일시정지가 거절되면 오디오를 버리지 않고 생존 신호를 한 번 보내, 그 응답대로 올린 뒤 홈으로 간다", async () => {
+      vi.useRealTimers();
+      refuseAsEnded("pause");
+      const requests = collectRequests();
+      await startRecording();
+      const { router } = renderRecorderBar();
+
+      fireEvent.click(screen.getByRole("button", { name: "일시정지" }));
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(HOME_PATH),
+      );
+      expect(requests).toEqual(["pause", ...UPLOADED_AFTER_HEARTBEAT]);
+      expect(getRecordingControlProof()).toBeNull();
+    });
+
+    it("이어서 녹음이 거절돼도 생존 신호를 한 번 보내, 그 응답대로 올린 뒤 홈으로 간다", async () => {
+      vi.useRealTimers();
+      refuseAsEnded("resume");
+      const requests = collectRequests();
+      await startRecording();
+      const { router } = renderRecorderBar();
+      fireEvent.click(screen.getByRole("button", { name: "일시정지" }));
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "이어서 녹음" }),
+      );
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(HOME_PATH),
+      );
+      expect(requests).toEqual([
+        "pause",
+        "resume",
+        ...UPLOADED_AFTER_HEARTBEAT,
+      ]);
+      expect(getRecordingControlProof()).toBeNull();
     });
   });
 

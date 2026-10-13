@@ -58,7 +58,8 @@ const clearRecording = () => {
  * - 생존 신호: 응답의 서버 상태를 따라가요. 서버가 끝낸 녹음(`ENDED`)이면 종료 요청 없이 여기까지의 오디오를 올리고,
  *   버렸거나(`DISCARDED`) 더는 볼 수 없는 녹음(403 `WORKSPACE_ACCESS_DENIED`, 404)이면 오디오를 버려요. 둘 다 홈으로 가요.
  *   그 밖의 실패는 다시 보내지 않고 부르는 쪽의 다음 주기에 맡겨요. 끝내는 중에는 보내지 않아요.
- * - 서버에서 이미 끝났거나 버려진 녹음(409)이면 수집을 멈추고 오디오를 버린 뒤 홈으로 가요.
+ * - 일시정지나 이어서 녹음이 서버에서 이미 끝난 녹음(409 `RECORDING_ALREADY_ENDED`)이라고 거절되면 오디오를 버리지 않고
+ *   생존 신호를 바로 한 번 보내 그 응답대로 처리해요. 이미 버려진 녹음(409)이면 오디오를 버리고 홈으로 가요.
  *
  * 최초 탭 증명은 sessionStorage에 두고, 실패는 안내 없이 콘솔에만 남겨요.
  * 독의 마이크 끊김 알림처럼 효과 안에서 부르는 곳이 있어 동작의 참조를 고정해요.
@@ -172,9 +173,17 @@ const useRecordingControl = () => {
   const handleControlError = useCallback(
     ({ action, error, workspaceId }: HandleControlErrorParams) => {
       logRequestError(action, error);
+
+      // 서버가 끝낸 녹음은 오디오를 올려야 해서 버리지 않고, 생존 신호의 응답으로 마저 처리해요
+      if (isHttpError(error) && error.code === "RECORDING_ALREADY_ENDED") {
+        void sendHeartbeat();
+
+        return;
+      }
+
       if (isClosedRecordingError(error)) closeRecording(workspaceId);
     },
-    [closeRecording],
+    [closeRecording, sendHeartbeat],
   );
 
   /** 마이크를 받아 서버에 녹음을 열어요. 결과는 `started`·`microphoneUnavailable`·`refused`·`failed`예요 */
