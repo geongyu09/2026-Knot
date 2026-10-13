@@ -14,8 +14,10 @@ import { DialogProvider } from "./shared/provider/context/dialogContext";
 const enableApiMocking = async () => {
   if (process.env.API_MOCKING !== "true") return;
 
-  const { mockWorker } = await import("@api/mock/browser");
+  const { mockWorker, reactivateMockWorkerOnFocus } =
+    await import("@api/mock/browser");
   await mockWorker.start();
+  reactivateMockWorkerOnFocus();
 };
 
 const renderApp = () => {
