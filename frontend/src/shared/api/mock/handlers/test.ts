@@ -359,6 +359,74 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
         });
       });
 
+      it("myConfirmation을 주면 내 확인 상태가 그 값인 문서만 주고, 주제 폴더도 그 문서들만 센다", async () => {
+        const pendingItems = expected.items.filter(
+          ({ myConfirmationState }) => myConfirmationState === "PENDING",
+        );
+        const pendingTopics = pendingItems.map(({ topic }) => topic);
+
+        const page = await getDocumentsApi({
+          workspaceId: WORKSPACE_ID,
+          myConfirmation: "PENDING",
+        });
+
+        // 기본 응답에서 내가 아직 확인하지 않은 문서는 주제가 서로 다른 두 개예요
+        expect(pendingItems).toHaveLength(2);
+        expect(page.items).toEqual(pendingItems);
+        expect(page.topics).toEqual(
+          expected.topics
+            .filter(({ topic }) => pendingTopics.includes(topic))
+            .map((topic) => ({ ...topic, documentCount: 1 })),
+        );
+        expect(page.nextCursor).toBeNull();
+      });
+
+      it("myConfirmation과 recordingSessionId를 함께 주면 두 조건을 모두 만족하는 문서만 준다", async () => {
+        // 같은 녹음에서 나온 두 문서 가운데 내가 아직 확인하지 않은 문서는 하나예요
+        const [{ recordingSessionId }] = documentDetailsResponse;
+        const pendingRecordingItems = expected.items.filter(
+          (item) =>
+            item.recordingSessionId === recordingSessionId &&
+            item.myConfirmationState === "PENDING",
+        );
+
+        const page = await getDocumentsApi({
+          workspaceId: WORKSPACE_ID,
+          myConfirmation: "PENDING",
+          recordingSessionId,
+        });
+
+        expect(pendingRecordingItems).toHaveLength(1);
+        expect(page.items).toEqual(pendingRecordingItems);
+      });
+
+      it("끝까지 받는 getAllDocumentsApi도 myConfirmation을 주면 그 상태의 문서만 받는다", async () => {
+        const { items, nextCursor } = await getAllDocumentsApi({
+          workspaceId: WORKSPACE_ID,
+          myConfirmation: "PENDING",
+        });
+
+        expect(items).toEqual(
+          expected.items.filter(
+            ({ myConfirmationState }) => myConfirmationState === "PENDING",
+          ),
+        );
+        expect(nextCursor).toBeNull();
+      });
+
+      it("myConfirmation이 PENDING · CONFIRMED · NOT_REQUIRED가 아니면 400 INVALID_PARAMETER로 답한다", async () => {
+        await expect(
+          getDocumentsApi({
+            workspaceId: WORKSPACE_ID,
+            // @ts-expect-error 타입이 막는 값을 서버가 어떻게 답하는지 보려고 일부러 보내요
+            myConfirmation: "DONE",
+          }),
+        ).rejects.toMatchObject({
+          type: HTTP_ERROR_TYPE.badRequest,
+          code: "INVALID_PARAMETER",
+        });
+      });
+
       it("size가 1~100을 벗어나면 400 INVALID_PARAMETER로 답한다", async () => {
         await expect(
           getDocumentsApi({ workspaceId: WORKSPACE_ID, size: 101 }),
@@ -467,6 +535,33 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
           myConfirmationState: "CONFIRMED",
           confirmationSummary,
         });
+      });
+
+      it("확인한 뒤에는 확인 대기 문서 목록에서 그 문서가 빠지고, 주제 폴더도 남은 문서만 센다", async () => {
+        const pendingBefore = await getDocumentsApi({
+          workspaceId: WORKSPACE_ID,
+          myConfirmation: "PENDING",
+        });
+
+        await confirmDocumentApi(pendingParams);
+
+        const pendingAfter = await getDocumentsApi({
+          workspaceId: WORKSPACE_ID,
+          myConfirmation: "PENDING",
+        });
+
+        expect(pendingBefore.items.map(({ id }) => id)).toContain(
+          pendingDocument.id,
+        );
+        expect(pendingAfter.items).toEqual(
+          pendingBefore.items.filter(({ id }) => id !== pendingDocument.id),
+        );
+        // 그 주제에서 확인을 기다리던 문서가 이것 하나라, 주제 폴더에서도 빠져요
+        expect(pendingAfter.topics).toEqual(
+          pendingBefore.topics.filter(
+            ({ topic }) => topic !== pendingDocument.topic,
+          ),
+        );
       });
 
       it("다시 확인해도 처음 확인한 시각과 같은 집계를 돌려준다", async () => {

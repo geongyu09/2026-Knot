@@ -1,6 +1,7 @@
 import {
   GetDocumentsResponseDto,
   type GetDocumentsResponseRaw,
+  type MyConfirmationState,
 } from "@api/dto/document";
 import { httpClient } from "@api/httpClient";
 
@@ -24,12 +25,14 @@ interface GetDocumentsApiParams {
   size?: number;
   /** 이 녹음에서 나온 문서만 받아요. 없으면 워크스페이스의 문서 전체가 대상이에요 */
   recordingSessionId?: number;
+  /** 내 확인 상태가 이 값인 문서만 받아요. 없으면 내 확인 상태로 거르지 않아요 */
+  myConfirmation?: MyConfirmationState;
 }
 
 /**
- * @description 워크스페이스의 문서 목록 한 페이지와 주제 폴더 전체를 조회합니다. 녹음 ID를 주면 그 녹음에서 나온 문서만 대상이에요. 실패는 `400` 잘못된 cursor · size · 녹음 ID · `401` 미인증 · `403` 워크스페이스 멤버 아님으로 구분해요
- * @param params - 워크스페이스 ID·커서·한 번에 받을 문서 수·녹음 ID
- * @returns 주제 폴더 전체·최신순 문서 한 페이지·다음 페이지 커서
+ * @description 워크스페이스의 문서 목록 한 페이지와 주제 폴더 전체를 조회합니다. 녹음 ID나 내 확인 상태를 주면 그 조건에 맞는 문서만 대상이고, 둘 다 주면 두 조건을 모두 만족하는 문서만 대상이에요. 실패는 `400` 잘못된 cursor · size · 녹음 ID · 내 확인 상태 · `401` 미인증 · `403` 워크스페이스 멤버 아님으로 구분해요
+ * @param params - 워크스페이스 ID·커서·한 번에 받을 문서 수·녹음 ID·내 확인 상태
+ * @returns 조건에 맞는 주제 폴더 전체·최신순 문서 한 페이지·다음 페이지 커서
  * @example
  * const { topics, items, nextCursor } = await getDocumentsApi({ workspaceId: 1 });
  */
@@ -38,11 +41,12 @@ export const getDocumentsApi = async ({
   cursor,
   size,
   recordingSessionId,
+  myConfirmation,
 }: GetDocumentsApiParams) => {
   const response = await httpClient<GetDocumentsResponseRaw>({
     method: "get",
     url: DOCUMENTS_API_PATH(workspaceId),
-    params: { cursor, size, recordingSessionId },
+    params: { cursor, size, recordingSessionId, myConfirmation },
   });
 
   return new GetDocumentsResponseDto(response.data);
@@ -52,23 +56,27 @@ interface GetAllDocumentsApiParams {
   workspaceId: number;
   /** 이 녹음에서 나온 문서만 받아요. 없으면 워크스페이스의 문서 전체가 대상이에요 */
   recordingSessionId?: number;
+  /** 내 확인 상태가 이 값인 문서만 받아요. 없으면 내 확인 상태로 거르지 않아요 */
+  myConfirmation?: MyConfirmationState;
 }
 
 /**
- * @description 워크스페이스의 문서를 다음 페이지가 없을 때까지 이어 받아 하나로 합칩니다. 녹음 ID를 주면 그 녹음에서 나온 문서만 대상이에요. 도중에 한 요청이라도 실패하면 그때까지 받은 문서를 돌려주지 않고 실패해요
- * @param params - 워크스페이스 ID·녹음 ID
- * @returns 주제 폴더 전체·최신순 문서 전체(최대 2,000개)·`nextCursor`. 응답 하나가 아니라 여러 응답을 합친 값이에요. `nextCursor`는 끝까지 받았으면 null이고, 요청 횟수 한계에서 멈춰 받지 못한 문서가 남았으면 null이 아니에요
+ * @description 워크스페이스의 문서를 다음 페이지가 없을 때까지 이어 받아 하나로 합칩니다. 녹음 ID나 내 확인 상태를 주면 그 조건에 맞는 문서만 대상이에요. 도중에 한 요청이라도 실패하면 그때까지 받은 문서를 돌려주지 않고 실패해요
+ * @param params - 워크스페이스 ID·녹음 ID·내 확인 상태
+ * @returns 조건에 맞는 주제 폴더 전체·최신순 문서 전체(최대 2,000개)·`nextCursor`. 응답 하나가 아니라 여러 응답을 합친 값이에요. `nextCursor`는 끝까지 받았으면 null이고, 요청 횟수 한계에서 멈춰 받지 못한 문서가 남았으면 null이 아니에요
  * @example
  * const { topics, items } = await getAllDocumentsApi({ workspaceId: 1 });
  */
 export const getAllDocumentsApi = async ({
   workspaceId,
   recordingSessionId,
+  myConfirmation,
 }: GetAllDocumentsApiParams) => {
   const firstPage = await getDocumentsApi({
     workspaceId,
     size: MAX_PAGE_SIZE,
     recordingSessionId,
+    myConfirmation,
   });
   const items = [...firstPage.items];
   let nextCursor = firstPage.nextCursor;
@@ -83,6 +91,7 @@ export const getAllDocumentsApi = async ({
       cursor: nextCursor,
       size: MAX_PAGE_SIZE,
       recordingSessionId,
+      myConfirmation,
     });
 
     items.push(...page.items);
