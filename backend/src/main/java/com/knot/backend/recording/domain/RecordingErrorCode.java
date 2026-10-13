@@ -6,6 +6,24 @@ import lombok.Getter;
 
 @Getter
 public enum RecordingErrorCode implements ErrorCode {
+    TRANSCRIPTION_DISABLED(
+            ErrorCategory.CONFLICT,
+            "TRANSCRIPTION_DISABLED",
+            "전사 기능이 활성화되지 않았습니다"
+    ),
+
+    TRANSCRIPTION_RETRY_NOT_ALLOWED(
+            ErrorCategory.CONFLICT,
+            "TRANSCRIPTION_RETRY_NOT_ALLOWED",
+            "실패한 전사만 다시 요청할 수 있습니다"
+    ),
+
+    TRANSCRIPTION_BUSY(
+            ErrorCategory.CONFLICT,
+            "TRANSCRIPTION_BUSY",
+            "다른 녹음의 전사가 진행 중입니다"
+    ),
+
     AUDIO_DELETION_CONFLICT(
             ErrorCategory.CONFLICT,
             "AUDIO_DELETION_CONFLICT",
