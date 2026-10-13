@@ -18,7 +18,6 @@ const useRecordingState = () => {
   const clearMicrophoneLost = useRecordingStore(
     (state) => state.clearMicrophoneLost,
   );
-  const syncElapsedTime = useRecordingStore((state) => state.syncElapsedTime);
 
   return {
     status,
@@ -28,7 +27,6 @@ const useRecordingState = () => {
     isMicrophoneLost,
     isEnding,
     clearMicrophoneLost,
-    syncElapsedTime,
   };
 };
 
