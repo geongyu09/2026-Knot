@@ -135,11 +135,21 @@ const useRecordingControl = () => {
     const proof = getRecordingControlProof();
     if (!session || !proof || isEnding) return;
 
+    // 응답을 기다리는 사이 끝내기 시작했거나 닫은 녹음이면, 늦은 응답으로 지금 화면을 바꾸지 않아요
+    const isLateResponse = () => {
+      const current = useRecordingStore.getState();
+
+      return (
+        current.isEnding || current.session?.recordingId !== session.recordingId
+      );
+    };
+
     try {
       const { status, elapsedMillis } = await sendRecordingHeartbeat({
         ...session,
         ...proof,
       });
+      if (isLateResponse()) return;
 
       if (status === "ENDED") {
         // 서버가 이미 끝낸 녹음이라 종료 요청 없이 여기까지의 오디오를 올려요
@@ -153,7 +163,7 @@ const useRecordingControl = () => {
       }
     } catch (error) {
       logRequestError("녹음 생존 신호", error);
-      if (isUnreachableRecordingError(error)) {
+      if (!isLateResponse() && isUnreachableRecordingError(error)) {
         closeRecording(session.workspaceId);
       }
     }

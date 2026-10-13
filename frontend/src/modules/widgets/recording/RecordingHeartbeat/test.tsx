@@ -68,14 +68,14 @@ const renderRecordingHeartbeat = () => {
 };
 
 /** 녹음은 독에서 증명을 만들어 시작하므로, 같은 순서로 미리 시작해 둬요. */
-const startRecording = async () => {
+const startRecording = async (recordingId = expected.recordingId) => {
   getRecordingStartProof();
 
   await act(async () => {
     await useRecordingStore.getState().connectMicrophone();
     useRecordingStore.getState().startRecording({
       workspaceId: Number(WORKSPACE_ID),
-      recordingId: expected.recordingId,
+      recordingId,
     });
   });
 };
@@ -99,6 +99,20 @@ const respondHeartbeatWithError = (status: number, code: string) => {
   // 실패는 안내 없이 콘솔에만 남기므로, 테스트 출력에 섞이지 않게 막아요
   vi.spyOn(console, "error").mockImplementation(() => {});
   respondHeartbeat(() => HttpResponse.json({ code }, { status }));
+};
+
+/** 응답을 테스트가 풀어 줄 때까지 붙잡아 둬요. 그사이 녹음이 바뀐 뒤 도착하는 늦은 응답을 만들어요 */
+const holdHeartbeat = (body: object) => {
+  let release = () => {};
+  respondHeartbeat(async () => {
+    await new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    return HttpResponse.json(body);
+  });
+
+  return { release: () => act(async () => release()) };
 };
 
 /** 보낸 요청을 경로의 마지막 마디로 순서대로 모아요 */
@@ -264,4 +278,41 @@ describe("RecordingHeartbeat", () => {
       expect(getRecordingControlProof()).toBeNull();
     },
   );
+
+  it("끝내는 중에 늦게 도착한 응답으로는 녹음한 시간을 되돌리지 않는다", async () => {
+    const heartbeat = holdHeartbeat(recordingHeartbeatResponse);
+    const requests = collectRequests();
+    await startRecording();
+    renderRecordingHeartbeat();
+    passHeartbeatInterval();
+    await waitFor(() => expect(requests).toEqual(["heartbeat"]));
+
+    act(() => useRecordingStore.getState().beginEnding());
+    await heartbeat.release();
+
+    // 응답을 처리할 틈을 준 뒤에도 그대로인지 봐요
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(useRecordingStore.getState().accumulatedMs).toBe(0);
+  });
+
+  it("이미 닫은 녹음에 늦게 도착한 응답으로는 새로 시작한 녹음을 닫지 않는다", async () => {
+    const heartbeat = holdHeartbeat({
+      ...recordingHeartbeatResponse,
+      status: "ENDED",
+    });
+    const requests = collectRequests();
+    await startRecording();
+    const { router } = renderRecordingHeartbeat();
+    passHeartbeatInterval();
+    await waitFor(() => expect(requests).toEqual(["heartbeat"]));
+
+    act(() => useRecordingStore.getState().discardRecording());
+    await startRecording(expected.recordingId + 1);
+    await heartbeat.release();
+
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(requests).toEqual(["heartbeat"]);
+    expect(useRecordingStore.getState().status).toBe("recording");
+    expect(router.state.location.pathname).toBe(RECORDING_PATH);
+  });
 });
