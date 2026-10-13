@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import {
   clearRecordingStartProof,
+  getRecordingControlProof,
   getRecordingStartProof,
 } from "@utils/recordingControlProof";
 import { http, HttpResponse, type HttpResponseResolver } from "msw";
@@ -21,6 +22,10 @@ const HEARTBEAT_INTERVAL_MS = 30 * 1000;
 const WORKSPACE_ID = "1";
 const RECORDING_PATH = getRouterPath({
   routeKey: "RECORDING",
+  params: { workspaceId: WORKSPACE_ID },
+});
+const HOME_PATH = getRouterPath({
+  routeKey: "WORKSPACE_HOME",
   params: { workspaceId: WORKSPACE_ID },
 });
 
@@ -105,6 +110,8 @@ const collectRequests = () => {
 
   return requests;
 };
+
+const UPLOAD_REQUESTS = ["audio-upload-url", "audio", "audio-upload-complete"];
 
 /** 403은 CSRF 토큰이 낡았을 수 있어 httpClient가 토큰을 새로 받아 한 번 더 보내요. 신호 한 번이 이렇게 나가요 */
 const CSRF_RETRIED_HEARTBEAT = ["heartbeat", "csrf", "heartbeat"];
@@ -200,4 +207,20 @@ describe("RecordingHeartbeat", () => {
       await waitFor(() => expect(requests).toEqual([...sent, ...sent]));
     },
   );
+
+  it("서버가 끝낸 녹음(ENDED)이면 종료 요청 없이 오디오를 올리고 증명을 지운 뒤 홈으로 간다", async () => {
+    respondHeartbeat(() =>
+      HttpResponse.json({ ...recordingHeartbeatResponse, status: "ENDED" }),
+    );
+    const requests = collectRequests();
+    await startRecording();
+    const { router } = renderRecordingHeartbeat();
+
+    passHeartbeatInterval();
+
+    await waitFor(() => expect(router.state.location.pathname).toBe(HOME_PATH));
+    expect(requests).toEqual(["heartbeat", ...UPLOAD_REQUESTS]);
+    expect(useRecordingStore.getState().status).toBe("idle");
+    expect(getRecordingControlProof()).toBeNull();
+  });
 });

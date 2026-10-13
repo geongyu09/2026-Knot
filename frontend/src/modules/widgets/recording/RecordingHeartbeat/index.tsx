@@ -14,7 +14,7 @@ interface RecordingHeartbeatProps {
  *
  * 감싼 화면을 그대로 그리고, 놓여 있는 동안 30초마다 생존 신호를 보내요. 일시정지 중에도 보내고, 끝내는 중에는 보내지 않아요.
  * 신호가 실패하면 곧바로 다시 보내지 않고 다음 주기에 보내요.
- * 신호를 보내고 응답으로 녹음한 시간을 맞추는 일은 `useRecordingControl`이 맡아요.
+ * 응답에 맞춰 녹음한 시간을 맞추거나 서버가 끝낸 녹음을 닫는 일은 `useRecordingControl`이 맡아요.
  */
 export default function RecordingHeartbeat({
   children,
