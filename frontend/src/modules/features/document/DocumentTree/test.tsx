@@ -179,7 +179,7 @@ describe("DocumentTree", () => {
     expect(getDocumentRowTitles()).toEqual([]);
   });
 
-  it("문서 보기에서는 그 문서의 폴더만 펼쳐 문서를 서버가 준 순서대로 보여 주고, 그 문서 행을 지금 보는 문서로 표시한다", async () => {
+  it("문서 보기에서는 그 문서의 폴더만 펼쳐 문서를 보여 주고, 그 문서 행을 지금 보는 문서로 표시한다", async () => {
     renderDocumentTree(documentPath(currentDocument.id));
 
     expect(await findFolderRow(secondTopic)).toHaveAttribute(
@@ -195,6 +195,20 @@ describe("DocumentTree", () => {
     expect(
       screen.getByRole("link", { name: siblingDocument.title }),
     ).not.toHaveAttribute("aria-current");
+  });
+
+  it("서버가 문서를 어떤 순서로 줘도 폴더 안에서는 최근 녹음에서 나온 문서를 위에 놓는다", async () => {
+    // 기본 응답의 문서는 최근 녹음순이라, 순서를 뒤집어서 줘요
+    respondWith({
+      ...documentsResponse,
+      items: [...documentsResponse.items].reverse(),
+    });
+    renderDocumentTree();
+
+    fireEvent.click(await findFolderRow(firstTopic));
+
+    expect(titlesOf(firstTopic).length).toBeGreaterThan(1);
+    expect(getDocumentRowTitles()).toEqual(titlesOf(firstTopic));
   });
 
   it("폴더를 누르면 펼쳐 그 폴더의 문서를 보여 주고, 다시 누르면 접는다", async () => {

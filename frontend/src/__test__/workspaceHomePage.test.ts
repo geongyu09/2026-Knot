@@ -29,7 +29,7 @@ const expectedInvitation = new PostWorkspaceInvitationResponseDto(
   workspaceInvitationResponse,
 );
 const expectedDocuments = new GetDocumentsResponseDto(documentsResponse);
-// 사이드바 문서 목록에서 펼쳐 볼 폴더와 그 폴더의 문서(서버가 준 순서)
+// 사이드바 문서 목록에서 펼쳐 볼 폴더와 그 폴더의 문서(최근 회의순. 기본 응답은 서버가 준 순서와 같아요)
 const [{ topic: FOLDER_NAME }] = expectedDocuments.topics;
 const FOLDER_DOCUMENTS = expectedDocuments.items.filter(
   ({ topic }) => topic === FOLDER_NAME,

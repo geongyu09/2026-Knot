@@ -11,9 +11,9 @@ describe("groupDocumentsByTopic", () => {
         { topic: "주간 회의", documentCount: 1 },
       ],
       documents: [
-        { id: 3, topic: "회원 관리" },
-        { id: 2, topic: "사용자 인터뷰" },
-        { id: 1, topic: "주간 회의" },
+        { id: 3, topic: "회원 관리", recordingSessionId: 13 },
+        { id: 2, topic: "사용자 인터뷰", recordingSessionId: 12 },
+        { id: 1, topic: "주간 회의", recordingSessionId: 11 },
       ],
     });
 
@@ -55,17 +55,49 @@ describe("groupDocumentsByTopic", () => {
     ]);
   });
 
-  it("폴더 안의 문서는 받은 순서를 그대로 지킨다", () => {
+  it("폴더 안의 문서는 최근 녹음에서 나온 문서가 위에 오게 놓는다", () => {
+    // 받은 순서(문서를 만든 순서)와 녹음한 순서가 달라요. 먼저 한 녹음(11)의 문서가 가장 늦게 만들어졌어요
+    const [folder] = groupDocumentsByTopic({
+      topics: [{ topic: "주간 회의", documentCount: 3 }],
+      documents: [
+        { id: 3, topic: "주간 회의", recordingSessionId: 11 },
+        { id: 2, topic: "주간 회의", recordingSessionId: 13 },
+        { id: 1, topic: "주간 회의", recordingSessionId: 12 },
+      ],
+    });
+
+    expect(folder.documents).toEqual([
+      { id: 2, topic: "주간 회의", recordingSessionId: 13 },
+      { id: 1, topic: "주간 회의", recordingSessionId: 12 },
+      { id: 3, topic: "주간 회의", recordingSessionId: 11 },
+    ]);
+  });
+
+  it("같은 녹음에서 나온 문서는 받은 순서를 그대로 지킨다", () => {
+    const [folder] = groupDocumentsByTopic({
+      topics: [{ topic: "주간 회의", documentCount: 4 }],
+      documents: [
+        { id: 4, topic: "주간 회의", recordingSessionId: 11 },
+        { id: 3, topic: "주간 회의", recordingSessionId: 12 },
+        { id: 2, topic: "주간 회의", recordingSessionId: 11 },
+        { id: 1, topic: "주간 회의", recordingSessionId: 12 },
+      ],
+    });
+
+    expect(folder.documents.map(({ id }) => id)).toEqual([3, 1, 4, 2]);
+  });
+
+  it("폴더마다 따로 최근 녹음순으로 놓는다", () => {
     const folders = groupDocumentsByTopic({
       topics: [
         { topic: "주간 회의", documentCount: 2 },
         { topic: "회원 관리", documentCount: 2 },
       ],
       documents: [
-        { id: 4, topic: "주간 회의" },
-        { id: 3, topic: "회원 관리" },
-        { id: 2, topic: "주간 회의" },
-        { id: 1, topic: "회원 관리" },
+        { id: 4, topic: "주간 회의", recordingSessionId: 11 },
+        { id: 3, topic: "회원 관리", recordingSessionId: 12 },
+        { id: 2, topic: "주간 회의", recordingSessionId: 14 },
+        { id: 1, topic: "회원 관리", recordingSessionId: 13 },
       ],
     });
 
@@ -74,25 +106,39 @@ describe("groupDocumentsByTopic", () => {
         topic: "주간 회의",
         documentCount: 2,
         documents: [
-          { id: 4, topic: "주간 회의" },
-          { id: 2, topic: "주간 회의" },
+          { id: 2, topic: "주간 회의", recordingSessionId: 14 },
+          { id: 4, topic: "주간 회의", recordingSessionId: 11 },
         ],
       },
       {
         topic: "회원 관리",
         documentCount: 2,
         documents: [
-          { id: 3, topic: "회원 관리" },
-          { id: 1, topic: "회원 관리" },
+          { id: 1, topic: "회원 관리", recordingSessionId: 13 },
+          { id: 3, topic: "회원 관리", recordingSessionId: 12 },
         ],
       },
     ]);
   });
 
+  it("넘겨받은 문서 배열의 순서는 바꾸지 않는다", () => {
+    const documents = [
+      { id: 2, topic: "주간 회의", recordingSessionId: 11 },
+      { id: 1, topic: "주간 회의", recordingSessionId: 12 },
+    ];
+
+    groupDocumentsByTopic({
+      topics: [{ topic: "주간 회의", documentCount: 2 }],
+      documents,
+    });
+
+    expect(documents.map(({ id }) => id)).toEqual([2, 1]);
+  });
+
   it("폴더의 문서 수는 받은 문서를 세지 않고 서버가 준 값을 쓴다", () => {
     const [folder] = groupDocumentsByTopic({
       topics: [{ topic: "회원 관리", documentCount: 12 }],
-      documents: [{ id: 1, topic: "회원 관리" }],
+      documents: [{ id: 1, topic: "회원 관리", recordingSessionId: 11 }],
     });
 
     expect(folder.documentCount).toBe(12);
@@ -103,9 +149,9 @@ describe("groupDocumentsByTopic", () => {
     const folders = groupDocumentsByTopic({
       topics: [{ topic: "회원 관리", documentCount: 1 }],
       documents: [
-        { id: 3, topic: "새 주제" },
-        { id: 2, topic: "회원 관리" },
-        { id: 1, topic: "새 주제" },
+        { id: 3, topic: "새 주제", recordingSessionId: 13 },
+        { id: 2, topic: "회원 관리", recordingSessionId: 12 },
+        { id: 1, topic: "새 주제", recordingSessionId: 11 },
       ],
     });
 
@@ -114,14 +160,14 @@ describe("groupDocumentsByTopic", () => {
         topic: "새 주제",
         documentCount: 2,
         documents: [
-          { id: 3, topic: "새 주제" },
-          { id: 1, topic: "새 주제" },
+          { id: 3, topic: "새 주제", recordingSessionId: 13 },
+          { id: 1, topic: "새 주제", recordingSessionId: 11 },
         ],
       },
       {
         topic: "회원 관리",
         documentCount: 1,
-        documents: [{ id: 2, topic: "회원 관리" }],
+        documents: [{ id: 2, topic: "회원 관리", recordingSessionId: 12 }],
       },
     ]);
   });

@@ -138,7 +138,13 @@ describe("DocumentList", () => {
     }
   });
 
-  it("폴더 안에 그 주제의 문서를 받은 순서(최신순)대로 놓는다", async () => {
+  it("서버가 문서를 어떤 순서로 줘도 폴더 안에서는 최근 녹음에서 나온 문서를 위에 놓는다", async () => {
+    // 기본 응답의 문서는 최근 녹음순이라, 순서를 뒤집어서 줘요
+    respondWith({
+      ...documentsResponse,
+      items: [...documentsResponse.items].reverse(),
+    });
+
     renderDocumentList();
 
     for (const { topic } of expected.topics) {
