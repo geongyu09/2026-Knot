@@ -223,4 +223,45 @@ describe("RecordingHeartbeat", () => {
     expect(useRecordingStore.getState().status).toBe("idle");
     expect(getRecordingControlProof()).toBeNull();
   });
+
+  it.each([
+    [
+      "DISCARDED",
+      ["heartbeat"],
+      () =>
+        respondHeartbeat(() =>
+          HttpResponse.json({
+            ...recordingHeartbeatResponse,
+            status: "DISCARDED",
+          }),
+        ),
+    ],
+    [
+      "403 WORKSPACE_ACCESS_DENIED",
+      CSRF_RETRIED_HEARTBEAT,
+      () => respondHeartbeatWithError(403, "WORKSPACE_ACCESS_DENIED"),
+    ],
+    [
+      "404 RECORDING_NOT_FOUND",
+      ["heartbeat"],
+      () => respondHeartbeatWithError(404, "RECORDING_NOT_FOUND"),
+    ],
+  ])(
+    "서버가 버렸거나 더는 볼 수 없는 녹음(%s)이면 오디오를 올리지 않고 버린 뒤 홈으로 간다",
+    async (_, sent, respond) => {
+      respond();
+      const requests = collectRequests();
+      await startRecording();
+      const { router } = renderRecordingHeartbeat();
+
+      passHeartbeatInterval();
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(HOME_PATH),
+      );
+      expect(requests).toEqual(sent);
+      expect(useRecordingStore.getState().status).toBe("idle");
+      expect(getRecordingControlProof()).toBeNull();
+    },
+  );
 });

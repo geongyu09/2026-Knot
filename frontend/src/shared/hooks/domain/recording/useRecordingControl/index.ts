@@ -11,6 +11,7 @@ import useNavigateToWorkspaceHome from "@hooks/domain/workspace/useNavigateToWor
 import { useRecordingStore } from "@store/recordingStore";
 import { isClosedRecordingError } from "@utils/isClosedRecordingError";
 import { isRetryableAudioUploadError } from "@utils/isRetryableAudioUploadError";
+import { isUnreachableRecordingError } from "@utils/isUnreachableRecordingError";
 import { logRequestError } from "@utils/logRequestError";
 import {
   clearRecordingStartProof,
@@ -54,8 +55,9 @@ const clearRecording = () => {
  *   끝내는 동안에는 확인 창을 다시 띄우지 않아요. 종료가 실패하면 녹음을 그대로 두고,
  *   업로드가 일시 실패하면 URL 발급부터 3번까지 다시 시도하고, 그래도 실패하면 오디오를 버리고 홈으로 가요.
  *   워크스페이스를 옮길 때처럼 부른 쪽이 따로 확인받고 갈 곳도 정하면 `endRecordingWithoutConfirm`으로 끝내요.
- * - 생존 신호: 응답의 서버 상태를 따라가요. 서버가 끝낸 녹음(`ENDED`)이면 종료 요청 없이 여기까지의 오디오를 올리고
- *   홈으로 가요. 실패는 다시 보내지 않고 부르는 쪽의 다음 주기에 맡겨요. 끝내는 중에는 보내지 않아요.
+ * - 생존 신호: 응답의 서버 상태를 따라가요. 서버가 끝낸 녹음(`ENDED`)이면 종료 요청 없이 여기까지의 오디오를 올리고,
+ *   버렸거나(`DISCARDED`) 더는 볼 수 없는 녹음(403 `WORKSPACE_ACCESS_DENIED`, 404)이면 오디오를 버려요. 둘 다 홈으로 가요.
+ *   그 밖의 실패는 다시 보내지 않고 부르는 쪽의 다음 주기에 맡겨요. 끝내는 중에는 보내지 않아요.
  * - 서버에서 이미 끝났거나 버려진 녹음(409)이면 수집을 멈추고 오디오를 버린 뒤 홈으로 가요.
  *
  * 최초 탭 증명은 sessionStorage에 두고, 실패는 안내 없이 콘솔에만 남겨요.
@@ -144,11 +146,16 @@ const useRecordingControl = () => {
         const audio = await useRecordingStore.getState().stopRecording();
         await uploadRecordedAudio({ ...session, audio });
         closeRecording(session.workspaceId);
+      } else if (status === "DISCARDED") {
+        closeRecording(session.workspaceId);
       } else {
         useRecordingStore.getState().syncElapsedTime(elapsedMillis);
       }
     } catch (error) {
       logRequestError("녹음 생존 신호", error);
+      if (isUnreachableRecordingError(error)) {
+        closeRecording(session.workspaceId);
+      }
     }
   }, [closeRecording, sendRecordingHeartbeat, uploadRecordedAudio]);
 
