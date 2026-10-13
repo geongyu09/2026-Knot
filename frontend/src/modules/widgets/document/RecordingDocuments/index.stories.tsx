@@ -1,38 +1,40 @@
-import { DOCUMENT_GENERATION_JOB_RETRY_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/documentGenerationJobs/[jobId]/retry";
-import { documentGenerationJobRetryResponse } from "@api/mock/responses/documentGenerationJob";
 import { recordingDetailsResponse } from "@api/mock/responses/recording";
 import { resetRecordingMockState } from "@api/mock/state/recording";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
-import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
 
 import RecordingDocuments from ".";
 
 const WORKSPACE_ID = 1;
-// 상태가 서로 다른 mock 녹음: 정리 중 · 내용 없음 · 문서 만들기 실패 · 전사 실패
+// 상태가 서로 다른 mock 녹음: 정리 중 · 내용 없음 · 문서 만들기 실패 · 전사 실패 · 다시 시도 횟수를 다 쓴 실패.
+// 건너뛴 두 자리는 정리 완료와 일부만 만들어진 실패예요. 정리 완료는 문서로 이동만 하고, 일부만 만들어진 실패는 문서 만들기 실패와 화면이 같아요
 const [
   organizingRecording,
   noContentRecording,
   failedRecording,
   transcriptionFailedRecording,
+  ,
+  ,
+  retryExhaustedRecording,
 ] = recordingDetailsResponse;
 // recordingDetailsResponse에 없는 녹음이라 기본 핸들러가 404로 답해요
 const MISSING_RECORDING_ID = 999;
-// 문서 만들기에 실패한 녹음의 작업을 다시 시도하는 요청이에요.
-// 녹음 응답의 작업 ID는 null일 수 있는 타입이라, 같은 작업을 가리키는 다시 시도 응답의 ID를 써요
-const RETRY_REQUEST = `*${DOCUMENT_GENERATION_JOB_RETRY_API_PATH(WORKSPACE_ID, documentGenerationJobRetryResponse.jobId)}`;
 
 /**
  * 녹음을 끝낸 뒤 문서가 만들어질 때까지 머무는 정리 화면의 가운데 섹션이에요.
  * 주소의 녹음 상태에 따라 정리 중 · 문서로 만들 내용 없음 · 문서를 만들지 못함 · 불러오지 못함 가운데 하나를 보여 줘요.
  *
  * **동작 규칙**
- * - 정리 중에는 버튼 없이 3초마다 녹음 상태를 다시 확인해요. 결과가 정해지면 그 화면으로 바꾸고 더 확인하지 않아요.
+ * - 녹음을 끝낸 뒤 오디오 업로드를 확인하는 동안, 전사하는 동안, 문서를 만드는 동안이 모두 정리 중이에요.
+ *   정리 중에는 버튼 없이 3초마다 녹음 상태를 다시 확인해요. 결과가 정해지면 그 화면으로 바꾸고 더 확인하지 않아요.
  * - 문서로 만들 내용이 없었으면 오류가 아니라 결과라서 「다시 시도」 없이 「홈으로」만 둬요. 같은 녹음으로는 결과가 같기 때문이에요.
- * - 문서 만들기 단계에서 실패했으면 녹음을 보관했다고 알리고 「다시 시도」를 둬요. 접수되면 정리 중으로 돌아가요.
- *   요청을 기다리는 동안에는 버튼을 누를 수 없고, 서버 오류로 실패하면 버튼이 다시 열려요.
- * - 전사 · 오디오 업로드 실패, 다시 시도할 작업이 없는 실패, 다시 시도가 거절된 경우는 설명 없이 「홈으로」만 둬요.
+ * - 문서 만들기가 실패로 끝났으면 녹음을 보관했다고 알리고 「다시 시도」를 둬요.
+ *   문서는 주제마다 따로 만들어서 한 녹음에서 여러 작업이 실패할 수 있어요. 「다시 시도」를 한 번 누르면 실패한 작업을 모두 다시 시도하고, 하나라도 접수되면 정리 중으로 돌아가요.
+ *   요청이 모두 끝날 때까지 버튼을 누를 수 없고, 서버 오류로 실패하면 버튼이 다시 열려요.
+ * - 문서가 일부만 만들어진 실패도 같은 화면이에요. 만들어진 문서로 보내지 않고, 「다시 시도」는 실패한 작업만 다시 시도해요.
+ *   일부만 만들어진 경우만의 화면은 시안이 아직 없어서 따로 두지 않았어요. 만들어진 문서는 홈과 문서 탭에서 볼 수 있어요.
+ * - 전사 실패, 다시 시도할 작업이 남아 있지 않은 실패, 남은 작업의 다시 시도가 모두 거절된 경우는 설명 없이 「홈으로」만 둬요.
  *   이 경우의 문구가 기획에 아직 없고, 녹음이 보관되어 있는지도 경우마다 달라서예요.
  * - 다시 시도가 409로 거절되면 녹음 상태를 다시 확인해요. 다른 곳에서 먼저 다시 시도해 서버에서는 이미 정리 중이거나 정리가 끝났을 수 있어서예요.
  *   그런 경우에는 그 상태의 화면으로 바꾸고, 그 작업이 또 실패하면 「다시 시도」를 다시 보여 줘요.
@@ -103,7 +105,7 @@ export const NothingToOrganize: Story = {
   },
 };
 
-/** 문서 만들기 단계에서 실패했을 때예요. 녹음은 보관돼 있어 「다시 시도」를 둬요. 누르면 정리 중 모습으로 돌아가요. */
+/** 문서 만들기가 실패로 끝났을 때예요. 녹음은 보관돼 있어 「다시 시도」를 둬요. 누르면 정리 중 모습으로 돌아가요. */
 export const DocumentFailed: Story = {
   parameters: {
     recordingId: failedRecording.recordingId,
@@ -114,7 +116,7 @@ export const DocumentFailed: Story = {
   },
 };
 
-/** 다시 시도해도 결과가 같은 실패일 때예요. 예: 전사 실패, 오디오 업로드 실패. 설명 없이 「홈으로」만 있어요. 붙인 피그마 프레임은 「다시 시도」가 있는 모습이에요. */
+/** 다시 시도할 작업이 없는 실패일 때예요. 예: 전사 실패, 실패한 작업의 보존 기한이 지난 경우. 설명 없이 「홈으로」만 있어요. 붙인 피그마 프레임은 「다시 시도」가 있는 모습이에요. */
 export const DocumentFailedWithoutRetry: Story = {
   parameters: {
     recordingId: transcriptionFailedRecording.recordingId,
@@ -125,23 +127,13 @@ export const DocumentFailedWithoutRetry: Story = {
   },
 };
 
-/** 「다시 시도」를 서버가 거절했고, 다시 확인한 녹음도 여전히 실패 상태일 때예요. 예: 다시 시도할 수 있는 횟수를 다 썼거나 기한이 지난 작업. 누르면 설명과 버튼이 사라지고 「홈으로」만 남아요. */
+/** 남은 실패 작업의 다시 시도를 서버가 거절했을 때예요. 예: 다시 시도할 수 있는 횟수를 다 쓴 작업. 「다시 시도」를 누르면 설명과 버튼이 사라지고 「홈으로」만 남아요. */
 export const RetryRejected: Story = {
   parameters: {
-    // 문서 페이지에서는 스토리를 한 화면에 함께 그려 응답이 섞이므로, 이 스토리는 따로 그려요
-    docs: { story: { inline: false, iframeHeight: 320 } },
-    recordingId: failedRecording.recordingId,
+    recordingId: retryExhaustedRecording.recordingId,
     design: {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-35662",
-    },
-    msw: {
-      handlers: {
-        retryDocumentGenerationJob: http.post(
-          RETRY_REQUEST,
-          () => new HttpResponse(null, { status: 409 }),
-        ),
-      },
     },
   },
 };
