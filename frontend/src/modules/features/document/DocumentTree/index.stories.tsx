@@ -16,6 +16,8 @@ const EMPTY_DOCUMENTS_RESPONSE = {
   items: [],
   nextCursor: null,
 } satisfies DocumentsResponse;
+// 문서 페이지에서는 스토리를 한 화면에 함께 그려 응답이 섞이므로, 응답을 덮는 스토리는 따로 그려요
+const ISOLATED_DOCS = { story: { inline: false, iframeHeight: 360 } };
 const HOME_PATH = getRouterPath({
   routeKey: "WORKSPACE_HOME",
   params: { workspaceId: String(WORKSPACE_ID) },
@@ -125,8 +127,7 @@ export const Loading: Story = {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3989-41916",
     },
-    // 문서 페이지에서는 스토리를 한 화면에 함께 그려 응답이 섞이므로, 응답을 덮는 스토리는 따로 그려요
-    docs: { story: { inline: false, iframeHeight: 360 } },
+    docs: ISOLATED_DOCS,
     msw: {
       handlers: {
         documents: http.get(DOCUMENTS_REQUEST, async () => {
@@ -150,7 +151,7 @@ export const NoDocuments: Story = {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3989-42033",
     },
-    docs: { story: { inline: false, iframeHeight: 360 } },
+    docs: ISOLATED_DOCS,
     msw: {
       handlers: {
         documents: http.get(DOCUMENTS_REQUEST, () =>
@@ -173,7 +174,7 @@ export const LoadFailed: Story = {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3989-42119",
     },
-    docs: { story: { inline: false, iframeHeight: 360 } },
+    docs: ISOLATED_DOCS,
     msw: {
       handlers: {
         documents: http.get(

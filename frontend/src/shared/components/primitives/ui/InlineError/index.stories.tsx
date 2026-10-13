@@ -70,7 +70,7 @@ export const Small: Story = {
   parameters: {
     design: {
       type: "figma",
-      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3989-42119",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3997-990",
     },
   },
 };

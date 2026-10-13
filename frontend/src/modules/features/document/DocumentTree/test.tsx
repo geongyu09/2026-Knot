@@ -118,12 +118,16 @@ const getTree = () => screen.getByRole("navigation", { name: "문서" });
 const clickRetry = async () =>
   fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
 
-// 폴더 행의 이름은 폴더 이름과 문서 수를 이은 글이라 폴더 이름으로 시작하는 것을 찾아요
+// 폴더 행의 이름은 폴더 이름과 문서 수를 이은 글이라, 폴더 이름 뒤에 문서 수만 오는 행을 찾아요.
+// 앞부분만 보면 「회원」이 「회원 관리」 행에도 맞아요
+const isFolderRowName = (topic: string) => (name: string) =>
+  name.startsWith(topic) && /^\s*\d+$/.test(name.slice(topic.length));
+
 const findFolderRow = (topic: string) =>
-  screen.findByRole("button", { name: (name) => name.startsWith(topic) });
+  screen.findByRole("button", { name: isFolderRowName(topic) });
 
 const getFolderRow = (topic: string) =>
-  screen.getByRole("button", { name: (name) => name.startsWith(topic) });
+  screen.getByRole("button", { name: isFolderRowName(topic) });
 
 const getDocumentRowTitles = () =>
   screen.queryAllByRole("link").map(({ textContent }) => textContent);

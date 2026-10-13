@@ -61,11 +61,12 @@ describe("WorkspaceSidebar", () => {
       within(sidebar).getByRole("button", { name: "워크스페이스 메뉴" }),
     ).toBeInTheDocument();
 
-    // 폴더 행의 이름은 폴더 이름과 문서 수를 이은 글이라 폴더 이름으로 시작하는 것을 찾아요
+    // 폴더 행의 이름은 폴더 이름과 문서 수를 이은 글이라, 폴더 이름 뒤에 문서 수만 오는 행을 찾아요
     for (const { topic } of expectedDocuments.topics) {
       expect(
         await within(sidebar).findByRole("button", {
-          name: (name) => name.startsWith(topic),
+          name: (name) =>
+            name.startsWith(topic) && /^\s*\d+$/.test(name.slice(topic.length)),
         }),
       ).toBeInTheDocument();
     }
