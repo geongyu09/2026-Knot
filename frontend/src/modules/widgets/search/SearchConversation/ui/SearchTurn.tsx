@@ -12,7 +12,8 @@ interface SearchTurnProps {
 /**
  * 질문 하나와 그에 대한 답변 하나를 묶어 보여주는 대화 단위.
  *
- * 질문은 오른쪽 말풍선, 답변은 왼쪽 평문 문단으로 그려요.
+ * 질문은 오른쪽 말풍선, 답변은 왼쪽 평문 문단으로 그려요. 저장된 답변과 생성 중인 답변을 같은 모양으로 그려요.
+ * 접수된 뒤 첫 답변 텍스트가 오기 전에는 답변 자리에 진행 문구를 두고, 텍스트가 흐르기 시작하면 텍스트가 그 자리를 이어받아요.
  * 답변에 근거가 있으면 그 아래 「기록 N개에서 찾았어요」 버튼으로 찾은 기록을 열어요.
  */
 export default function SearchTurn({ turn }: SearchTurnProps) {
@@ -24,15 +25,18 @@ export default function SearchTurn({ turn }: SearchTurnProps) {
   const paragraphs =
     answer?.content.split("\n").filter((line) => line.trim() !== "") ?? [];
   const evidenceCount = answer?.evidences.length ?? 0;
+  const isSearching = answer?.status === "STREAMING" && paragraphs.length === 0;
 
   return (
     <Container>
       <QuestionRow>
-        <ChatBubble>{question.content}</ChatBubble>
+        <ChatBubble>{question}</ChatBubble>
       </QuestionRow>
 
       {answer && (
         <Answer>
+          {isSearching && <SearchingText>문서에서 찾고 있어요…</SearchingText>}
+
           {paragraphs.map((paragraph, index) => (
             <Paragraph key={index}>{paragraph}</Paragraph>
           ))}
@@ -73,6 +77,11 @@ const Paragraph = styled.p`
   overflow-wrap: anywhere;
   ${({ theme }) => theme.text.body01};
   color: ${({ theme }) => theme.neutral[900]};
+`;
+
+const SearchingText = styled.p`
+  ${({ theme }) => theme.text.body01};
+  color: ${({ theme }) => theme.neutral[500]};
 `;
 
 /** 버튼이 답변 폭만큼 늘어나지 않고 문구 길이에 맞도록 감싸요 */
