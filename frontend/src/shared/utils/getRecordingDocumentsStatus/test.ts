@@ -16,7 +16,7 @@ describe("getRecordingDocumentsStatus", () => {
     },
   );
 
-  it.each([null, "PROCESSING"] as const)(
+  it.each([null, "PROCESSING", "SUCCEEDED"] as const)(
     "끝낸 녹음의 문서 생성이 아직 접수되지 않았으면(전사 상태 %s) organizing이다",
     (transcriptionStatus) => {
       expect(
@@ -101,6 +101,17 @@ describe("getRecordingDocumentsStatus", () => {
         documentGeneration: null,
       }),
     ).toBe("unsupported");
+  });
+
+  it("타입에 없는 전사 상태를 받으면 문서 생성 결과가 올 때까지 organizing이다", () => {
+    expect(
+      getRecordingDocumentsStatus({
+        sessionStatus: "ENDED",
+        // @ts-expect-error 타입에 없는 값을 서버가 보낸 경우를 확인해요
+        transcriptionStatus: "QUEUED",
+        documentGeneration: null,
+      }),
+    ).toBe("organizing");
   });
 
   it("타입에 없는 문서 생성 상태를 받으면 unsupported다", () => {

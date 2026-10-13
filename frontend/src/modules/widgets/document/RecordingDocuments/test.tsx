@@ -131,6 +131,20 @@ const renderRecordingDocuments = (recordingId: number | string) => {
   return { router };
 };
 
+// 다시 시도할 수 없는 실패 화면이에요. 녹음을 보관했다는 설명과 「다시 시도」 없이 「홈으로」만 있어요
+const expectFailedScreenWithoutRetry = async () => {
+  expect(
+    await screen.findByRole("button", { name: "홈으로" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("heading", { level: 2, name: FAILED_TITLE }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "다시 시도" }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText(RECORDING_KEPT_NOTICE)).not.toBeInTheDocument();
+};
+
 describe("RecordingDocuments", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -223,13 +237,7 @@ describe("RecordingDocuments", () => {
       );
       renderRecordingDocuments(recording.recordingId);
 
-      expect(
-        await screen.findByRole("heading", { level: 2, name: FAILED_TITLE }),
-      ).toBeInTheDocument();
-      expect(screen.queryByText(RECORDING_KEPT_NOTICE)).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole("button", { name: "다시 시도" }),
-      ).not.toBeInTheDocument();
+      await expectFailedScreenWithoutRetry();
 
       fireEvent.click(screen.getByRole("button", { name: "홈으로" }));
 
@@ -709,16 +717,7 @@ describe("RecordingDocuments", () => {
 
       fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
 
-      expect(
-        await screen.findByRole("button", { name: "홈으로" }),
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByRole("button", { name: "다시 시도" }),
-      ).not.toBeInTheDocument();
-      expect(screen.queryByText(RECORDING_KEPT_NOTICE)).not.toBeInTheDocument();
-      expect(
-        screen.getByRole("heading", { level: 2, name: FAILED_TITLE }),
-      ).toBeInTheDocument();
+      await expectFailedScreenWithoutRetry();
     },
   );
 
@@ -943,13 +942,7 @@ describe("RecordingDocuments", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
 
-    expect(
-      await screen.findByRole("button", { name: "홈으로" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "다시 시도" }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText(RECORDING_KEPT_NOTICE)).not.toBeInTheDocument();
+    await expectFailedScreenWithoutRetry();
     expect(retriedJobIds).toHaveLength(2);
   });
 
@@ -1019,12 +1012,7 @@ describe("RecordingDocuments", () => {
       await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
     });
 
-    expect(
-      await screen.findByRole("button", { name: "홈으로" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "다시 시도" }),
-    ).not.toBeInTheDocument();
+    await expectFailedScreenWithoutRetry();
   });
 
   it("작업마다 보낸 다시 시도가 모두 끝날 때까지 버튼을 다시 누를 수 없다", async () => {
@@ -1059,5 +1047,84 @@ describe("RecordingDocuments", () => {
       expect(screen.getByRole("button", { name: "다시 시도" })).toBeEnabled(),
     );
     expect(finishedCount).toBe(2);
+  });
+
+  it("409로 거절된 뒤 녹음 상태를 다시 조회하는 동안에는 버튼을 다시 누를 수 없다", async () => {
+    let recordingRequestCount = 0;
+    let releaseRecheck = () => {};
+    const recheck = new Promise<void>((resolve) => {
+      releaseRecheck = resolve;
+    });
+    mockServer.use(
+      // 한 작업은 거절되고 다른 작업은 서버 오류라, 다시 시도할 작업이 남아 버튼이 사라지지 않는 경우예요
+      http.post(
+        RETRY_REQUEST,
+        ({ params }) =>
+          new HttpResponse(null, {
+            status: Number(params.jobId) === ANOTHER_JOB_ID ? 500 : 409,
+          }),
+      ),
+      http.get(RECORDING_REQUEST, async () => {
+        recordingRequestCount += 1;
+        // 409 뒤의 조회(두 번째 조회)만 늦게 답해요
+        if (recordingRequestCount === 2) await recheck;
+
+        return HttpResponse.json(twoJobsFailedDetail);
+      }),
+    );
+    renderRecordingDocuments(failedRecording.recordingId);
+
+    const retryButton = await screen.findByRole("button", {
+      name: "다시 시도",
+    });
+    fireEvent.click(retryButton);
+    await waitFor(() => expect(recordingRequestCount).toBe(2));
+    // 다시 시도 요청이 끝난 화면이 그려질 시간을 줘요
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(retryButton).toBeDisabled();
+
+    releaseRecheck();
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "다시 시도" })).toBeEnabled(),
+    );
+  });
+
+  it("409로 거절된 작업 가운데 하나라도 서버에서 실패 상태가 아니면 거절 기록을 지워, 그 작업이 또 실패했을 때 다시 시도 버튼을 보여준다", async () => {
+    let latestDetail: RecordingDetailResponse = twoJobsFailedDetail;
+    mockServer.use(
+      http.post(RETRY_REQUEST, () => {
+        // 한 작업은 다시 시도할 수 있는 횟수를 다 써서 실패로 남아 있고, 다른 작업은 다른 곳에서 먼저 다시 시도해 대기 중이에요
+        latestDetail = {
+          ...twoJobsFailedDetail,
+          documentGeneration: {
+            ...twoJobsFailedGeneration,
+            status: "QUEUED",
+            failedJobIds: [FAILED_JOB_ID],
+          },
+        };
+        return new HttpResponse(null, { status: 409 });
+      }),
+      http.get(RECORDING_REQUEST, () => HttpResponse.json(latestDetail)),
+    );
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderRecordingDocuments(failedRecording.recordingId);
+
+    fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+    await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE });
+
+    // 대기 중이던 작업이 또 실패해, 두 작업이 모두 실패 작업으로 돌아왔어요
+    latestDetail = twoJobsFailedDetail;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+    });
+
+    expect(
+      await screen.findByRole("button", { name: "다시 시도" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(RECORDING_KEPT_NOTICE)).toBeInTheDocument();
   });
 });

@@ -4,6 +4,7 @@ import useRecordingQuery from "@api/queries/useRecordingQuery";
 import useRedirectToLoginOnUnauthorized from "@hooks/domain/auth/useRedirectToLoginOnUnauthorized";
 import { getRecordingDocumentsStatus } from "@utils/getRecordingDocumentsStatus";
 import { isUnauthorizedError } from "@utils/isUnauthorizedError";
+import { useState } from "react";
 
 interface UseRecordingDocumentsParams {
   workspaceId: number;
@@ -41,6 +42,7 @@ const isRetryRejectedError = (error: unknown) =>
  * 네트워크 · 서버 문제로 실패한 작업은 거절된 것이 아니라 다시 시도할 수 있어요.
  * 409는 화면이 아는 녹음 상태와 서버의 녹음 상태가 다를 수 있다는 응답이라, 녹음 상태를 다시 조회해요.
  * 서버에서 이미 정리 중이거나 정리가 끝났으면 그 상태의 화면으로 바뀌어요.
+ * 이 조회가 끝날 때까지도 다시 시도 중(`isRetrying`)이에요.
  *
  * 쓰는 쪽이 구조분해해서 받을 수 있게, 어느 상태든 같은 이름의 값을 모두 돌려줘요.
  */
@@ -56,10 +58,13 @@ export const useRecordingDocuments = ({
   } = useRecordingQuery({ workspaceId, recordingId });
   const {
     mutate: requestRetry,
-    isPending: isRetrying,
+    isPending: isRetryPending,
     data: retryResults = [],
     reset: clearRetryResults,
   } = useRetryDocumentGenerationJobsMutation();
+  // 409 뒤에 거절 기록을 지울지 정하려고 녹음 상태를 다시 조회하는 중인지.
+  // 그동안 버튼이 풀리면 그사이 시작한 새 다시 시도의 결과까지 아래 `clearRetryResults`가 지울 수 있어, 조회가 끝날 때까지 다시 시도 중으로 둬요
+  const [isCheckingRejection, setIsCheckingRejection] = useState(false);
   const { isUnauthorized } = useRedirectToLoginOnUnauthorized({ error });
   // 다시 시도에서 로그인이 풀려도 같은 방식으로 로그인 화면에 보내요
   const unauthorizedRetry = retryResults.find(({ error: retryError }) =>
@@ -120,24 +125,31 @@ export const useRecordingDocuments = ({
 
               if (conflictedJobIds.length === 0) return;
 
+              setIsCheckingRejection(true);
               const { data: latestRecording } = await refetch();
+              setIsCheckingRejection(false);
 
               if (latestRecording === undefined) return;
 
               const latestFailedJobIds =
                 latestRecording.documentGeneration?.failedJobIds ?? [];
-              const isStillFailed = conflictedJobIds.some((jobId) =>
+              const isAllStillFailed = conflictedJobIds.every((jobId) =>
                 latestFailedJobIds.includes(jobId),
               );
 
-              // 거절된 작업이 서버에서 더는 실패 상태가 아니면(다른 곳에서 먼저 다시 시도함) 거절 기록을 지워요.
-              // 남겨 두면 그 작업이 또 실패했을 때 「다시 시도」가 숨겨져요.
-              // 여전히 실패 상태인데 거절됐다면 다시 시도할 수 있는 횟수를 다 쓴 작업이라 기록을 남겨요
-              if (!isStillFailed) clearRetryResults();
+              // 409를 받은 작업이 모두 여전히 실패 상태면 다시 시도할 수 있는 횟수를 다 쓴 작업이라 거절 기록을 남겨요.
+              // 하나라도 실패 상태가 아니면(다른 곳에서 먼저 다시 시도함) 거절 기록을 지워요. 남겨 두면 그 작업이 또 실패했을 때 「다시 시도」가 숨겨져요.
+              // 기록은 작업별로 지울 수 없어 모두 지워요. 횟수를 다 쓴 작업의 기록도 함께 지워지지만, 다시 누르면 또 거절되어 기록이 다시 남아요
+              if (!isAllStillFailed) clearRetryResults();
             },
           },
         )
     : undefined;
 
-  return { viewStatus, retryLoad, retryGeneration, isRetrying };
+  return {
+    viewStatus,
+    retryLoad,
+    retryGeneration,
+    isRetrying: isRetryPending || isCheckingRejection,
+  };
 };

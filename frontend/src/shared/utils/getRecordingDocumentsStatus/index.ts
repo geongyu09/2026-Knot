@@ -33,7 +33,10 @@ const RECORDING_DOCUMENTS_STATUS_BY_DOCUMENT_GENERATION_STATUS = {
  * - `completed`: 모든 주제의 문서가 만들어졌어요
  * - `noContent`: 문서로 정리할 내용이 없었어요
  * - `failed`: 전사가 실패했거나, 진행 중인 작업 없이 문서 생성 실패가 남았어요. 문서가 일부만 만들어진 경우도 여기예요
- * - `unsupported`: 위의 어느 상태로도 볼 수 없는 값이에요. 서버가 버린 녹음(`DISCARDED`)과 타입에 없는 값이 여기예요
+ * - `unsupported`: 위의 어느 상태로도 볼 수 없는 값이에요. 서버가 버린 녹음(`DISCARDED`)이거나, 세션 상태 · 문서 생성 상태가 타입에 없는 값이면 여기예요
+ *
+ * 전사 상태는 실패(`FAILED`)인지만 봐요. 그 밖의 값은 타입에 없는 값이어도 문서 생성 결과가 올 때까지 `organizing`이에요.
+ * 전사가 어디까지 됐는지는 화면이 쓰지 않아서, 서버에 전사 상태 값이 늘어도 정리 중으로 기다리는 것이 맞아요.
  *
  * @example
  * getRecordingDocumentsStatus({
