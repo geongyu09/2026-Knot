@@ -17,7 +17,10 @@ public record RecordingDetailResponse(
         @Schema(description = "최종 오디오 업로드 상태. 예약 전 null", nullable = true) RecordingAudioUploadStatus audioUploadStatus,
         @Schema(description = "현재 전사 시도 ID. 접수 전 null", nullable = true) UUID transcriptionAttemptId,
         @Schema(description = "전사 상태. 접수 전 null", nullable = true) TranscriptionStatus transcriptionStatus,
-        @Schema(description = "전사 실패 코드. 실패가 아니면 null", nullable = true) String transcriptionFailureCode
+        @Schema(description = "전사 실패 코드. 실패가 아니면 null", nullable = true) String transcriptionFailureCode,
+
+        @Schema(description = "문서 생성 결과. 접수 전 null", types = {
+                "object", "null"}) RecordingDocumentGenerationResponse documentGeneration
 ) {
 
     public static RecordingDetailResponse from(RecordingDetailResult result) {
@@ -29,7 +32,10 @@ public record RecordingDetailResponse(
                 result.audioUploadStatus(),
                 result.transcriptionAttemptId(),
                 result.transcriptionStatus(),
-                result.transcriptionFailureCode()
+                result.transcriptionFailureCode(),
+                result.documentGeneration() == null
+                        ? null
+                        : RecordingDocumentGenerationResponse.from(result.documentGeneration())
         );
     }
 }

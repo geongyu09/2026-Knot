@@ -1,6 +1,6 @@
 # 녹음 단건 조회 API
 
-이 문서는 [Issue #380](https://github.com/woowacourse-teams/2026-Knot/issues/380)의 구현 계약이다. [Issue #386](https://github.com/woowacourse-teams/2026-Knot/issues/386)의 HTTP 상태 조회 계약도 함께 다룬다. 범위는 두 Issue의 2026-10-09 범위 정리 코멘트를 따른다.
+이 문서는 [Issue #380](https://github.com/woowacourse-teams/2026-Knot/issues/380)의 단건 조회와 [Issue #386](https://github.com/woowacourse-teams/2026-Knot/issues/386)의 HTTP 상태 조회 계약이다. [Issue #651](https://github.com/woowacourse-teams/2026-Knot/issues/651)은 정리 화면에 필요한 문서 생성 결과를 추가한다.
 팀 Notion에 반영하거나 승인받은 문서는 아니다.
 
 ## 요청
@@ -20,7 +20,8 @@
   "audioUploadStatus": "COMPLETED",
   "transcriptionAttemptId": "d0a03c18-1687-4512-8f79-1df67a8e56ef",
   "transcriptionStatus": "PROCESSING",
-  "transcriptionFailureCode": null
+  "transcriptionFailureCode": null,
+  "documentGeneration": null
 }
 ```
 
@@ -33,8 +34,32 @@
 | `transcriptionAttemptId` | 현재 시도 UUID. 시도가 없으면 `null`, 명시적 재시도 시 교체된다 |
 | `transcriptionStatus` | 현재 저장된 `PROCESSING`·`SUCCEEDED`·`FAILED`. 시도가 없으면 `null` |
 | `transcriptionFailureCode` | 실패 이유 코드. 실패가 아니면 `null`. URL·토큰·전사 원문은 포함하지 않는다 |
+| `documentGeneration` | 문서 생성 접수 전에는 `null`. 접수 뒤에는 아래 객체를 반환한다 |
 
 세션과 업로드 예약은 한 시점의 값이다. 진행 중 상태와 업로드 정보가 섞인 조합(`RECORDING` + `COMPLETED` 등)은 반환하지 않는다.
+
+### 문서 생성 결과
+
+```json
+{
+  "status": "FAILED",
+  "succeededCount": 2,
+  "failedJobIds": [104, 105]
+}
+```
+
+| 필드 | 의미 |
+| --- | --- |
+| `status` | 기존 `DocumentGenerationProgressResult.status`와 같은 분류·문서 생성 종합 상태 |
+| `succeededCount` | 생성에 성공한 문서 수. `FAILED`일 때 0이면 전체 실패, 1 이상이면 일부 실패 |
+| `failedJobIds` | 같은 녹음의 보존 기한 내 `FAILED` 작업 ID를 ID 오름차순으로 반환한다. 분류 실패와 사용자 재시도 3회 소진 작업을 포함하며 없으면 `[]` |
+
+- `QUEUED`·`RUNNING`은 정리 중, `SUCCEEDED`는 모든 주제 완료, `NO_CONTENT`는 정리할 내용 없음, `FAILED`는 진행 중인 작업 없이 실패가 남은 상태다. 실행 중 작업, 대기 작업, 실패 순으로 우선한다. 2개 성공·1개 대기이면 `QUEUED`다.
+- 문서 생성 접수 전에도 녹음 조회는 `200`이며 `documentGeneration: null`이다. 전사 실패는 `transcriptionStatus: FAILED`로 구분한다. 전사 진행 값은 `RUNNING`이 아니라 `PROCESSING`이다.
+- 각 실패 ID는 [문서 생성 재시도 API](document-generation-job-retry.md)에 전달한다. 접수 시 작업과 집계가 `QUEUED`로 바뀌지만, 다음 조회 전에 실행이 끝나면 `SUCCEEDED`나 새 `FAILED`를 받을 수 있다. 409·404를 받은 ID는 다른 실패 ID와 구분해서 처리한다.
+- 정확한 `expiresAt`부터 실패 ID를 제외한다. 실패 작업이 삭제되어도 저장된 종합 결과와 성공 수는 남으므로 `FAILED`·`succeededCount`와 `failedJobIds: []`를 함께 받을 수 있다.
+- 단건 조회의 세션·업로드·전사·문서 집계와 실패 ID는 읽기 전용 `REPEATABLE_READ` 트랜잭션의 같은 스냅샷에서 읽는다. 조회 도중 재시도·실행·정리가 커밋되어도 서로 다른 시점의 값이 섞이지 않는다.
+- 미완료 업로드를 최종 실패로 확정하는 정책은 이번 범위에 포함하지 않는다. `audioUploadStatus`는 기존 `null`·`RESERVED`·`COMPLETED`를 유지한다.
 
 ## 오류
 
@@ -56,5 +81,4 @@
 ## 이번 범위 밖
 
 - SSE·웹소켓 같은 구독 API
-- 문서 생성 상태와 Job
 - 새로고침 뒤 `recordingId`·음성 보존(FE 책임)

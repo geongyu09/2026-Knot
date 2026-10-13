@@ -25,10 +25,11 @@ public interface RecordingDetailApi {
             description = "알고 있는 recordingId로 본인 녹음의 세션 상태·시간과 최종 오디오 업로드 상태를 조회한다. "
                     + "진행 중·일시정지·종료·폐기를 모두 반환하며 세션과 업로드 예약은 한 시점의 값이다. "
                     + "조회는 생존 신호가 아니며 상태·마지막 신호·제어 권한을 바꾸지 않고 제어 비밀값을 반환하지 않는다. "
-                    + "현재 전사 시도 ID·상태·실패 코드를 함께 반환하며 전사 접수 전에는 null이다"
+                    + "현재 전사 시도 ID·상태·실패 코드를 함께 반환하며 전사 접수 전에는 null이다. "
+                    + "문서 생성 결과는 접수 전 null이며, 접수 뒤 종합 상태·성공 수·미만료 실패 작업 ID를 반환한다"
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "본인 녹음의 세션·업로드·전사 상태",
+            @ApiResponse(responseCode = "200", description = "본인 녹음의 세션·업로드·전사·문서 생성 상태",
                     content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
                             schema = @Schema(implementation = RecordingDetailResponse.class))),
             @ApiResponse(responseCode = "400", description = "워크스페이스 또는 녹음 ID 형식 오류",
