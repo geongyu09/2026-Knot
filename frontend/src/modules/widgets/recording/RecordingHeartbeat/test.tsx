@@ -1,5 +1,6 @@
 import { PostRecordingHeartbeatResponseDto } from "@api/dto/recording";
 import { recordingHeartbeatResponse } from "@api/mock/responses/recording";
+import { mockServer } from "@api/mock/server";
 import { DialogProvider } from "@provider/context/dialogContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
@@ -9,6 +10,7 @@ import {
   clearRecordingStartProof,
   getRecordingStartProof,
 } from "@utils/recordingControlProof";
+import { http, HttpResponse, type HttpResponseResolver } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -73,16 +75,55 @@ const startRecording = async () => {
   });
 };
 
+const passHeartbeatInterval = () => {
+  act(() => {
+    vi.advanceTimersByTime(HEARTBEAT_INTERVAL_MS);
+  });
+};
+
+const respondHeartbeat = (resolver: HttpResponseResolver) => {
+  mockServer.use(
+    http.post(
+      "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/heartbeat",
+      resolver,
+    ),
+  );
+};
+
+const respondHeartbeatWithError = (status: number, code: string) => {
+  // 실패는 안내 없이 콘솔에만 남기므로, 테스트 출력에 섞이지 않게 막아요
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  respondHeartbeat(() => HttpResponse.json({ code }, { status }));
+};
+
+/** 보낸 요청을 경로의 마지막 마디로 순서대로 모아요 */
+const collectRequests = () => {
+  const requests: string[] = [];
+  mockServer.events.on("request:start", ({ request }) => {
+    requests.push(new URL(request.url).pathname.split("/").pop() ?? "");
+  });
+
+  return requests;
+};
+
+/** 403은 CSRF 토큰이 낡았을 수 있어 httpClient가 토큰을 새로 받아 한 번 더 보내요. 신호 한 번이 이렇게 나가요 */
+const CSRF_RETRIED_HEARTBEAT = ["heartbeat", "csrf", "heartbeat"];
+
 describe("RecordingHeartbeat", () => {
   beforeEach(() => {
-    // 요청은 실제 시간으로 흘러야 해서 신호 주기만 가짜로 돌려요
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    // 요청은 실제 시간으로 흘러야 해서 신호 주기만 가짜로 돌려요.
+    // waitFor도 setInterval로 다시 확인하므로, 가짜 시계가 실제 시간만큼은 따라 흐르게 해요
+    vi.useFakeTimers({
+      toFake: ["setInterval", "clearInterval"],
+      shouldAdvanceTime: true,
+    });
   });
 
   afterEach(() => {
     // 전역 저장소라 테스트끼리 녹음이 새지 않도록 처음 상태로 되돌려요
     useRecordingStore.getState().discardRecording();
     clearRecordingStartProof();
+    mockServer.events.removeAllListeners();
     vi.useRealTimers();
   });
 
@@ -100,8 +141,6 @@ describe("RecordingHeartbeat", () => {
     act(() => {
       vi.advanceTimersByTime(1);
     });
-    // waitFor가 setInterval로 다시 확인하므로 응답을 기다리기 전에 실제 타이머로 돌려요
-    vi.useRealTimers();
 
     await waitFor(() =>
       expect(useRecordingStore.getState().accumulatedMs).toBe(
@@ -110,4 +149,33 @@ describe("RecordingHeartbeat", () => {
     );
     expect(useRecordingStore.getState().status).toBe("recording");
   });
+
+  it.each([
+    [500, "INTERNAL_SERVER_ERROR", ["heartbeat"]],
+    [403, "RECORDING_CONTROL_DENIED", CSRF_RETRIED_HEARTBEAT],
+  ])(
+    "신호가 실패(%i %s)하면 곧바로 다시 보내지 않고 녹음을 이어 가다 다음 주기에 보낸다",
+    async (status, code, sent) => {
+      respondHeartbeatWithError(status, code);
+      const requests = collectRequests();
+      await startRecording();
+      const { router } = renderRecordingHeartbeat();
+
+      passHeartbeatInterval();
+
+      await waitFor(() =>
+        expect(console.error).toHaveBeenCalledWith(
+          "녹음 생존 신호 요청에 실패했어요",
+          expect.anything(),
+        ),
+      );
+      expect(requests).toEqual(sent);
+      expect(useRecordingStore.getState().status).toBe("recording");
+      expect(router.state.location.pathname).toBe(RECORDING_PATH);
+
+      passHeartbeatInterval();
+
+      await waitFor(() => expect(requests).toEqual([...sent, ...sent]));
+    },
+  );
 });

@@ -91,7 +91,10 @@ const useRecordingControl = () => {
     [navigateToWorkspaceHome],
   );
 
-  /** 생존 신호를 보내고, 성공하면 녹음한 시간을 서버가 알려 준 누적 시간으로 맞춰요 */
+  /**
+   * 생존 신호를 보내고, 성공하면 녹음한 시간을 서버가 알려 준 누적 시간으로 맞춰요.
+   * 실패는 콘솔에만 남기고 다시 보내지 않아요. 다음 신호는 부르는 쪽의 주기에 맡겨요
+   */
   const sendHeartbeat = useCallback(async () => {
     const { session } = useRecordingStore.getState();
     const proof = getRecordingControlProof();
@@ -103,8 +106,8 @@ const useRecordingControl = () => {
         ...proof,
       });
       useRecordingStore.getState().syncElapsedTime(elapsedMillis);
-    } catch {
-      // 실패한 신호는 그대로 두고, 부르는 쪽의 다음 주기에 보내요
+    } catch (error) {
+      logRequestError("녹음 생존 신호", error);
     }
   }, [sendRecordingHeartbeat]);
 
