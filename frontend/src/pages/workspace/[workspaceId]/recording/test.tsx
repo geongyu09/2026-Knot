@@ -19,7 +19,7 @@ import {
 } from "@utils/recordingControlProof";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import RecordingPage from ".";
 
@@ -32,6 +32,11 @@ const HOME_PATH = getRouterPath({
   routeKey: "WORKSPACE_HOME",
   params: { workspaceId: WORKSPACE_ID },
 });
+const RECORDING_ID = 10;
+const DOCUMENTS_PATH = getRouterPath({
+  routeKey: "RECORDING_DOCUMENTS",
+  params: { workspaceId: WORKSPACE_ID, recordingId: String(RECORDING_ID) },
+});
 
 const renderRecordingPage = () => {
   const router = createMemoryRouter(
@@ -41,6 +46,7 @@ const renderRecordingPage = () => {
         children: [
           { path: PATH_ROUTE.WORKSPACE_HOME, element: <p>홈 화면</p> },
           { path: PATH_ROUTE.RECORDING, element: <RecordingPage /> },
+          { path: PATH_ROUTE.RECORDING_DOCUMENTS, element: <p>정리 화면</p> },
         ],
       },
     ],
@@ -72,7 +78,7 @@ const startRecording = async () => {
     await useRecordingStore.getState().connectMicrophone();
     useRecordingStore.getState().startRecording({
       workspaceId: Number(WORKSPACE_ID),
-      recordingId: 10,
+      recordingId: RECORDING_ID,
     });
   });
 };
@@ -99,7 +105,7 @@ describe("RecordingPage", () => {
     mockServer.events.removeAllListeners();
   });
 
-  it("확인 창에서 녹음 끝내기를 고르면 종료 요청과 업로드 완료 확인을 마치고 홈으로 나간다", async () => {
+  it("확인 창에서 녹음 끝내기를 고르면 종료 요청과 업로드 완료 확인을 마치고 그 녹음의 정리 화면으로 간다", async () => {
     const count = { end: 0, complete: 0 };
     mockServer.events.on("request:start", ({ request }) => {
       if (request.url.endsWith("/end")) count.end += 1;
@@ -110,9 +116,37 @@ describe("RecordingPage", () => {
 
     await confirmEndRecording();
 
-    await waitFor(() => expect(router.state.location.pathname).toBe(HOME_PATH));
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(DOCUMENTS_PATH),
+    );
     expect(count).toEqual({ end: 1, complete: 1 });
   });
+
+  it.each(["RECORDING_ALREADY_ENDED", "RECORDING_ALREADY_DISCARDED"])(
+    "종료 요청이 이미 닫힌 녹음(409 %s)으로 거절되면 올리지 않고 홈으로 나간다",
+    async (code) => {
+      const count = { issue: 0 };
+      mockServer.events.on("request:start", ({ request }) => {
+        if (request.url.endsWith("/audio-upload-url")) count.issue += 1;
+      });
+      mockServer.use(
+        http.post(
+          "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/end",
+          () => HttpResponse.json({ code }, { status: 409 }),
+        ),
+      );
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      await startRecording();
+      const { router } = renderRecordingPage();
+
+      await confirmEndRecording();
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(HOME_PATH),
+      );
+      expect(count.issue).toBe(0);
+    },
+  );
 
   describe("최종 오디오 업로드", () => {
     const UPLOAD_URL_PATH =
@@ -131,25 +165,26 @@ describe("RecordingPage", () => {
       return count;
     };
 
-    const endRecording = async () => {
+    /** 녹음을 끝내고, 업로드 결과에 따라 옮겨 간 주소를 확인해요 */
+    const endRecording = async (movedPath: string) => {
       await startRecording();
       const { router } = renderRecordingPage();
 
       await confirmEndRecording();
       await waitFor(() =>
-        expect(router.state.location.pathname).toBe(HOME_PATH),
+        expect(router.state.location.pathname).toBe(movedPath),
       );
     };
 
-    it("PUT을 마치면 업로드 완료를 확인받는다", async () => {
+    it("PUT을 마치면 업로드 완료를 확인받고 정리 화면으로 간다", async () => {
       const count = countUploadRequests();
 
-      await endRecording();
+      await endRecording(DOCUMENTS_PATH);
 
       expect(count).toEqual({ issue: 1, complete: 1 });
     });
 
-    it("일시 실패면 URL 발급부터 다시 시도해 완료를 확인받는다", async () => {
+    it("일시 실패면 URL 발급부터 다시 시도해 완료를 확인받고 정리 화면으로 간다", async () => {
       const count = countUploadRequests();
       mockServer.use(
         http.post(
@@ -163,12 +198,12 @@ describe("RecordingPage", () => {
         ),
       );
 
-      await endRecording();
+      await endRecording(DOCUMENTS_PATH);
 
       expect(count).toEqual({ issue: 2, complete: 2 });
     });
 
-    it("일시 실패가 계속되면 3번까지만 다시 시도한다", async () => {
+    it("일시 실패가 계속되면 3번까지만 다시 시도하고 홈으로 나간다", async () => {
       const count = countUploadRequests();
       mockServer.use(
         http.post(
@@ -177,12 +212,12 @@ describe("RecordingPage", () => {
         ),
       );
 
-      await endRecording();
+      await endRecording(HOME_PATH);
 
       expect(count).toEqual({ issue: 4, complete: 0 });
     });
 
-    it("4xx면 다시 시도하지 않는다", async () => {
+    it("4xx면 다시 시도하지 않고 홈으로 나간다", async () => {
       const count = countUploadRequests();
       mockServer.use(
         http.post(UPLOAD_URL_PATH, () =>
@@ -190,7 +225,7 @@ describe("RecordingPage", () => {
         ),
       );
 
-      await endRecording();
+      await endRecording(HOME_PATH);
 
       expect(count).toEqual({ issue: 1, complete: 0 });
     });

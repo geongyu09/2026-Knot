@@ -44,7 +44,7 @@ const useEndRecordingBeforeMove = () => {
         onCancel={close}
         onConfirm={async () => {
           close();
-          if (await endRecordingWithoutConfirm()) move();
+          if ((await endRecordingWithoutConfirm()) !== "notEnded") move();
         }}
       />
     ));
