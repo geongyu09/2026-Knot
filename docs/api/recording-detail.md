@@ -17,7 +17,10 @@
   "elapsedMillis": 600000,
   "endedAt": "2026-10-09T10:10:00Z",
   "endReason": "USER_ENDED",
-  "audioUploadStatus": "COMPLETED"
+  "audioUploadStatus": "COMPLETED",
+  "transcriptionAttemptId": "d0a03c18-1687-4512-8f79-1df67a8e56ef",
+  "transcriptionStatus": "PROCESSING",
+  "transcriptionFailureCode": null
 }
 ```
 
@@ -27,6 +30,9 @@
 | `elapsedMillis` | 일시정지를 뺀 서버 기준 녹음 시간. 진행 중이면 응답 시점까지 세며 최대 2시간(`7200000`)이다 |
 | `endedAt`·`endReason` | 종료 시각과 사유(`USER_ENDED`·`CONNECTION_EXPIRED`·`MAX_DURATION`). 진행 중이면 `null`. 이 기능 이전에 종료된 녹음의 사유는 `null` |
 | `audioUploadStatus` | 최종 오디오 업로드 예약이 없으면 `null`. 예약되면 `RESERVED`, 저장 확인 뒤 `COMPLETED` |
+| `transcriptionAttemptId` | 현재 시도 UUID. 시도가 없으면 `null`, 명시적 재시도 시 교체된다 |
+| `transcriptionStatus` | 현재 저장된 `PROCESSING`·`SUCCEEDED`·`FAILED`. 시도가 없으면 `null` |
+| `transcriptionFailureCode` | 실패 이유 코드. 실패가 아니면 `null`. URL·토큰·전사 원문은 포함하지 않는다 |
 
 세션과 업로드 예약은 한 시점의 값이다. 진행 중 상태와 업로드 정보가 섞인 조합(`RECORDING` + `COMPLETED` 등)은 반환하지 않는다.
 
@@ -50,5 +56,5 @@
 ## 이번 범위 밖
 
 - SSE·웹소켓 같은 구독 API
-- 전사·문서 생성 상태와 Job
+- 문서 생성 상태와 Job
 - 새로고침 뒤 `recordingId`·음성 보존(FE 책임)
