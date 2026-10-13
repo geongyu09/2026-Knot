@@ -5,6 +5,9 @@ import useNavigateToDocument from "@hooks/domain/document/useNavigateToDocument"
 import { useTitleId } from "./model/useTitleId";
 import { useWorkspaceId } from "./model/useWorkspaceId";
 import PendingDocumentRow from "./ui/PendingDocumentRow";
+import PendingDocumentsEmpty from "./ui/PendingDocumentsEmpty";
+import PendingDocumentsSkeleton from "./ui/PendingDocumentsSkeleton";
+import { sumDocumentCounts } from "./utils/sumDocumentCounts";
 
 /**
  * 홈의 「확인이 필요한 문서」 카드. 워크스페이스에서 내가 아직 확인하지 않은 문서를 모두 보여주고, 행의 「확인하기」를 누르면 그 문서 보기로 가요.
@@ -12,6 +15,10 @@ import PendingDocumentRow from "./ui/PendingDocumentRow";
  * 카드에서 바로 확인하지는 않아요. 확인은 문서 보기에서 문서를 읽고 해요.
  *
  * 문서가 많아도 카드의 높이는 그대로예요. 제목 줄은 그 자리에 두고 행만 카드 안에서 스크롤해요.
+ *
+ * 문서를 받지 못했거나 문서가 없을 때는 상태 화면이 카드 전체를 대신 그려요. 제목과 카드의 높이는 같고, 문서 수는 숨겨요.
+ * - 불러오는 중: `PendingDocumentsSkeleton`.
+ * - 확인할 문서 없음: `PendingDocumentsEmpty`.
  *
  * 주소의 워크스페이스 id는 숫자인지 확인하지 않고 그대로 요청해요. 잘못된 주소인지는 서버가 판단해요.
  */
@@ -21,32 +28,30 @@ export default function PendingDocumentsCard() {
   const { data: pendingDocuments } = usePendingDocumentsQuery({ workspaceId });
   const { navigateToDocument } = useNavigateToDocument();
 
-  // 행을 세지 않고 서버가 센 주제별 문서 수를 더해요. 문서가 아주 많아 다 받지 못해도 맞는 수가 보여요
-  const pendingCount = pendingDocuments?.topics.reduce(
-    (count, { documentCount }) => count + documentCount,
-    0,
-  );
+  if (pendingDocuments === undefined) {
+    return <PendingDocumentsSkeleton />;
+  }
+
+  if (pendingDocuments.items.length === 0) return <PendingDocumentsEmpty />;
 
   return (
     <Container aria-labelledby={titleId}>
       <Header>
         <Title id={titleId}>확인이 필요한 문서</Title>
-        {pendingCount !== undefined && <Count>{pendingCount}</Count>}
+        <Count>{sumDocumentCounts(pendingDocuments.topics)}</Count>
       </Header>
-      {pendingDocuments !== undefined && (
-        <RowList>
-          {pendingDocuments.items.map(({ id, title, createdAt }) => (
-            <PendingDocumentRow
-              key={id}
-              title={title}
-              createdAt={createdAt}
-              onOpenDocument={() =>
-                navigateToDocument({ workspaceId, documentId: id })
-              }
-            />
-          ))}
-        </RowList>
-      )}
+      <RowList>
+        {pendingDocuments.items.map(({ id, title, createdAt }) => (
+          <PendingDocumentRow
+            key={id}
+            title={title}
+            createdAt={createdAt}
+            onOpenDocument={() =>
+              navigateToDocument({ workspaceId, documentId: id })
+            }
+          />
+        ))}
+      </RowList>
     </Container>
   );
 }

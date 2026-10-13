@@ -11,7 +11,7 @@ import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { formatDate } from "@utils/formatDate";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider, useParams } from "react-router";
 import { describe, expect, it } from "vitest";
 
@@ -23,16 +23,19 @@ const DOCUMENTS_REQUEST = "*/api/v1/workspaces/:workspaceId/documents";
 const CONFIRMATION_REQUEST =
   "*/api/v1/workspaces/:workspaceId/documents/:documentId/confirmations/me";
 const CARD_TITLE = "확인이 필요한 문서";
+const LOADING_LABEL = "확인이 필요한 문서를 불러오고 있어요";
 
 const isPending = ({ myConfirmationState }: DocumentListItem) =>
   myConfirmationState === "PENDING";
 
 // 기본 응답에서 내가 아직 확인하지 않은 문서. 카드가 받는 응답과 같은 순서예요
 const pendingItems = documentsResponse.items.filter(isPending);
-const expectedDocuments = new GetDocumentsResponseDto({
+const pendingDocumentsResponse = {
   ...documentsResponse,
   items: pendingItems,
-}).items;
+} satisfies DocumentsResponse;
+const expectedDocuments = new GetDocumentsResponseDto(pendingDocumentsResponse)
+  .items;
 
 // 어느 문서로 갔는지 확인할 수 있게 문서 보기 경로에 표시만 하는 화면을 둬요
 function DocumentViewStub() {
@@ -75,6 +78,9 @@ const respondWith = (response: DocumentsResponse) =>
   );
 
 const findCard = () => screen.findByRole("region", { name: CARD_TITLE });
+
+// 제목 옆의 문서 수는 숫자만 있는 글이에요
+const queryCount = (card: HTMLElement) => within(card).queryByText(/^\d+$/);
 
 // 행마다 「확인하기」가 있어, 행을 제목으로 먼저 찾아요
 const findRow = async (title: string) => {
@@ -123,10 +129,7 @@ describe("PendingDocumentsCard", () => {
           new URL(request.url).searchParams.get("myConfirmation"),
         );
 
-        return HttpResponse.json({
-          ...documentsResponse,
-          items: pendingItems,
-        });
+        return HttpResponse.json(pendingDocumentsResponse);
       }),
     );
 
@@ -177,6 +180,57 @@ describe("PendingDocumentsCard", () => {
         within(row).getByText(manyDocuments[index].title),
       ).toBeInTheDocument();
     });
+  });
+
+  it("불러오는 동안에는 제목은 그대로 두고 문서 수 없이 불러오는 중이라고 알리고, 문서를 받으면 행으로 바꾼다", async () => {
+    mockServer.use(
+      http.get(DOCUMENTS_REQUEST, async () => {
+        await delay(50);
+
+        return HttpResponse.json(pendingDocumentsResponse);
+      }),
+    );
+
+    renderPendingDocumentsCard();
+
+    const card = await findCard();
+
+    expect(
+      within(card).getByRole("status", { name: LOADING_LABEL }),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByRole("heading", { level: 2, name: CARD_TITLE }),
+    ).toBeInTheDocument();
+    expect(queryCount(card)).not.toBeInTheDocument();
+
+    expect(await screen.findAllByRole("listitem")).toHaveLength(
+      expectedDocuments.length,
+    );
+    expect(
+      screen.queryByRole("status", { name: LOADING_LABEL }),
+    ).not.toBeInTheDocument();
+    // 불러온 뒤에는 문서를 받은 카드가 새로 그려져서, 카드를 다시 찾아요
+    expect(queryCount(await findCard())).toBeInTheDocument();
+  });
+
+  it("확인할 문서가 없으면 제목은 그대로 두고 문서 수 없이 아직 문서가 없다고 알린다", async () => {
+    respondWith({ topics: [], items: [], nextCursor: null });
+
+    renderPendingDocumentsCard();
+
+    expect(await screen.findByText("아직 문서가 없어요")).toBeInTheDocument();
+
+    // 불러온 뒤에는 문서 없음 카드가 새로 그려져서, 안내가 보인 뒤에 카드를 찾아요
+    const card = await findCard();
+
+    expect(
+      within(card).getByText("녹음을 끝내면 정리된 문서가 여기에 쌓여요"),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByRole("heading", { level: 2, name: CARD_TITLE }),
+    ).toBeInTheDocument();
+    expect(queryCount(card)).not.toBeInTheDocument();
+    expect(within(card).queryByRole("listitem")).not.toBeInTheDocument();
   });
 
   it("「확인하기」를 누르면 그 문서 보기로 이동하고, 확인 요청은 보내지 않는다", async () => {

@@ -4,7 +4,7 @@ import { resetDocumentMockState } from "@api/mock/state/document";
 import type { DocumentsResponse } from "@api/mock/types/document";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
 
 import PendingDocumentsCard from ".";
@@ -19,6 +19,13 @@ const MANY_DOCUMENTS_RESPONSE = {
     myConfirmationState: "PENDING" as const,
   })),
 } satisfies DocumentsResponse;
+const EMPTY_DOCUMENTS_RESPONSE = {
+  topics: [],
+  items: [],
+  nextCursor: null,
+} satisfies DocumentsResponse;
+// 문서 페이지에서는 스토리를 한 화면에 함께 그려 응답이 섞이므로, 응답을 덮는 스토리는 따로 그려요
+const ISOLATED_DOCS = { story: { inline: false, iframeHeight: 360 } };
 
 /**
  * 워크스페이스에서 내가 아직 확인하지 않은 문서를 모아 보여 주는 「확인이 필요한 문서」 카드예요.
@@ -31,6 +38,8 @@ const MANY_DOCUMENTS_RESPONSE = {
  * - 「확인하기」를 누르면 그 문서의 문서 보기 화면으로 가요. 카드에서 바로 확인되지는 않아요.
  *   확인은 취소할 수 없어서, 문서를 읽은 뒤 문서 보기의 「문서를 확인했어요」로 확인하게 했어요.
  * - 카드의 높이는 문서 수와 상관없이 같아요. 행은 3개까지 한 번에 보이고, 더 많으면 제목 줄은 그 자리에 둔 채 행만 카드 안에서 스크롤해요.
+ * - 불러오는 중이거나 확인할 문서가 없을 때도 제목과 카드의 높이는 그대로 두고, 문서 수를 숨긴 채 행 자리만 바꿔요.
+ *   불러오는 중의 회색 덩어리는 실제 행과 간격 · 높이가 같아서, 불러온 뒤 내용이 움직이지 않아요.
  */
 const meta = {
   title: "Document/PendingDocumentsCard",
@@ -85,12 +94,54 @@ export const Default: Story = {};
  */
 export const ManyDocuments: Story = {
   parameters: {
-    // 문서 페이지에서는 스토리를 한 화면에 함께 그려 응답이 섞이므로, 응답을 덮는 스토리는 따로 그려요
-    docs: { story: { inline: false, iframeHeight: 360 } },
+    docs: ISOLATED_DOCS,
     msw: {
       handlers: {
         documents: http.get(DOCUMENTS_REQUEST, () =>
           HttpResponse.json(MANY_DOCUMENTS_RESPONSE),
+        ),
+      },
+    },
+  },
+};
+
+/**
+ * 확인할 문서를 불러오는 동안이에요. 제목은 그대로 두고 문서 수를 숨긴 채, 행 자리를 행 2개 모양의 회색 덩어리로 채워요.
+ * 요청 제한 시간(10초)이 지나면 불러오지 못한 모습으로 바뀌어요.
+ */
+export const Loading: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3805-38616",
+    },
+    msw: {
+      handlers: {
+        documents: http.get(DOCUMENTS_REQUEST, async () => {
+          await delay("infinite");
+          return HttpResponse.json(documentsResponse);
+        }),
+      },
+    },
+  },
+};
+
+/**
+ * 확인할 문서가 없을 때예요. 예: 아직 한 번도 녹음하지 않은 워크스페이스, 문서를 모두 확인한 멤버의 홈.
+ * 카드를 숨기지 않고, 문서 수를 숨긴 채 행 자리에 「아직 문서가 없어요」를 보여 줘요.
+ */
+export const NoDocuments: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1973-20009",
+    },
+    msw: {
+      handlers: {
+        documents: http.get(DOCUMENTS_REQUEST, () =>
+          HttpResponse.json(EMPTY_DOCUMENTS_RESPONSE),
         ),
       },
     },
