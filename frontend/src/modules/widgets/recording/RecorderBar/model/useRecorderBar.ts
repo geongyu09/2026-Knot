@@ -9,7 +9,7 @@ import { formatRecordingTime } from "@utils/formatRecordingTime";
  *
  * 이어서 녹음할 때 마이크가 끊겨 있었다면 다시 받아요. 받지 못하면 [다시 시도]/[닫기] 모달을 띄우고
  * 일시정지를 유지해요.
- * 녹음 끝내기는 녹음 파일을 올리고 홈으로 갈 때까지 걸리므로, 그동안 버튼을 막아 두 번 보내지 않게 해요.
+ * 녹음 끝내기는 녹음 파일을 올리고 문서 정리 화면으로 갈 때까지 걸리므로, 그동안 버튼을 막아 두 번 보내지 않게 해요.
  */
 export const useRecorderBar = () => {
   const { openMicrophoneUnavailableDialog } = useMicrophoneUnavailableDialog();
