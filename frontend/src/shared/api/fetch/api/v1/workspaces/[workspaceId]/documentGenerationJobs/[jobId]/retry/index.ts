@@ -17,7 +17,7 @@ interface RetryDocumentGenerationJobApiParams {
 
 /**
  * @description 실패한 문서 생성 작업을 다시 시도합니다. 저장된 원문으로 문서 만들기만 다시 하고, 녹음을 다시 전사하지는 않아요
- * @param params - 워크스페이스 ID·문서 생성 작업 ID(녹음 상세의 documentGenerationJobId)
+ * @param params - 워크스페이스 ID·문서 생성 작업 ID(녹음 상세의 documentGeneration.failedJobIds 가운데 하나)
  * @returns 다시 접수한 작업의 상태와 누적 시도 수
  * @example
  * await retryDocumentGenerationJobApi({ workspaceId: 1, jobId: 88 });

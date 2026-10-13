@@ -1,8 +1,9 @@
 import { HTTP_ERROR_TYPE, isHttpError } from "@api/httpClient/error";
-import useRetryDocumentGenerationJobMutation from "@api/mutations/useRetryDocumentGenerationJobMutation";
+import useRetryDocumentGenerationJobsMutation from "@api/mutations/useRetryDocumentGenerationJobsMutation";
 import useRecordingQuery from "@api/queries/useRecordingQuery";
 import useRedirectToLoginOnUnauthorized from "@hooks/domain/auth/useRedirectToLoginOnUnauthorized";
 import { getRecordingDocumentsStatus } from "@utils/getRecordingDocumentsStatus";
+import { isUnauthorizedError } from "@utils/isUnauthorizedError";
 
 interface UseRecordingDocumentsParams {
   workspaceId: number;
@@ -13,7 +14,7 @@ interface UseRecordingDocumentsParams {
 const isUnrecoverableLoadError = (error: unknown) =>
   isHttpError(error) && error.isClientError;
 
-/** 다시 시도할 수 없다는 응답. 실패 상태가 아닌 작업(409) · 없는 작업(404) */
+/** 다시 시도할 수 없다는 응답. 실패 상태가 아니거나 다시 시도할 수 있는 횟수를 다 쓴 작업(409) · 없는 작업(404) */
 const isRetryRejectedError = (error: unknown) =>
   isHttpError(error, HTTP_ERROR_TYPE.conflict) ||
   isHttpError(error, HTTP_ERROR_TYPE.notFound);
@@ -35,7 +36,9 @@ const isRetryRejectedError = (error: unknown) =>
  *
  * 다시 시도는 문서 만들기가 실패로 끝났고 다시 시도할 작업이 남아 있을 때만 할 수 있어요.
  * 전사 실패는 문서 만들기가 접수되지 않아 다시 시도할 작업이 없어요.
- * 다시 시도가 거절되면(409 · 404) 더 시도할 수 없어 `retryGeneration`을 없애요.
+ * 실패한 작업이 여러 개면 한 번에 모두 다시 시도해요. 하나라도 접수되면 녹음 상태를 다시 받아 정리 중으로 돌아가요.
+ * 남은 실패 작업이 모두 거절된(409 · 404) 작업이면 더 시도할 수 없어 `retryGeneration`을 없애요.
+ * 네트워크 · 서버 문제로 실패한 작업은 거절된 것이 아니라 다시 시도할 수 있어요.
  * 409는 화면이 아는 녹음 상태와 서버의 녹음 상태가 다를 수 있다는 응답이라, 녹음 상태를 다시 조회해요.
  * 서버에서 이미 정리 중이거나 정리가 끝났으면 그 상태의 화면으로 바뀌어요.
  *
@@ -54,13 +57,15 @@ export const useRecordingDocuments = ({
   const {
     mutate: requestRetry,
     isPending: isRetrying,
-    error: retryError,
-    variables: lastRetry,
-    reset: clearRetryError,
-  } = useRetryDocumentGenerationJobMutation();
+    data: retryResults = [],
+    reset: clearRetryResults,
+  } = useRetryDocumentGenerationJobsMutation();
   const { isUnauthorized } = useRedirectToLoginOnUnauthorized({ error });
   // 다시 시도에서 로그인이 풀려도 같은 방식으로 로그인 화면에 보내요
-  useRedirectToLoginOnUnauthorized({ error: retryError });
+  const unauthorizedRetry = retryResults.find(({ error: retryError }) =>
+    isUnauthorizedError(retryError),
+  );
+  useRedirectToLoginOnUnauthorized({ error: unauthorizedRetry?.error });
 
   const isLoadFailed =
     !isUnauthorized &&
@@ -80,45 +85,59 @@ export const useRecordingDocuments = ({
 
   const viewStatus = getViewStatus();
 
-  // 문서 만들기가 실패로 끝났고 다시 시도할 작업이 남아 있을 때만 그 작업의 id예요.
-  // 전사 실패는 문서 생성 결과가 없어 여기에 해당하지 않아요
-  const [retryJobId = null] =
+  // 문서 만들기가 실패로 끝났을 때 다시 시도할 수 있게 남아 있는 작업의 id예요.
+  // 전사 실패는 문서 생성 결과가 없어 비어 있어요
+  const failedJobIds =
     viewStatus === "failed"
       ? (recording?.documentGeneration?.failedJobIds ?? [])
       : [];
-  // 주소가 다른 녹음으로 바뀌어도 앞 녹음에서 거절된 기록은 남아 있어요. 그래서 거절된 것이 지금 녹음의 작업인지 함께 봐요
-  const isRetryRejected =
-    isRetryRejectedError(retryError) && lastRetry?.jobId === retryJobId;
+  // 마지막 다시 시도에서 서버가 거절한 작업의 id예요
+  const rejectedJobIds = retryResults
+    .filter(({ error: retryError }) => isRetryRejectedError(retryError))
+    .map(({ jobId }) => jobId);
+  // 거절되지 않은 실패 작업이 하나라도 있어야 다시 시도할 수 있어요.
+  // 주소가 다른 녹음으로 바뀌어도 앞 녹음의 거절 기록은 남아 있지만, 작업 id가 달라 지금 녹음의 작업을 가리지 않아요
+  const canRetry = failedJobIds.some(
+    (jobId) => !rejectedJobIds.includes(jobId),
+  );
 
   // 화면을 새로고침하지 않고 녹음 상태만 다시 조회해요. 새로고침하면 브라우저 안에만 있는 진행 중인 녹음이 사라져요
   const retryLoad = () => {
     refetch();
   };
 
-  const retryGeneration =
-    retryJobId === null || isRetryRejected
-      ? undefined
-      : () =>
-          requestRetry(
-            { workspaceId, jobId: retryJobId },
-            {
-              onError: async (retryFailure) => {
-                if (!isHttpError(retryFailure, HTTP_ERROR_TYPE.conflict)) {
-                  return;
-                }
+  const retryGeneration = canRetry
+    ? () =>
+        requestRetry(
+          { workspaceId, jobIds: failedJobIds },
+          {
+            onSuccess: async (results) => {
+              const conflictedJobIds = results
+                .filter(({ error: retryError }) =>
+                  isHttpError(retryError, HTTP_ERROR_TYPE.conflict),
+                )
+                .map(({ jobId }) => jobId);
 
-                const { data: latestRecording } = await refetch();
+              if (conflictedJobIds.length === 0) return;
 
-                // 서버에서는 실패 상태가 아니면 거절 기록을 지워요. 남겨 두면 그 작업이 또 실패했을 때 「다시 시도」가 숨겨져요
-                if (
-                  latestRecording !== undefined &&
-                  getRecordingDocumentsStatus(latestRecording) !== "failed"
-                ) {
-                  clearRetryError();
-                }
-              },
+              const { data: latestRecording } = await refetch();
+
+              if (latestRecording === undefined) return;
+
+              const latestFailedJobIds =
+                latestRecording.documentGeneration?.failedJobIds ?? [];
+              const isStillFailed = conflictedJobIds.some((jobId) =>
+                latestFailedJobIds.includes(jobId),
+              );
+
+              // 거절된 작업이 서버에서 더는 실패 상태가 아니면(다른 곳에서 먼저 다시 시도함) 거절 기록을 지워요.
+              // 남겨 두면 그 작업이 또 실패했을 때 「다시 시도」가 숨겨져요.
+              // 여전히 실패 상태인데 거절됐다면 다시 시도할 수 있는 횟수를 다 쓴 작업이라 기록을 남겨요
+              if (!isStillFailed) clearRetryResults();
             },
-          );
+          },
+        )
+    : undefined;
 
   return { viewStatus, retryLoad, retryGeneration, isRetrying };
 };

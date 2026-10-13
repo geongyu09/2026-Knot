@@ -1,7 +1,12 @@
 import { GetDocumentsResponseDto } from "@api/dto/document";
 import { RECORDING_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]";
 import { documentsResponse } from "@api/mock/responses/document";
+import { documentGenerationJobRetryResponse } from "@api/mock/responses/documentGenerationJob";
 import { recordingDetailsResponse } from "@api/mock/responses/recording";
+import type {
+  RecordingDetailResponse,
+  RecordingDocumentGenerationResponse,
+} from "@api/mock/types/recording";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
 import { theme } from "@provider/themeProvider";
@@ -39,6 +44,25 @@ const DOCUMENTS_REQUEST = "*/api/v1/workspaces/:workspaceId/documents";
 const POLL_INTERVAL_MS = 3000;
 // mock 녹음의 어느 작업과도 겹치지 않는 문서 생성 작업 id
 const ANOTHER_JOB_ID = 188;
+// 문서 만들기에 실패한 mock 녹음의 실패 작업 id. 다시 시도 mock 응답이 가리키는 작업이에요
+const FAILED_JOB_ID = documentGenerationJobRetryResponse.jobId;
+// 실패한 작업이 둘인 문서 생성 결과예요. 문서는 주제마다 다른 작업이 만들어서, 한 녹음에서 여러 작업이 실패할 수 있어요
+const twoJobsFailedGeneration = {
+  status: "FAILED",
+  succeededCount: 0,
+  failedJobIds: [FAILED_JOB_ID, ANOTHER_JOB_ID],
+} satisfies RecordingDocumentGenerationResponse;
+const twoJobsFailedDetail: RecordingDetailResponse = {
+  ...failedRecording.detail,
+  documentGeneration: twoJobsFailedGeneration,
+};
+
+// 다시 시도를 접수했을 때의 응답
+const acceptRetry = (jobId: number) =>
+  HttpResponse.json(
+    { ...documentGenerationJobRetryResponse, jobId },
+    { status: 202 },
+  );
 
 const ORGANIZING_TITLE = "회의 내용을 바탕으로 문서를 정리하고 있어요";
 const FAILED_TITLE = "문서를 만들지 못했어요";
@@ -840,5 +864,200 @@ describe("RecordingDocuments", () => {
     fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
 
     expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
+  });
+
+  it("실패한 작업이 여러 개면 다시 시도 한 번으로 작업마다 요청하고, 접수되면 정리 중 화면으로 돌아간다", async () => {
+    const retriedJobIds: number[] = [];
+    let isRetried = false;
+    mockServer.use(
+      http.post(RETRY_REQUEST, ({ params }) => {
+        retriedJobIds.push(Number(params.jobId));
+        isRetried = true;
+        return acceptRetry(Number(params.jobId));
+      }),
+      // 다시 시도를 접수한 뒤로는 서버가 다시 정리 중이라고 답해요
+      http.get(RECORDING_REQUEST, () =>
+        HttpResponse.json(
+          isRetried ? organizingRecording.detail : twoJobsFailedDetail,
+        ),
+      ),
+    );
+    renderRecordingDocuments(failedRecording.recordingId);
+
+    fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+
+    expect(
+      await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE }),
+    ).toBeInTheDocument();
+    expect(retriedJobIds).toHaveLength(2);
+    expect(new Set(retriedJobIds)).toEqual(
+      new Set([FAILED_JOB_ID, ANOTHER_JOB_ID]),
+    );
+  });
+
+  it("실패한 작업 가운데 일부만 접수되고 나머지는 거절돼도, 녹음을 다시 조회해 정리 중 화면으로 돌아간다", async () => {
+    const retriedJobIds: number[] = [];
+    let isRetried = false;
+    mockServer.use(
+      http.post(RETRY_REQUEST, ({ params }) => {
+        const jobId = Number(params.jobId);
+        retriedJobIds.push(jobId);
+
+        if (jobId === ANOTHER_JOB_ID) {
+          return new HttpResponse(null, { status: 409 });
+        }
+
+        isRetried = true;
+        return acceptRetry(jobId);
+      }),
+      http.get(RECORDING_REQUEST, () =>
+        HttpResponse.json(
+          isRetried ? organizingRecording.detail : twoJobsFailedDetail,
+        ),
+      ),
+    );
+    renderRecordingDocuments(failedRecording.recordingId);
+
+    fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+
+    expect(
+      await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE }),
+    ).toBeInTheDocument();
+    expect(retriedJobIds).toHaveLength(2);
+  });
+
+  it("실패한 작업이 모두 거절되면(409 · 404) 설명과 다시 시도 없이 홈으로만 보여준다", async () => {
+    const retriedJobIds: number[] = [];
+    mockServer.use(
+      http.post(RETRY_REQUEST, ({ params }) => {
+        const jobId = Number(params.jobId);
+        retriedJobIds.push(jobId);
+
+        return new HttpResponse(null, {
+          status: jobId === ANOTHER_JOB_ID ? 404 : 409,
+        });
+      }),
+      http.get(RECORDING_REQUEST, () => HttpResponse.json(twoJobsFailedDetail)),
+    );
+    renderRecordingDocuments(failedRecording.recordingId);
+
+    fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+
+    expect(
+      await screen.findByRole("button", { name: "홈으로" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "다시 시도" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(RECORDING_KEPT_NOTICE)).not.toBeInTheDocument();
+    expect(retriedJobIds).toHaveLength(2);
+  });
+
+  it("한 작업은 거절되고 다른 작업은 서버 오류로 실패하면, 버튼을 남겨 다시 누를 수 있게 한다", async () => {
+    let retryCount = 0;
+    mockServer.use(
+      http.post(RETRY_REQUEST, ({ params }) => {
+        retryCount += 1;
+
+        return new HttpResponse(null, {
+          status: Number(params.jobId) === ANOTHER_JOB_ID ? 500 : 409,
+        });
+      }),
+      http.get(RECORDING_REQUEST, () => HttpResponse.json(twoJobsFailedDetail)),
+    );
+    renderRecordingDocuments(failedRecording.recordingId);
+
+    fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+    await waitFor(() => expect(retryCount).toBe(2));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "다시 시도" })).toBeEnabled(),
+    );
+    expect(screen.getByText(RECORDING_KEPT_NOTICE)).toBeInTheDocument();
+  });
+
+  it("다시 시도가 거절된 작업만 실패로 남으면, 다시 시도 없이 홈으로만 보여준다", async () => {
+    let latestDetail: RecordingDetailResponse = twoJobsFailedDetail;
+    mockServer.use(
+      http.post(RETRY_REQUEST, ({ params }) => {
+        const jobId = Number(params.jobId);
+
+        // 다시 시도할 수 있는 횟수를 다 쓴 작업은 서버가 거절해요
+        if (jobId === FAILED_JOB_ID) {
+          return new HttpResponse(null, { status: 409 });
+        }
+
+        // 접수된 작업이 대기 중이라 서버는 정리 중이라고 답하고, 거절된 작업은 실패 작업으로 그대로 남아요
+        latestDetail = {
+          ...twoJobsFailedDetail,
+          documentGeneration: {
+            ...twoJobsFailedGeneration,
+            status: "QUEUED",
+            failedJobIds: [FAILED_JOB_ID],
+          },
+        };
+        return acceptRetry(jobId);
+      }),
+      http.get(RECORDING_REQUEST, () => HttpResponse.json(latestDetail)),
+    );
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderRecordingDocuments(failedRecording.recordingId);
+
+    fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+    await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE });
+
+    // 접수된 작업은 문서를 만들었고, 거절된 작업만 실패로 남았어요
+    latestDetail = {
+      ...twoJobsFailedDetail,
+      documentGeneration: {
+        ...twoJobsFailedGeneration,
+        succeededCount: 1,
+        failedJobIds: [FAILED_JOB_ID],
+      },
+    };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+    });
+
+    expect(
+      await screen.findByRole("button", { name: "홈으로" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "다시 시도" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("작업마다 보낸 다시 시도가 모두 끝날 때까지 버튼을 다시 누를 수 없다", async () => {
+    let finishedCount = 0;
+    let releaseSlowRetry = () => {};
+    const slowRetry = new Promise<void>((resolve) => {
+      releaseSlowRetry = resolve;
+    });
+    mockServer.use(
+      http.post(RETRY_REQUEST, async ({ params }) => {
+        // 한 작업의 응답만 늦게 와요
+        if (Number(params.jobId) === ANOTHER_JOB_ID) await slowRetry;
+
+        finishedCount += 1;
+        return new HttpResponse(null, { status: 500 });
+      }),
+      http.get(RECORDING_REQUEST, () => HttpResponse.json(twoJobsFailedDetail)),
+    );
+    renderRecordingDocuments(failedRecording.recordingId);
+
+    const retryButton = await screen.findByRole("button", {
+      name: "다시 시도",
+    });
+    fireEvent.click(retryButton);
+    await waitFor(() => expect(finishedCount).toBe(1));
+
+    expect(retryButton).toBeDisabled();
+
+    releaseSlowRetry();
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "다시 시도" })).toBeEnabled(),
+    );
+    expect(finishedCount).toBe(2);
   });
 });
