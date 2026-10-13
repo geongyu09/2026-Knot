@@ -550,7 +550,7 @@ class RecordingTranscriptionStateIntegrationTest {
         // when
         Throwable failure = catchThrowable(
                 () -> jdbc.sql("""
-                        UPDATE recording_transcriptions SET status = 'FAILED', finished_at = started_at
+                        UPDATE recording_transcriptions SET status = 'FAILED'
                         WHERE recording_session_id = :recordingId
                         """)
                         .param(

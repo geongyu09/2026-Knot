@@ -372,9 +372,8 @@ class RecordingTranscriptionRetryAcceptanceTest {
                 .update();
         jdbc.sql("""
                 INSERT INTO recording_transcriptions
-                    (recording_session_id, attempt_id, status, failure_code, started_at, finished_at)
-                VALUES (1, :attempt, :status, :failure, now() - interval '56 minutes',
-                    CASE WHEN :status = 'FAILED' THEN now() - interval '55 minutes' ELSE NULL END)
+                    (recording_session_id, attempt_id, status, failure_code, started_at)
+                VALUES (1, :attempt, :status, :failure, now() - interval '56 minutes')
                 """)
                 .param(
                         "attempt",

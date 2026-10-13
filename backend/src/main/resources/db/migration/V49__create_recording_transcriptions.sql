@@ -5,15 +5,11 @@ CREATE TABLE recording_transcriptions (
     status VARCHAR(20) NOT NULL,
     failure_code VARCHAR(100),
     started_at TIMESTAMPTZ NOT NULL,
-    finished_at TIMESTAMPTZ,
     CONSTRAINT chk_recording_transcriptions_status CHECK (status IN ('PROCESSING', 'SUCCEEDED', 'FAILED')),
     CONSTRAINT chk_recording_transcriptions_state CHECK (
-        (status = 'PROCESSING' AND failure_code IS NULL AND finished_at IS NULL)
-        OR (status = 'SUCCEEDED' AND failure_code IS NULL AND finished_at IS NOT NULL)
-        OR (status = 'FAILED' AND failure_code IS NOT NULL AND length(trim(failure_code)) > 0
-            AND finished_at IS NOT NULL)
-    ),
-    CONSTRAINT chk_recording_transcriptions_time CHECK (finished_at IS NULL OR finished_at >= started_at)
+        (status IN ('PROCESSING', 'SUCCEEDED') AND failure_code IS NULL)
+        OR (status = 'FAILED' AND failure_code IS NOT NULL AND length(trim(failure_code)) > 0)
+    )
 );
 
 -- The AI server retains one current result; save it before admitting the next recording.

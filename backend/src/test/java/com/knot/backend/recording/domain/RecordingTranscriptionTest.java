@@ -26,7 +26,6 @@ class RecordingTranscriptionTest {
         assertThat(transcription.getAttemptId()).isEqualTo(ATTEMPT);
         assertThat(transcription.getStatus()).isEqualTo(TranscriptionStatus.PROCESSING);
         assertThat(transcription.getFailureCode()).isNull();
-        assertThat(transcription.getFinishedAt()).isNull();
     }
 
     @Test
@@ -39,14 +38,10 @@ class RecordingTranscriptionTest {
                 START
         );
         // when
-        transcription.succeed(
-                ATTEMPT,
-                START.plusSeconds(1)
-        );
+        transcription.succeed(ATTEMPT);
         transcription.fail(
                 ATTEMPT,
-                "TIMEOUT",
-                START.plusSeconds(2)
+                "TIMEOUT"
         );
         // then
         assertThat(transcription.getStatus()).isEqualTo(TranscriptionStatus.SUCCEEDED);
@@ -64,8 +59,7 @@ class RecordingTranscriptionTest {
         );
         transcription.fail(
                 ATTEMPT,
-                "BUSY",
-                START
+                "BUSY"
         );
         UUID next = UUID.randomUUID();
         // when
@@ -77,7 +71,6 @@ class RecordingTranscriptionTest {
         assertThat(transcription.getAttemptId()).isEqualTo(next);
         assertThat(transcription.getStatus()).isEqualTo(TranscriptionStatus.PROCESSING);
         assertThat(transcription.getFailureCode()).isNull();
-        assertThat(transcription.getFinishedAt()).isNull();
     }
 
     @Test
@@ -91,8 +84,7 @@ class RecordingTranscriptionTest {
         );
         transcription.fail(
                 ATTEMPT,
-                "TIMEOUT",
-                START
+                "TIMEOUT"
         );
         UUID next = UUID.randomUUID();
         transcription.retry(
@@ -100,14 +92,10 @@ class RecordingTranscriptionTest {
                 START.plusSeconds(1)
         );
         // when
-        transcription.succeed(
-                ATTEMPT,
-                START.plusSeconds(2)
-        );
+        transcription.succeed(ATTEMPT);
         transcription.fail(
                 ATTEMPT,
-                "LATE",
-                START.plusSeconds(2)
+                "LATE"
         );
         // then
         assertThat(transcription.isProcessing(next)).isTrue();
@@ -142,10 +130,7 @@ class RecordingTranscriptionTest {
                 ATTEMPT,
                 START
         );
-        transcription.succeed(
-                ATTEMPT,
-                START
-        );
+        transcription.succeed(ATTEMPT);
         // when
         Throwable failure = catchThrowable(
                 () -> transcription.retry(
@@ -168,35 +153,13 @@ class RecordingTranscriptionTest {
         );
         transcription.fail(
                 ATTEMPT,
-                "TIMEOUT",
-                START
+                "TIMEOUT"
         );
         // when
         Throwable failure = catchThrowable(
                 () -> transcription.retry(
                         ATTEMPT,
                         START.plusSeconds(1)
-                )
-        );
-        // then
-        assertThat(failure).isInstanceOf(RecordingException.class);
-    }
-
-    @Test
-    @DisplayName("시작 전 종료 시각은 거부한다")
-    void fail_failure_beforeStart() {
-        // given
-        RecordingTranscription transcription = RecordingTranscription.processing(
-                1,
-                ATTEMPT,
-                START
-        );
-        // when
-        Throwable failure = catchThrowable(
-                () -> transcription.fail(
-                        ATTEMPT,
-                        "TIMEOUT",
-                        START.minusSeconds(1)
                 )
         );
         // then
@@ -216,8 +179,7 @@ class RecordingTranscriptionTest {
         Throwable failure = catchThrowable(
                 () -> transcription.fail(
                         ATTEMPT,
-                        " ",
-                        START
+                        " "
                 )
         );
         // then

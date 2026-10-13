@@ -36,9 +36,6 @@ public class RecordingTranscription {
     @Column(name = "started_at", nullable = false)
     private Instant startedAt;
 
-    @Column(name = "finished_at")
-    private Instant finishedAt;
-
     protected RecordingTranscription() {}
 
     private RecordingTranscription(
@@ -89,33 +86,25 @@ public class RecordingTranscription {
         return status == TranscriptionStatus.PROCESSING && attemptId.equals(expectedAttemptId);
     }
 
-    public void succeed(
-            UUID expectedAttemptId,
-            Instant finishedAt
-    ) {
+    public void succeed(UUID expectedAttemptId) {
         if (!isProcessing(expectedAttemptId)) {
             return;
         }
-        validateFinishedAt(finishedAt);
         this.status = TranscriptionStatus.SUCCEEDED;
-        this.finishedAt = finishedAt;
     }
 
     public void fail(
             UUID expectedAttemptId,
-            String failureCode,
-            Instant finishedAt
+            String failureCode
     ) {
         if (!isProcessing(expectedAttemptId)) {
             return;
         }
-        validateFinishedAt(finishedAt);
         if (failureCode == null || failureCode.isBlank() || failureCode.length() > 100) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
         }
         this.status = TranscriptionStatus.FAILED;
         this.failureCode = failureCode;
-        this.finishedAt = finishedAt;
     }
 
     private void start(
@@ -126,12 +115,6 @@ public class RecordingTranscription {
         this.status = TranscriptionStatus.PROCESSING;
         this.failureCode = null;
         this.startedAt = startedAt;
-        this.finishedAt = null;
     }
 
-    private void validateFinishedAt(Instant finishedAt) {
-        if (finishedAt == null || finishedAt.isBefore(startedAt)) {
-            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
-        }
-    }
 }

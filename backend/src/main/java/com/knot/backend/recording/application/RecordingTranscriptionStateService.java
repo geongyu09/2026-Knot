@@ -64,8 +64,7 @@ public class RecordingTranscriptionStateService {
                 .isPresent()) {
             transcription.fail(
                     transcription.getAttemptId(),
-                    "BUSY",
-                    now
+                    "BUSY"
             );
         }
         transcriptions.saveAndFlush(transcription);
@@ -153,8 +152,7 @@ public class RecordingTranscriptionStateService {
                 || !hasAvailableUpload(execution.recordingId())) {
             transcription.fail(
                     execution.attemptId(),
-                    "RECORDING_UNAVAILABLE",
-                    now()
+                    "RECORDING_UNAVAILABLE"
             );
             return;
         }
@@ -178,10 +176,7 @@ public class RecordingTranscriptionStateService {
                 execution.recordingId(),
                 transcript.getId()
         );
-        transcription.succeed(
-                execution.attemptId(),
-                now
-        );
+        transcription.succeed(execution.attemptId());
     }
 
     @Transactional
@@ -197,8 +192,7 @@ public class RecordingTranscriptionStateService {
                 .ifPresent(
                         value -> value.fail(
                                 execution.attemptId(),
-                                failureCode,
-                                now()
+                                failureCode
                         )
                 );
     }
