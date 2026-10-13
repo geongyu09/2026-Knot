@@ -32,7 +32,7 @@ const OTHER_WORKSPACE_ID = "2";
 const DOCUMENTS_REQUEST = "*/api/v1/workspaces/:workspaceId/documents";
 const LOADING_LABEL = "문서 목록을 불러오고 있어요";
 const EMPTY_NOTICE = "아직 문서가 없어요";
-const LOAD_FAILED_NOTICE = "목록을 불러오지 못했어요. 다시 시도해 주세요.";
+const LOAD_FAILED_NOTICE = "목록을 불러오지 못했어요";
 const HOME_PATH = getRouterPath({
   routeKey: "WORKSPACE_HOME",
   params: { workspaceId: WORKSPACE_ID },
@@ -365,9 +365,10 @@ describe("DocumentTree", () => {
 
       renderDocumentTree();
 
-      expect(await screen.findByRole("alert")).toHaveTextContent(
-        LOAD_FAILED_NOTICE,
-      );
+      // 사이드바는 좁아서 문구가 짧아요. 문구 전체가 같은지 봐요
+      expect(
+        within(await screen.findByRole("alert")).getByText(LOAD_FAILED_NOTICE),
+      ).toBeInTheDocument();
       expect(
         within(getTree()).getByRole("button", { name: "다시 시도" }),
       ).toBeInTheDocument();

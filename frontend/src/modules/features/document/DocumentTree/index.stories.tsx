@@ -163,11 +163,17 @@ export const NoDocuments: Story = {
 
 /**
  * 문서 목록을 불러오지 못했을 때예요. 서버 오류, 네트워크 문제, 잘못된 주소(400)가 모두 이 모습이에요.
+ * 머리말 아래 남은 영역의 가운데에 작은 안내 「목록을 불러오지 못했어요」와 「다시 시도」를 보여 줘요.
  * 이 스토리에서는 「다시 시도」를 눌러도 계속 실패해요.
  */
 export const LoadFailed: Story = {
   parameters: {
-    docs: { story: { inline: false, iframeHeight: 220 } },
+    treeHeight: "20rem",
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3989-42119",
+    },
+    docs: { story: { inline: false, iframeHeight: 360 } },
     msw: {
       handlers: {
         documents: http.get(

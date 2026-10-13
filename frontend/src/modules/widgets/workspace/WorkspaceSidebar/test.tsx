@@ -17,7 +17,7 @@ import WorkspaceSidebar from ".";
 
 // 경로 파라미터 자리에 무엇이 와도 잡도록 fetch 상수 대신 패턴을 적어요
 const DOCUMENTS_REQUEST = "*/api/v1/workspaces/:workspaceId/documents";
-const LOAD_FAILED_NOTICE = "목록을 불러오지 못했어요. 다시 시도해 주세요.";
+const LOAD_FAILED_NOTICE = "목록을 불러오지 못했어요";
 
 const expectedWorkspace = new GetWorkspaceResponseDto(workspaceDetailResponse);
 const expectedDocuments = new GetDocumentsResponseDto(documentsResponse);
@@ -85,9 +85,11 @@ describe("WorkspaceSidebar", () => {
 
     const sidebar = renderSidebar();
 
-    expect(await within(sidebar).findByRole("alert")).toHaveTextContent(
-      LOAD_FAILED_NOTICE,
-    );
+    expect(
+      within(await within(sidebar).findByRole("alert")).getByText(
+        LOAD_FAILED_NOTICE,
+      ),
+    ).toBeInTheDocument();
     expect(
       await within(sidebar).findByText(expectedWorkspace.name),
     ).toBeInTheDocument();
