@@ -150,6 +150,28 @@ describe("RecordingHeartbeat", () => {
     expect(useRecordingStore.getState().status).toBe("recording");
   });
 
+  it("일시정지 중에도 생존 신호를 보낸다", async () => {
+    const requests = collectRequests();
+    await startRecording();
+    act(() => useRecordingStore.getState().pauseRecording());
+    renderRecordingHeartbeat();
+
+    passHeartbeatInterval();
+
+    await waitFor(() => expect(requests).toEqual(["heartbeat"]));
+  });
+
+  it("끝내는 중에는 생존 신호를 보내지 않는다", async () => {
+    const requests = collectRequests();
+    await startRecording();
+    act(() => useRecordingStore.getState().beginEnding());
+    renderRecordingHeartbeat();
+
+    passHeartbeatInterval();
+
+    expect(requests).toEqual([]);
+  });
+
   it.each([
     [500, "INTERNAL_SERVER_ERROR", ["heartbeat"]],
     [403, "RECORDING_CONTROL_DENIED", CSRF_RETRIED_HEARTBEAT],
