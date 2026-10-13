@@ -4,6 +4,7 @@ import useEndRecordingMutation from "@api/mutations/useEndRecordingMutation";
 import useIssueRecordingAudioUploadUrlMutation from "@api/mutations/useIssueRecordingAudioUploadUrlMutation";
 import usePauseRecordingMutation from "@api/mutations/usePauseRecordingMutation";
 import useResumeRecordingMutation from "@api/mutations/useResumeRecordingMutation";
+import useSendRecordingHeartbeatMutation from "@api/mutations/useSendRecordingHeartbeatMutation";
 import useStartRecordingMutation from "@api/mutations/useStartRecordingMutation";
 import useUploadRecordingAudioMutation from "@api/mutations/useUploadRecordingAudioMutation";
 import useNavigateToWorkspaceHome from "@hooks/domain/workspace/useNavigateToWorkspaceHome";
@@ -53,6 +54,8 @@ const clearRecording = () => {
  *   끝내는 동안에는 확인 창을 다시 띄우지 않아요. 종료가 실패하면 녹음을 그대로 두고,
  *   업로드가 일시 실패하면 URL 발급부터 3번까지 다시 시도하고, 그래도 실패하면 오디오를 버리고 홈으로 가요.
  *   워크스페이스를 옮길 때처럼 부른 쪽이 따로 확인받고 갈 곳도 정하면 `endRecordingWithoutConfirm`으로 끝내요.
+ * - 생존 신호: 성공하면 녹음한 시간을 서버가 알려 준 누적 시간으로 맞춰요. 실패하면 다시 보내지 않고
+ *   부르는 쪽의 다음 주기에 맡겨요.
  * - 서버에서 이미 끝났거나 버려진 녹음(409)이면 수집을 멈추고 오디오를 버린 뒤 홈으로 가요.
  *
  * 최초 탭 증명은 sessionStorage에 두고, 실패는 안내 없이 콘솔에만 남겨요.
@@ -65,6 +68,8 @@ const useRecordingControl = () => {
   const { mutateAsync: pauseRecordingSession } = usePauseRecordingMutation();
   const { mutateAsync: resumeRecordingSession } = useResumeRecordingMutation();
   const { mutateAsync: endRecordingSession } = useEndRecordingMutation();
+  const { mutateAsync: sendRecordingHeartbeat } =
+    useSendRecordingHeartbeatMutation();
   const { mutateAsync: issueAudioUploadUrl } =
     useIssueRecordingAudioUploadUrlMutation();
   const { mutateAsync: uploadAudio } = useUploadRecordingAudioMutation();
@@ -85,6 +90,23 @@ const useRecordingControl = () => {
     },
     [navigateToWorkspaceHome],
   );
+
+  /** 생존 신호를 보내고, 성공하면 녹음한 시간을 서버가 알려 준 누적 시간으로 맞춰요 */
+  const sendHeartbeat = useCallback(async () => {
+    const { session } = useRecordingStore.getState();
+    const proof = getRecordingControlProof();
+    if (!session || !proof) return;
+
+    try {
+      const { elapsedMillis } = await sendRecordingHeartbeat({
+        ...session,
+        ...proof,
+      });
+      useRecordingStore.getState().syncElapsedTime(elapsedMillis);
+    } catch {
+      // 실패한 신호는 그대로 두고, 부르는 쪽의 다음 주기에 보내요
+    }
+  }, [sendRecordingHeartbeat]);
 
   const handleControlError = useCallback(
     ({ action, error, workspaceId }: HandleControlErrorParams) => {
@@ -307,6 +329,7 @@ const useRecordingControl = () => {
     pauseRecording,
     syncPause,
     resumeRecording,
+    sendHeartbeat,
     endRecording,
     endRecordingWithoutConfirm,
   };
