@@ -11,7 +11,7 @@ import { devAuthHandlers } from "./handlers/dev";
 export const mockWorker = setupWorker(...devAuthHandlers, ...handlers);
 
 /** 워커의 답을 기다리는 가장 긴 시간(ms). 멈춰 있던 워커도 실제로는 몇 ms 안에 답해요 */
-const MOCK_WORKER_REPLY_TIMEOUT = 1000;
+const MOCK_WORKER_REPLY_TIMEOUT_MS = 1000;
 
 // public/mockServiceWorker.js가 주고받는 메시지 이름이에요. msw를 올리면 그 파일에서 다시 확인해야 해요
 const MOCK_ACTIVATE_MESSAGE = "MOCK_ACTIVATE";
@@ -50,7 +50,7 @@ const reactivateMockWorker = () =>
       if (isMockingEnabledMessage(event.data)) finish();
     };
 
-    const timeoutId = setTimeout(finish, MOCK_WORKER_REPLY_TIMEOUT);
+    const timeoutId = setTimeout(finish, MOCK_WORKER_REPLY_TIMEOUT_MS);
 
     serviceWorker.addEventListener("message", handleMessage);
     controller.postMessage(MOCK_ACTIVATE_MESSAGE);
@@ -66,19 +66,26 @@ const reactivateMockWorker = () =>
  * 다시 등록하라고 보내기만 해서는 부족해요. 워커가 등록을 끝내기 전에 같은 순간의
  * 다시 조회가 먼저 도착해 통과돼요. 그래서 워커의 답을 받은 뒤에 다시 조회를 내보내요.
  *
- * 창이 가려져 있는 동안 나간 요청(일정 간격 조회 등)은 여기서 다루지 않아요.
+ * 다시 조회 알림만 늦추지 않고, 창이 보이는지에 대한 값 자체를 답을 받을 때까지 「안 보임」으로 둬요.
+ * 일정 간격 조회는 알림을 기다리지 않고 이 값만 보고 나가서, 값이 먼저 「보임」이 되면
+ * 창이 다시 보이는 순간에 밀려 있던 조회가 워커의 답보다 먼저 나가요.
+ *
+ * 창이 가려져 있는 동안에도 나가는 요청(녹음 생존 신호 등)은 여기서 다루지 않아요.
  */
 export const reactivateMockWorkerOnFocus = () => {
   focusManager.setEventListener((handleFocus) => {
     const handleVisibilityChange = () => {
       // 가려질 때는 다시 조회가 나가지 않으니 워커를 깨우지 않고 알리기만 해요
       if (document.visibilityState === "hidden") {
-        handleFocus();
+        handleFocus(false);
 
         return;
       }
 
-      void reactivateMockWorker().then(() => handleFocus());
+      // 기다리는 사이 창이 다시 가려졌을 수 있어, 답을 받은 때의 상태를 알려요
+      void reactivateMockWorker().then(() =>
+        handleFocus(document.visibilityState !== "hidden"),
+      );
     };
 
     window.addEventListener("visibilitychange", handleVisibilityChange);
