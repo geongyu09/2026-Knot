@@ -12,6 +12,7 @@ import type {
   DocumentListItem,
   DocumentMyConfirmationResponse,
   DocumentsResponse,
+  MyConfirmationState,
 } from "@api/mock/types/document";
 
 // 내가 확인을 누른 문서의 ID와 그 시각.
@@ -58,6 +59,8 @@ interface FindDocumentsParams {
   size: number;
   /** 이 녹음에서 나온 문서만 대상으로 해요. 없으면 null */
   recordingSessionId: number | null;
+  /** 내 확인 상태가 이 값인 문서만 대상으로 해요. 없으면 null */
+  myConfirmation: MyConfirmationState | null;
 }
 
 /** 서버처럼 주제를 이름순으로 놓고, 주제마다 대상 문서를 세요 */
@@ -71,20 +74,30 @@ const countTopics = (items: DocumentListItem[]) =>
 
 /**
  * 문서 목록의 한 페이지. 확인을 누른 문서는 내 상태와 집계를 바꿔서 돌려줘요.
- * 녹음 ID를 주면 그 녹음에서 나온 문서만 대상이고, 주제 폴더도 그 문서들만 세요.
+ * 녹음 ID나 내 확인 상태를 주면 그 조건에 맞는 문서만 대상이고, 주제 폴더도 그 문서들만 세요.
  * 커서는 앞 페이지의 마지막 문서 ID예요. 그 ID의 문서가 없으면 undefined예요.
+ * 커서는 조건으로 거른 목록에서 찾아요. 그래서 내 확인 상태로 거르며 이어 받는 도중에 커서 문서가 확인되어 목록에서 빠져도 undefined예요.
+ * 실제 서버는 이때도 그 뒤 문서를 이어서 줘요. 페이지 사이에 확인을 보내는 흐름을 mock으로 볼 때는 이 차이를 알고 써요.
  */
 export const findDocuments = ({
   cursor,
   size,
   recordingSessionId,
+  myConfirmation,
 }: FindDocumentsParams) => {
-  const isFiltered = recordingSessionId !== null;
-  const items = isFiltered
-    ? documentsResponse.items.filter(
-        (item) => item.recordingSessionId === recordingSessionId,
-      )
-    : documentsResponse.items;
+  const isFiltered = recordingSessionId !== null || myConfirmation !== null;
+  // 확인을 누른 문서의 내 상태를 먼저 바꿔야, 내 확인 상태로 거를 때 방금 확인한 문서가 맞는 쪽에 들어가요
+  const items = documentsResponse.items
+    .map((item) =>
+      isNewlyConfirmed(item) ? { ...item, ...confirmedFields(item) } : item,
+    )
+    .filter(
+      (item) =>
+        (recordingSessionId === null ||
+          item.recordingSessionId === recordingSessionId) &&
+        (myConfirmation === null ||
+          item.myConfirmationState === myConfirmation),
+    );
   const cursorIndex = items.findIndex(({ id }) => String(id) === cursor);
 
   if (cursor !== null && cursorIndex === -1) return undefined;
@@ -96,11 +109,7 @@ export const findDocuments = ({
 
   return {
     topics: isFiltered ? countTopics(items) : documentsResponse.topics,
-    items: items
-      .slice(start, end)
-      .map((item) =>
-        isNewlyConfirmed(item) ? { ...item, ...confirmedFields(item) } : item,
-      ),
+    items: items.slice(start, end),
     nextCursor: hasNextPage ? String(items[end - 1].id) : null,
   } satisfies DocumentsResponse;
 };

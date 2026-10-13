@@ -1,10 +1,21 @@
 import { http, HttpResponse } from "msw";
 
 import { findDocuments } from "@api/mock/state/document";
+import type { MyConfirmationState } from "@api/mock/types/document";
 
 /** size를 보내지 않았을 때 서버가 쓰는 값 */
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
+
+/** 서버가 받는 내 확인 상태 값 */
+const MY_CONFIRMATION_STATES: MyConfirmationState[] = [
+  "PENDING",
+  "CONFIRMED",
+  "NOT_REQUIRED",
+];
+
+const isMyConfirmationState = (value: string): value is MyConfirmationState =>
+  MY_CONFIRMATION_STATES.some((state) => state === value);
 
 const invalidParameterResponse = () =>
   HttpResponse.json(
@@ -34,11 +45,19 @@ export const documentsHandlers = [
       return invalidParameterResponse();
     }
 
+    const myConfirmation = searchParams.get("myConfirmation");
+
+    // 내 확인 상태는 정해진 세 값 가운데 하나여야 해요
+    if (myConfirmation !== null && !isMyConfirmationState(myConfirmation)) {
+      return invalidParameterResponse();
+    }
+
     // 확인을 누른 문서는 내 상태가 바뀐 응답을 받도록 mock 상태를 거쳐 찾아요
     const documents = findDocuments({
       cursor: searchParams.get("cursor"),
       size,
       recordingSessionId,
+      myConfirmation,
     });
 
     // 없는 커서도 명세의 400으로 답해요. 첫 페이지를 다시 주면 이어 받는 쪽이 같은 문서를 계속 받아요

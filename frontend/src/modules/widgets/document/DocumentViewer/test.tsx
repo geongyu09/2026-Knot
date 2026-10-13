@@ -861,6 +861,7 @@ describe("DocumentViewer", () => {
             cursor: searchParams.get("cursor"),
             size: 1,
             recordingSessionId: Number(recordingSessionId),
+            myConfirmation: null,
           }),
         );
       }),

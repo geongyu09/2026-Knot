@@ -219,6 +219,7 @@ describe("DocumentList", () => {
           cursor,
           size: MOCK_PAGE_SIZE,
           recordingSessionId: null,
+          myConfirmation: null,
         });
 
         if (page === undefined) return HttpResponse.json(null, { status: 400 });
@@ -407,6 +408,7 @@ describe("DocumentList", () => {
             cursor,
             size: MOCK_PAGE_SIZE,
             recordingSessionId: null,
+            myConfirmation: null,
           }),
         );
       }),

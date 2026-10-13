@@ -8,6 +8,10 @@ interface DocumentRecentListKeyParams {
   workspaceId: number;
 }
 
+interface DocumentPendingListKeyParams {
+  workspaceId: number;
+}
+
 interface DocumentDetailKeyParams {
   workspaceId: number;
   documentId: number;
@@ -20,6 +24,9 @@ export const documentKeys = {
   // 홈 카드의 최근 문서. 문서 전체 목록과 받는 범위가 달라 키를 따로 둬요
   recentList: ({ workspaceId }: DocumentRecentListKeyParams) =>
     [...documentKeys.all, "recentList", workspaceId] as const,
+  // 내가 아직 확인하지 않은 문서만 담은 목록. 문서를 확인하면 이 목록만 다시 받으려고 키를 따로 둬요
+  pendingList: ({ workspaceId }: DocumentPendingListKeyParams) =>
+    [...documentKeys.all, "pendingList", workspaceId] as const,
   detail: ({ workspaceId, documentId }: DocumentDetailKeyParams) =>
     [...documentKeys.all, "detail", workspaceId, documentId] as const,
   // 문서 상세 키 아래에 둬서, 상세를 무효화하면 확인 대상도 함께 다시 받아요
