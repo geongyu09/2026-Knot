@@ -46,12 +46,15 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -440,7 +443,8 @@ class SearchAnswerEventsAcceptanceTest {
 
     @Test
     @DisplayName("무출력 연결은 heartbeat 후 timeout으로 닫히고 저장 상태를 바꾸지 않는다")
-    void reconnect_success_timeoutCleanup() throws Exception {
+    @ExtendWith(OutputCaptureExtension.class)
+    void reconnect_success_timeoutCleanup(CapturedOutput output) throws Exception {
         for (int attempt = 0; attempt < 3; attempt++) {
             try (BufferedReader reader = reader(
                     connect(
@@ -468,6 +472,7 @@ class SearchAnswerEventsAcceptanceTest {
                         .query(String.class)
                         .single()
         ).isEqualTo("STREAMING");
+        assertThat(output.getAll()).doesNotContain("AsyncRequestTimeoutException");
     }
 
     private String failureCode(String status) {
