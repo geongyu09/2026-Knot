@@ -56,6 +56,16 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
         return keyPrefix;
     }
 
+    @Override
+    public String presignDownload(
+            String storageKey,
+            String contentType,
+            long contentLength
+    ) {
+        // 입력 객체 고정 방식이 확정되기 전에는 변경 가능한 오디오를 전사하지 않는다.
+        throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+    }
+
     // Content-Type과 Content-Length를 서명에 넣어 예약한 파일과 다른 형식·크기의 PUT을 저장소가 거절하게 한다.
     @Override
     public PresignedAudioUpload presignUpload(

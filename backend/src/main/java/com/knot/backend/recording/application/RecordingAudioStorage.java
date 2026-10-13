@@ -5,6 +5,12 @@ import com.knot.backend.recording.application.dto.result.StoredAudioObject;
 
 public interface RecordingAudioStorage {
 
+    String presignDownload(
+            String storageKey,
+            String contentType,
+            long contentLength
+    );
+
     PresignedAudioUpload presignUpload(
             String storageKey,
             String contentType,

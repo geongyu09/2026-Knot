@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class RecordingDetailService {
     private final RecordingWorkspaceAccessValidator workspaceAccessValidator;
     private final RecordingDetailQuery recordingDetailQuery;
+    private final RecordingTranscriptionStateService transcriptionState;
     private final Clock clock;
 
     @Transactional(readOnly = true)
@@ -40,6 +41,7 @@ public class RecordingDetailService {
         }
         return RecordingDetailResult.of(
                 snapshot,
+                transcriptionState.find(recordingId),
                 clock.instant()
                         .truncatedTo(ChronoUnit.MICROS)
         );

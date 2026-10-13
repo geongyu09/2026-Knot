@@ -9,6 +9,7 @@ import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.RecordingSession;
 import com.knot.backend.recording.domain.RecordingSessionRepository;
+import com.knot.backend.global.config.TranscriptionProperties;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,8 @@ public class RecordingAudioUploadCompletionTransaction {
     private final RecordingSessionRepository recordingSessionRepository;
     private final RecordingAudioUploadRepository recordingAudioUploadRepository;
     private final Clock clock;
+    private final RecordingTranscriptionStateService transcriptionState;
+    private final TranscriptionProperties transcriptionProperties;
 
     @Transactional
     public PendingAudioUpload prepare(
@@ -57,6 +60,10 @@ public class RecordingAudioUploadCompletionTransaction {
                 uploadId
         );
         if (upload.isCompleted()) {
+            registerTranscription(
+                    recordingId,
+                    upload
+            );
             return RecordingAudioUploadCompletionResult.from(upload);
         }
         if (!storedObject.exists()) {
@@ -68,7 +75,24 @@ public class RecordingAudioUploadCompletionTransaction {
                 clock.instant()
                         .truncatedTo(ChronoUnit.MICROS)
         );
-        return RecordingAudioUploadCompletionResult.from(recordingAudioUploadRepository.save(upload));
+        recordingAudioUploadRepository.save(upload);
+        registerTranscription(
+                recordingId,
+                upload
+        );
+        return RecordingAudioUploadCompletionResult.from(upload);
+    }
+
+    private void registerTranscription(
+            long recordingId,
+            RecordingAudioUpload upload
+    ) {
+        if (transcriptionProperties.enabled()) {
+            transcriptionState.registerAutomatic(
+                    recordingId,
+                    upload
+            );
+        }
     }
 
     private RecordingAudioUpload findValidatedUpload(

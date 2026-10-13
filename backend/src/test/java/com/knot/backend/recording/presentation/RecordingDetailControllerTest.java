@@ -71,7 +71,10 @@ class RecordingDetailControllerTest {
                         60_000L,
                         STARTED_AT.plusSeconds(60),
                         RecordingEndReason.USER_ENDED,
-                        RecordingAudioUploadStatus.COMPLETED
+                        RecordingAudioUploadStatus.COMPLETED,
+                        null,
+                        null,
+                        null
                 )
         );
 

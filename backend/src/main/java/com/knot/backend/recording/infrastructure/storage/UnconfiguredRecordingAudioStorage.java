@@ -10,6 +10,15 @@ import com.knot.backend.recording.domain.RecordingException;
 public class UnconfiguredRecordingAudioStorage implements RecordingAudioStorage {
 
     @Override
+    public String presignDownload(
+            String storageKey,
+            String contentType,
+            long contentLength
+    ) {
+        throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+    }
+
+    @Override
     public void deleteStoredObject(String storageKey) {
         throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
     }

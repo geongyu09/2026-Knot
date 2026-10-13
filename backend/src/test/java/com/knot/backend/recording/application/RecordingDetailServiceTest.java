@@ -8,6 +8,9 @@ import static org.mockito.Mockito.when;
 
 import com.knot.backend.recording.application.dto.result.RecordingDetailResult;
 import com.knot.backend.recording.application.dto.result.RecordingDetailSnapshot;
+import com.knot.backend.recording.application.dto.result.RecordingTranscriptionSnapshot;
+import com.knot.backend.recording.domain.TranscriptionStatus;
+import java.util.UUID;
 import com.knot.backend.recording.domain.RecordingAudioUploadStatus;
 import com.knot.backend.recording.domain.RecordingEndReason;
 import com.knot.backend.recording.domain.RecordingErrorCode;
@@ -36,6 +39,7 @@ class RecordingDetailServiceTest {
     private WorkspaceRepository workspaceRepository;
     private WorkspaceMemberRepository workspaceMemberRepository;
     private RecordingDetailQuery recordingDetailQuery;
+    private RecordingTranscriptionStateService transcriptionState;
     private RecordingDetailService service;
 
     @BeforeEach
@@ -43,12 +47,14 @@ class RecordingDetailServiceTest {
         workspaceRepository = mock(WorkspaceRepository.class);
         workspaceMemberRepository = mock(WorkspaceMemberRepository.class);
         recordingDetailQuery = mock(RecordingDetailQuery.class);
+        transcriptionState = mock(RecordingTranscriptionStateService.class);
         service = new RecordingDetailService(
                 new RecordingWorkspaceAccessValidator(
                         workspaceRepository,
                         workspaceMemberRepository
                 ),
                 recordingDetailQuery,
+                transcriptionState,
                 Clock.fixed(
                         NOW,
                         ZoneOffset.UTC
@@ -88,6 +94,9 @@ class RecordingDetailServiceTest {
         assertThat(result.status()).isEqualTo(RecordingStatus.RECORDING);
         assertThat(result.elapsedMillis()).isEqualTo(90_000L);
         assertThat(result.audioUploadStatus()).isNull();
+        assertThat(result.transcriptionAttemptId()).isNull();
+        assertThat(result.transcriptionStatus()).isNull();
+        assertThat(result.transcriptionFailureCode()).isNull();
     }
 
     @Test
@@ -112,6 +121,15 @@ class RecordingDetailServiceTest {
                 )
         );
 
+        UUID attemptId = UUID.randomUUID();
+        when(transcriptionState.find(RECORDING_ID)).thenReturn(
+                new RecordingTranscriptionSnapshot(
+                        attemptId,
+                        TranscriptionStatus.FAILED,
+                        "INFERENCE_FAILED"
+                )
+        );
+
         // when
         RecordingDetailResult result = service.find(
                 WORKSPACE_ID,
@@ -125,6 +143,9 @@ class RecordingDetailServiceTest {
         assertThat(result.endReason()).isEqualTo(RecordingEndReason.USER_ENDED);
         assertThat(result.elapsedMillis()).isEqualTo(60_000L);
         assertThat(result.audioUploadStatus()).isEqualTo(RecordingAudioUploadStatus.COMPLETED);
+        assertThat(result.transcriptionAttemptId()).isEqualTo(attemptId);
+        assertThat(result.transcriptionStatus()).isEqualTo(TranscriptionStatus.FAILED);
+        assertThat(result.transcriptionFailureCode()).isEqualTo("INFERENCE_FAILED");
     }
 
     @Test
