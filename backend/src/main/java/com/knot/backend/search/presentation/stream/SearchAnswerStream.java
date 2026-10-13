@@ -161,7 +161,11 @@ public class SearchAnswerStream {
                         .toMillis()
         );
         emitter.onCompletion(reservation::close);
-        emitter.onTimeout(reservation::close);
+        emitter.onTimeout(() -> {
+            reservation.close();
+            // 기본 타임아웃 예외 처리보다 먼저 정상 종료를 확정한다.
+            emitter.complete();
+        });
         emitter.onError(error -> reservation.close());
         return emitter;
     }
