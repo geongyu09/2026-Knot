@@ -190,7 +190,8 @@ class S3RecordingAudioDeletionTest {
                         .build()
         );
 
-        assertThatThrownBy(() -> storage.deleteStoredObject("key")).isInstanceOf(RecordingException.class);
+        assertThatThrownBy(() -> storage.deleteStoredObject("key")).isInstanceOf(RecordingException.class)
+                .hasCauseInstanceOf(S3Exception.class);
         verify(
                 client,
                 never()

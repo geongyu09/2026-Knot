@@ -1,5 +1,6 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.recording.application.dto.result.RecordingAudioDeletionExecution;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -26,12 +27,13 @@ public class RecordingAudioDeletionWorker {
         try {
             storage.deleteStoredObject(execution.storageKey());
         } catch (RuntimeException exception) {
-            state.fail(
-                    taskId,
-                    execution.attemptCount()
+            ServerErrorLogger.recordTaskFailure(
+                    log,
+                    "Audio deletion deferred taskId=" + taskId + " attempt=" + execution.attemptCount()
+                            + " phase=delete",
+                    exception
             );
-            log.warn(
-                    "Audio deletion deferred taskId={} attempt={}",
+            state.fail(
                     taskId,
                     execution.attemptCount()
             );

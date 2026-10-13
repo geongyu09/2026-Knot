@@ -21,7 +21,10 @@ public class Sha256RecordingControlTokenHasher implements RecordingControlTokenH
                                     .digest(controlToken.getBytes(StandardCharsets.US_ASCII))
                     );
         } catch (NoSuchAlgorithmException exception) {
-            throw new RecordingException(RecordingErrorCode.RECORDING_CONTROL_HASH_FAILED);
+            throw new RecordingException(
+                    RecordingErrorCode.RECORDING_CONTROL_HASH_FAILED,
+                    exception
+            );
         }
     }
 }

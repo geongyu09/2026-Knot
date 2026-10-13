@@ -84,7 +84,10 @@ public class DocumentTopicPrompt {
                     StandardCharsets.UTF_8
             );
         } catch (IOException | JacksonException exception) {
-            throw new DocumentException(DocumentErrorCode.INVALID_TOPIC_CLASSIFICATION_INPUT);
+            throw new DocumentException(
+                    DocumentErrorCode.INVALID_TOPIC_CLASSIFICATION_INPUT,
+                    exception
+            );
         }
     }
 }

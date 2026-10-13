@@ -86,7 +86,10 @@ public class DocumentGenerationJobCursor {
             );
             return cursor;
         } catch (IllegalArgumentException | DateTimeException exception) {
-            throw new DocumentException(DocumentErrorCode.INVALID_PARAMETER);
+            throw new DocumentException(
+                    DocumentErrorCode.INVALID_PARAMETER,
+                    exception
+            );
         }
     }
 
@@ -123,7 +126,10 @@ public class DocumentGenerationJobCursor {
                 throw new DocumentException(DocumentErrorCode.INVALID_PARAMETER);
             }
         } catch (DateTimeException exception) {
-            throw new DocumentException(DocumentErrorCode.INVALID_PARAMETER);
+            throw new DocumentException(
+                    DocumentErrorCode.INVALID_PARAMETER,
+                    exception
+            );
         }
     }
 

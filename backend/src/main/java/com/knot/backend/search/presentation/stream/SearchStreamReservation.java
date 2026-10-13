@@ -1,5 +1,6 @@
 package com.knot.backend.search.presentation.stream;
 
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.SearchException;
 import java.time.Duration;
@@ -11,6 +12,7 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+@lombok.extern.slf4j.Slf4j
 public final class SearchStreamReservation implements AutoCloseable, Runnable {
 
     private final Semaphore capacity;
@@ -43,7 +45,22 @@ public final class SearchStreamReservation implements AutoCloseable, Runnable {
                     .interrupt();
         } catch (CancellationException ignored) {
         } catch (ExecutionException exception) {
-            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
+            ServerErrorLogger.record(
+                    log,
+                    "Search stream phase=reservation-await",
+                    exception
+            );
+            throw new SearchException(
+                    SearchErrorCode.INVALID_SEARCH_STATE,
+                    exception
+            );
+        } catch (RuntimeException exception) {
+            ServerErrorLogger.record(
+                    log,
+                    "Search stream phase=reservation-run",
+                    exception
+            );
+            throw exception;
         } finally {
             close();
             releasePermit();

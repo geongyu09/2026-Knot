@@ -1,5 +1,6 @@
 package com.knot.backend.document.infrastructure;
 
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.document.application.DocumentGenerationWorker;
 import com.knot.backend.document.application.DocumentGenerationRecoveryService;
 import com.knot.backend.document.domain.DocumentGenerationCandidate;
@@ -46,6 +47,18 @@ public class DocumentGenerationScheduler {
 
     @Scheduled(fixedDelayString = "${knot.document-generation.worker.poll-interval:1s}")
     public void dispatchQueued() {
+        try {
+            dispatchQueuedCandidates();
+        } catch (RuntimeException exception) {
+            ServerErrorLogger.record(
+                    log,
+                    "DocumentGenerationScheduler phase=dispatchQueued-candidates",
+                    exception
+            );
+        }
+    }
+
+    private void dispatchQueuedCandidates() {
         for (DocumentGenerationCandidate candidate : jobs.findReadyCandidates(
                 clock.instant(),
                 properties.getCandidateLimit()
@@ -60,6 +73,18 @@ public class DocumentGenerationScheduler {
 
     @Scheduled(fixedDelayString = "${knot.document-generation.worker.recovery-interval:5s}")
     public void recoverExpired() {
+        try {
+            recoverExpiredCandidates();
+        } catch (RuntimeException exception) {
+            ServerErrorLogger.record(
+                    log,
+                    "DocumentGenerationScheduler phase=recoverExpired-candidates",
+                    exception
+            );
+        }
+    }
+
+    private void recoverExpiredCandidates() {
         for (DocumentGenerationCandidate candidate : jobs.findExpiredCandidates(
                 clock.instant(),
                 properties.getCandidateLimit()
@@ -71,10 +96,11 @@ public class DocumentGenerationScheduler {
                         candidate.getAttemptCount()
                 );
             } catch (RuntimeException exception) {
-                log.warn(
-                        "Document generation recovery deferred jobId={} attempt={}",
-                        candidate.getJobId(),
-                        candidate.getAttemptCount()
+                ServerErrorLogger.record(
+                        log,
+                        "Document recovery deferred workspaceId=" + candidate.getWorkspaceId() + " jobId="
+                                + candidate.getJobId() + " attempt=" + candidate.getAttemptCount() + " phase=recovery",
+                        exception
                 );
             }
         }
@@ -87,10 +113,11 @@ public class DocumentGenerationScheduler {
                     candidate.getJobId()
             );
         } catch (RuntimeException exception) {
-            log.warn(
-                    "Document generation execution deferred jobId={} attempt={}",
-                    candidate.getJobId(),
-                    candidate.getAttemptCount()
+            ServerErrorLogger.record(
+                    log,
+                    "Document execution deferred workspaceId=" + candidate.getWorkspaceId() + " jobId="
+                            + candidate.getJobId() + " attempt=" + candidate.getAttemptCount() + " phase=execute",
+                    exception
             );
         }
     }

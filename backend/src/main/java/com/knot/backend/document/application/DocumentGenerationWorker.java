@@ -1,5 +1,6 @@
 package com.knot.backend.document.application;
 
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.document.application.dto.result.DocumentGenerationExecution;
 import com.knot.backend.document.domain.DocumentErrorCode;
 import com.knot.backend.document.domain.DocumentException;
@@ -48,22 +49,26 @@ public class DocumentGenerationWorker {
         } catch (LlmException exception) {
             fail(
                     execution,
-                    llmCause(exception.getErrorCode())
+                    llmCause(exception.getErrorCode()),
+                    exception
             );
         } catch (DocumentException exception) {
             fail(
                     execution,
-                    documentCause(exception)
+                    documentCause(exception),
+                    exception
             );
         } catch (DataAccessException exception) {
             fail(
                     execution,
-                    DocumentGenerationFailureCause.STORAGE
+                    DocumentGenerationFailureCause.STORAGE,
+                    exception
             );
         } catch (RuntimeException exception) {
             fail(
                     execution,
-                    DocumentGenerationFailureCause.INTERNAL
+                    DocumentGenerationFailureCause.INTERNAL,
+                    exception
             );
         }
     }
@@ -125,14 +130,14 @@ public class DocumentGenerationWorker {
 
     private void fail(
             DocumentGenerationExecution execution,
-            DocumentGenerationFailureCause cause
+            DocumentGenerationFailureCause cause,
+            Throwable failure
     ) {
-        log.warn(
-                "Document generation failed jobId={} stage={} attempt={} cause={}",
-                execution.jobId(),
-                execution.stage(),
-                execution.attemptCount(),
-                cause
+        ServerErrorLogger.recordTaskFailure(
+                log,
+                "Document generation failed workspaceId=" + execution.workspaceId() + " jobId=" + execution.jobId()
+                        + " stage=" + execution.stage() + " attempt=" + execution.attemptCount() + " cause=" + cause,
+                failure
         );
         try {
             failures.failAttempt(
@@ -142,10 +147,12 @@ public class DocumentGenerationWorker {
                     cause
             );
         } catch (RuntimeException exception) {
-            log.warn(
-                    "Document generation failure persistence deferred jobId={} attempt={}",
-                    execution.jobId(),
-                    execution.attemptCount()
+            ServerErrorLogger.record(
+                    log,
+                    "Document failure persistence deferred workspaceId=" + execution.workspaceId() + " jobId="
+                            + execution.jobId() + " stage=" + execution.stage() + " attempt="
+                            + execution.attemptCount(),
+                    exception
             );
         }
     }
