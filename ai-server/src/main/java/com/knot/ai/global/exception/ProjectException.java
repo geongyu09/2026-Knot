@@ -10,7 +10,20 @@ public abstract class ProjectException extends RuntimeException {
     private final ErrorCode errorCode;
 
     protected ProjectException(ErrorCode errorCode) {
-        super(requireErrorCode(errorCode).getMessage());
+        this(
+                errorCode,
+                null
+        );
+    }
+
+    protected ProjectException(
+            ErrorCode errorCode,
+            Throwable cause
+    ) {
+        super(
+                requireErrorCode(errorCode).getMessage(),
+                cause
+        );
         this.errorCode = errorCode;
     }
 
