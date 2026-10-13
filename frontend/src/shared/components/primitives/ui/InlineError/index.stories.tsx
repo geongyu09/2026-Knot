@@ -11,6 +11,7 @@ import InlineError from ".";
  * - 가로 정렬은 `align`으로 골라요. 그 자리의 빈 상태 안내와 같은 정렬을 따라요.
  *   - `center` : 영역 전체를 대신할 때. 예: 홈 카드 네 종, 문서 목록
  *   - `start`(기본값) : 글 흐름 안에 들어갈 때. 예: 탐색 답변, 원문 패널
+ * - 크기는 `size`로 골라요. 폭이 좁은 자리에는 `sm`을 쓰고 문구도 짧게 줄여요. 예: 사이드바의 문서 목록
  * - 같은 실패를 토스트로 또 알리지 않아요.
  * - 화면 전체가 막히는 실패(로그인 확인·첫 화면 준비)에는 `RetryNotice`를 써요. `InlineError`는 `center`로 두어도 화면 안 한 영역의 실패에만 써요.
  * - 나타나자마자 스크린리더가 문구를 읽어요.
@@ -24,6 +25,7 @@ const meta = {
   },
   argTypes: {
     align: { control: "inline-radio", options: ["start", "center"] },
+    size: { control: "inline-radio", options: ["md", "sm"] },
   },
   parameters: {
     design: {
@@ -55,5 +57,20 @@ export const Centered: Story = {
 export const AnswerFailed: Story = {
   args: {
     message: "답변을 만들지 못했어요. 잠시 후 다시 시도해 주세요.",
+  },
+};
+
+/** 폭이 좁은 자리에 쓰는 작은 안내예요. 아이콘 · 문구 · 「다시 시도」가 모두 한 단계 작아요. 예: 사이드바의 문서 목록을 불러오지 못했을 때 */
+export const Small: Story = {
+  args: {
+    size: "sm",
+    align: "center",
+    message: "목록을 불러오지 못했어요",
+  },
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3997-990",
+    },
   },
 };
