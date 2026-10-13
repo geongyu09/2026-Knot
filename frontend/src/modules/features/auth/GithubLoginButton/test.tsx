@@ -33,7 +33,7 @@ const renderButton = () => {
     </ThemeProvider>,
   );
 
-  // 처리 중에는 글자를 숨겨 이름으로 다시 찾을 수 없으므로, 처음에 찾은 버튼을 계속 써요
+  // 누르기 전과 뒤에 같은 버튼의 상태를 보려고, 처음에 찾은 버튼을 돌려줘요
   return screen.getByRole("button", { name: "GitHub으로 시작하기" });
 };
 
