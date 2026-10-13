@@ -21,7 +21,7 @@ export default function PendingDocumentsSkeleton() {
       <Header>
         <Title id={titleId}>확인이 필요한 문서</Title>
       </Header>
-      <Rows role="status" aria-label="확인이 필요한 문서를 불러오고 있어요">
+      <RowList role="status" aria-label="확인이 필요한 문서를 불러오고 있어요">
         {Array.from({ length: ROW_COUNT }, (_, rowIndex) => (
           <Row key={rowIndex}>
             <Info>
@@ -38,7 +38,7 @@ export default function PendingDocumentsSkeleton() {
             <Skeleton width={5.75} height={2.5} radius={0.75} />
           </Row>
         ))}
-      </Rows>
+      </RowList>
     </Container>
   );
 }
@@ -71,7 +71,7 @@ const Title = styled.h2`
 `;
 
 /** 피그마 Card/ConfirmRequests: 행 사이 8px */
-const Rows = styled.div`
+const RowList = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.5rem; /* 8px */

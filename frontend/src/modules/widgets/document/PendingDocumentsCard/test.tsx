@@ -199,19 +199,27 @@ describe("PendingDocumentsCard", () => {
 
   it("제목 옆에 서버가 센 확인할 문서 수를 보여 준다", async () => {
     // 받은 문서 수와 다른 값을 줘서, 행을 세지 않고 주제별 문서 수를 더하는지 봐요
-    respondWith({
+    const response = {
       topics: [
         { topic: "주간 회의", documentCount: 3 },
         { topic: "회원 관리", documentCount: 4 },
       ],
       items: pendingItems,
       nextCursor: null,
-    });
+    } satisfies DocumentsResponse;
+    const [weeklyMeeting, memberManagement] = new GetDocumentsResponseDto(
+      response,
+    ).topics;
+    respondWith(response);
 
     renderPendingDocumentsCard();
 
     await screen.findAllByRole("listitem");
-    expect(within(await findCard()).getByText("7")).toBeInTheDocument();
+    expect(
+      within(await findCard()).getByText(
+        String(weeklyMeeting.documentCount + memberManagement.documentCount),
+      ),
+    ).toBeInTheDocument();
   });
 
   it("확인할 문서가 카드에 한 번에 보이는 수(3개)보다 많아도 모든 문서를 행으로 보여 준다", async () => {
