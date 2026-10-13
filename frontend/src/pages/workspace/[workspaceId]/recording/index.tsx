@@ -10,7 +10,7 @@ import RecorderBar from "@widgets/recording/RecorderBar";
  * 녹음 상태는 워크스페이스 레이아웃이 들고 있어 다른 화면으로 옮겨 가도 녹음이 이어지고,
  * 그동안 하단 독이 녹음 시간과 이 화면으로 돌아오는 칩을 보여줘요.
  *
- * 녹음 파일 업로드·문서 정리 요청은 아직 연결하지 않아, 끝낸 녹음은 버려요.
+ * 녹음을 끝내 오디오 업로드가 확인되면 그 녹음의 문서 정리 화면으로 가고, 올리지 못했으면 홈으로 가요.
  *
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1562-2595 녹음/진행 중
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1635-2763 녹음/다른 화면 이동

@@ -37,6 +37,11 @@ const HOME_PATH = getRouterPath({
   routeKey: "WORKSPACE_HOME",
   params: { workspaceId: WORKSPACE_ID },
 });
+const RECORDING_ID = 10;
+const DOCUMENTS_PATH = getRouterPath({
+  routeKey: "RECORDING_DOCUMENTS",
+  params: { workspaceId: WORKSPACE_ID, recordingId: String(RECORDING_ID) },
+});
 
 /** 녹음 상태는 전역 저장소에 있으므로, 녹음 화면과 홈을 오가며 녹음이 이어지는지 봐요. */
 const renderRecorderBar = () => {
@@ -47,6 +52,7 @@ const renderRecorderBar = () => {
         children: [
           { path: PATH_ROUTE.WORKSPACE_HOME, element: <p>홈 화면</p> },
           { path: PATH_ROUTE.RECORDING, element: <RecorderBar /> },
+          { path: PATH_ROUTE.RECORDING_DOCUMENTS, element: <p>정리 화면</p> },
         ],
       },
     ],
@@ -78,7 +84,7 @@ const startRecording = async () => {
     await useRecordingStore.getState().connectMicrophone();
     useRecordingStore.getState().startRecording({
       workspaceId: Number(WORKSPACE_ID),
-      recordingId: 10,
+      recordingId: RECORDING_ID,
     });
   });
 };
@@ -341,7 +347,7 @@ describe("RecorderBar", () => {
 
       await act(async () => respondEnd());
       await waitFor(() =>
-        expect(router.state.location.pathname).toBe(HOME_PATH),
+        expect(router.state.location.pathname).toBe(DOCUMENTS_PATH),
       );
       expect(count.end).toBe(1);
     });

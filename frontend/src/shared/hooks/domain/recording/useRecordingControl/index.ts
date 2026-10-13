@@ -7,6 +7,7 @@ import useResumeRecordingMutation from "@api/mutations/useResumeRecordingMutatio
 import useSendRecordingHeartbeatMutation from "@api/mutations/useSendRecordingHeartbeatMutation";
 import useStartRecordingMutation from "@api/mutations/useStartRecordingMutation";
 import useUploadRecordingAudioMutation from "@api/mutations/useUploadRecordingAudioMutation";
+import useNavigateToRecordingDocuments from "@hooks/domain/recording/useNavigateToRecordingDocuments";
 import useNavigateToWorkspaceHome from "@hooks/domain/workspace/useNavigateToWorkspaceHome";
 import { useRecordingStore } from "@store/recordingStore";
 import { isClosedRecordingError } from "@utils/isClosedRecordingError";
@@ -51,9 +52,10 @@ const clearRecording = () => {
  *   돌려준 녹음이 이미 끝났거나 버려졌으면 새 증명으로 한 번만 다시 보내요. 시작 중에 다시 불러도 겹쳐 보내지 않아요.
  * - 일시정지·이어서 녹음: 브라우저 녹음을 먼저 바꾸고 서버에 알려요. 서버 요청이 실패해도 다시 보내지 않고
  *   사용자가 누른 대로 둬요.
- * - 끝내기: 확인 창에서 [녹음 끝내기]를 고르면 종료 요청 → 업로드 URL 발급 → 오디오 PUT → 업로드 완료 확인 → 녹음 비우기 → 홈.
+ * - 끝내기: 확인 창에서 [녹음 끝내기]를 고르면 종료 요청 → 업로드 URL 발급 → 오디오 PUT → 업로드 완료 확인 → 녹음 비우기 → 그 녹음의 문서 정리 화면.
  *   끝내는 동안에는 확인 창을 다시 띄우지 않아요. 종료가 실패하면 녹음을 그대로 두고,
  *   업로드가 일시 실패하면 URL 발급부터 3번까지 다시 시도하고, 그래도 실패하면 오디오를 버리고 홈으로 가요.
+ *   종료 요청이 이미 끝났거나 버려진 녹음으로 거절돼도 정리할 오디오가 없어 홈으로 가요.
  *   워크스페이스를 옮길 때처럼 부른 쪽이 따로 확인받고 갈 곳도 정하면 `endRecordingWithoutConfirm`으로 끝내요.
  * - 생존 신호: 응답의 서버 상태를 따라가요. 서버가 끝낸 녹음(`ENDED`)이면 종료 요청 없이 여기까지의 오디오를 올리고,
  *   버렸거나(`DISCARDED`) 더는 볼 수 없는 녹음(403 `WORKSPACE_ACCESS_DENIED`, 404)이면 오디오를 버려요. 둘 다 홈으로 가요.
@@ -66,6 +68,7 @@ const clearRecording = () => {
  */
 const useRecordingControl = () => {
   const { navigateToWorkspaceHome } = useNavigateToWorkspaceHome();
+  const { navigateToRecordingDocuments } = useNavigateToRecordingDocuments();
   //TODO: shared훅에서 mutate 제거하기
   const { mutateAsync: startRecordingSession } = useStartRecordingMutation();
   const { mutateAsync: pauseRecordingSession } = usePauseRecordingMutation();
@@ -309,12 +312,13 @@ const useRecordingControl = () => {
 
   /**
    * 확인 창 없이 녹음을 끝내 올린 뒤 비워요. 이동은 부른 쪽이 정해요.
-   * 끝냈으면 `true`를, 이미 끝내는 중이거나 종료 요청이 실패해 녹음을 이어 가면 `false`를 돌려줘요
+   * 결과는 `uploaded`(업로드 완료를 확인받음)·`notUploaded`(끝냈지만 오디오를 올리지 못함)·`notEnded`예요.
+   * `notEnded`는 이미 끝내는 중이거나 종료 요청이 실패해 녹음을 이어 가는 경우예요
    */
   const endRecordingWithoutConfirm = useCallback(async () => {
     const { session, isEnding, beginEnding } = useRecordingStore.getState();
     const proof = getRecordingControlProof();
-    if (!session || !proof || isEnding) return false;
+    if (!session || !proof || isEnding) return "notEnded";
 
     // 응답을 기다리는 동안 다시 눌러도 종료 요청이 겹치지 않게 먼저 표시해요
     beginEnding();
@@ -328,19 +332,19 @@ const useRecordingControl = () => {
       if (isClosedRecordingError(error)) {
         clearRecording();
 
-        return true;
+        return "notUploaded";
       }
 
       useRecordingStore.getState().cancelEnding();
 
-      return false;
+      return "notEnded";
     }
 
     const audio = await useRecordingStore.getState().stopRecording();
-    await uploadRecordedAudio({ ...session, audio });
+    const isUploaded = await uploadRecordedAudio({ ...session, audio });
     clearRecording();
 
-    return true;
+    return isUploaded ? "uploaded" : "notUploaded";
   }, [endRecordingSession, uploadRecordedAudio]);
 
   const endRecording = useCallback(() => {
@@ -350,16 +354,27 @@ const useRecordingControl = () => {
     openEndRecordingDialog({
       onEnd: async () => {
         const { session } = useRecordingStore.getState();
-        if (!session || !(await endRecordingWithoutConfirm())) return;
+        if (!session) return;
 
-        navigateToWorkspaceHome({
-          workspaceId: String(session.workspaceId),
-          replace: true,
-        });
+        const result = await endRecordingWithoutConfirm();
+        if (result === "notEnded") return;
+
+        const workspaceId = String(session.workspaceId);
+        // 올린 오디오가 있어야 문서가 만들어지므로, 올리지 못한 녹음은 정리 화면 대신 홈으로 보내요
+        if (result === "uploaded") {
+          navigateToRecordingDocuments({
+            workspaceId,
+            recordingId: session.recordingId,
+            replace: true,
+          });
+        } else {
+          navigateToWorkspaceHome({ workspaceId, replace: true });
+        }
       },
     });
   }, [
     endRecordingWithoutConfirm,
+    navigateToRecordingDocuments,
     navigateToWorkspaceHome,
     openEndRecordingDialog,
   ]);

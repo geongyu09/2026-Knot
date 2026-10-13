@@ -38,6 +38,11 @@ const RECORDING_PATH = getRouterPath({
   routeKey: "RECORDING",
   params: { workspaceId: WORKSPACE_ID },
 });
+const RECORDING_ID = 10;
+const DOCUMENTS_PATH = getRouterPath({
+  routeKey: "RECORDING_DOCUMENTS",
+  params: { workspaceId: WORKSPACE_ID, recordingId: String(RECORDING_ID) },
+});
 const QUESTION = "지난주 회의에서 정해진 것만 뽑아 줘";
 
 /**
@@ -329,7 +334,7 @@ describe("WorkspaceDock", () => {
         await useRecordingStore.getState().connectMicrophone();
         useRecordingStore.getState().startRecording({
           workspaceId: Number(WORKSPACE_ID),
-          recordingId: 10,
+          recordingId: RECORDING_ID,
         });
       });
     };
@@ -698,15 +703,15 @@ describe("WorkspaceDock", () => {
         ).toBeInTheDocument();
       });
 
-      it("확인 창에서 녹음 끝내기를 고르면 녹음을 끝내고 제자리에서 마이크로 돌아간다", async () => {
+      it("확인 창에서 녹음 끝내기를 고르면 녹음을 끝내고 그 녹음의 정리 화면으로 가며 마이크로 돌아간다", async () => {
         const { router } = renderDock();
 
         await stopRecording();
 
         await waitFor(() =>
-          expect(useRecordingStore.getState().status).toBe("idle"),
+          expect(router.state.location.pathname).toBe(DOCUMENTS_PATH),
         );
-        expect(router.state.location.pathname).toBe(HOME_PATH);
+        expect(useRecordingStore.getState().status).toBe("idle");
         expect(
           screen.getByRole("button", { name: "회의 녹음 시작" }),
         ).toBeInTheDocument();
@@ -735,7 +740,7 @@ describe("WorkspaceDock", () => {
           await useRecordingStore.getState().connectMicrophone();
           useRecordingStore.getState().startRecording({
             workspaceId: Number(WORKSPACE_ID),
-            recordingId: 10,
+            recordingId: RECORDING_ID,
           });
         });
       });
