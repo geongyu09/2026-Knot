@@ -868,6 +868,106 @@ class SearchDocumentToolServiceIntegrationTest {
     }
 
     @Test
+    @DisplayName("실제 MCP의 세 문서 도구는 DRAFT 상태와 null 보관 시각을 전달한다")
+    void mcp_success_draftMetadata() throws Exception {
+        // given
+        long document = saveDocument(
+                workspaceId,
+                "DRAFT",
+                "결정",
+                "내용"
+        );
+        String bearer = new SearchToolTokenCodec(
+                mapper,
+                properties,
+                clock
+        ).encode(
+                "knot-search-mcp",
+                scope
+        );
+        // when
+        JsonNode definitions = mapper.readTree(
+                rpc(
+                        bearer,
+                        "tools/list",
+                        "{}"
+                ).body()
+        )
+                .path("result");
+        JsonNode listed = mcpResult(
+                bearer,
+                "list_documents",
+                "{}"
+        );
+        JsonNode searched = mcpResult(
+                bearer,
+                "search_documents",
+                "{\"query\":\"결정\"}"
+        );
+        JsonNode read = mcpResult(
+                bearer,
+                "read_document",
+                "{\"documentId\":" + document + "}"
+        );
+        // then
+        for (JsonNode tool : definitions.path("tools")) {
+            assertThat(
+                    tool.path("description")
+                            .asString()
+            ).contains(
+                    "DRAFT",
+                    "ARCHIVED"
+            );
+        }
+        assertThat(
+                listed.path("items")
+                        .get(0)
+                        .path("status")
+                        .asString()
+        ).isEqualTo("DRAFT");
+        assertThat(
+                searched.path("items")
+                        .get(0)
+                        .path("status")
+                        .asString()
+        ).isEqualTo("DRAFT");
+        assertThat(
+                read.path("document")
+                        .path("status")
+                        .asString()
+        ).isEqualTo("DRAFT");
+        assertThat(
+                read.path("document")
+                        .path("archivedAt")
+                        .isNull()
+        ).isTrue();
+        assertThat(
+                read.path("content")
+                        .asString()
+        ).isEqualTo("내용");
+    }
+
+    private JsonNode mcpResult(
+            String bearer,
+            String name,
+            String arguments
+    ) throws Exception {
+        JsonNode result = mapper.readTree(
+                rpc(
+                        bearer,
+                        "tools/call",
+                        "{\"name\":\"" + name + "\",\"arguments\":" + arguments + "}"
+                ).body()
+        )
+                .path("result");
+        assertThat(
+                result.path("isError")
+                        .asBoolean()
+        ).isFalse();
+        return result.path("structuredContent");
+    }
+
+    @Test
     void read_failure_invalidId() {
         assertThatThrownBy(
                 () -> service.read(
