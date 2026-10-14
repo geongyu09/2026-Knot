@@ -16,6 +16,11 @@ export interface WorkspaceDetailResponse {
   activeMemberCount: number;
 }
 
+export interface OwnershipTransferCandidate {
+  memberId: number;
+  nickname: string;
+}
+
 export interface WorkspaceCreateResponse {
   id: number;
 }

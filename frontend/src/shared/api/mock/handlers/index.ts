@@ -18,6 +18,7 @@ import { workspaceInvitationHandlers } from "./api/v1/workspaces/[workspaceId]/i
 import { workspaceInvitationsHandlers } from "./api/v1/workspaces/[workspaceId]/invitations";
 import { workspaceInvitationReissueHandlers } from "./api/v1/workspaces/[workspaceId]/invitations/reissue";
 import { workspaceLeaveHandlers } from "./api/v1/workspaces/[workspaceId]/members/me";
+import { ownershipTransferCandidatesHandlers } from "./api/v1/workspaces/[workspaceId]/ownershipTransferCandidates";
 import { workspaceRecordingsHandlers } from "./api/v1/workspaces/[workspaceId]/recordings";
 import { recordingHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]";
 import { workspaceSearchConversationsHandlers } from "./api/v1/workspaces/[workspaceId]/search/conversations";
@@ -42,6 +43,7 @@ export const handlers = [
   ...workspaceInvitationsHandlers,
   ...workspaceInvitationReissueHandlers,
   ...workspaceLeaveHandlers,
+  ...ownershipTransferCandidatesHandlers,
   ...workspaceConversationsHandlers,
   ...workspaceRecordingsHandlers,
   ...currentRecordingHandlers,

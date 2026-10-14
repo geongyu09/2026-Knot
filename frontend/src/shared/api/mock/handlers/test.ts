@@ -32,6 +32,7 @@ import {
   type SearchStreamStage,
 } from "@api/dto/search";
 import {
+  GetOwnershipTransferCandidatesResponseDto,
   GetWorkspaceResponseDto,
   GetWorkspacesResponseDto,
   PostWorkspaceResponseDto,
@@ -68,6 +69,7 @@ import { getDocumentConfirmationsApi } from "@api/fetch/api/v1/workspaces/[works
 import { confirmDocumentApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documents/[documentId]/confirmations/me";
 import { getWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitation";
 import { leaveWorkspaceApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/members/me";
+import { getOwnershipTransferCandidatesApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/ownershipTransferCandidates";
 import { createSearchConversationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations";
 import { createSearchQuestionApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions";
 import { issueWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations";
@@ -114,6 +116,7 @@ import {
   searchQuestionAnswerStreamResponse,
 } from "@api/mock/responses/search";
 import {
+  ownershipTransferCandidatesResponse,
   workspaceCreateResponse,
   workspaceDetailResponse,
   workspacesResponse,
@@ -228,6 +231,16 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
 
     it("DELETE /api/v1/workspaces/:workspaceId/members/me는 본문 없이 성공한다", async () => {
       await expect(leaveWorkspaceApi(WORKSPACE_ID)).resolves.toBeUndefined();
+    });
+
+    it("GET /api/v1/workspaces/:workspaceId/ownership-transfer-candidates는 ownershipTransferCandidatesResponse를 돌려준다", async () => {
+      await expect(
+        getOwnershipTransferCandidatesApi(WORKSPACE_ID),
+      ).resolves.toEqual(
+        new GetOwnershipTransferCandidatesResponseDto(
+          ownershipTransferCandidatesResponse,
+        ),
+      );
     });
   });
 
