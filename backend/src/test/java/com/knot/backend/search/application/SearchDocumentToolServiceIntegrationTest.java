@@ -524,20 +524,24 @@ class SearchDocumentToolServiceIntegrationTest {
     }
 
     @Test
-    void read_failure_draft() {
+    @DisplayName("미확인 DRAFT도 본문을 읽고 보관 시각은 null로 반환한다")
+    void read_success_draft() {
         long document = saveDocument(
                 workspaceId,
                 "DRAFT",
                 "초안",
                 "비공개"
         );
-        assertThatThrownBy(
-                () -> service.read(
-                        scope,
-                        document,
-                        null
-                )
-        ).hasMessage("DOCUMENT_NOT_FOUND");
+        SearchDocumentSlice result = service.read(
+                scope,
+                document,
+                null
+        );
+        assertThat(result.content()).isEqualTo("비공개");
+        assertThat(
+                result.document()
+                        .archivedAt()
+        ).isNull();
     }
 
     @Test
