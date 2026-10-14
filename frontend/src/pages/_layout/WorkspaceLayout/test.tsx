@@ -565,6 +565,9 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
     "*/api/v1/workspaces/:workspaceId/search/conversations";
   const SEARCH_QUESTIONS_PATH =
     "*/api/v1/workspaces/:workspaceId/search/conversations/:conversationId/questions";
+  const SEARCH_ANSWER_RETRY_PATH =
+    "*/api/v1/workspaces/:workspaceId/search/conversations/:conversationId/questions/:questionId/retry";
+  const FAILED_TEXT = "답변을 만들지 못했어요. 잠시 후 다시 시도해 주세요.";
   const QUESTION = "DB는 뭘로 정했어?";
   const FOLLOW_UP_QUESTION = "초기 스키마는 누가 정리했어?";
 
@@ -751,6 +754,149 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
 
     expect(
       await waitFor(() => within(getChatList()).getByText(QUESTION)),
+    ).toBeInTheDocument();
+  });
+
+  it("후속 질문의 답변이 실패하면 그 자리에 실패 안내를 두고, 다시 시도가 접수 전에 실패해도 실패 안내를 그대로 둔다 (SEARCH-R5)", async () => {
+    const { questionMessageId, answerMessageId } =
+      searchQuestionAnswerStreamResponse;
+    const partialAnswer = "끊기기 전까지 받은 답";
+    const savedItems = searchMessagesResponse.items;
+    // 서버는 접수한 질문과 실패한 답변을 저장해요. 실패한 뒤 다시 조회하면 그 턴이 들어 있어요
+    const server = { hasFailed: false };
+    mockServer.use(
+      http.get(MESSAGES_PATH, ({ params }) =>
+        HttpResponse.json({
+          ...searchMessagesResponse,
+          conversationId: Number(params.conversationId),
+          items: server.hasFailed
+            ? [
+                ...savedItems,
+                {
+                  ...savedItems[0],
+                  id: questionMessageId,
+                  content: FOLLOW_UP_QUESTION,
+                },
+                {
+                  ...savedItems[1],
+                  id: answerMessageId,
+                  content: partialAnswer,
+                  status: "FAILED",
+                  evidences: [],
+                },
+              ]
+            : savedItems,
+        }),
+      ),
+    );
+    const stream = respondWithControlledSse(SEARCH_QUESTIONS_PATH);
+    const { queryClient } = renderLayout(
+      CONVERSATION_PATH,
+      <SearchConversation />,
+    );
+    await findInConversation(savedItems[0].content);
+
+    await sendFromDock(FOLLOW_UP_QUESTION);
+    await stream.waitForOpen();
+    stream.send("accepted", {
+      conversationId: Number(CONVERSATION_ID),
+      questionMessageId,
+      answerMessageId,
+    });
+    stream.send("delta", { answerMessageId, text: partialAnswer });
+    await findInConversation(partialAnswer);
+    server.hasFailed = true;
+    stream.send("failed", {
+      answerMessageId,
+      status: "FAILED",
+      code: "LLM_STREAM_FAILED",
+    });
+
+    const getLastTurn = () => {
+      const turns = within(getConversation()).getAllByRole("article");
+      return turns[turns.length - 1];
+    };
+    await waitFor(() =>
+      expect(within(getLastTurn()).getByText(FAILED_TEXT)).toBeInTheDocument(),
+    );
+    expect(
+      within(getConversation()).queryByText(partialAnswer),
+    ).not.toBeInTheDocument();
+
+    mockServer.use(
+      http.post(SEARCH_ANSWER_RETRY_PATH, () =>
+        HttpResponse.json(
+          { code: "ANSWER_ALREADY_IN_PROGRESS", message: "이미 답변을 만드는 중이에요" },
+          { status: 409 },
+        ),
+      ),
+    );
+    await act(async () => {
+      fireEvent.click(
+        within(getLastTurn()).getByRole("button", { name: "다시 시도" }),
+      );
+    });
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+    const savedQuestionCount = savedItems.filter(
+      ({ role }) => role === "USER",
+    ).length;
+    expect(within(getConversation()).getAllByRole("article")).toHaveLength(
+      savedQuestionCount + 1,
+    );
+    expect(within(getLastTurn()).getByText(FOLLOW_UP_QUESTION)).toBeInTheDocument();
+    expect(within(getLastTurn()).getByText(FAILED_TEXT)).toBeInTheDocument();
+    expect(
+      within(getLastTurn()).getByRole("button", { name: "다시 시도" }),
+    ).toBeInTheDocument();
+  });
+
+  it("첫 질문이 실패해 목록에 없던 대화는 다시 시도가 접수되면 답변이 끝나기 전에 대화 목록에 나타난다 (SEARCH-R5, COMMON-01)", async () => {
+    const [question, answer] = searchMessagesResponse.items;
+    respondMessages([
+      question,
+      { ...answer, content: "", status: "FAILED", evidences: [] },
+    ]);
+    // 서버는 첫 질문이 실패한 대화를 목록에서 숨기고, 다시 시도를 접수하면 목록에 다시 넣어요
+    const list = { isAccepted: false };
+    mockServer.use(
+      http.get(SEARCH_CONVERSATIONS_PATH, () =>
+        HttpResponse.json({
+          items: list.isAccepted
+            ? [
+                {
+                  ...searchConversationsResponse.items[0],
+                  id: Number(CONVERSATION_ID),
+                  title: question.content,
+                },
+              ]
+            : [],
+          nextCursor: null,
+        }),
+      ),
+    );
+    const stream = respondWithControlledSse(SEARCH_ANSWER_RETRY_PATH);
+    renderLayout(CONVERSATION_PATH, <SearchConversation />);
+    fireEvent.click(await screen.findByRole("button", { name: "대화 목록" }));
+    const getChatList = () =>
+      screen.getByRole("complementary", { name: "대화 목록" });
+    expect(
+      await within(getChatList()).findByText("아직 나눈 대화가 없어요"),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+    });
+    await stream.waitForOpen();
+    list.isAccepted = true;
+    stream.send("accepted", {
+      conversationId: Number(CONVERSATION_ID),
+      questionMessageId: question.id,
+      answerMessageId: answer.id,
+    });
+
+    expect(
+      await waitFor(() => within(getChatList()).getByText(question.content)),
     ).toBeInTheDocument();
   });
 
