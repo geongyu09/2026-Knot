@@ -19,7 +19,9 @@ export const useWorkspaceSwitcher = () => {
   const { switchWorkspace, createWorkspace } = useWorkspaceSwitch({
     currentWorkspaceId,
   });
-  const { openLeaveWorkspaceDialog } = useLeaveWorkspaceDialog();
+  const { openLeaveWorkspaceDialog } = useLeaveWorkspaceDialog({
+    workspaceId: currentWorkspaceId,
+  });
   // 레이아웃의 진입 판정과 같은 쿼리라 요청은 한 번만 나가요
   const { data: workspace } = useWorkspaceQuery({
     workspaceId: currentWorkspaceId,

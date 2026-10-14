@@ -1,15 +1,25 @@
-import { TEMP_WORKSPACE_LEAVE } from "@constants/workspace";
+import useLeaveWorkspaceMutation from "@api/mutations/useLeaveWorkspaceMutation";
+import useTransferWorkspaceOwnershipMutation from "@api/mutations/useTransferWorkspaceOwnershipMutation";
+import useOwnershipTransferCandidatesQuery from "@api/queries/useOwnershipTransferCandidatesQuery";
+import useWorkspaceQuery from "@api/queries/useWorkspaceQuery";
 import useKeyDown from "@hooks/common/useKeyDown";
 import ConfirmDialog from "@primitives/ui/ConfirmDialog";
 import Dim from "@primitives/ui/Dim";
 import MemberSelectDialog from "@primitives/ui/MemberSelectDialog";
 import { useDialog } from "@provider/context/dialogContext";
+import { PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
 import { useState } from "react";
+import { useNavigate } from "react-router";
 
 const LEAVE_TITLE = "워크스페이스에서 나갈까요?";
 const TRANSFER_TITLE = "누구에게 owner를 넘길까요?";
 const DELETE_TITLE = "워크스페이스를 삭제할까요?";
+
+interface UseLeaveWorkspaceDialogParams {
+  /** 나가려는 워크스페이스 ID */
+  workspaceId: number;
+}
 
 interface LeaveConfirmDialogProps {
   description: string;
@@ -18,10 +28,13 @@ interface LeaveConfirmDialogProps {
 }
 
 interface OwnerLeaveDialogProps {
-  /** 나를 뺀 멤버 목록 */
-  members: { id: number; name: string }[];
+  /** owner를 넘길 멤버를 받아 올 워크스페이스 ID */
+  workspaceId: number;
   onCancel: () => void;
-  onConfirm: () => void;
+  /** 고른 멤버에게 owner를 넘기고 나갈 때 할 일 */
+  onTransfer: (successorMemberId: number) => void;
+  /** 삭제 확인 창에서 [삭제]를 눌렀을 때 할 일 */
+  onDelete: () => void;
 }
 
 /**
@@ -31,25 +44,51 @@ interface OwnerLeaveDialogProps {
  * - 다른 멤버가 있는 owner: owner를 넘길 멤버를 고르는 창. 여기서 워크스페이스 삭제 확인 창으로도 갈 수 있어요
  * - 나 혼자: 워크스페이스도 함께 삭제된다고 알리는 확인 창
  *
- * 아직 나가기 API가 없어 내 역할과 멤버 목록은 임시 값으로 정해요.
- * 확인을 누르면 서버에는 알리지 않고, 이 탭에서 하던 녹음(일시정지 포함)만 버린 뒤 창을 닫아요.
+ * 어떤 창을 띄울지는 워크스페이스 조회의 내 역할과 멤버 수로 정해요.
+ * 일반 멤버와 혼자인 경우는 나가기를, owner는 고른 멤버로 승계를 요청해요. 승계 요청이 탈퇴까지 처리해요.
+ * 요청이 성공하면 이 탭에서 하던 녹음(일시정지 포함)을 버리고 진입 분기(`/`)로 보내, 남은 워크스페이스나 선택 화면으로 가게 해요.
+ * 요청이 실패하면 지금 화면과 녹음을 그대로 둬요.
+ *
+ * 워크스페이스 삭제는 호출할 API가 없어(ADR 410) [삭제]를 눌러도 녹음만 버리고 창을 닫아요.
  *
  * 저장소의 동작 하나만 필요해 `useRecordingState` 대신 저장소에서 바로 읽어요.
  */
-const useLeaveWorkspaceDialog = () => {
+const useLeaveWorkspaceDialog = ({
+  workspaceId,
+}: UseLeaveWorkspaceDialogParams) => {
   const { open } = useDialog();
+  const navigate = useNavigate();
   const discardRecording = useRecordingStore((state) => state.discardRecording);
+  // 레이아웃의 진입 판정과 같은 쿼리라 요청은 한 번만 나가요
+  const { data: workspace } = useWorkspaceQuery({ workspaceId });
+  const { mutateAsync: leaveWorkspace } = useLeaveWorkspaceMutation();
+  const { mutateAsync: transferOwnership } =
+    useTransferWorkspaceOwnershipMutation();
 
   const openLeaveWorkspaceDialog = () => {
-    const { myRole, otherMembers } = TEMP_WORKSPACE_LEAVE;
+    // 내 역할과 멤버 수를 받아 오기 전에는 어떤 창을 띄울지 정할 수 없어요
+    if (workspace === undefined) return;
+
+    const { myRole, activeMemberCount } = workspace;
 
     open(({ close }) => {
-      const leave = () => {
+      /** 창을 먼저 닫아 요청이 두 번 나가지 않게 하고, 요청이 성공했을 때만 녹음을 버리고 떠나요 */
+      const leaveBy = async (request: () => Promise<unknown>) => {
         close();
+
+        try {
+          await request();
+        } catch {
+          return;
+        }
+
         discardRecording();
+        navigate(PATH_ROUTE.HOME, { replace: true });
       };
 
-      if (otherMembers.length === 0) {
+      const leave = () => leaveBy(() => leaveWorkspace({ workspaceId }));
+
+      if (activeMemberCount === 1) {
         return (
           <LeaveConfirmDialog
             description={
@@ -64,9 +103,17 @@ const useLeaveWorkspaceDialog = () => {
       if (myRole === "OWNER") {
         return (
           <OwnerLeaveDialog
-            members={otherMembers}
+            workspaceId={workspaceId}
             onCancel={close}
-            onConfirm={leave}
+            onTransfer={(successorMemberId) =>
+              leaveBy(() =>
+                transferOwnership({ workspaceId, successorMemberId }),
+              )
+            }
+            onDelete={() => {
+              close();
+              discardRecording();
+            }}
           />
         );
       }
@@ -123,6 +170,7 @@ function LeaveConfirmDialog({
 /**
  * 다른 멤버가 있는 owner가 나갈 때의 모달. owner를 넘길 멤버를 고르거나 워크스페이스를 삭제해요.
  *
+ * 고를 수 있는 멤버는 승계 후보 조회로 받아 오고, 받아 오기 전에는 목록을 비워 둬요.
  * 멤버 선택 창은 ESC로 닫히고, 바깥 클릭은 잘못 눌러 고른 멤버를 잃지 않도록 고르기 전에만 닫아요.
  * 삭제 확인 창의 [취소], 바깥 클릭, ESC는 고른 멤버를 그대로 둔 채 멤버 선택 창으로 돌아가요.
  *
@@ -130,10 +178,12 @@ function LeaveConfirmDialog({
  * @see {@link https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2979-13987 워크스페이스/삭제 확인}
  */
 function OwnerLeaveDialog({
-  members,
+  workspaceId,
   onCancel,
-  onConfirm,
+  onTransfer,
+  onDelete,
 }: OwnerLeaveDialogProps) {
+  const { data } = useOwnershipTransferCandidatesQuery({ workspaceId });
   const [selectedMemberId, setSelectedMemberId] = useState<number | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
 
@@ -161,7 +211,7 @@ function OwnerLeaveDialog({
           confirmLabel="삭제"
           isDestructive
           onCancel={backToMemberSelect}
-          onConfirm={onConfirm}
+          onConfirm={onDelete}
         />
       </Dim>
     );
@@ -178,14 +228,19 @@ function OwnerLeaveDialog({
         description={
           "owner 권한을 넘겨야 나갈 수 있어요.\n내가 만든 문서와 녹음은 그대로 남아요."
         }
-        members={members}
+        members={(data?.candidates ?? []).map(({ memberId, nickname }) => ({
+          id: memberId,
+          name: nickname,
+        }))}
         selectedMemberId={selectedMemberId}
         onSelectMember={setSelectedMemberId}
         cancelLabel="취소"
         confirmLabel="넘기고 나가기"
         linkLabel="워크스페이스 삭제하기"
         onCancel={onCancel}
-        onConfirm={onConfirm}
+        onConfirm={() => {
+          if (selectedMemberId !== null) onTransfer(selectedMemberId);
+        }}
         onLinkClick={() => setIsDeleteConfirmOpen(true)}
       />
     </Dim>
