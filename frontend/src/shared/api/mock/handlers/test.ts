@@ -2,10 +2,6 @@ import { GetCsrfTokenResponseDto, GetMeResponseDto } from "@api/dto/auth";
 import { GetChatMessagesResponseDto } from "@api/dto/chatMessage";
 import { PostDocumentGenerationJobRetryResponseDto } from "@api/dto/documentGenerationJob";
 import {
-  GetChatSessionsResponseDto,
-  PostChatSessionResponseDto,
-} from "@api/dto/chatSession";
-import {
   GetDocumentConfirmationsResponseDto,
   GetDocumentResponseDto,
   GetDocumentsResponseDto,
@@ -23,12 +19,14 @@ import {
   PostRecordingResumeResponseDto,
 } from "@api/dto/recording";
 import {
+  GetSearchConversationsResponseDto,
+  GetSearchMessagesResponseDto,
   SearchStreamAcceptedDto,
   SearchStreamCompletedDto,
   SearchStreamDeltaDto,
   SearchStreamEvidenceDto,
   SearchStreamProgressDto,
-  type SearchStreamEvidenceItemRaw,
+  type SearchEvidenceRaw,
   type SearchStreamStage,
 } from "@api/dto/search";
 import {
@@ -57,10 +55,6 @@ import {
 } from "@api/fetch/api/v1/workspaces";
 import { getWorkspaceApi } from "@api/fetch/api/v1/workspaces/[workspaceId]";
 import {
-  createChatSessionApi,
-  getChatSessionsApi,
-} from "@api/fetch/api/v1/workspaces/[workspaceId]/conversations";
-import {
   getAllDocumentsApi,
   getDocumentsApi,
 } from "@api/fetch/api/v1/workspaces/[workspaceId]/documents";
@@ -71,7 +65,11 @@ import { getWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspa
 import { leaveWorkspaceApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/members/me";
 import { getOwnershipTransferCandidatesApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/ownershipTransferCandidates";
 import { transferWorkspaceOwnershipApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/ownershipTransfers";
-import { createSearchConversationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations";
+import {
+  createSearchConversationApi,
+  getSearchConversationsApi,
+} from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations";
+import { getSearchMessagesApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/messages";
 import { createSearchQuestionApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions";
 import { issueWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations";
 import { reissueWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations/reissue";
@@ -93,10 +91,6 @@ import { csrfTokenResponse, meResponse } from "@api/mock/responses/auth";
 import { documentGenerationJobRetryResponse } from "@api/mock/responses/documentGenerationJob";
 import { chatMessagesResponse } from "@api/mock/responses/chatMessage";
 import {
-  chatSessionResponse,
-  chatSessionsResponse,
-} from "@api/mock/responses/chatSession";
-import {
   documentConfirmationsResponse,
   documentDetailsResponse,
   documentsResponse,
@@ -112,8 +106,11 @@ import {
   recordingResumeResponse,
   recordingStartResponse,
 } from "@api/mock/responses/recording";
+import type { RecordingDetailEntry } from "@api/mock/types/recording";
 import {
   searchAnswerStreamResponse,
+  searchConversationsResponse,
+  searchMessagesResponse,
   searchQuestionAnswerStreamResponse,
 } from "@api/mock/responses/search";
 import {
@@ -154,7 +151,7 @@ interface ToAnswerEventsParams {
   answerMessageId: number;
   stages: SearchStreamStage[];
   deltas: string[];
-  evidences: SearchStreamEvidenceItemRaw[];
+  evidences: SearchEvidenceRaw[];
 }
 
 /** 첫 질문·후속 질문이 accepted 뒤로 같은 순서로 내는 이벤트예요 */
@@ -642,18 +639,6 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
   });
 
   describe("대화", () => {
-    it("GET /api/v1/workspaces/:workspaceId/conversations는 chatSessionsResponse를 돌려준다", async () => {
-      await expect(getChatSessionsApi(WORKSPACE_ID)).resolves.toEqual(
-        new GetChatSessionsResponseDto(chatSessionsResponse),
-      );
-    });
-
-    it("POST /api/v1/workspaces/:workspaceId/conversations는 chatSessionResponse를 돌려준다", async () => {
-      await expect(
-        createChatSessionApi(WORKSPACE_ID, { title: "새 대화" }),
-      ).resolves.toEqual(new PostChatSessionResponseDto(chatSessionResponse));
-    });
-
     it("GET /api/v1/conversations/:sessionId는 chatMessagesResponse를 돌려준다", async () => {
       await expect(getChatMessagesApi(SESSION_ID)).resolves.toEqual(
         new GetChatMessagesResponseDto(chatMessagesResponse),
@@ -662,6 +647,14 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
   });
 
   describe("탐색", () => {
+    it("GET /api/v1/workspaces/:workspaceId/search/conversations는 searchConversationsResponse를 돌려준다", async () => {
+      await expect(
+        getSearchConversationsApi({ workspaceId: WORKSPACE_ID }),
+      ).resolves.toEqual(
+        new GetSearchConversationsResponseDto(searchConversationsResponse),
+      );
+    });
+
     it("POST /api/v1/workspaces/:workspaceId/search/conversations는 searchAnswerStreamResponse를 순서대로 흘려보낸다", async () => {
       const { answerMessageId, stages, deltas, evidences, ...accepted } =
         searchAnswerStreamResponse;
@@ -705,6 +698,20 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
         },
         ...toAnswerEvents({ answerMessageId, stages, deltas, evidences }),
       ]);
+    });
+
+    it("GET .../search/conversations/:conversationId/messages는 searchMessagesResponse를 경로의 대화 ID로 돌려준다 (근거 없음)", async () => {
+      await expect(
+        getSearchMessagesApi({
+          workspaceId: WORKSPACE_ID,
+          conversationId: SEARCH_CONVERSATION_ID,
+        }),
+      ).resolves.toEqual(
+        new GetSearchMessagesResponseDto({
+          ...searchMessagesResponse,
+          conversationId: SEARCH_CONVERSATION_ID,
+        }),
+      );
     });
   });
 
@@ -814,13 +821,10 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
 
     it("GET .../recordings/:recordingId는 recordingDetailsResponse에서 그 녹음을 찾아 돌려준다", async () => {
       // 상태가 서로 다른 녹음을 모두 물어, 핸들러가 id로 골라 주는지 확인해요
-      for (const recording of recordingDetailsResponse) {
+      for (const { recordingId, detail } of recordingDetailsResponse) {
         await expect(
-          getRecordingApi({
-            workspaceId: WORKSPACE_ID,
-            recordingId: recording.recordingId,
-          }),
-        ).resolves.toEqual(new GetRecordingResponseDto(recording));
+          getRecordingApi({ workspaceId: WORKSPACE_ID, recordingId }),
+        ).resolves.toEqual(new GetRecordingResponseDto(detail));
       }
     });
 
@@ -835,12 +839,23 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
   });
 
   describe("문서 생성 작업", () => {
-    // 정리 중인 녹음(작업 진행 중)과 문서 만들기에 실패한 녹음(작업 실패)
-    const [processingRecording, , failedRecording] = recordingDetailsResponse;
+    // 문서 만들기에 실패한 녹음(실패한 작업이 다시 시도 mock 응답의 작업) · 실패한 작업이 둘인 녹음 · 실패한 작업이 다시 시도 횟수를 다 쓴 녹음
+    const [
+      ,
+      ,
+      failedRecording,
+      ,
+      ,
+      twoJobsFailedRecording,
+      retryExhaustedRecording,
+    ] = recordingDetailsResponse;
     const failedJobParams = {
       workspaceId: WORKSPACE_ID,
       jobId: documentGenerationJobRetryResponse.jobId,
     };
+    // mock 녹음은 상태가 서로 달라 문서 생성 결과가 없는 녹음도 있어요. 그래서 없으면 빈 배열로 읽어요
+    const getFailedJobIds = ({ detail }: RecordingDetailEntry) =>
+      detail.documentGeneration?.failedJobIds ?? [];
     const failedRecordingParams = {
       workspaceId: WORKSPACE_ID,
       recordingId: failedRecording.recordingId,
@@ -856,16 +871,13 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
       );
     });
 
-    it("다시 시도한 뒤에는 그 녹음의 상세가 정리 중으로 바뀌고 실패 사유가 지워진다", async () => {
+    it("다시 시도한 뒤에는 그 녹음의 문서 생성 결과가 대기로 바뀌고 그 작업이 실패 작업에서 빠진다", async () => {
       await retryDocumentGenerationJobApi(failedJobParams);
 
       await expect(
         getRecordingApi(failedRecordingParams),
       ).resolves.toMatchObject({
-        status: "PROCESSING",
-        documentGenerationStatus: "QUEUED",
-        failureStage: null,
-        failureReason: null,
+        documentGeneration: { status: "QUEUED", failedJobIds: [] },
       });
     });
 
@@ -880,17 +892,48 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
       });
     });
 
-    it("진행 중인 작업을 다시 시도하면 409 RETRY_NOT_ALLOWED로 답한다", async () => {
+    it("실패한 작업이 여러 개인 녹음에서 한 작업만 다시 시도하면 문서 생성 결과가 대기로 바뀌고 그 작업만 실패 작업에서 빠진다", async () => {
+      const [retriedJobId, remainingJobId] = getFailedJobIds(
+        twoJobsFailedRecording,
+      );
+
+      await retryDocumentGenerationJobApi({
+        workspaceId: WORKSPACE_ID,
+        jobId: retriedJobId,
+      });
+
+      await expect(
+        getRecordingApi({
+          workspaceId: WORKSPACE_ID,
+          recordingId: twoJobsFailedRecording.recordingId,
+        }),
+      ).resolves.toMatchObject({
+        documentGeneration: {
+          status: "QUEUED",
+          failedJobIds: [remainingJobId],
+        },
+      });
+    });
+
+    it("다시 시도할 수 있는 횟수를 다 쓴 작업을 다시 시도하면 409 RETRY_NOT_ALLOWED로 답하고, 그 작업은 실패 작업에 남는다", async () => {
+      const exhaustedRecordingParams = {
+        workspaceId: WORKSPACE_ID,
+        recordingId: retryExhaustedRecording.recordingId,
+      };
+      const [exhaustedJobId] = getFailedJobIds(retryExhaustedRecording);
+
       await expect(
         retryDocumentGenerationJobApi({
           workspaceId: WORKSPACE_ID,
-          // mock 데이터에서 이 작업 ID가 사라지면 0이 되어 404로 실패하므로, 테스트가 알려 줘요
-          jobId: Number(processingRecording.documentGenerationJobId),
+          jobId: exhaustedJobId,
         }),
       ).rejects.toMatchObject({
         type: HTTP_ERROR_TYPE.conflict,
         code: "RETRY_NOT_ALLOWED",
       });
+      await expect(getRecordingApi(exhaustedRecordingParams)).resolves.toEqual(
+        new GetRecordingResponseDto(retryExhaustedRecording.detail),
+      );
     });
 
     it("없는 작업을 다시 시도하면 404 DOCUMENT_GENERATION_JOB_NOT_FOUND로 답한다", async () => {
@@ -908,7 +951,7 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
     it("다시 시도한 기록은 테스트가 끝나면 지워져, 다음 테스트는 기본 응답을 받는다", async () => {
       // 위 테스트들이 작업을 다시 시도했지만 vitest.setup의 afterEach가 기록을 지웠어요
       await expect(getRecordingApi(failedRecordingParams)).resolves.toEqual(
-        new GetRecordingResponseDto(failedRecording),
+        new GetRecordingResponseDto(failedRecording.detail),
       );
     });
   });

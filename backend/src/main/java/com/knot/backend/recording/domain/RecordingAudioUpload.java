@@ -52,6 +52,9 @@ public class RecordingAudioUpload {
     @Column(name = "last_upload_url_expires_at")
     private Instant lastUploadUrlExpiresAt;
 
+    @Column(name = "storage_version_id")
+    private String storageVersionId;
+
     protected RecordingAudioUpload() {}
 
     private RecordingAudioUpload(
@@ -153,9 +156,11 @@ public class RecordingAudioUpload {
         }
     }
 
+    // 완료 전에 발급한 PUT URL은 만료 전까지 같은 key를 덮어쓸 수 있으므로, 이때 검증한 버전을 전사 입력으로 고정한다.
     public void complete(
             long storedContentLength,
             String storedContentType,
+            String storedVersionId,
             Instant completedAt
     ) {
         if (isCompleted()) {
@@ -169,6 +174,7 @@ public class RecordingAudioUpload {
         }
         this.status = RecordingAudioUploadStatus.COMPLETED;
         this.completedAt = completedAt;
+        this.storageVersionId = storedVersionId;
     }
 
     private void validateFile(

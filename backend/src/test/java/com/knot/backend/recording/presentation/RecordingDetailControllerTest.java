@@ -16,6 +16,8 @@ import com.knot.backend.recording.domain.RecordingEndReason;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.RecordingStatus;
+import com.knot.backend.document.application.dto.result.DocumentGenerationSummaryResult;
+import com.knot.backend.document.domain.DocumentGenerationProcessingStatus;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -71,7 +73,11 @@ class RecordingDetailControllerTest {
                         60_000L,
                         STARTED_AT.plusSeconds(60),
                         RecordingEndReason.USER_ENDED,
-                        RecordingAudioUploadStatus.COMPLETED
+                        RecordingAudioUploadStatus.COMPLETED,
+                        null,
+                        null,
+                        null,
+                        null
                 )
         );
 
@@ -90,7 +96,59 @@ class RecordingDetailControllerTest {
                 .andExpect(jsonPath("$.elapsedMillis").value(60_000L))
                 .andExpect(jsonPath("$.endedAt").value("2026-10-09T00:01:00Z"))
                 .andExpect(jsonPath("$.endReason").value("USER_ENDED"))
-                .andExpect(jsonPath("$.audioUploadStatus").value("COMPLETED"));
+                .andExpect(jsonPath("$.audioUploadStatus").value("COMPLETED"))
+                .andExpect(jsonPath("$.documentGeneration").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    @DisplayName("문서가 일부 실패하면 문서 생성 상태와 성공 수 및 여러 실패 작업 ID를 반환한다")
+    void findDetail_success_partialDocumentFailure() throws Exception {
+        // given
+        SecurityContextHolder.getContext()
+                .setAuthentication(memberAuthentication());
+        when(
+                recordingDetailService.find(
+                        WORKSPACE_ID,
+                        MEMBER_ID,
+                        RECORDING_ID
+                )
+        ).thenReturn(
+                new RecordingDetailResult(
+                        RecordingStatus.ENDED,
+                        60_000L,
+                        STARTED_AT.plusSeconds(60),
+                        RecordingEndReason.USER_ENDED,
+                        RecordingAudioUploadStatus.COMPLETED,
+                        null,
+                        null,
+                        null,
+                        new DocumentGenerationSummaryResult(
+                                DocumentGenerationProcessingStatus.FAILED,
+                                2,
+                                List.of(
+                                        104L,
+                                        105L
+                                )
+                        )
+                )
+        );
+
+        // when
+        ResultActions result = mockMvc.perform(
+                get(
+                        "/api/v1/workspaces/{workspaceId}/recordings/{recordingId}",
+                        WORKSPACE_ID,
+                        RECORDING_ID
+                )
+        );
+
+        // then
+        result.andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ENDED"))
+                .andExpect(jsonPath("$.documentGeneration.status").value("FAILED"))
+                .andExpect(jsonPath("$.documentGeneration.succeededCount").value(2))
+                .andExpect(jsonPath("$.documentGeneration.failedJobIds[0]").value(104))
+                .andExpect(jsonPath("$.documentGeneration.failedJobIds[1]").value(105));
     }
 
     @Test

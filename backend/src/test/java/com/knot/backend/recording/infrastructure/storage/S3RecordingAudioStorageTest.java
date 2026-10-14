@@ -18,6 +18,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
@@ -32,7 +35,9 @@ class S3RecordingAudioStorageTest {
 
     private HttpServer server;
     private final AtomicReference<String> lastRequest = new AtomicReference<>();
+    private final AtomicReference<String> lastQuery = new AtomicReference<>();
     private final AtomicReference<Integer> headStatus = new AtomicReference<>(200);
+    private final AtomicReference<String> versionId = new AtomicReference<>("version+one=");
     private S3RecordingAudioStorage storage;
 
     @BeforeEach
@@ -51,6 +56,10 @@ class S3RecordingAudioStorageTest {
                             exchange.getRequestMethod() + " " + exchange.getRequestURI()
                                     .getPath()
                     );
+                    lastQuery.set(
+                            exchange.getRequestURI()
+                                    .getRawQuery()
+                    );
                     exchange.getResponseHeaders()
                             .add(
                                     "Content-Type",
@@ -61,6 +70,13 @@ class S3RecordingAudioStorageTest {
                                     "Content-Length",
                                     "1024"
                             );
+                    if (versionId.get() != null) {
+                        exchange.getResponseHeaders()
+                                .add(
+                                        "x-amz-version-id",
+                                        versionId.get()
+                                );
+                    }
                     exchange.sendResponseHeaders(
                             headStatus.get(),
                             -1
@@ -85,6 +101,111 @@ class S3RecordingAudioStorageTest {
     @AfterEach
     void tearDown() {
         server.stop(0);
+    }
+
+    @Test
+    @DisplayName("업로드 완료 때 저장한 S3 버전을 확인해 GET URL에 서명하므로 같은 key가 덮어써져도 입력을 고정한다")
+    void presignDownloadPinsVersion() {
+        // given
+        versionId.set("overwritten-version");
+
+        // when
+        String url = storage.presignDownload(
+                "recordings/7/key",
+                "version+one=",
+                "audio/webm",
+                1024
+        );
+
+        // then
+        assertThat(lastRequest.get()).isEqualTo("HEAD /knot-audio/recordings/7/key");
+        assertThat(lastQuery.get()).isEqualTo("versionId=version%2Bone%3D");
+        assertThat(url).contains("versionId=version%2Bone%3D")
+                .doesNotContain("overwritten-version")
+                .contains("X-Amz-Expires=900")
+                .contains("X-Amz-SignedHeaders=host");
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"null", " "})
+    @DisplayName("저장한 버전이 없거나 null 버전이면 변경될 수 있어 저장소를 조회하지 않고 전사 URL을 발급하지 않는다")
+    void presignDownloadRejectsMutableVersion(String value) {
+        // when
+        Throwable failure = catchThrowable(
+                () -> storage.presignDownload(
+                        "recordings/7/key",
+                        value,
+                        "audio/webm",
+                        1024
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+        assertThat(lastRequest.get()).isNull();
+    }
+
+    @Test
+    @DisplayName("저장한 버전의 크기가 예약과 다르면 전사 URL을 발급하지 않는다")
+    void presignDownloadRejectsWrongLength() {
+        // when
+        Throwable failure = catchThrowable(
+                () -> storage.presignDownload(
+                        "recordings/7/key",
+                        "fixed-version",
+                        "audio/webm",
+                        2048
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+    }
+
+    @Test
+    @DisplayName("저장한 버전의 형식이 예약과 다르면 전사 URL을 발급하지 않는다")
+    void presignDownloadRejectsWrongType() {
+        // when
+        Throwable failure = catchThrowable(
+                () -> storage.presignDownload(
+                        "recordings/7/key",
+                        "fixed-version",
+                        "audio/wav",
+                        1024
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+    }
+
+    @Test
+    @DisplayName("저장한 버전의 원본 객체가 사라지면 전사 URL을 발급하지 않는다")
+    void presignDownloadRejectsMissingObject() {
+        // given
+        headStatus.set(404);
+
+        // when
+        Throwable failure = catchThrowable(
+                () -> storage.presignDownload(
+                        "recordings/7/key",
+                        "fixed-version",
+                        "audio/webm",
+                        1024
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
     }
 
     @Test
@@ -114,7 +235,7 @@ class S3RecordingAudioStorageTest {
     }
 
     @Test
-    @DisplayName("저장소에 객체가 있으면 HEAD로 크기와 형식을 읽는다")
+    @DisplayName("저장소에 객체가 있으면 HEAD로 크기, 형식과 버전을 읽는다")
     void findStoredObject_success_existingObject() {
         // given
         headStatus.set(200);
@@ -127,7 +248,8 @@ class S3RecordingAudioStorageTest {
         assertThat(storedObject).isEqualTo(
                 StoredAudioObject.of(
                         1024L,
-                        "audio/webm"
+                        "audio/webm",
+                        "version+one="
                 )
         );
     }

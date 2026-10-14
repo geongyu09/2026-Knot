@@ -1,5 +1,7 @@
-import useNavigateToChat from "@hooks/domain/chat/useNavigateToChat";
 import useOutsideClick from "@hooks/common/useOutsideClick";
+import useConversationId from "@hooks/domain/search/useConversationId";
+import useSearchAnswerControl from "@hooks/domain/search/useSearchAnswerControl";
+import useSearchAnswerStatus from "@hooks/domain/search/useSearchAnswerStatus";
 import useWorkspaceNav from "@hooks/domain/workspace/useWorkspaceNav";
 import {
   useCallback,
@@ -23,13 +25,17 @@ import { useTypeToStartChat } from "./useTypeToStartChat";
  * 독 바깥을 누르면 다시 접힙니다. 적던 글은 지우지 않고 들고 있다가 다시 열 때 그대로 돌려줘요.
  * 탐색 화면은 채팅이 곧 화면 자체라 독을 늘 펼쳐 둡니다. 그래서 그 화면에서는 접히지 않고 입력만 비워져요.
  *
- * 홈에서 보낸 질문은 탐색 화면으로 옮겨 가며 실려 갑니다.
- * 탐색 화면에서 보낸 질문은 아직 받을 곳이 없어 입력만 비웁니다. 탐색 v2에서 대화 스트림과 다시 연결합니다.
+ * 질문은 홈·탐색 어디서든 이 자리에서 바로 보냅니다. 탐색 대화 화면이면 그 대화에 이어 묻고, 아니면 새 대화를 시작해요.
+ * 새 대화는 서버가 접수하면 그 대화 주소로 옮겨 가요(`useSearchAnswerControl`).
+ * 보내면 입력창을 바로 비우고, 접수 전에 거절되면 보낸 질문을 되돌려 다시 보낼 수 있게 해요(SEARCH-R4).
+ * 답변을 기다리거나 받는 중에는 보내지 않아요(SEARCH-R6).
  */
 export const useWorkspaceDock = () => {
   const { workspaceId } = useParams();
-  const { navigateToChat } = useNavigateToChat();
+  const { conversationId } = useConversationId();
   const { isChatActive } = useWorkspaceNav();
+  const { sendQuestion } = useSearchAnswerControl();
+  const { isAnswerPending } = useSearchAnswerStatus();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isExpandedByUser, setIsExpandedByUser] = useState(false);
@@ -38,7 +44,7 @@ export const useWorkspaceDock = () => {
   const [focusRequestCount, setFocusRequestCount] = useState(0);
 
   const isExpanded = isChatActive || isExpandedByUser;
-  const canSubmit = message.trim().length > 0;
+  const canSubmit = message.trim().length > 0 && !isAnswerPending;
 
   const { isHintVisible } = useDockHint({ isDockExpanded: isExpanded });
 
@@ -98,22 +104,24 @@ export const useWorkspaceDock = () => {
     e.currentTarget.form?.requestSubmit();
   };
 
-  const handleSubmit = (e: SubmitEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!canSubmit || !workspaceId) return;
 
     const question = message.trim();
 
-    // 이미 탐색 화면이면 옮겨 갈 곳이 없어요. 입력만 비웁니다
-    if (isChatActive) {
-      setMessage("");
-      // 버튼을 눌러 보냈다면 커서가 버튼에 가 있으므로 이어서 적을 수 있게 되돌려 놔요
-      requestFocus();
-      return;
-    }
+    setMessage("");
+    // 버튼을 눌러 보냈다면 커서가 버튼에 가 있으므로 이어서 적을 수 있게 되돌려 놔요
+    requestFocus();
 
-    navigateToChat({ workspaceId, question });
-    handleReset();
+    const { isAcceptFailed } = await sendQuestion({
+      workspaceId: Number(workspaceId),
+      conversationId,
+      content: question,
+    });
+
+    // TODO: 접수 전 실패 안내 토스트(SEARCH-R4)
+    if (isAcceptFailed) setMessage(question);
   };
 
   return {

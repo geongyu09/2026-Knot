@@ -2,6 +2,7 @@ import {
   recordingEndResponse,
   recordingStartResponse,
 } from "@api/mock/responses/recording";
+import { searchAnswerStreamResponse } from "@api/mock/responses/search";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
@@ -19,6 +20,7 @@ import {
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { useRecordingStore } from "@store/recordingStore";
+import { useSearchAnswerStore } from "@store/searchAnswerStore";
 import { getRecordingStartProof } from "@utils/recordingControlProof";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -43,10 +45,50 @@ const DOCUMENTS_PATH = getRouterPath({
   routeKey: "RECORDING_DOCUMENTS",
   params: { workspaceId: WORKSPACE_ID, recordingId: String(RECORDING_ID) },
 });
+const CONVERSATION_ID = "10";
+const CONVERSATION_PATH = getRouterPath({
+  routeKey: "CHAT_SESSION",
+  params: { workspaceId: WORKSPACE_ID, sessionId: CONVERSATION_ID },
+});
+/** 첫 질문을 접수하면 옮겨 가는 대화 주소. 기본 mock이 accepted로 주는 대화예요 */
+const ACCEPTED_CONVERSATION_PATH = getRouterPath({
+  routeKey: "CHAT_SESSION",
+  params: {
+    workspaceId: WORKSPACE_ID,
+    sessionId: String(searchAnswerStreamResponse.conversationId),
+  },
+});
 const QUESTION = "지난주 회의에서 정해진 것만 뽑아 줘";
+const SEARCH_CONVERSATIONS_PATH =
+  "*/api/v1/workspaces/:workspaceId/search/conversations";
+
+/** 탐색 질문 요청(첫 질문·후속 질문)의 경로를 모아요 */
+const collectSearchQuestionPaths = () => {
+  const paths: string[] = [];
+  mockServer.events.on("request:start", ({ request }) => {
+    const { pathname } = new URL(request.url);
+    if (request.method === "POST" && pathname.includes("/search/")) {
+      paths.push(pathname);
+    }
+  });
+
+  return paths;
+};
+
+/** 이번 테스트에서만 첫 질문 응답이 끝나지 않고 열려 있게 해요 */
+const respondWithEndlessSearchStream = () =>
+  mockServer.use(
+    http.post(
+      SEARCH_CONVERSATIONS_PATH,
+      () =>
+        new HttpResponse(new ReadableStream(), {
+          headers: { "Content-Type": "text/event-stream" },
+        }),
+    ),
+  );
 
 /**
- * 실제로는 두 화면이 공유하는 레이아웃에 놓이므로, 홈·탐색을 함께 덮어 화면이 바뀌어도 같은 독이 남게 해요.
+ * 실제로는 여러 화면이 공유하는 레이아웃에 놓이므로, 독을 레이아웃 자리에 두어 화면이 바뀌어도 같은 독이 남게 해요.
  */
 const renderDock = (initialPath = HOME_PATH) => {
   const queryClient = new QueryClient({
@@ -55,8 +97,14 @@ const renderDock = (initialPath = HOME_PATH) => {
   const router = createMemoryRouter(
     [
       {
-        path: `${PATH_ROUTE.WORKSPACE_HOME}/*`,
         element: <WorkspaceDock />,
+        children: [
+          PATH_ROUTE.WORKSPACE_HOME,
+          PATH_ROUTE.CHAT,
+          PATH_ROUTE.CHAT_SESSION,
+          PATH_ROUTE.RECORDING,
+          PATH_ROUTE.RECORDING_DOCUMENTS,
+        ].map((path) => ({ path })),
       },
     ],
     { initialEntries: [initialPath] },
@@ -88,6 +136,23 @@ describe("WorkspaceDock", () => {
     sessionStorage.clear();
   });
 
+  afterEach(() => {
+    // 전역 저장소라 테스트끼리 답변이 새지 않게 비워요
+    useSearchAnswerStore.getState().abort();
+    mockServer.events.removeAllListeners();
+  });
+
+  /** 펼친 입력창에 질문을 적어 보내기를 눌러요 */
+  const sendQuestion = async (question = QUESTION) => {
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "무엇이든 요청하세요" }),
+      { target: { value: question } },
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "보내기" }));
+    });
+  };
+
   it("처음에는 접혀 있어 입력창 대신 버튼만 보여준다", () => {
     renderDock();
 
@@ -117,44 +182,113 @@ describe("WorkspaceDock", () => {
     expect(screen.getByRole("button", { name: "보내기" })).toBeDisabled();
   });
 
-  it("질문을 보내면 탐색 화면으로 이동하며 그 질문을 들고 간다", async () => {
+  it("홈에서 질문을 보내면 첫 질문으로 보내고, 접수되면 그 대화 주소로 옮겨 간다 (SEARCH-R1)", async () => {
+    const paths = collectSearchQuestionPaths();
     const { router } = renderDock();
-    const field = expandDock();
+    expandDock();
 
-    fireEvent.change(field, { target: { value: QUESTION } });
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "보내기" }));
-    });
+    await sendQuestion();
 
-    expect(router.state.location.pathname).toBe(CHAT_PATH);
-    expect(router.state.location.state).toEqual({ question: QUESTION });
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(ACCEPTED_CONVERSATION_PATH),
+    );
+    expect(paths).toEqual([
+      `/api/v1/workspaces/${WORKSPACE_ID}/search/conversations`,
+    ]);
   });
 
-  it("보내고 나면 옮겨 간 탐색 화면에서 입력창이 비워진 채 열려 있다", async () => {
+  it("보내면 접수를 기다리지 않고 입력창을 바로 비운다 (근거 없음)", async () => {
+    respondWithEndlessSearchStream();
     renderDock();
-    const field = expandDock();
+    expandDock();
 
-    fireEvent.change(field, { target: { value: QUESTION } });
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "보내기" }));
-    });
+    await sendQuestion();
 
     expect(
       screen.getByRole("textbox", { name: "무엇이든 요청하세요" }),
     ).toHaveValue("");
   });
 
-  it("탐색 화면에서 보내면 그 화면에 머물고 입력창만 비워진다", async () => {
-    const { router } = renderDock(CHAT_PATH);
-    const field = screen.getByRole("textbox", { name: "무엇이든 요청하세요" });
+  it("홈에서 보낸 첫 질문의 대화 이동은 push라 뒤로 가기 때 홈으로 돌아온다 (근거 없음)", async () => {
+    const { router } = renderDock();
+    expandDock();
 
-    fireEvent.change(field, { target: { value: QUESTION } });
+    await sendQuestion();
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(ACCEPTED_CONVERSATION_PATH),
+    );
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "보내기" }));
+      await router.navigate(-1);
     });
 
-    expect(router.state.location.pathname).toBe(CHAT_PATH);
-    expect(field).toHaveValue("");
+    expect(router.state.location.pathname).toBe(HOME_PATH);
+  });
+
+  it("탐색 새 대화 화면에서 보내면 접수된 대화 주소로 바꿔치기한다 (근거 없음)", async () => {
+    const { router } = renderDock(CHAT_PATH);
+
+    await sendQuestion();
+
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(ACCEPTED_CONVERSATION_PATH),
+    );
+    expect(router.state.historyAction).toBe("REPLACE");
+  });
+
+  it("탐색 대화 화면에서 보내면 그 대화의 후속 질문으로 보내고 그 화면에 머문다 (SEARCH-R1)", async () => {
+    const paths = collectSearchQuestionPaths();
+    const { router } = renderDock(CONVERSATION_PATH);
+
+    await sendQuestion();
+
+    await waitFor(() => expect(paths).toHaveLength(1));
+    expect(paths).toEqual([
+      `/api/v1/workspaces/${WORKSPACE_ID}/search/conversations/${CONVERSATION_ID}/questions`,
+    ]);
+    expect(router.state.location.pathname).toBe(CONVERSATION_PATH);
+  });
+
+  it("접수 전에 질문이 거절되면 보낸 질문을 입력창에 되돌린다 (SEARCH-R4)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockServer.use(
+      http.post(SEARCH_CONVERSATIONS_PATH, () =>
+        HttpResponse.json(
+          { code: "FORBIDDEN", message: "요청을 처리하지 못했어요" },
+          { status: 403 },
+        ),
+      ),
+    );
+    renderDock(CHAT_PATH);
+
+    await sendQuestion();
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("textbox", { name: "무엇이든 요청하세요" }),
+      ).toHaveValue(QUESTION),
+    );
+  });
+
+  it("답변을 기다리거나 받는 중에는 다시 보내지 않는다 (SEARCH-R6)", async () => {
+    respondWithEndlessSearchStream();
+    const paths = collectSearchQuestionPaths();
+    renderDock(CHAT_PATH);
+
+    await sendQuestion();
+    await waitFor(() => expect(paths).toHaveLength(1));
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "무엇이든 요청하세요" }),
+      { target: { value: "다른 질문" } },
+    );
+    await act(async () => {
+      fireEvent.submit(screen.getByRole("textbox").closest("form")!);
+    });
+
+    expect(paths).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "보내기" })).toBeDisabled();
+    expect(
+      screen.getByRole("textbox", { name: "무엇이든 요청하세요" }),
+    ).toHaveValue("다른 질문");
   });
 
   it("탐색 화면에서는 처음부터 입력창이 열려 있다", () => {
@@ -294,21 +428,6 @@ describe("WorkspaceDock", () => {
     renderDock();
 
     expect(expandDock()).toHaveFocus();
-  });
-
-  it("탐색 이동은 push라 뒤로 가기 때 원래 화면으로 돌아온다", async () => {
-    const { router } = renderDock();
-    const field = expandDock();
-
-    fireEvent.change(field, { target: { value: QUESTION } });
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "보내기" }));
-    });
-    await act(async () => {
-      await router.navigate(-1);
-    });
-
-    expect(router.state.location.pathname).toBe(HOME_PATH);
   });
 
   describe("회의 녹음 마이크", () => {

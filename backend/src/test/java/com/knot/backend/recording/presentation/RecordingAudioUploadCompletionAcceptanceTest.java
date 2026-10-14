@@ -394,7 +394,8 @@ class RecordingAudioUploadCompletionAcceptanceTest {
         when(audioStorage.findStoredObject(anyString())).thenReturn(
                 StoredAudioObject.of(
                         contentLength,
-                        "audio/webm"
+                        "audio/webm",
+                        "version-1"
                 )
         );
     }

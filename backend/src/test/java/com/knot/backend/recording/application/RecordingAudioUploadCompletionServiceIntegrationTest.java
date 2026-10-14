@@ -316,7 +316,8 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
         when(audioStorage.findStoredObject(anyString())).thenReturn(
                 StoredAudioObject.of(
                         contentLength,
-                        contentType
+                        contentType,
+                        "version-1"
                 )
         );
     }

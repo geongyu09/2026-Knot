@@ -1,21 +1,24 @@
 import styled from "@emotion/styled";
 import useConversationId from "@hooks/domain/search/useConversationId";
+import useSearchAnswerState from "@hooks/domain/search/useSearchAnswerState";
 import useSearchMessages from "@hooks/domain/search/useSearchMessages";
 
 import EmptyConversation from "./ui/EmptyConversation";
 import SearchTurn from "./ui/SearchTurn";
-import { toSearchTurns } from "./utils/toSearchTurns";
+import { buildSearchTurns } from "./utils/buildSearchTurns";
 
 /**
  * 탐색 화면의 대화 칸. 지금 대화의 상태에 따라 칸에 무엇을 그릴지 정해요.
  *
  * 질문이 없는 빈 대화에서는 안내 문구를, 대화가 있으면 질문·답변 턴을 위에서부터 차례로 그려요.
+ * 저장된 턴 뒤에는 이 대화에서 보내 지금 받고 있는 질문·답변을 이어 그려요.
  */
 export default function SearchConversation() {
   const { conversationId } = useConversationId();
   const { messages } = useSearchMessages({ conversationId });
+  const answer = useSearchAnswerState();
 
-  const turns = toSearchTurns(messages);
+  const turns = buildSearchTurns({ messages, answer, conversationId });
 
   if (turns.length === 0) {
     return (
@@ -28,7 +31,7 @@ export default function SearchConversation() {
   return (
     <TurnList aria-label="대화">
       {turns.map((turn) => (
-        <SearchTurn key={turn.question.id} turn={turn} />
+        <SearchTurn key={turn.key} turn={turn} />
       ))}
     </TurnList>
   );

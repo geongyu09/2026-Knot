@@ -1,4 +1,4 @@
-import { chatSessionsResponse } from "@api/mock/responses/chatSession";
+import { searchConversationsResponse } from "@api/mock/responses/search";
 import { PATH_ROUTE, getRouterPath } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
 import { MemoryRouter, Route, Routes } from "react-router";
@@ -10,7 +10,7 @@ const SESSION_PATH = getRouterPath({
   routeKey: "CHAT_SESSION",
   params: {
     workspaceId: WORKSPACE_ID,
-    sessionId: String(chatSessionsResponse[0].id),
+    sessionId: String(searchConversationsResponse.items[0].id),
   },
 });
 
@@ -19,7 +19,7 @@ const SESSION_PATH = getRouterPath({
  *
  * **동작 규칙**
  * - 버튼에 마우스를 올리면 화면 위에 겹쳐 뜨고, 누르면 왼쪽에 자리를 잡아요. 이 여닫기는 감싸는 `Shared/DockablePanel`이 맡아요.
- * - 목록은 `Chat/ChatSessionList`가 그대로 그리고, 드로어는 제목과 「새 채팅」 버튼만 얹어요.
+ * - 목록은 `Search/SearchConversationList`가 그대로 그리고, 드로어는 제목과 「새 채팅」 버튼만 얹어요.
  * - 「새 채팅」을 누르면 고른 대화 없이 탐색 화면으로 옮겨 가 새 대화를 시작해요.
  */
 const meta = {

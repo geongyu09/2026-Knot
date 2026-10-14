@@ -1,12 +1,109 @@
 /**
  * 탐색 DTO
  *
+ * - GET  /api/v1/workspaces/{workspaceId}/search/conversations
  * - POST /api/v1/workspaces/{workspaceId}/search/conversations (SSE)
  * - POST /api/v1/workspaces/{workspaceId}/search/conversations/{conversationId}/questions (SSE)
+ * - GET  /api/v1/workspaces/{workspaceId}/search/conversations/{conversationId}/messages
  */
 
 /** 답변 준비 단계. SEARCHING은 문서 검색 중, GENERATING은 답변 생성 중 */
 export type SearchStreamStage = "SEARCHING" | "GENERATING";
+
+/** 메시지를 쓴 쪽. USER는 질문, ASSISTANT는 답변 */
+export type SearchMessageRole = "USER" | "ASSISTANT";
+
+/** 메시지 상태. 질문은 RECEIVED, 답변은 STREAMING에서 COMPLETED·FAILED·STOPPED 중 하나로 끝남 */
+export type SearchMessageStatus =
+  | "RECEIVED"
+  | "STREAMING"
+  | "COMPLETED"
+  | "FAILED"
+  | "STOPPED";
+
+/**
+ * 답변 근거 문서의 서버 응답 모양. 메시지 조회의 evidences[]와 evidence 이벤트의 items[]가 공유.
+ *
+ * 임시 가정: evidence 이벤트의 items[]는 API 명세에 필드가 아직 정해지지 않아 메시지 조회의 근거 필드를 따라 둠.
+ * 명세가 정해지면 갱신
+ */
+export interface SearchEvidenceRaw {
+  documentId: number;
+  title: string;
+  topic: string;
+  rank: number;
+}
+
+/** 답변의 근거가 된 문서 하나. 메시지 조회와 evidence 이벤트가 공유 */
+export class SearchEvidenceDto {
+  /** 근거 문서 ID */
+  documentId: number;
+  /** 문서 제목 */
+  title: string;
+  /** 문서 주제 */
+  topic: string;
+  /** 관련도 순위. 1~3이고 작을수록 관련도가 높음 */
+  rank: number;
+
+  constructor(raw: SearchEvidenceRaw) {
+    this.documentId = raw.documentId;
+    this.title = raw.title;
+    this.topic = raw.topic;
+    this.rank = raw.rank;
+  }
+}
+
+// GET /api/v1/workspaces/{workspaceId}/search/conversations
+
+/** 대화 목록 한 줄의 서버 응답 모양 */
+export interface SearchConversationRaw {
+  id: number;
+  title: string;
+  lastMessagePreview: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 대화 목록에 놓이는 탐색 대화 하나 */
+export class SearchConversationDto {
+  /** 탐색 대화 ID */
+  id: number;
+  /** 첫 질문에서 만든 표시 제목 */
+  title: string;
+  /** 마지막 메시지 미리보기. 메시지가 없으면 null */
+  lastMessagePreview: string | null;
+  /** 첫 질문을 접수한 시각(ISO 8601) */
+  createdAt: string;
+  /** 마지막으로 메시지가 오간 시각(ISO 8601). 목록은 이 값의 내림차순 */
+  updatedAt: string;
+
+  constructor(raw: SearchConversationRaw) {
+    this.id = raw.id;
+    this.title = raw.title;
+    this.lastMessagePreview = raw.lastMessagePreview;
+    this.createdAt = raw.createdAt;
+    this.updatedAt = raw.updatedAt;
+  }
+}
+
+/** 대화 목록 조회의 서버 응답 모양 */
+export interface GetSearchConversationsResponseRaw {
+  items: SearchConversationRaw[];
+  nextCursor: string | null;
+}
+
+/** 내 탐색 대화 목록 한 페이지 조회 응답 */
+export class GetSearchConversationsResponseDto {
+  /** 대화 목록. updatedAt 내림차순, 같으면 ID 내림차순. 빈 대화와 첫 답변이 실패한 대화는 서버가 빼요 */
+  items: SearchConversationDto[];
+  /** 다음 페이지를 받을 커서. 마지막 페이지면 null */
+  nextCursor: string | null;
+
+  constructor(raw: GetSearchConversationsResponseRaw) {
+    this.items = raw.items.map((item) => new SearchConversationDto(item));
+    this.nextCursor = raw.nextCursor;
+  }
+}
 
 // POST /api/v1/workspaces/{workspaceId}/search/conversations (SSE)
 
@@ -109,54 +206,22 @@ export class SearchStreamDeltaDto {
   }
 }
 
-/**
- * evidence 이벤트의 근거 항목 서버 모양.
- *
- * 임시 가정: API 명세에 items[]의 필드가 아직 정해지지 않아,
- * 메시지 조회 API의 근거 필드(`shared/types/search.ts`)를 따라 둠. 명세가 정해지면 갱신
- */
-export interface SearchStreamEvidenceItemRaw {
-  documentId: number;
-  title: string;
-  topic: string;
-  rank: number;
-}
-
-/** 답변의 근거가 된 문서 하나 (임시 가정 모양, `SearchStreamEvidenceItemRaw` 참고) */
-export class SearchStreamEvidenceItemDto {
-  /** 근거 문서 ID */
-  documentId: number;
-  /** 문서 제목 */
-  title: string;
-  /** 문서 주제 */
-  topic: string;
-  /** 관련도 순위. 1~3이고 작을수록 관련도가 높음 */
-  rank: number;
-
-  constructor(raw: SearchStreamEvidenceItemRaw) {
-    this.documentId = raw.documentId;
-    this.title = raw.title;
-    this.topic = raw.topic;
-    this.rank = raw.rank;
-  }
-}
-
 /** `event: evidence`의 data 모양 */
 export interface SearchStreamEvidenceRaw {
   answerMessageId: number;
-  items: SearchStreamEvidenceItemRaw[];
+  items: SearchEvidenceRaw[];
 }
 
 /** 답변의 근거 문서 목록을 알리는 이벤트 */
 export class SearchStreamEvidenceDto {
   /** 근거가 붙는 답변 메시지 ID */
   answerMessageId: number;
-  /** 근거 문서. 최대 3개 */
-  items: SearchStreamEvidenceItemDto[];
+  /** 근거 문서. 최대 3개, 관련도 순(rank 오름차순) */
+  items: SearchEvidenceDto[];
 
   constructor(raw: SearchStreamEvidenceRaw) {
     this.answerMessageId = raw.answerMessageId;
-    this.items = raw.items.map((item) => new SearchStreamEvidenceItemDto(item));
+    this.items = raw.items.map((item) => new SearchEvidenceDto(item));
   }
 }
 
@@ -251,3 +316,73 @@ export type SearchStreamEvent =
   | { event: "completed"; data: SearchStreamCompletedDto }
   | { event: "failed"; data: SearchStreamFailedDto }
   | { event: "stopped"; data: SearchStreamStoppedDto };
+
+// GET /api/v1/workspaces/{workspaceId}/search/conversations/{conversationId}/messages
+
+/** 탐색 메시지 하나의 서버 응답 모양 */
+export interface SearchMessageRaw {
+  id: number;
+  role: SearchMessageRole;
+  sequence: number;
+  content: string;
+  status: SearchMessageStatus;
+  createdAt: string;
+  evidences: SearchEvidenceRaw[];
+}
+
+/** 탐색 대화의 메시지 하나 */
+export class SearchMessageDto {
+  /** 메시지 ID. accepted 이벤트의 questionMessageId·answerMessageId와 같은 값 */
+  id: number;
+  /** 쓴 쪽. USER는 질문, ASSISTANT는 답변 */
+  role: SearchMessageRole;
+  /** 대화 안에서의 순서. 응답은 오름차순 */
+  sequence: number;
+  /** 질문 내용 또는 답변 본문. 생성 중인 답변은 저장된 데까지의 본문 */
+  content: string;
+  /** 메시지 상태. 질문은 RECEIVED */
+  status: SearchMessageStatus;
+  /** 만든 시각(ISO 8601) */
+  createdAt: string;
+  /** 답변의 근거 문서. 최대 3개, 관련도 순(rank 오름차순). 질문(USER)은 빈 배열 */
+  evidences: SearchEvidenceDto[];
+
+  constructor(raw: SearchMessageRaw) {
+    this.id = raw.id;
+    this.role = raw.role;
+    this.sequence = raw.sequence;
+    this.content = raw.content;
+    this.status = raw.status;
+    this.createdAt = raw.createdAt;
+    this.evidences = raw.evidences.map(
+      (evidence) => new SearchEvidenceDto(evidence),
+    );
+  }
+}
+
+/** 탐색 메시지 조회의 서버 응답 모양 */
+export interface GetSearchMessagesResponseRaw {
+  conversationId: number;
+  items: SearchMessageRaw[];
+  hasPrevious: boolean;
+  previousCursor: string | null;
+}
+
+/** 탐색 대화의 최근 메시지 한 페이지 조회 응답 */
+export class GetSearchMessagesResponseDto {
+  /** 조회한 탐색 대화 ID */
+  conversationId: number;
+  /** 메시지 목록. sequence 오름차순(오래된 것부터) */
+  items: SearchMessageDto[];
+  /** 이 페이지보다 이전 메시지가 더 있는지 */
+  hasPrevious: boolean;
+  /** 이전 페이지를 받을 커서. 이전 메시지가 없으면 null */
+  previousCursor: string | null;
+
+  constructor(raw: GetSearchMessagesResponseRaw) {
+    this.conversationId = raw.conversationId;
+    this.items = raw.items.map((item) => new SearchMessageDto(item));
+    this.hasPrevious = raw.hasPrevious;
+    this.previousCursor = raw.previousCursor;
+  }
+}

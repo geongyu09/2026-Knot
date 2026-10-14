@@ -2,6 +2,7 @@ import { getRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/reco
 import { isHttpError } from "@api/httpClient/error";
 import { recordingKeys } from "@api/queryKey/recording";
 import { useQuery } from "@tanstack/react-query";
+import { getRecordingDocumentsStatus } from "@utils/getRecordingDocumentsStatus";
 
 /** 문서 정리가 끝나기 전의 녹음 상태를 다시 물어보는 간격(ms) */
 const POLL_INTERVAL_MS = 3000;
@@ -14,8 +15,9 @@ interface UseRecordingQueryParams {
 /**
  * 녹음 하나의 상태를 조회하는 쿼리 훅.
  *
- * 녹음을 끝낸 뒤 문서 정리가 진행 중인 동안(`ENDED` · `PROCESSING`)에는 3초 간격으로 다시 물어봐요.
- * 결과가 정해졌거나(`COMPLETED` · `NO_CONTENT` · `FAILED`) 아직 녹음 중이면(`RECORDING` · `PAUSED`) 멈춰요.
+ * 녹음을 끝낸 뒤 문서 정리의 결과가 정해지지 않은 동안에는 3초 간격으로 다시 물어봐요.
+ * 결과가 정해졌거나(문서를 모두 만듦 · 만들 내용 없음 · 실패) 아직 녹음 중이면 멈춰요.
+ * 어디까지 됐는지는 정리 화면과 같은 기준(`getRecordingDocumentsStatus`)으로 봐요.
  *
  * 녹음 상태를 한 번도 받지 못했으면 저절로 다시 물어보지 않아요.
  * 받은 것이 없을 때 다시 물어보면 실패 기록이 지워져, 화면이 실패와 불러오는 중을 오가기 때문이에요.
@@ -41,8 +43,7 @@ const useRecordingQuery = ({
 
       if (isHttpError(error) && error.isClientError) return false;
 
-      const isOrganizing =
-        data.status === "ENDED" || data.status === "PROCESSING";
+      const isOrganizing = getRecordingDocumentsStatus(data) === "organizing";
 
       return isOrganizing ? POLL_INTERVAL_MS : false;
     },

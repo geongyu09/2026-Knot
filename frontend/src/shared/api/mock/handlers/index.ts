@@ -7,7 +7,6 @@ import { invitationAcceptHandlers } from "./api/v1/invitations/accept";
 import { lastViewedWorkspaceHandlers } from "./api/v1/members/me/lastViewedWorkspace";
 import { workspacesHandlers } from "./api/v1/workspaces";
 import { workspaceHandlers } from "./api/v1/workspaces/[workspaceId]";
-import { workspaceConversationsHandlers } from "./api/v1/workspaces/[workspaceId]/conversations";
 import { documentGenerationJobRetryHandlers } from "./api/v1/workspaces/[workspaceId]/documentGenerationJobs/[jobId]/retry";
 import { documentsHandlers } from "./api/v1/workspaces/[workspaceId]/documents";
 import { documentHandlers } from "./api/v1/workspaces/[workspaceId]/documents/[documentId]";
@@ -23,6 +22,7 @@ import { ownershipTransfersHandlers } from "./api/v1/workspaces/[workspaceId]/ow
 import { workspaceRecordingsHandlers } from "./api/v1/workspaces/[workspaceId]/recordings";
 import { recordingHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]";
 import { workspaceSearchConversationsHandlers } from "./api/v1/workspaces/[workspaceId]/search/conversations";
+import { workspaceSearchConversationMessagesHandlers } from "./api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/messages";
 import { workspaceSearchConversationQuestionsHandlers } from "./api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions";
 import { recordingAudioUploadCompleteHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioUploadComplete";
 import { recordingAudioUploadUrlHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioUploadUrl";
@@ -46,7 +46,6 @@ export const handlers = [
   ...workspaceLeaveHandlers,
   ...ownershipTransferCandidatesHandlers,
   ...ownershipTransfersHandlers,
-  ...workspaceConversationsHandlers,
   ...workspaceRecordingsHandlers,
   ...currentRecordingHandlers,
   ...recordingHandlers,
@@ -67,4 +66,5 @@ export const handlers = [
   ...chatMessagesHandlers,
   ...workspaceSearchConversationsHandlers,
   ...workspaceSearchConversationQuestionsHandlers,
+  ...workspaceSearchConversationMessagesHandlers,
 ];

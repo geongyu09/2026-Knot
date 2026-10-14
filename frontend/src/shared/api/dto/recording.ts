@@ -12,7 +12,7 @@
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-upload-complete
  */
 
-/** 녹음 세션 상태. 시작·일시정지·재개·종료 응답과 녹음 상세 조회의 `sessionStatus`가 공유하는 서버 값. `DISCARDED`는 서버가 버린 녹음이에요 */
+/** 녹음 세션 상태. 시작·일시정지·재개·종료 응답과 녹음 상세 조회가 공유하는 서버 값. `DISCARDED`는 서버가 버린 녹음이에요 */
 export type RecordingSessionStatus =
   "RECORDING" | "PAUSED" | "ENDED" | "DISCARDED";
 
@@ -108,92 +108,104 @@ export class PostRecordingResponseDto {
 
 // GET /api/v1/workspaces/{workspaceId}/recordings/{recordingId}
 
+/** 전사 상태. 전사 시도가 접수된 뒤의 값이에요 */
+export type RecordingTranscriptionStatus =
+  "PROCESSING" | "SUCCEEDED" | "FAILED";
+
 /**
- * 녹음 하나의 화면용 종합 상태. 녹음 세션 상태에 업로드·전사·문서 생성 결과를 합친 값이에요.
+ * 주제 분류와 주제별 문서 생성을 합친 상태.
  *
- * - `ENDED`: 녹음을 끝냈고 최종 오디오 업로드 확인 전
- * - `PROCESSING`: 전사나 문서 생성이 대기 또는 진행 중
- * - `COMPLETED`: 문서 생성 완료
+ * - `QUEUED` · `RUNNING`: 대기하거나 진행 중인 작업이 있음. 문서가 일부 만들어졌어도 남은 작업이 있으면 이 값이에요
+ * - `SUCCEEDED`: 모든 주제의 문서가 만들어짐
  * - `NO_CONTENT`: 전사 결과에 문서로 정리할 내용이 없음
- * - `FAILED`: 업로드·전사·문서 생성 중 한 단계가 실패로 확정됨
+ * - `FAILED`: 진행 중인 작업 없이 실패가 남음
  */
-export type RecordingStatus =
-  | "RECORDING"
-  | "PAUSED"
-  | "ENDED"
-  | "PROCESSING"
-  | "COMPLETED"
-  | "NO_CONTENT"
-  | "FAILED";
+export type RecordingDocumentGenerationStatus =
+  "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "NO_CONTENT";
 
-/** 녹음 상세가 알려 주는 최종 오디오 업로드 단계의 상태. 업로드 완료 확인 응답의 `RecordingAudioUploadStatus`와는 다른 값이에요 */
-export type RecordingAudioUploadStepStatus =
-  "NOT_STARTED" | "PENDING" | "COMPLETED" | "FAILED";
+/** 녹음 상세 조회가 주는 문서 생성 결과의 서버 응답 모양 */
+export interface RecordingDocumentGenerationRaw {
+  status: RecordingDocumentGenerationStatus;
+  succeededCount: number;
+  failedJobIds: number[];
+}
 
-/** 전사·문서 생성 작업의 상태 */
-export type RecordingJobStatus =
-  "NOT_STARTED" | "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+/** 녹음 하나의 문서 생성 결과. 녹음 상세 조회 응답 안에 들어 있어요 */
+export class RecordingDocumentGenerationDto {
+  /** 주제 분류와 주제별 문서 생성을 합친 상태 */
+  status: RecordingDocumentGenerationStatus;
+  /** 생성에 성공한 문서 수. `FAILED`일 때 0이면 전체 실패, 1 이상이면 일부만 만들어진 실패예요 */
+  succeededCount: number;
+  /**
+   * 보존 기한 안에 남아 있는 실패 작업의 ID. 문서 만들기 재시도에 넘겨요.
+   * 주제 분류 단계에서 실패한 작업과 다시 시도 횟수를 다 쓴 작업도 들어 있어요.
+   * 다시 시도 횟수를 다 쓴 작업은 재시도를 보내면 서버가 409로 거절해요.
+   * 실패 작업이 없거나 보존 기한이 지나 지워졌으면 빈 배열이에요
+   */
+  failedJobIds: number[];
 
-/** 실패한 단계 */
-export type RecordingFailureStage =
-  "AUDIO_UPLOAD" | "TRANSCRIPTION" | "DOCUMENT_GENERATION";
+  constructor(raw: RecordingDocumentGenerationRaw) {
+    this.status = raw.status;
+    this.succeededCount = raw.succeededCount;
+    this.failedJobIds = raw.failedJobIds;
+  }
+}
 
-/** 녹음 상세 조회의 서버 응답 모양 */
+/**
+ * 녹음 상세 조회의 서버 응답 모양.
+ *
+ * 전사와 문서 생성 필드는 서버에 나중에 더해진 값이라, 그 전의 서버는 필드 자체를 주지 않아요.
+ */
 export interface GetRecordingResponseRaw {
-  recordingId: number;
-  status: RecordingStatus;
-  sessionStatus: RecordingSessionStatus;
-  audioUploadStatus: RecordingAudioUploadStepStatus;
-  startedAt: string;
+  /** 녹음 세션 상태. 전사·문서 생성 상태가 아니에요 */
+  status: RecordingSessionStatus;
+  elapsedMillis: number;
   endedAt: string | null;
-  durationMillis: number | null;
-  transcriptionStatus: RecordingJobStatus;
-  documentGenerationStatus: RecordingJobStatus;
-  documentGenerationJobId: number | null;
-  failureStage: RecordingFailureStage | null;
-  failureReason: string | null;
+  endReason: RecordingEndReason | null;
+  audioUploadStatus: RecordingAudioUploadStatus | null;
+  transcriptionAttemptId?: string | null;
+  transcriptionStatus?: RecordingTranscriptionStatus | null;
+  transcriptionFailureCode?: string | null;
+  documentGeneration?: RecordingDocumentGenerationRaw | null;
 }
 
 /** 녹음 상세 조회 응답. 녹음을 끝낸 뒤 이 응답을 다시 조회해 문서 정리가 어디까지 됐는지 확인해요 */
 export class GetRecordingResponseDto {
-  /** 녹음 세션 ID */
-  recordingId: number;
-  /** 화면용 종합 상태. 정리 화면은 이 값으로 무엇을 보여 줄지 정해요 */
-  status: RecordingStatus;
-  /** 녹음 세션 상태. 전사·문서 생성이 실패해도 `ENDED`로 남아요 */
+  /** 녹음 세션 상태. 서버 필드 `status`를 전사·문서 생성 상태와 구별되게 이름을 바꿨어요. 전사·문서 생성이 실패해도 `ENDED`로 남아요 */
   sessionStatus: RecordingSessionStatus;
-  /** 최종 오디오 업로드 단계의 상태 */
-  audioUploadStatus: RecordingAudioUploadStepStatus;
-  /** 녹음 시작 시각(ISO 8601) */
-  startedAt: string;
+  /** 일시정지를 뺀 서버 기준 녹음 시간(ms). 진행 중이면 조회 시점까지 센 값이에요 */
+  elapsedMillis: number;
   /** 녹음 종료 시각(ISO 8601). 끝나기 전이면 null */
   endedAt: string | null;
-  /** 녹음 길이(ms). 끝나기 전이면 null */
-  durationMillis: number | null;
-  /** 전사 작업 상태 */
-  transcriptionStatus: RecordingJobStatus;
-  /** 문서 생성 작업 상태 */
-  documentGenerationStatus: RecordingJobStatus;
-  /** 문서 생성 작업 ID. 문서 만들기 재시도에 넘겨요. 작업이 만들어지기 전이거나 전사 실패로 작업이 없으면 null */
-  documentGenerationJobId: number | null;
-  /** 실패한 단계. 실패하지 않았으면 null */
-  failureStage: RecordingFailureStage | null;
-  /** 실패 원인 코드(예: `DOCUMENT_GENERATION_FAILED`). 실패하지 않았으면 null. 코드 목록은 명세에서 아직 초안이에요 */
-  failureReason: string | null;
+  /** 녹음이 끝난 사유. 끝나기 전이면 null */
+  endReason: RecordingEndReason | null;
+  /** 최종 오디오 업로드 상태. 업로드를 예약하기 전이면 null, 예약하면 `RESERVED`, 서버가 저장을 확인하면 `COMPLETED` */
+  audioUploadStatus: RecordingAudioUploadStatus | null;
+  /** 지금 전사 시도의 UUID. 전사를 시도하기 전이면 null. 서버가 주지 않으면 null */
+  transcriptionAttemptId: string | null;
+  /** 전사 상태. 전사를 시도하기 전이면 null. 서버가 주지 않으면 null */
+  transcriptionStatus: RecordingTranscriptionStatus | null;
+  /** 전사 실패 이유 코드(예: `AI_TIMEOUT`). 실패가 아니면 null. 서버가 주지 않으면 null */
+  transcriptionFailureCode: string | null;
+  /** 문서 생성 결과. 문서 생성이 접수되기 전이면 null. 서버가 주지 않으면 null */
+  documentGeneration: RecordingDocumentGenerationDto | null;
 
   constructor(raw: GetRecordingResponseRaw) {
-    this.recordingId = raw.recordingId;
-    this.status = raw.status;
-    this.sessionStatus = raw.sessionStatus;
-    this.audioUploadStatus = raw.audioUploadStatus;
-    this.startedAt = raw.startedAt;
+    this.sessionStatus = raw.status;
+    this.elapsedMillis = raw.elapsedMillis;
     this.endedAt = raw.endedAt;
-    this.durationMillis = raw.durationMillis;
-    this.transcriptionStatus = raw.transcriptionStatus;
-    this.documentGenerationStatus = raw.documentGenerationStatus;
-    this.documentGenerationJobId = raw.documentGenerationJobId;
-    this.failureStage = raw.failureStage;
-    this.failureReason = raw.failureReason;
+    this.endReason = raw.endReason;
+    this.audioUploadStatus = raw.audioUploadStatus;
+    this.transcriptionAttemptId = raw.transcriptionAttemptId ?? null;
+    this.transcriptionStatus = raw.transcriptionStatus ?? null;
+    this.transcriptionFailureCode = raw.transcriptionFailureCode ?? null;
+    // 전사·문서 생성 필드를 주지 않는 서버의 응답(undefined)도 값이 없는 것(null)으로 맞춰요
+    const documentGeneration = raw.documentGeneration ?? null;
+
+    this.documentGeneration =
+      documentGeneration === null
+        ? null
+        : new RecordingDocumentGenerationDto(documentGeneration);
   }
 }
 

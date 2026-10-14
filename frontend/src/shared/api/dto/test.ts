@@ -3,11 +3,6 @@ import { describe, expect, it } from "vitest";
 import { GetMeResponseDto, PostNicknameRequestDto } from "./auth";
 import { GetChatMessagesResponseDto } from "./chatMessage";
 import {
-  GetChatSessionsResponseDto,
-  PostChatSessionRequestDto,
-  PostChatSessionResponseDto,
-} from "./chatSession";
-import {
   ConfirmationSummaryDto,
   DocumentConfirmationItemDto,
   DocumentListItemDto,
@@ -115,27 +110,6 @@ describe("DTO 생성자 변환", () => {
   });
 
   describe("대화", () => {
-    const session = {
-      id: 100,
-      title: "DB 기술 선정 관련 문서",
-      createdAt: "2026-09-01T00:00:00.000Z",
-      lastMessageAt: "2026-09-01T01:00:00.000Z",
-    };
-
-    it("세션 목록 응답을 sessions 필드에, 생성 응답을 세션 모양으로 돌려준다", () => {
-      expect(new GetChatSessionsResponseDto([session]).sessions).toEqual([
-        session,
-      ]);
-      expect(new PostChatSessionResponseDto(session)).toEqual(session);
-    });
-
-    it("세션 생성 요청 본문은 title이 없으면 직렬화 결과에도 없다", () => {
-      expect(JSON.stringify(new PostChatSessionRequestDto({}))).toBe("{}");
-      expect(new PostChatSessionRequestDto({ title: "새 대화" })).toEqual({
-        title: "새 대화",
-      });
-    });
-
     it("메시지 목록 응답을 messages 필드에 담는다", () => {
       const message = {
         id: 1001,

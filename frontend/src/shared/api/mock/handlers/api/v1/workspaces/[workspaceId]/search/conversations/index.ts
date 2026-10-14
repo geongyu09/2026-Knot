@@ -1,6 +1,9 @@
 import { delay, http, HttpResponse } from "msw";
 
-import { searchAnswerStreamResponse } from "@api/mock/responses/search";
+import {
+  searchAnswerStreamResponse,
+  searchConversationsResponse,
+} from "@api/mock/responses/search";
 import type { SearchAnswerStream } from "@api/mock/types/search";
 
 /**
@@ -53,6 +56,9 @@ export const toSearchAnswerStreamResponse = (stream: SearchAnswerStream) =>
   });
 
 export const workspaceSearchConversationsHandlers = [
+  http.get("*/api/v1/workspaces/:workspaceId/search/conversations", () =>
+    HttpResponse.json(searchConversationsResponse),
+  ),
   http.post("*/api/v1/workspaces/:workspaceId/search/conversations", () =>
     toSearchAnswerStreamResponse(searchAnswerStreamResponse),
   ),

@@ -13,6 +13,7 @@ const useSearchAnswerState = () =>
       status: state.status,
       question: state.question,
       conversationId: state.conversationId,
+      questionMessageId: state.questionMessageId,
       answerMessageId: state.answerMessageId,
       text: state.text,
       evidences: state.evidences,
