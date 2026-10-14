@@ -5,6 +5,7 @@
  * - POST /api/v1/workspaces
  * - GET  /api/v1/workspaces/{workspaceId}
  * - PUT  /api/v1/members/me/last-viewed-workspace
+ * - DELETE /api/v1/workspaces/{workspaceId}/members/me (요청과 응답 본문 없음)
  */
 
 /** 워크스페이스 목록 항목의 서버 응답 모양 */
