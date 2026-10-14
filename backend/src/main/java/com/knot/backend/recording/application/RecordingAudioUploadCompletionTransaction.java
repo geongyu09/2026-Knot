@@ -66,6 +66,7 @@ public class RecordingAudioUploadCompletionTransaction {
             upload.complete(
                     storedObject.contentLength(),
                     storedObject.contentType(),
+                    storedObject.versionId(),
                     clock.instant()
                             .truncatedTo(ChronoUnit.MICROS)
             );

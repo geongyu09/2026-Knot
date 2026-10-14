@@ -104,6 +104,7 @@ public class RecordingTranscriptionService {
         requireTime(deadline);
         String url = storage.presignDownload(
                 execution.storageKey(),
+                execution.storageVersionId(),
                 execution.contentType(),
                 execution.contentLength()
         );

@@ -8,6 +8,7 @@ public record RecordingTranscriptionExecution(
         long recordingId,
         UUID attemptId,
         String storageKey,
+        String storageVersionId,
         String contentType,
         long contentLength,
         Instant startedAt
