@@ -35,4 +35,17 @@ class TranscriptTest {
                 )
         ).isInstanceOf(RecordingException.class);
     }
+
+    @Test
+    @DisplayName("빈 전사 원문은 저장 원문으로 생성하지 못한다")
+    void create_failure_blankText() {
+        // when & then
+        assertThatThrownBy(
+                () -> Transcript.create(
+                        1,
+                        " ",
+                        Instant.now()
+                )
+        ).isInstanceOf(RecordingException.class);
+    }
 }

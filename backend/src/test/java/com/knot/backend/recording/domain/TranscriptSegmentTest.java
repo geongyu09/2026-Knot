@@ -3,6 +3,7 @@ package com.knot.backend.recording.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -120,6 +121,129 @@ class TranscriptSegmentTest {
                         null,
                         null,
                         text
+                )
+        ).isInstanceOf(RecordingException.class);
+    }
+
+    @Test
+    @DisplayName("2시간을 넘는 종료 시각의 구간은 만들지 않는다")
+    void create_failure_beyondMaxRecording() {
+        // given
+        long endMillis = RecordingSession.MAX_RECORDING_MILLIS + 1;
+
+        // when & then
+        assertThatThrownBy(
+                () -> TranscriptSegment.create(
+                        81,
+                        0,
+                        0,
+                        endMillis,
+                        null,
+                        "발언"
+                )
+        ).isInstanceOf(RecordingException.class);
+    }
+
+    @Test
+    @DisplayName("발화 순서대로 위치를 붙이고 화자 라벨마다 처음 나온 순서의 번호를 붙인다")
+    void createAll_success_positionsAndSpeakerNumbers() {
+        // given
+        List<TranscriptUtterance> utterances = List.of(
+                new TranscriptUtterance(
+                        "B",
+                        1,
+                        2,
+                        "첫 발화"
+                ),
+                new TranscriptUtterance(
+                        "A",
+                        2,
+                        3,
+                        "둘째 발화"
+                ),
+                new TranscriptUtterance(
+                        "B",
+                        3,
+                        4,
+                        "셋째 발화"
+                ),
+                new TranscriptUtterance(
+                        " ",
+                        4,
+                        5,
+                        "화자 미상"
+                )
+        );
+
+        // when
+        List<TranscriptSegment> segments = TranscriptSegment.createAll(
+                81,
+                utterances
+        );
+
+        // then
+        assertThat(segments).extracting(TranscriptSegment::getPosition)
+                .containsExactly(
+                        0,
+                        1,
+                        2,
+                        3
+                );
+        assertThat(segments).extracting(TranscriptSegment::getSpeakerNumber)
+                .containsExactly(
+                        1,
+                        2,
+                        1,
+                        null
+                );
+        assertThat(segments).extracting(TranscriptSegment::getStartMillis)
+                .containsExactly(
+                        1000L,
+                        2000L,
+                        3000L,
+                        4000L
+                );
+    }
+
+    @Test
+    @DisplayName("발화가 하나도 없으면 구간을 만들지 않는다")
+    void createAll_failure_emptyUtterances() {
+        // given
+        List<TranscriptUtterance> utterances = List.of();
+
+        // when & then
+        assertThatThrownBy(
+                () -> TranscriptSegment.createAll(
+                        81,
+                        utterances
+                )
+        ).isInstanceOf(RecordingException.class);
+    }
+
+    @Test
+    @DisplayName("앞 발화보다 이른 시작 시각이 나오면 구간을 만들지 않는다")
+    void createAll_failure_startGoesBack() {
+        // given
+        List<TranscriptUtterance> utterances = List.of(
+                new TranscriptUtterance(
+                        "A",
+                        1,
+                        2,
+                        "첫 발화"
+                ),
+                new TranscriptUtterance(
+                        "A",
+                        0.5,
+                        1.5,
+                        "역전된 발화"
+                )
+        );
+
+        // when & then
+        assertThatThrownBy(
+                () -> TranscriptSegment.createAll(
+                        81,
+                        utterances
                 )
         ).isInstanceOf(RecordingException.class);
     }
