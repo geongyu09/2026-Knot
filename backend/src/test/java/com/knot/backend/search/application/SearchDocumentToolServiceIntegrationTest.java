@@ -625,25 +625,6 @@ class SearchDocumentToolServiceIntegrationTest {
         ).hasMessage("DOCUMENT_NOT_FOUND");
     }
 
-    private void setCreatedAt(
-            long document,
-            Instant time
-    ) {
-        jdbc.sql(
-                "UPDATE documents SET created_at = :time, "
-                        + "archived_at = CASE WHEN status = 'ARCHIVED' THEN CAST(:time AS timestamptz) END WHERE id = :id"
-        )
-                .param(
-                        "time",
-                        java.sql.Timestamp.from(time)
-                )
-                .param(
-                        "id",
-                        document
-                )
-                .update();
-    }
-
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     @DisplayName("페이지 사이 보관 전환에도 기존 커서로 다음 문서를 읽는다")
@@ -691,43 +672,6 @@ class SearchDocumentToolServiceIntegrationTest {
                 )
                         .content()
         ).isEqualTo("본문");
-    }
-
-    private SearchDocumentPage documentPage(
-            boolean search,
-            String cursor
-    ) {
-        if (search) {
-            return service.search(
-                    scope,
-                    parameters(
-                            "결정",
-                            cursor,
-                            1
-                    )
-            );
-        }
-        return service.list(
-                scope,
-                parameters(
-                        null,
-                        cursor,
-                        1
-                )
-        );
-    }
-
-    private void archiveDocument(long document) {
-        jdbc.sql("UPDATE documents SET status = 'ARCHIVED', archived_at = :time WHERE id = :id")
-                .param(
-                        "time",
-                        java.sql.Timestamp.from(NOW.plusSeconds(1))
-                )
-                .param(
-                        "id",
-                        document
-                )
-                .update();
     }
 
     @Test
@@ -967,6 +911,62 @@ class SearchDocumentToolServiceIntegrationTest {
         return result.path("structuredContent");
     }
 
+    private SearchDocumentPage documentPage(
+            boolean search,
+            String cursor
+    ) {
+        if (search) {
+            return service.search(
+                    scope,
+                    parameters(
+                            "결정",
+                            cursor,
+                            1
+                    )
+            );
+        }
+        return service.list(
+                scope,
+                parameters(
+                        null,
+                        cursor,
+                        1
+                )
+        );
+    }
+
+    private void setCreatedAt(
+            long document,
+            Instant time
+    ) {
+        jdbc.sql(
+                "UPDATE documents SET created_at = :time, "
+                        + "archived_at = CASE WHEN status = 'ARCHIVED' THEN CAST(:time AS timestamptz) END WHERE id = :id"
+        )
+                .param(
+                        "time",
+                        java.sql.Timestamp.from(time)
+                )
+                .param(
+                        "id",
+                        document
+                )
+                .update();
+    }
+
+    private void archiveDocument(long document) {
+        jdbc.sql("UPDATE documents SET status = 'ARCHIVED', archived_at = :time WHERE id = :id")
+                .param(
+                        "time",
+                        java.sql.Timestamp.from(NOW.plusSeconds(1))
+                )
+                .param(
+                        "id",
+                        document
+                )
+                .update();
+    }
+
     @Test
     void read_failure_invalidId() {
         assertThatThrownBy(
@@ -1053,7 +1053,7 @@ class SearchDocumentToolServiceIntegrationTest {
     void execute_success_actualMcpAndLlmHttp(boolean followup) throws Exception {
         long document = saveDocument(
                 workspaceId,
-                "ARCHIVED",
+                "DRAFT",
                 "결제 결정",
                 "결제 장애는 김개발이 복구하기로 결정했다."
         );
