@@ -7,7 +7,6 @@ import { invitationAcceptHandlers } from "./api/v1/invitations/accept";
 import { lastViewedWorkspaceHandlers } from "./api/v1/members/me/lastViewedWorkspace";
 import { workspacesHandlers } from "./api/v1/workspaces";
 import { workspaceHandlers } from "./api/v1/workspaces/[workspaceId]";
-import { workspaceConversationsHandlers } from "./api/v1/workspaces/[workspaceId]/conversations";
 import { documentGenerationJobRetryHandlers } from "./api/v1/workspaces/[workspaceId]/documentGenerationJobs/[jobId]/retry";
 import { documentsHandlers } from "./api/v1/workspaces/[workspaceId]/documents";
 import { documentHandlers } from "./api/v1/workspaces/[workspaceId]/documents/[documentId]";
@@ -41,7 +40,6 @@ export const handlers = [
   ...workspaceInvitationHandlers,
   ...workspaceInvitationsHandlers,
   ...workspaceInvitationReissueHandlers,
-  ...workspaceConversationsHandlers,
   ...workspaceRecordingsHandlers,
   ...currentRecordingHandlers,
   ...recordingHandlers,
