@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.time.Instant;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -141,9 +142,11 @@ class RecordingAudioUploadTest {
 
         // when
         upload.complete(
-                1024L,
-                "audio/webm",
-                "version-1",
+                StoredAudioObject.of(
+                        1024L,
+                        "audio/webm",
+                        "version-1"
+                ),
                 RESERVED_AT.plusSeconds(60)
         );
 
@@ -162,9 +165,11 @@ class RecordingAudioUploadTest {
         // when
         Throwable failure = catchThrowable(
                 () -> upload.complete(
-                        1000L,
-                        "audio/webm",
-                        "version-1",
+                        StoredAudioObject.of(
+                                1000L,
+                                "audio/webm",
+                                "version-1"
+                        ),
                         RESERVED_AT.plusSeconds(60)
                 )
         );
@@ -185,9 +190,11 @@ class RecordingAudioUploadTest {
         // when
         Throwable failure = catchThrowable(
                 () -> upload.complete(
-                        1024L,
-                        "audio/mpeg",
-                        "version-1",
+                        StoredAudioObject.of(
+                                1024L,
+                                "audio/mpeg",
+                                "version-1"
+                        ),
                         RESERVED_AT.plusSeconds(60)
                 )
         );
@@ -204,17 +211,21 @@ class RecordingAudioUploadTest {
         // given
         RecordingAudioUpload upload = reserved();
         upload.complete(
-                1024L,
-                "audio/webm",
-                "version-1",
+                StoredAudioObject.of(
+                        1024L,
+                        "audio/webm",
+                        "version-1"
+                ),
                 RESERVED_AT.plusSeconds(60)
         );
 
         // when
         upload.complete(
-                1024L,
-                "audio/webm",
-                "version-2",
+                StoredAudioObject.of(
+                        1024L,
+                        "audio/webm",
+                        "version-2"
+                ),
                 RESERVED_AT.plusSeconds(120)
         );
 
@@ -322,12 +333,78 @@ class RecordingAudioUploadTest {
                 .isEqualTo(RecordingErrorCode.AUDIO_UPLOAD_NOT_COMPLETED);
     }
 
+    @Test
+    @DisplayName("저장소에 파일이 없으면 업로드 미완료 오류로 거절한다")
+    void complete_failure_missingObject() {
+        // given
+        RecordingAudioUpload upload = reserved();
+
+        // when
+        Throwable failure = catchThrowable(
+                () -> upload.complete(
+                        StoredAudioObject.missing(),
+                        RESERVED_AT.plusSeconds(60)
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.AUDIO_UPLOAD_NOT_COMPLETED);
+        assertThat(upload.isCompleted()).isFalse();
+    }
+
+    @Test
+    @DisplayName("이미 완료된 업로드는 저장소 파일이 없어도 완료 상태를 유지한다")
+    void complete_success_completedIgnoresMissingObject() {
+        // given
+        RecordingAudioUpload upload = completed();
+
+        // when
+        upload.complete(
+                StoredAudioObject.missing(),
+                RESERVED_AT.plusSeconds(120)
+        );
+
+        // then
+        assertThat(upload.getCompletedAt()).isEqualTo(RESERVED_AT.plusSeconds(60));
+        assertThat(upload.getStorageVersionId()).isEqualTo("version-1");
+    }
+
+    @Test
+    @DisplayName("완료 전 업로드는 저장소에서 확인할 key를 돌려준다")
+    void findStorageKeyToConfirm_success_reserved() {
+        // given
+        RecordingAudioUpload upload = reserved();
+
+        // when
+        Optional<String> storageKey = upload.findStorageKeyToConfirm();
+
+        // then
+        assertThat(storageKey).contains("recordings/1/key");
+    }
+
+    @Test
+    @DisplayName("이미 완료된 업로드는 저장소를 다시 확인하지 않는다")
+    void findStorageKeyToConfirm_success_emptyWhenCompleted() {
+        // given
+        RecordingAudioUpload upload = completed();
+
+        // when
+        Optional<String> storageKey = upload.findStorageKeyToConfirm();
+
+        // then
+        assertThat(storageKey).isEmpty();
+    }
+
     private RecordingAudioUpload completed() {
         RecordingAudioUpload upload = reserved();
         upload.complete(
-                1024L,
-                "audio/webm",
-                "version-1",
+                StoredAudioObject.of(
+                        1024L,
+                        "audio/webm",
+                        "version-1"
+                ),
                 RESERVED_AT.plusSeconds(60)
         );
         return upload;
