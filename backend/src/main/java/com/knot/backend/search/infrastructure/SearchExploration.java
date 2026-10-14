@@ -13,6 +13,8 @@ public class SearchExploration {
     private final Map<Long, String> revisions = new LinkedHashMap<>();
     private boolean queried;
     private boolean found;
+    private boolean searched;
+    private boolean searchMatchesFound;
 
     public void record(
             String name,
@@ -28,13 +30,20 @@ public class SearchExploration {
             throw new SearchToolException("INVALID_MCP_RESPONSE");
         }
         found |= !items.isEmpty();
+        if ("search_documents".equals(name)) {
+            searched = true;
+            searchMatchesFound |= !items.isEmpty();
+        }
     }
 
     public List<SearchDocumentResult> finish() {
         if (!read.isEmpty()) {
             return List.copyOf(read.values());
         }
-        if (!queried || found) {
+        if (!queried || searchMatchesFound) {
+            throw new SearchToolException("INCOMPLETE_DOCUMENT_EXPLORATION");
+        }
+        if (!searched && found) {
             throw new SearchToolException("INCOMPLETE_DOCUMENT_EXPLORATION");
         }
         return List.of();

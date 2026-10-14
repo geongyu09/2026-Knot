@@ -1,8 +1,11 @@
 package com.knot.backend.search.presentation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.auth.domain.AuthenticatedMember;
@@ -15,6 +18,7 @@ import com.knot.backend.search.application.SearchDocumentRetriever;
 import com.knot.backend.search.application.SearchGenerationAvailability;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
+import com.knot.backend.search.infrastructure.SearchExploration;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.io.BufferedReader;
@@ -32,6 +36,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -363,6 +368,71 @@ class SearchQuestionAcceptanceTest {
                         .query(Long.class)
                         .single()
         ).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("목록에 문서가 있어도 검색 결과가 없으면 실제 SSE로 안내와 빈 근거를 보내고 정상 완료한다")
+    void create_success_noSearchMatchesWithListedDocuments() throws Exception {
+        // given
+        long document = saveArchivedDocument(
+                workspaceId,
+                memberId
+        );
+        when(
+                retriever.retrieve(
+                        any(),
+                        eq("점심")
+                )
+        ).thenAnswer(call -> {
+            SearchExploration exploration = new SearchExploration();
+            exploration.record(
+                    "search_documents",
+                    json.readTree("{\"items\":[]}")
+            );
+            exploration.record(
+                    "list_documents",
+                    json.readTree("{\"items\":[{\"documentId\":" + document + "}]}")
+            );
+            return new SearchRetrievalResult(
+                    exploration.finish(),
+                    0
+            );
+        });
+
+        // when
+        try (BufferedReader stream = reader(
+                connect(
+                        UUID.randomUUID(),
+                        "점심"
+                ).body()
+        )) {
+            assertThat(readEvent(stream)).startsWith("event:accepted");
+            long answer = answerId();
+            worker.execute(answer);
+            String events = stream.lines()
+                    .collect(Collectors.joining("\n"));
+
+            // then
+            assertThat(events).contains(
+                    "event:delta",
+                    "해당 내용을 확인하지 못했습니다",
+                    "event:evidence",
+                    "\"items\":[]",
+                    "event:completed",
+                    "\"status\":\"COMPLETED\""
+            )
+                    .doesNotContain("event:failed");
+            assertThat(
+                    jdbc.sql("SELECT status FROM search_messages WHERE id = :id")
+                            .param(
+                                    "id",
+                                    answer
+                            )
+                            .query(String.class)
+                            .single()
+            ).isEqualTo("COMPLETED");
+            verifyNoInteractions(generator);
+        }
     }
 
     @Test
