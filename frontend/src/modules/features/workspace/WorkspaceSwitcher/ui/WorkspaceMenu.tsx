@@ -15,6 +15,7 @@ interface WorkspaceMenuProps {
   currentWorkspaceId: number;
   onSelectWorkspace: (workspaceId: number) => void;
   onCreateWorkspace: () => void;
+  onLeaveWorkspace: () => void;
 }
 
 /**
@@ -22,7 +23,6 @@ interface WorkspaceMenuProps {
  *
  * 내 워크스페이스 목록, 새 워크스페이스 만들기, 워크스페이스 나가기를 차례로 둬요.
  * 지금 워크스페이스는 체크 아이콘 없이 배경과 글자색으로만 구분해요.
- * 나가기는 아직 동작이 없어 항목만 보여요.
  */
 export default function WorkspaceMenu({
   id,
@@ -30,6 +30,7 @@ export default function WorkspaceMenu({
   currentWorkspaceId,
   onSelectWorkspace,
   onCreateWorkspace,
+  onLeaveWorkspace,
 }: WorkspaceMenuProps) {
   return (
     <Container id={id} aria-label="워크스페이스 메뉴">
@@ -70,7 +71,7 @@ export default function WorkspaceMenu({
         <Divider />
       </DividerWrapper>
 
-      <ActionItem type="button" $isWarning>
+      <ActionItem type="button" $isWarning onClick={onLeaveWorkspace}>
         워크스페이스 나가기
       </ActionItem>
     </Container>

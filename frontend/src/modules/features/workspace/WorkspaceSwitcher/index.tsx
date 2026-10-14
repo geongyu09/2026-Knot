@@ -7,7 +7,7 @@ import { useWorkspaceSwitcher } from "./model/useWorkspaceSwitcher";
 import WorkspaceMenu from "./ui/WorkspaceMenu";
 
 /**
- * 지금 워크스페이스의 이름을 보여 주고, 누르면 다른 워크스페이스로 옮겨 가거나 새로 만들 수 있는 메뉴를 여는 버튼.
+ * 지금 워크스페이스의 이름을 보여 주고, 누르면 다른 워크스페이스로 옮겨 가거나 새로 만들거나 나갈 수 있는 메뉴를 여는 버튼.
  *
  * 사이드바 맨 위에 둬요. 메뉴는 이름 바로 아래로 펼쳐지고, 감싸는 영역의 폭을 그대로 써요.
  */
@@ -22,6 +22,7 @@ export default function WorkspaceSwitcher() {
     handleToggle,
     handleSelectWorkspace,
     handleCreateWorkspace,
+    handleLeaveWorkspace,
   } = useWorkspaceSwitcher();
 
   return (
@@ -52,6 +53,7 @@ export default function WorkspaceSwitcher() {
           currentWorkspaceId={currentWorkspaceId}
           onSelectWorkspace={handleSelectWorkspace}
           onCreateWorkspace={handleCreateWorkspace}
+          onLeaveWorkspace={handleLeaveWorkspace}
         />
       )}
     </Container>
