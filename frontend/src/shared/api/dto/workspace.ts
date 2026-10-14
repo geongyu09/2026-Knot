@@ -6,6 +6,7 @@
  * - GET  /api/v1/workspaces/{workspaceId}
  * - PUT  /api/v1/members/me/last-viewed-workspace
  * - DELETE /api/v1/workspaces/{workspaceId}/members/me (요청과 응답 본문 없음)
+ * - GET  /api/v1/workspaces/{workspaceId}/ownership-transfer-candidates
  */
 
 /** 워크스페이스 목록 항목의 서버 응답 모양 */
@@ -121,5 +122,42 @@ export class PutLastViewedWorkspaceRequestDto {
 
   constructor({ workspaceId }: PutLastViewedWorkspaceRequestInput) {
     this.workspaceId = workspaceId;
+  }
+}
+
+// GET /api/v1/workspaces/{workspaceId}/ownership-transfer-candidates
+
+/** OWNER 승계 후보의 서버 응답 모양 */
+export interface OwnershipTransferCandidateRaw {
+  memberId: number;
+  nickname: string;
+}
+
+/** OWNER 승계 후보. 승계 후보 조회 응답의 `candidates`에 들어감 */
+export class OwnershipTransferCandidateDto {
+  /** 후보 멤버의 ID. 승계 요청의 `successorMemberId`로 넘김 */
+  memberId: number;
+  /** 후보 멤버의 닉네임 */
+  nickname: string;
+
+  constructor(raw: OwnershipTransferCandidateRaw) {
+    this.memberId = raw.memberId;
+    this.nickname = raw.nickname;
+  }
+}
+
+/** OWNER 승계 후보 조회의 서버 응답 모양. 본문이 배열 하나 */
+export type GetOwnershipTransferCandidatesResponseRaw =
+  OwnershipTransferCandidateRaw[];
+
+/** OWNER 승계 후보 조회 응답. OWNER만 볼 수 있고(그 외 403), 서버 배열을 `candidates` 필드에 담음 */
+export class GetOwnershipTransferCandidatesResponseDto {
+  /** 나와 탈퇴한 멤버를 뺀 활성 멤버 목록. memberId 오름차순이고 없으면 빈 배열 */
+  candidates: OwnershipTransferCandidateDto[];
+
+  constructor(raw: GetOwnershipTransferCandidatesResponseRaw) {
+    this.candidates = raw.map(
+      (candidate) => new OwnershipTransferCandidateDto(candidate),
+    );
   }
 }
