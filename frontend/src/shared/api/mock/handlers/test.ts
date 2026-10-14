@@ -67,6 +67,7 @@ import { getDocumentApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/docum
 import { getDocumentConfirmationsApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documents/[documentId]/confirmations";
 import { confirmDocumentApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documents/[documentId]/confirmations/me";
 import { getWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitation";
+import { leaveWorkspaceApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/members/me";
 import { createSearchConversationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations";
 import { createSearchQuestionApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions";
 import { issueWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations";
@@ -223,6 +224,10 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
       await expect(
         updateLastViewedWorkspaceApi({ workspaceId: WORKSPACE_ID }),
       ).resolves.toBeUndefined();
+    });
+
+    it("DELETE /api/v1/workspaces/:workspaceId/members/me는 본문 없이 성공한다", async () => {
+      await expect(leaveWorkspaceApi(WORKSPACE_ID)).resolves.toBeUndefined();
     });
   });
 
