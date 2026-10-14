@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 public class RecordingAudioUploadCompletionService {
     private final RecordingAudioUploadCompletionTransaction completionTransaction;
     private final RecordingAudioStorage audioStorage;
+    private final RecordingTranscriptionService transcriptionService;
 
     public RecordingAudioUploadCompletionResult complete(
             long workspaceId,
@@ -27,12 +28,14 @@ public class RecordingAudioUploadCompletionService {
         StoredAudioObject storedObject = pending.completed()
                 ? StoredAudioObject.missing()
                 : audioStorage.findStoredObject(pending.storageKey());
-        return completionTransaction.complete(
+        RecordingAudioUploadCompletionResult result = completionTransaction.complete(
                 workspaceId,
                 memberId,
                 recordingId,
                 uploadId,
                 storedObject
         );
+        transcriptionService.dispatch();
+        return result;
     }
 }

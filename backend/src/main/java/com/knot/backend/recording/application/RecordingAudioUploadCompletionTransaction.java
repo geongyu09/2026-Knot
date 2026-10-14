@@ -9,6 +9,7 @@ import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.RecordingSession;
 import com.knot.backend.recording.domain.RecordingSessionRepository;
+import com.knot.backend.global.config.TranscriptionProperties;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,8 @@ public class RecordingAudioUploadCompletionTransaction {
     private final RecordingSessionRepository recordingSessionRepository;
     private final RecordingAudioUploadRepository recordingAudioUploadRepository;
     private final Clock clock;
+    private final RecordingTranscriptionStateService transcriptionState;
+    private final TranscriptionProperties transcriptionProperties;
 
     @Transactional
     public PendingAudioUpload prepare(
@@ -56,19 +59,22 @@ public class RecordingAudioUploadCompletionTransaction {
                 recordingId,
                 uploadId
         );
-        if (upload.isCompleted()) {
-            return RecordingAudioUploadCompletionResult.from(upload);
+        if (!upload.isCompleted()) {
+            if (!storedObject.exists()) {
+                throw new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_COMPLETED);
+            }
+            upload.complete(
+                    storedObject.contentLength(),
+                    storedObject.contentType(),
+                    clock.instant()
+                            .truncatedTo(ChronoUnit.MICROS)
+            );
+            recordingAudioUploadRepository.save(upload);
         }
-        if (!storedObject.exists()) {
-            throw new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_COMPLETED);
+        if (transcriptionProperties.enabled() && upload.getDeletedAt() == null) {
+            transcriptionState.registerAutomatic(recordingId);
         }
-        upload.complete(
-                storedObject.contentLength(),
-                storedObject.contentType(),
-                clock.instant()
-                        .truncatedTo(ChronoUnit.MICROS)
-        );
-        return RecordingAudioUploadCompletionResult.from(recordingAudioUploadRepository.save(upload));
+        return RecordingAudioUploadCompletionResult.from(upload);
     }
 
     private RecordingAudioUpload findValidatedUpload(

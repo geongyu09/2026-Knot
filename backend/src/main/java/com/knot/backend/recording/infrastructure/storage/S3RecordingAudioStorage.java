@@ -20,9 +20,11 @@ import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 public class S3RecordingAudioStorage implements RecordingAudioStorage {
     private static final int NOT_FOUND_STATUS = 404;
@@ -54,6 +56,48 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
             return "";
         }
         return keyPrefix;
+    }
+
+    @Override
+    public String presignDownload(
+            String storageKey,
+            String contentType,
+            long contentLength
+    ) {
+        try {
+            String key = keyPrefix + storageKey;
+            HeadObjectResponse object = client.headObject(
+                    HeadObjectRequest.builder()
+                            .bucket(bucket)
+                            .key(key)
+                            .build()
+            );
+            String versionId = object.versionId();
+            // null 버전은 같은 key의 PUT으로 교체될 수 있으므로 불변 입력으로 취급하지 않는다.
+            if (versionId == null || versionId.isBlank() || "null".equals(versionId) || object.contentLength() == null
+                    || object.contentLength() != contentLength || !contentType.equals(object.contentType())) {
+                throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+            }
+            return presigner.presignGetObject(
+                    GetObjectPresignRequest.builder()
+                            .signatureDuration(uploadUrlTtl)
+                            .getObjectRequest(
+                                    GetObjectRequest.builder()
+                                            .bucket(bucket)
+                                            .key(key)
+                                            .versionId(versionId)
+                                            .build()
+                            )
+                            .build()
+            )
+                    .url()
+                    .toString();
+        } catch (SdkException exception) {
+            throw new RecordingException(
+                    RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE,
+                    exception
+            );
+        }
     }
 
     // Content-Type과 Content-Length를 서명에 넣어 예약한 파일과 다른 형식·크기의 PUT을 저장소가 거절하게 한다.

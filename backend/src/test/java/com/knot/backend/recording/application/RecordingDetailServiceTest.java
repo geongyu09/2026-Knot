@@ -8,6 +8,13 @@ import static org.mockito.Mockito.when;
 
 import com.knot.backend.recording.application.dto.result.RecordingDetailResult;
 import com.knot.backend.recording.application.dto.result.RecordingDetailSnapshot;
+import com.knot.backend.recording.application.dto.result.RecordingTranscriptionSnapshot;
+import com.knot.backend.recording.domain.TranscriptionStatus;
+import com.knot.backend.document.application.DocumentGenerationProgressService;
+import com.knot.backend.document.application.dto.result.DocumentGenerationSummaryResult;
+import com.knot.backend.document.domain.DocumentGenerationProcessingStatus;
+import java.util.List;
+import java.util.UUID;
 import com.knot.backend.recording.domain.RecordingAudioUploadStatus;
 import com.knot.backend.recording.domain.RecordingEndReason;
 import com.knot.backend.recording.domain.RecordingErrorCode;
@@ -36,6 +43,8 @@ class RecordingDetailServiceTest {
     private WorkspaceRepository workspaceRepository;
     private WorkspaceMemberRepository workspaceMemberRepository;
     private RecordingDetailQuery recordingDetailQuery;
+    private RecordingTranscriptionStateService transcriptionState;
+    private DocumentGenerationProgressService documentProgress;
     private RecordingDetailService service;
 
     @BeforeEach
@@ -43,12 +52,16 @@ class RecordingDetailServiceTest {
         workspaceRepository = mock(WorkspaceRepository.class);
         workspaceMemberRepository = mock(WorkspaceMemberRepository.class);
         recordingDetailQuery = mock(RecordingDetailQuery.class);
+        transcriptionState = mock(RecordingTranscriptionStateService.class);
+        documentProgress = mock(DocumentGenerationProgressService.class);
         service = new RecordingDetailService(
                 new RecordingWorkspaceAccessValidator(
                         workspaceRepository,
                         workspaceMemberRepository
                 ),
                 recordingDetailQuery,
+                transcriptionState,
+                documentProgress,
                 Clock.fixed(
                         NOW,
                         ZoneOffset.UTC
@@ -88,6 +101,10 @@ class RecordingDetailServiceTest {
         assertThat(result.status()).isEqualTo(RecordingStatus.RECORDING);
         assertThat(result.elapsedMillis()).isEqualTo(90_000L);
         assertThat(result.audioUploadStatus()).isNull();
+        assertThat(result.transcriptionAttemptId()).isNull();
+        assertThat(result.transcriptionStatus()).isNull();
+        assertThat(result.transcriptionFailureCode()).isNull();
+        assertThat(result.documentGeneration()).isNull();
     }
 
     @Test
@@ -112,6 +129,15 @@ class RecordingDetailServiceTest {
                 )
         );
 
+        UUID attemptId = UUID.randomUUID();
+        when(transcriptionState.find(RECORDING_ID)).thenReturn(
+                new RecordingTranscriptionSnapshot(
+                        attemptId,
+                        TranscriptionStatus.FAILED,
+                        "INFERENCE_FAILED"
+                )
+        );
+
         // when
         RecordingDetailResult result = service.find(
                 WORKSPACE_ID,
@@ -125,6 +151,9 @@ class RecordingDetailServiceTest {
         assertThat(result.endReason()).isEqualTo(RecordingEndReason.USER_ENDED);
         assertThat(result.elapsedMillis()).isEqualTo(60_000L);
         assertThat(result.audioUploadStatus()).isEqualTo(RecordingAudioUploadStatus.COMPLETED);
+        assertThat(result.transcriptionAttemptId()).isEqualTo(attemptId);
+        assertThat(result.transcriptionStatus()).isEqualTo(TranscriptionStatus.FAILED);
+        assertThat(result.transcriptionFailureCode()).isEqualTo("INFERENCE_FAILED");
     }
 
     @Test
@@ -228,6 +257,10 @@ class RecordingDetailServiceTest {
         assertThat(thrown).isInstanceOf(RecordingException.class)
                 .extracting("errorCode")
                 .isEqualTo(RecordingErrorCode.RECORDING_CONTROL_DENIED);
+        verifyNoInteractions(
+                documentProgress,
+                transcriptionState
+        );
     }
 
     @Test
@@ -282,7 +315,11 @@ class RecordingDetailServiceTest {
         assertThat(thrown).isInstanceOf(WorkspaceException.class)
                 .extracting("errorCode")
                 .isEqualTo(WorkspaceErrorCode.WORKSPACE_ACCESS_DENIED);
-        verifyNoInteractions(recordingDetailQuery);
+        verifyNoInteractions(
+                recordingDetailQuery,
+                documentProgress,
+                transcriptionState
+        );
     }
 
     @Test
@@ -304,7 +341,56 @@ class RecordingDetailServiceTest {
         assertThat(thrown).isInstanceOf(RecordingException.class)
                 .extracting("errorCode")
                 .isEqualTo(RecordingErrorCode.INVALID_RECORDING_DATA);
-        verifyNoInteractions(recordingDetailQuery);
+        verifyNoInteractions(
+                recordingDetailQuery,
+                documentProgress,
+                transcriptionState
+        );
+    }
+
+    @Test
+    @DisplayName("문서 생성 집계와 실패 작업 ID를 본인 녹음 응답에 함께 반환한다")
+    void find_success_documentGeneration() {
+        // given
+        prepareAccess();
+        when(
+                recordingDetailQuery.find(
+                        WORKSPACE_ID,
+                        RECORDING_ID
+                )
+        ).thenReturn(
+                Optional.of(
+                        snapshot(
+                                RecordingStatus.ENDED,
+                                null,
+                                STARTED_AT.plusSeconds(60),
+                                RecordingAudioUploadStatus.COMPLETED
+                        )
+                )
+        );
+        DocumentGenerationSummaryResult summary = new DocumentGenerationSummaryResult(
+                DocumentGenerationProcessingStatus.FAILED,
+                2,
+                List.of(104L)
+        );
+        when(
+                documentProgress.findSummary(
+                        WORKSPACE_ID,
+                        RECORDING_ID,
+                        NOW
+                )
+        ).thenReturn(Optional.of(summary));
+
+        // when
+        RecordingDetailResult result = service.find(
+                WORKSPACE_ID,
+                MEMBER_ID,
+                RECORDING_ID
+        );
+
+        // then
+        assertThat(result.documentGeneration()).isEqualTo(summary);
+        assertThat(result.status()).isEqualTo(RecordingStatus.ENDED);
     }
 
     private RecordingDetailSnapshot snapshot(

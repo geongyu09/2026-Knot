@@ -1,0 +1,22 @@
+package com.knot.backend.recording.infrastructure;
+
+import com.knot.backend.recording.domain.RecordingTranscription;
+import com.knot.backend.recording.domain.TranscriptionStatus;
+import jakarta.persistence.LockModeType;
+import java.util.Optional;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+
+interface RecordingTranscriptionJpaRepository extends JpaRepository<RecordingTranscription, Long> {
+    Optional<RecordingTranscription> findByRecordingSessionId(long recordingSessionId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<RecordingTranscription> findWithLockByRecordingSessionId(long recordingSessionId);
+
+    Optional<RecordingTranscription> findByStatus(TranscriptionStatus status);
+
+    // 639 is the shared admission lock for the single Mac mini inference slot.
+    @Query(value = "SELECT 1 FROM pg_advisory_xact_lock(639)", nativeQuery = true)
+    int lockAdmission();
+}

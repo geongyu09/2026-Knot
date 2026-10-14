@@ -28,14 +28,17 @@ class RecordingAudioUploadCompletionServiceTest {
     private RecordingAudioUploadCompletionTransaction completionTransaction;
     private RecordingAudioStorage audioStorage;
     private RecordingAudioUploadCompletionService service;
+    private RecordingTranscriptionService transcriptionService;
 
     @BeforeEach
     void setUp() {
         completionTransaction = mock(RecordingAudioUploadCompletionTransaction.class);
         audioStorage = mock(RecordingAudioStorage.class);
+        transcriptionService = mock(RecordingTranscriptionService.class);
         service = new RecordingAudioUploadCompletionService(
                 completionTransaction,
-                audioStorage
+                audioStorage,
+                transcriptionService
         );
     }
 
@@ -68,7 +71,8 @@ class RecordingAudioUploadCompletionServiceTest {
         assertThat(result.uploadStatus()).isEqualTo(RecordingAudioUploadStatus.COMPLETED);
         InOrder inOrder = inOrder(
                 completionTransaction,
-                audioStorage
+                audioStorage,
+                transcriptionService
         );
         inOrder.verify(completionTransaction)
                 .prepare(
@@ -87,6 +91,8 @@ class RecordingAudioUploadCompletionServiceTest {
                         UPLOAD_ID,
                         storedObject
                 );
+        inOrder.verify(transcriptionService)
+                .dispatch();
     }
 
     @Test

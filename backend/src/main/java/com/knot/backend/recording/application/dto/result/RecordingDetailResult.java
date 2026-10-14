@@ -4,6 +4,9 @@ import com.knot.backend.recording.domain.RecordingAudioUploadStatus;
 import com.knot.backend.recording.domain.RecordingEndReason;
 import com.knot.backend.recording.domain.RecordingSession;
 import com.knot.backend.recording.domain.RecordingStatus;
+import com.knot.backend.recording.domain.TranscriptionStatus;
+import com.knot.backend.document.application.dto.result.DocumentGenerationSummaryResult;
+import java.util.UUID;
 import java.time.Duration;
 import java.time.Instant;
 
@@ -12,11 +15,17 @@ public record RecordingDetailResult(
         long elapsedMillis,
         Instant endedAt,
         RecordingEndReason endReason,
-        RecordingAudioUploadStatus audioUploadStatus
+        RecordingAudioUploadStatus audioUploadStatus,
+        UUID transcriptionAttemptId,
+        TranscriptionStatus transcriptionStatus,
+        String transcriptionFailureCode,
+        DocumentGenerationSummaryResult documentGeneration
 ) {
 
     public static RecordingDetailResult of(
             RecordingDetailSnapshot snapshot,
+            RecordingTranscriptionSnapshot transcription,
+            DocumentGenerationSummaryResult documentGeneration,
             Instant serverNow
     ) {
         return new RecordingDetailResult(
@@ -27,7 +36,11 @@ public record RecordingDetailResult(
                 ),
                 snapshot.endedAt(),
                 snapshot.endReason(),
-                snapshot.audioUploadStatus()
+                snapshot.audioUploadStatus(),
+                transcription == null ? null : transcription.attemptId(),
+                transcription == null ? null : transcription.status(),
+                transcription == null ? null : transcription.failureCode(),
+                documentGeneration
         );
     }
 
