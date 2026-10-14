@@ -218,6 +218,7 @@ public class RecordingTranscriptionStateService {
                 recording.getId(),
                 transcription.getAttemptId(),
                 upload.getStorageKey(),
+                upload.getStorageVersionId(),
                 upload.getContentType(),
                 upload.getContentLength(),
                 transcription.getStartedAt()

@@ -805,6 +805,7 @@ class RecordingTranscriptionStateIntegrationTest {
             upload.complete(
                     100,
                     "audio/webm",
+                    "version-1",
                     NOW.minusSeconds(5)
             );
             uploads.save(upload);

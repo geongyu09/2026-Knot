@@ -61,21 +61,25 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
     @Override
     public String presignDownload(
             String storageKey,
+            String versionId,
             String contentType,
             long contentLength
     ) {
+        // null 버전은 같은 key의 PUT으로 교체될 수 있으므로 불변 입력으로 취급하지 않는다.
+        if (versionId == null || versionId.isBlank() || "null".equals(versionId)) {
+            throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+        }
         try {
             String key = keyPrefix + storageKey;
             HeadObjectResponse object = client.headObject(
                     HeadObjectRequest.builder()
                             .bucket(bucket)
                             .key(key)
+                            .versionId(versionId)
                             .build()
             );
-            String versionId = object.versionId();
-            // null 버전은 같은 key의 PUT으로 교체될 수 있으므로 불변 입력으로 취급하지 않는다.
-            if (versionId == null || versionId.isBlank() || "null".equals(versionId) || object.contentLength() == null
-                    || object.contentLength() != contentLength || !contentType.equals(object.contentType())) {
+            if (object.contentLength() == null || object.contentLength() != contentLength
+                    || !contentType.equals(object.contentType())) {
                 throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
             }
             return presigner.presignGetObject(
@@ -137,7 +141,8 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
             );
             return StoredAudioObject.of(
                     response.contentLength(),
-                    response.contentType()
+                    response.contentType(),
+                    response.versionId()
             );
         } catch (S3Exception exception) {
             if (exception.statusCode() == NOT_FOUND_STATUS) {

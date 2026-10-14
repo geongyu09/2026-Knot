@@ -12,6 +12,7 @@ public class UnconfiguredRecordingAudioStorage implements RecordingAudioStorage 
     @Override
     public String presignDownload(
             String storageKey,
+            String versionId,
             String contentType,
             long contentLength
     ) {

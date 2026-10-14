@@ -45,6 +45,6 @@
 | `SERVER_RESTARTED`·`AI_INTERRUPTED` | Backend 재시작 회수 또는 실행 중단 |
 | `RESULT_STORAGE_FAILED` | 전사본·구간·문서 생성 접수 저장 실패 |
 | `RECORDING_UNAVAILABLE` | 실행 중 녹음·Workspace·오디오가 사용할 수 없게 됨 |
-| `AUDIO_STORAGE_UNAVAILABLE` | 입력 객체 확인·다운로드 URL 발급 실패. 실제 S3 버전이 없거나 형식·크기가 달라도 실패한다 |
+| `AUDIO_STORAGE_UNAVAILABLE` | 입력 객체 확인·다운로드 URL 발급 실패. 업로드 완료 때 저장한 S3 버전이 없거나 사라졌거나 형식·크기가 달라도 실패한다 |
 
 AI 모델·다운로드의 공개 실패 코드도 보존한다. 실패 원인의 원문 메시지는 응답하지 않는다.

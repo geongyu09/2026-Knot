@@ -7,6 +7,7 @@ public interface RecordingAudioStorage {
 
     String presignDownload(
             String storageKey,
+            String versionId,
             String contentType,
             long contentLength
     );

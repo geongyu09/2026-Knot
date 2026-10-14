@@ -48,7 +48,8 @@ class RecordingAudioUploadCompletionServiceTest {
         // given
         StoredAudioObject storedObject = StoredAudioObject.of(
                 1024L,
-                "audio/webm"
+                "audio/webm",
+                "version-1"
         );
         when(prepare()).thenReturn(
                 new PendingAudioUpload(

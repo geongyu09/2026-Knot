@@ -134,7 +134,7 @@ class RecordingAudioUploadTest {
     }
 
     @Test
-    @DisplayName("저장된 파일의 크기와 형식이 예약과 같으면 업로드를 완료한다")
+    @DisplayName("저장된 파일의 크기와 형식이 예약과 같으면 확인한 저장소 버전과 함께 업로드를 완료한다")
     void complete_success_matchingFile() {
         // given
         RecordingAudioUpload upload = reserved();
@@ -143,12 +143,14 @@ class RecordingAudioUploadTest {
         upload.complete(
                 1024L,
                 "audio/webm",
+                "version-1",
                 RESERVED_AT.plusSeconds(60)
         );
 
         // then
         assertThat(upload.getStatus()).isEqualTo(RecordingAudioUploadStatus.COMPLETED);
         assertThat(upload.getCompletedAt()).isEqualTo(RESERVED_AT.plusSeconds(60));
+        assertThat(upload.getStorageVersionId()).isEqualTo("version-1");
     }
 
     @Test
@@ -162,6 +164,7 @@ class RecordingAudioUploadTest {
                 () -> upload.complete(
                         1000L,
                         "audio/webm",
+                        "version-1",
                         RESERVED_AT.plusSeconds(60)
                 )
         );
@@ -184,6 +187,7 @@ class RecordingAudioUploadTest {
                 () -> upload.complete(
                         1024L,
                         "audio/mpeg",
+                        "version-1",
                         RESERVED_AT.plusSeconds(60)
                 )
         );
@@ -195,13 +199,14 @@ class RecordingAudioUploadTest {
     }
 
     @Test
-    @DisplayName("이미 완료된 업로드는 다시 완료해도 처음 완료 시각을 유지한다")
+    @DisplayName("이미 완료된 업로드는 다시 완료해도 처음 완료 시각과 저장소 버전을 유지한다")
     void complete_success_repeatedKeepsCompletedAt() {
         // given
         RecordingAudioUpload upload = reserved();
         upload.complete(
                 1024L,
                 "audio/webm",
+                "version-1",
                 RESERVED_AT.plusSeconds(60)
         );
 
@@ -209,11 +214,13 @@ class RecordingAudioUploadTest {
         upload.complete(
                 1024L,
                 "audio/webm",
+                "version-2",
                 RESERVED_AT.plusSeconds(120)
         );
 
         // then
         assertThat(upload.getCompletedAt()).isEqualTo(RESERVED_AT.plusSeconds(60));
+        assertThat(upload.getStorageVersionId()).isEqualTo("version-1");
     }
 
     @Test
