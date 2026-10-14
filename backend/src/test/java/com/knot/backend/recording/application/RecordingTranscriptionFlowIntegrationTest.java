@@ -3,6 +3,7 @@ package com.knot.backend.recording.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.knot.backend.document.DocumentFixtures;
@@ -117,11 +118,13 @@ class RecordingTranscriptionFlowIntegrationTest {
         when(storage.findStoredObject(any())).thenReturn(
                 StoredAudioObject.of(
                         1024,
-                        "audio/webm"
+                        "audio/webm",
+                        "version-1"
                 )
         );
         when(
                 storage.presignDownload(
+                        any(),
                         any(),
                         any(),
                         anyLong()
@@ -308,6 +311,42 @@ class RecordingTranscriptionFlowIntegrationTest {
     }
 
     @Test
+    @DisplayName("업로드 완료 때 확인한 저장소 버전을 저장하고 전사 입력 URL을 그 버전으로 서명한다")
+    void complete_success_signsVersionVerifiedAtCompletion() throws Exception {
+        // given
+        Upload upload = reserveUpload();
+
+        // when
+        completion.complete(
+                workspaceId,
+                memberId,
+                upload.recordingId(),
+                upload.uploadId()
+        );
+
+        // then
+        awaitStatus(
+                upload.recordingId(),
+                TranscriptionStatus.SUCCEEDED
+        );
+        assertThat(
+                jdbc.sql("SELECT storage_version_id FROM recording_audio_uploads WHERE id = :id")
+                        .param(
+                                "id",
+                                upload.uploadId()
+                        )
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("version-1");
+        verify(storage).presignDownload(
+                "recordings/" + upload.recordingId() + "/audio.webm",
+                "version-1",
+                "audio/webm",
+                1024L
+        );
+    }
+
+    @Test
     @DisplayName("전사 접수 전 삭제된 오디오의 완료 통지는 전사를 새로 만들지 않는다")
     void repeatedCompletionDoesNotTranscribeDeletedAudio() {
         // given
@@ -318,6 +357,7 @@ class RecordingTranscriptionFlowIntegrationTest {
             audio.complete(
                     1024,
                     "audio/webm",
+                    "version-1",
                     NOW
             );
             audio.recordDeleted(NOW);

@@ -555,6 +555,7 @@ class RecordingTranscriptionServiceTest {
         when(
                 storage.presignDownload(
                         "recording.webm",
+                        "version-1",
                         "audio/webm",
                         100
                 )
@@ -571,6 +572,7 @@ class RecordingTranscriptionServiceTest {
                 2,
                 id,
                 "recording.webm",
+                "version-1",
                 "audio/webm",
                 100,
                 startedAt
