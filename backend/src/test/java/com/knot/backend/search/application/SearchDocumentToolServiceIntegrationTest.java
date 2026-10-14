@@ -731,6 +731,49 @@ class SearchDocumentToolServiceIntegrationTest {
     }
 
     @Test
+    @DisplayName("DRAFT 본문을 이어 읽는 동안 보관돼도 같은 revision으로 이어 읽는다")
+    void read_success_archiveTransition() {
+        // given
+        properties.setReadCodePoints(3);
+        long document = saveDocument(
+                workspaceId,
+                "DRAFT",
+                "결정",
+                "가🙂나다😃라"
+        );
+        SearchDocumentSlice first = service.read(
+                scope,
+                document,
+                null
+        );
+        archiveDocument(document);
+        // when
+        SearchDocumentSlice next = service.read(
+                scope,
+                document,
+                first.nextCursor()
+        );
+        // then
+        assertThat(first.content() + next.content()).isEqualTo("가🙂나다😃라");
+        assertThat(
+                next.document()
+                        .contentRevision()
+        ).isEqualTo(
+                first.document()
+                        .contentRevision()
+        );
+        assertThat(
+                next.document()
+                        .status()
+        ).isEqualTo(DocumentStatus.ARCHIVED);
+        assertThat(
+                next.document()
+                        .archivedAt()
+        ).isEqualTo(NOW.plusSeconds(1));
+        assertThat(next.nextCursor()).isNull();
+    }
+
+    @Test
     void read_failure_invalidId() {
         assertThatThrownBy(
                 () -> service.read(
