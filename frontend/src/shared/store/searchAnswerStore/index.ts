@@ -17,16 +17,28 @@ interface SearchAnswerState extends SearchAnswer {
   controller: AbortController | null;
 }
 
+/** 다시 요청할 실패한 답변의 메시지 ID */
+export interface SearchAnswerRetryTarget {
+  questionMessageId: number;
+  answerMessageId: number;
+}
+
 interface StartSearchAnswerParams {
   question: string;
 
-  /** 후속 질문이면 이어 가는 대화 ID, 첫 질문이면 `null` */
+  /** 후속 질문·재시도면 이어 가는 대화 ID, 첫 질문이면 `null` */
   conversationId: number | null;
+
+  /**
+   * 실패한 답변을 다시 요청할 때 그 질문·답변 메시지 ID. 새 질문이면 없어요.
+   * 접수 전부터 들고 있어야 화면이 저장된 실패 턴을 이 답변으로 바꿔 그려요
+   */
+  retryOf?: SearchAnswerRetryTarget;
 }
 
 interface SearchAnswerActions {
   /**
-   * 질문을 보내며 이전 답변을 비우고 접수 대기로 바꾼 뒤, 이번 요청의 컨트롤러를 돌려줘요.
+   * 질문을 보내거나 실패한 답변을 다시 요청하며 이전 답변을 비우고 접수 대기로 바꾼 뒤, 이번 요청의 컨트롤러를 돌려줘요.
    * 이미 접수 대기·생성 중이면 아무것도 바꾸지 않고 `null`을 돌려줘요(SEARCH-R6).
    */
   start: (params: StartSearchAnswerParams) => AbortController | null;
@@ -89,7 +101,7 @@ export const useSearchAnswerStore = create<
   return {
     ...IDLE_STATE,
 
-    start: ({ question, conversationId }) => {
+    start: ({ question, conversationId, retryOf }) => {
       const { status } = get();
       if (status === "SENDING" || status === "STREAMING") return null;
 
@@ -99,6 +111,8 @@ export const useSearchAnswerStore = create<
         status: "SENDING",
         question,
         conversationId,
+        questionMessageId: retryOf?.questionMessageId ?? null,
+        answerMessageId: retryOf?.answerMessageId ?? null,
         controller,
       });
 

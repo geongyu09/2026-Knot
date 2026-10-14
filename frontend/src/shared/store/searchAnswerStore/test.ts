@@ -104,6 +104,42 @@ describe("searchAnswerStore", () => {
     expect(state.question).toBe(question);
   });
 
+  it("[SEARCH-R5] 실패한 답변을 다시 요청하면 접수 전부터 그 질문·답변 메시지 ID를 들고 접수 대기로 바꾼다", () => {
+    const retryOf = { questionMessageId: 3, answerMessageId: 4 };
+
+    const controller = useSearchAnswerStore.getState().start({
+      question,
+      conversationId,
+      retryOf,
+    });
+
+    expect(controller).not.toBeNull();
+    expect(useSearchAnswerStore.getState()).toMatchObject({
+      status: "SENDING",
+      question,
+      conversationId,
+      ...retryOf,
+      text: "",
+    });
+  });
+
+  it("[SEARCH-R5] 다시 요청한 답변이 accepted 전에 실패하면 처음 상태로 돌아가 저장된 실패 답변을 다시 보이게 한다", () => {
+    const controller = useSearchAnswerStore.getState().start({
+      question,
+      conversationId,
+      retryOf: { questionMessageId: 3, answerMessageId: 4 },
+    });
+    if (!controller) throw new Error("재시도를 시작하지 못했어요");
+
+    useSearchAnswerStore.getState().fail(controller, new Error("409"));
+
+    expect(useSearchAnswerStore.getState()).toMatchObject({
+      status: "IDLE",
+      questionMessageId: null,
+      answerMessageId: null,
+    });
+  });
+
   it("완료되면 받은 답변을 두고 컨트롤러를 놓는다", () => {
     const controller = startQuestion();
     useSearchAnswerStore.getState().applyEvent(controller, accepted);
