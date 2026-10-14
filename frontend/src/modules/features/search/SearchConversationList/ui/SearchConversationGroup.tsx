@@ -1,36 +1,36 @@
 import styled from "@emotion/styled";
-import type { ChatSession } from "../types/chatSession";
+import type { SearchConversationListItem } from "../types/searchConversation";
 import { formatRelativeTime } from "../utils/formatRelativeTime";
-import ChatSessionRow from "./ChatSessionRow";
+import SearchConversationRow from "./SearchConversationRow";
 
-interface ChatSessionGroupProps {
+interface SearchConversationGroupProps {
   label: string;
-  sessions: ChatSession[];
-  openedSessionId: string | null;
-  onSelectSession: (sessionId: number) => void;
+  conversations: SearchConversationListItem[];
+  openedConversationId: string | null;
+  onSelectConversation: (conversationId: number) => void;
 }
 
 /**
  * "오늘"처럼 같은 기간에 묶인 대화를 기간 이름과 함께 보여줍니다.
  */
-export default function ChatSessionGroup({
+export default function SearchConversationGroup({
   label,
-  sessions,
-  openedSessionId,
-  onSelectSession,
-}: ChatSessionGroupProps) {
+  conversations,
+  openedConversationId,
+  onSelectConversation,
+}: SearchConversationGroupProps) {
   return (
     <Container>
       <Label>{label}</Label>
 
       <Rows>
-        {sessions.map(({ id, title, lastMessageAt }) => (
-          <ChatSessionRow
+        {conversations.map(({ id, title, updatedAt }) => (
+          <SearchConversationRow
             key={id}
             title={title}
-            lastMessageAt={formatRelativeTime({ date: lastMessageAt })}
-            isSelected={openedSessionId === String(id)}
-            onSelect={() => onSelectSession(id)}
+            updatedAtLabel={formatRelativeTime({ date: updatedAt })}
+            isSelected={openedConversationId === String(id)}
+            onSelect={() => onSelectConversation(id)}
           />
         ))}
       </Rows>

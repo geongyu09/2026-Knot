@@ -1,12 +1,12 @@
 import styled from "@emotion/styled";
-import ChatSessionList from "@features/chat/ChatSessionList";
+import SearchConversationList from "@features/search/SearchConversationList";
 import useNavigateToNewChat from "@hooks/domain/chat/useNavigateToNewChat";
 import { useParams } from "react-router";
 
 import PlusIcon from "@/assets/icons/plus.svg";
 
 /**
- * 대화 목록 드로어. 목록은 `ChatSessionList`가 그리고, 여기서는 드로어 껍데기와 새 채팅 버튼만 얹어요.
+ * 대화 목록 드로어. 목록은 `SearchConversationList`가 그리고, 여기서는 드로어 껍데기와 새 채팅 버튼만 얹어요.
  */
 export default function ChatListDrawer() {
   const { workspaceId } = useParams();
@@ -27,7 +27,7 @@ export default function ChatListDrawer() {
         </NewChatButton>
       </DrawerHead>
 
-      <ChatSessionList />
+      <SearchConversationList />
     </Container>
   );
 }
