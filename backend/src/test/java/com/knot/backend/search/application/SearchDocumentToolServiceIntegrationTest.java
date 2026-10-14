@@ -544,6 +544,105 @@ class SearchDocumentToolServiceIntegrationTest {
         ).isNull();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"DRAFT", "ARCHIVED"})
+    @DisplayName("생성 시각 경계까지 검색하고 이후 문서는 목록·검색·읽기에서 제외한다")
+    void tools_success_creationCutoff(String status) {
+        // given
+        long before = saveDocument(
+                workspaceId,
+                status,
+                "결정 이전",
+                "본문"
+        );
+        long boundary = saveDocument(
+                workspaceId,
+                status,
+                "결정 경계",
+                "본문"
+        );
+        long after = saveDocument(
+                workspaceId,
+                status,
+                "결정 이후",
+                "본문"
+        );
+        setCreatedAt(
+                before,
+                NOW.minusSeconds(1)
+        );
+        setCreatedAt(
+                boundary,
+                NOW
+        );
+        setCreatedAt(
+                after,
+                NOW.plusSeconds(1)
+        );
+        // when
+        SearchDocumentPage listed = service.list(
+                scope,
+                parameters(
+                        null,
+                        null,
+                        20
+                )
+        );
+        SearchDocumentPage searched = service.search(
+                scope,
+                parameters(
+                        "결정",
+                        null,
+                        20
+                )
+        );
+        // then
+        assertThat(listed.items()).extracting(SearchDocumentCard::documentId)
+                .containsExactly(
+                        boundary,
+                        before
+                );
+        assertThat(searched.items()).extracting(SearchDocumentCard::documentId)
+                .containsExactly(
+                        boundary,
+                        before
+                );
+        assertThat(
+                service.read(
+                        scope,
+                        boundary,
+                        null
+                )
+                        .content()
+        ).isEqualTo("본문");
+        assertThatThrownBy(
+                () -> service.read(
+                        scope,
+                        after,
+                        null
+                )
+        ).hasMessage("DOCUMENT_NOT_FOUND");
+    }
+
+    private void setCreatedAt(
+            long document,
+            Instant time
+    ) {
+        jdbc.sql(
+                "UPDATE documents SET created_at = :time, "
+                        + "archived_at = CASE WHEN status = 'ARCHIVED' THEN CAST(:time AS timestamptz) END WHERE id = :id"
+        )
+                .param(
+                        "time",
+                        java.sql.Timestamp.from(time)
+                )
+                .param(
+                        "id",
+                        document
+                )
+                .update();
+    }
+
     @Test
     void read_failure_invalidId() {
         assertThatThrownBy(
