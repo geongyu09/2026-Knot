@@ -14,6 +14,8 @@ export const workspacesResponse = {
 
 export const workspaceDetailResponse = {
   name: "Knot 팀",
+  myRole: "OWNER",
+  activeMemberCount: 4,
 } satisfies WorkspaceDetailResponse;
 
 export const workspaceCreateResponse = {

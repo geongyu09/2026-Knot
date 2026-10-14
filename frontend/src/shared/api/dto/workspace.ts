@@ -86,15 +86,23 @@ export class PostWorkspaceResponseDto {
 /** 워크스페이스 단건 조회의 서버 응답 모양 */
 export interface GetWorkspaceResponseRaw {
   name: string;
+  myRole: "OWNER" | "MEMBER";
+  activeMemberCount: number;
 }
 
 /** 워크스페이스 단건 조회 응답 */
 export class GetWorkspaceResponseDto {
   /** 워크스페이스 이름. 최대 20자 */
   name: string;
+  /** 이 워크스페이스에서 내가 맡은 역할 */
+  myRole: "OWNER" | "MEMBER";
+  /** 나를 포함해 탈퇴하지 않은 멤버 수. 1이면 나 혼자 */
+  activeMemberCount: number;
 
   constructor(raw: GetWorkspaceResponseRaw) {
     this.name = raw.name;
+    this.myRole = raw.myRole;
+    this.activeMemberCount = raw.activeMemberCount;
   }
 }
 
