@@ -19,6 +19,9 @@ export interface SearchTurn {
   /** 목록 key. 생성 중인 턴은 접수 전후로 같은 값이라 접수돼도 다시 그려지지 않아요 */
   key: string;
 
+  /** 질문 메시지 ID. 실패한 답변을 다시 요청할 때 써요. 접수 전에 보낸 질문은 아직 없어 `null`이에요 */
+  questionId: number | null;
+
   /** 질문 내용 */
   question: string;
 

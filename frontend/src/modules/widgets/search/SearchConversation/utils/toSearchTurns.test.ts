@@ -29,7 +29,7 @@ describe("toSearchTurns", () => {
     expect(toSearchTurns([])).toEqual([]);
   });
 
-  it("질문과 답변 한 쌍을 턴 하나로 묶고, 답변은 ID·본문·상태·근거만 담는다 (근거 없음)", () => {
+  it("질문과 답변 한 쌍을 턴 하나로 묶고, 턴은 질문 ID를, 답변은 ID·본문·상태·근거만 담는다 (근거 없음)", () => {
     const question = message(
       1,
       "USER",
@@ -44,6 +44,7 @@ describe("toSearchTurns", () => {
     expect(toSearchTurns([question, answer])).toEqual([
       {
         key: "1",
+        questionId: question.id,
         question: question.content,
         answer: {
           id: answer.id,
@@ -80,6 +81,7 @@ describe("toSearchTurns", () => {
 
     expect(turns[turns.length - 1]).toEqual({
       key: "3",
+      questionId: 3,
       question: "방금 보낸 질문",
       answer: null,
     });
