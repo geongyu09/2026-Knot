@@ -159,6 +159,10 @@ public class RecordingSession {
         return this.workspaceId == workspaceId;
     }
 
+    public boolean isTranscribableIn(long workspaceId) {
+        return belongsTo(workspaceId) && status == RecordingStatus.ENDED;
+    }
+
     public void validateAudioUploadable() {
         validateEnded();
     }

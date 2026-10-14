@@ -65,13 +65,17 @@ public class RecordingTranscription {
         );
     }
 
+    public void validateRetryable() {
+        if (status != TranscriptionStatus.FAILED) {
+            throw new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED);
+        }
+    }
+
     public void retry(
             UUID nextAttemptId,
             Instant startedAt
     ) {
-        if (status != TranscriptionStatus.FAILED) {
-            throw new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED);
-        }
+        validateRetryable();
         if (nextAttemptId == null || nextAttemptId.equals(attemptId) || startedAt == null
                 || startedAt.isBefore(this.startedAt)) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
