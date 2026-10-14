@@ -287,14 +287,14 @@ class SearchDocumentToolServiceIntegrationTest {
         );
         long title = saveDocument(
                 workspaceId,
-                "ARCHIVED",
+                "DRAFT",
                 "결제 장애",
                 "복구 완료"
         );
         saveDocument(
                 workspaceId,
                 "DRAFT",
-                "결제 장애",
+                "다른 안건",
                 "미보관"
         );
         saveDocument(
