@@ -119,9 +119,19 @@ public class RecordingAudioUpload {
         return status == RecordingAudioUploadStatus.COMPLETED;
     }
 
+    public boolean isAudioAvailable() {
+        return isCompleted() && deletedAt == null;
+    }
+
+    public void validateAudioAvailable() {
+        if (!isAudioAvailable()) {
+            throw new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_COMPLETED);
+        }
+    }
+
     public boolean isRetentionExpired(Instant now) {
         validateRetentionTime(now);
-        if (!isCompleted() || deletedAt != null) {
+        if (!isAudioAvailable()) {
             return false;
         }
         return !now.isBefore(completedAt.plus(AUDIO_RETENTION));
