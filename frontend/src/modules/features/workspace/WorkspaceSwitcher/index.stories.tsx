@@ -1,9 +1,13 @@
-import { workspacesResponse } from "@api/mock/responses/workspace";
-import { TEMP_WORKSPACE_LEAVE } from "@constants/workspace";
+import {
+  workspaceDetailResponse,
+  workspacesResponse,
+} from "@api/mock/responses/workspace";
+import type { WorkspaceDetailResponse } from "@api/mock/types/workspace";
 import { DialogProvider } from "@provider/context/dialogContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
+import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { userEvent, within } from "storybook/test";
 
@@ -29,16 +33,16 @@ const startRecordingAt12m48s = () => {
   });
 };
 
-const DEFAULT_LEAVE = { ...TEMP_WORKSPACE_LEAVE };
+// 문서 페이지는 스토리를 한 화면에 함께 그리는데 msw는 화면에 하나뿐이라, 마지막 스토리의 응답이 모든 스토리에 적용돼요.
+// 응답을 바꾸는 스토리만 따로 그려 각자의 응답을 받게 해요. 높이는 확인 창이 잘리지 않는 값이에요
+const ISOLATED_DOCS = { story: { inline: false, iframeHeight: 480 } };
 
-/** 나가기 창을 고르는 임시 값을 바꾸고, 스토리가 끝나면 처음 값으로 되돌려요. */
-const setLeave = (leave: Partial<typeof TEMP_WORKSPACE_LEAVE>) => () => {
-  Object.assign(TEMP_WORKSPACE_LEAVE, leave);
-
-  return () => {
-    Object.assign(TEMP_WORKSPACE_LEAVE, DEFAULT_LEAVE);
-  };
-};
+/** 워크스페이스 조회 응답의 내 역할과 멤버 수를 바꿔, 그에 맞는 나가기 창이 뜨게 해요. */
+const respondWorkspace = (workspace: Partial<WorkspaceDetailResponse>) => ({
+  workspace: http.get("*/api/v1/workspaces/:workspaceId", () =>
+    HttpResponse.json({ ...workspaceDetailResponse, ...workspace }),
+  ),
+});
 
 /** 워크스페이스 이름 버튼을 눌러 메뉴를 열어요. */
 const openWorkspaceMenu = async (canvasElement: HTMLElement) => {
@@ -55,6 +59,8 @@ const openWorkspaceMenu = async (canvasElement: HTMLElement) => {
 
 /** 메뉴를 열고 「워크스페이스 나가기」를 눌러요. */
 const clickLeaveWorkspace = async (canvasElement: HTMLElement) => {
+  // 어떤 창을 띄울지는 워크스페이스 조회 결과로 정하므로 이름이 보일 때까지 기다려요
+  await within(canvasElement).findByText(workspaceDetailResponse.name);
   const menu = await openWorkspaceMenu(canvasElement);
 
   await userEvent.click(
@@ -72,7 +78,9 @@ const clickLeaveWorkspace = async (canvasElement: HTMLElement) => {
  * - 다른 워크스페이스를 고르면 그 워크스페이스 홈으로, 「새 워크스페이스 만들기」를 고르면 워크스페이스 생성 화면으로 옮겨 가요. 지금 워크스페이스를 고르면 메뉴만 닫혀요.
  * - 「워크스페이스 나가기」를 고르면 내 처지에 맞는 확인 창이 떠요. 일반 멤버는 나갈지 묻는 창, 다른 멤버가 있는 owner는 owner를 넘길 멤버를 고르는 창, 혼자면 워크스페이스도 함께 삭제된다고 알리는 창이에요.
  * - 멤버를 고르는 창은 고르기 전에는 「넘기고 나가기」를 누를 수 없어요. 「워크스페이스 삭제하기」를 누르면 삭제 확인 창으로 바뀌고, 거기서 「취소」하면 고른 멤버가 남은 채로 돌아와요. 잘못 눌러 고른 멤버를 잃지 않도록, 고른 뒤에는 바깥을 눌러도 닫히지 않고 「취소」나 `Esc`로 닫아요.
- * - 아직 나가기 API가 없어 내 역할과 멤버 목록은 임시 값이에요. 확인을 누르면 이 탭에서 하던 녹음만 버리고 창을 닫아요.
+ * - 어떤 창을 띄울지는 워크스페이스 조회로 받은 내 역할과 멤버 수로 정하고, owner를 넘길 멤버 목록은 창이 뜬 뒤에 받아 와요.
+ * - 「나가기」나 「넘기고 나가기」를 누르면 창을 닫고 서버에 요청해요. 성공하면 이 탭에서 하던 녹음을 버리고, 남은 워크스페이스나 워크스페이스 선택 화면으로 옮겨 가요. 실패하면 화면과 녹음을 그대로 둬요.
+ * - 워크스페이스 삭제는 아직 요청할 API가 없어, 「삭제」를 누르면 이 탭에서 하던 녹음만 버리고 창을 닫아요.
  * - 녹음은 워크스페이스를 가리지 않고 이어지므로, 녹음 중(일시정지 포함)에 다른 워크스페이스나 새로 만들기를 고르면 먼저 녹음을 끝낼지 물어요. 「끝내고 이동」은 녹음을 끝낸 뒤 옮겨 가고, 「취소」·바깥 클릭·`Esc`는 녹음과 화면을 그대로 둬요.
  */
 const meta = {
@@ -161,8 +169,9 @@ export const EndRecordingBeforeMove: Story = {
 
 /** 일반 멤버가 「워크스페이스 나가기」를 골랐을 때예요. 나갈지 한 번 더 물어요. */
 export const LeaveAsMember: Story = {
-  beforeEach: setLeave({ myRole: "MEMBER" }),
   parameters: {
+    docs: ISOLATED_DOCS,
+    msw: { handlers: respondWorkspace({ myRole: "MEMBER" }) },
     design: {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2167-24781",
@@ -175,7 +184,6 @@ export const LeaveAsMember: Story = {
 
 /** 다른 멤버가 있는 owner가 「워크스페이스 나가기」를 골랐을 때예요. owner를 넘길 멤버를 골라야 나갈 수 있어요. */
 export const LeaveAsOwner: Story = {
-  beforeEach: setLeave({ myRole: "OWNER" }),
   parameters: {
     design: {
       type: "figma",
@@ -189,7 +197,6 @@ export const LeaveAsOwner: Story = {
 
 /** owner가 멤버를 고르는 창에서 「워크스페이스 삭제하기」를 눌렀을 때예요. 「취소」하면 멤버를 고르는 창으로 돌아가요. */
 export const DeleteWorkspace: Story = {
-  beforeEach: setLeave({ myRole: "OWNER" }),
   parameters: {
     design: {
       type: "figma",
@@ -209,8 +216,9 @@ export const DeleteWorkspace: Story = {
 
 /** 워크스페이스에 나 혼자 남았을 때예요. 나가면 워크스페이스도 함께 삭제된다고 알려요. */
 export const LeaveAlone: Story = {
-  beforeEach: setLeave({ otherMembers: [] }),
   parameters: {
+    docs: ISOLATED_DOCS,
+    msw: { handlers: respondWorkspace({ activeMemberCount: 1 }) },
     design: {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2979-14001",
