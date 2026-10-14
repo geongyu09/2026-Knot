@@ -3,6 +3,7 @@ package com.knot.backend.recording.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
@@ -395,6 +396,67 @@ class RecordingAudioUploadTest {
 
         // then
         assertThat(storageKey).isEmpty();
+    }
+
+    @Test
+    @DisplayName("URL을 다시 발급한 기록이 없으면 완료 시각과 기존 URL 유효 기간으로 삭제 확정 시각을 정한다")
+    void deletionConfirmationAfter_success_legacyUrlValidity() {
+        // given
+        RecordingAudioUpload upload = completed();
+
+        // when
+        Instant confirmation = upload.deletionConfirmationAfter(
+                Duration.ofMinutes(15),
+                Duration.ofMinutes(5),
+                RESERVED_AT
+        );
+
+        // then
+        assertThat(confirmation).isEqualTo(RESERVED_AT.plusSeconds(60 + 20 * 60));
+    }
+
+    @Test
+    @DisplayName("마지막으로 발급한 URL의 만료 시각에 정숙 시간을 더해 삭제 확정 시각을 정한다")
+    void deletionConfirmationAfter_success_lastUploadUrlExpiry() {
+        // given
+        RecordingAudioUpload upload = reserved();
+        upload.recordUploadUrlExpiry(RESERVED_AT.plusSeconds(600));
+        upload.complete(
+                StoredAudioObject.of(
+                        1024L,
+                        "audio/webm",
+                        "version-1"
+                ),
+                RESERVED_AT.plusSeconds(60)
+        );
+
+        // when
+        Instant confirmation = upload.deletionConfirmationAfter(
+                Duration.ofMinutes(15),
+                Duration.ofMinutes(5),
+                RESERVED_AT
+        );
+
+        // then
+        assertThat(confirmation).isEqualTo(RESERVED_AT.plusSeconds(600 + 5 * 60));
+    }
+
+    @Test
+    @DisplayName("삭제 확정 시각이 이미 지났으면 지금 바로 확정할 수 있다")
+    void deletionConfirmationAfter_success_pastConfirmationIsNow() {
+        // given
+        RecordingAudioUpload upload = completed();
+        Instant now = RESERVED_AT.plus(Duration.ofDays(31));
+
+        // when
+        Instant confirmation = upload.deletionConfirmationAfter(
+                Duration.ofMinutes(15),
+                Duration.ofMinutes(5),
+                now
+        );
+
+        // then
+        assertThat(confirmation).isEqualTo(now);
     }
 
     private RecordingAudioUpload completed() {
