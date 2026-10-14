@@ -23,9 +23,11 @@ class RecordingAudioRetentionDomainTest {
                 NOW
         );
         upload.complete(
-                100,
-                "audio/webm",
-                "version-1",
+                StoredAudioObject.of(
+                        100,
+                        "audio/webm",
+                        "version-1"
+                ),
                 NOW.plusSeconds(60)
         );
         Instant expires = NOW.plusSeconds(60)
@@ -73,9 +75,11 @@ class RecordingAudioRetentionDomainTest {
         // then
         assertThat(upload.getLastUploadUrlExpiresAt()).isEqualTo(NOW.plusSeconds(120));
         upload.complete(
-                100,
-                "audio/webm",
-                "version-1",
+                StoredAudioObject.of(
+                        100,
+                        "audio/webm",
+                        "version-1"
+                ),
                 NOW
         );
         assertThatThrownBy(() -> upload.recordUploadUrlExpiry(NOW.plusSeconds(180)))

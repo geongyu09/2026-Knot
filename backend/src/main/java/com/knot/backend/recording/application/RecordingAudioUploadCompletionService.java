@@ -1,8 +1,7 @@
 package com.knot.backend.recording.application;
 
-import com.knot.backend.recording.application.dto.result.PendingAudioUpload;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadCompletionResult;
-import com.knot.backend.recording.application.dto.result.StoredAudioObject;
+import com.knot.backend.recording.domain.StoredAudioObject;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -19,15 +18,14 @@ public class RecordingAudioUploadCompletionService {
             long recordingId,
             long uploadId
     ) {
-        PendingAudioUpload pending = completionTransaction.prepare(
+        StoredAudioObject storedObject = completionTransaction.findStorageKeyToConfirm(
                 workspaceId,
                 memberId,
                 recordingId,
                 uploadId
-        );
-        StoredAudioObject storedObject = pending.completed()
-                ? StoredAudioObject.missing()
-                : audioStorage.findStoredObject(pending.storageKey());
+        )
+                .map(audioStorage::findStoredObject)
+                .orElseGet(StoredAudioObject::missing);
         RecordingAudioUploadCompletionResult result = completionTransaction.complete(
                 workspaceId,
                 memberId,

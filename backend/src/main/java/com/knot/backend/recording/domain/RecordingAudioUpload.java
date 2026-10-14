@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.time.Duration;
+import java.util.Optional;
 import lombok.Getter;
 
 @Getter
@@ -118,6 +119,13 @@ public class RecordingAudioUpload {
         return status == RecordingAudioUploadStatus.COMPLETED;
     }
 
+    public Optional<String> findStorageKeyToConfirm() {
+        if (isCompleted()) {
+            return Optional.empty();
+        }
+        return Optional.of(storageKey);
+    }
+
     public boolean isAudioAvailable() {
         return isCompleted() && deletedAt == null;
     }
@@ -166,15 +174,16 @@ public class RecordingAudioUpload {
     }
 
     public void complete(
-            long storedContentLength,
-            String storedContentType,
-            String storedVersionId,
+            StoredAudioObject storedObject,
             Instant completedAt
     ) {
         if (isCompleted()) {
             return;
         }
-        if (storedContentLength != contentLength || !contentType.equals(storedContentType)) {
+        if (!storedObject.matches(
+                contentType,
+                contentLength
+        )) {
             throw new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_COMPLETED);
         }
         if (completedAt == null || completedAt.isBefore(reservedAt)) {
@@ -182,7 +191,7 @@ public class RecordingAudioUpload {
         }
         this.status = RecordingAudioUploadStatus.COMPLETED;
         this.completedAt = completedAt;
-        this.storageVersionId = storedVersionId;
+        this.storageVersionId = storedObject.versionId();
     }
 
     private void validateFile(

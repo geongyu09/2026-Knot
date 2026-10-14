@@ -7,13 +7,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.knot.backend.document.DocumentFixtures;
-import com.knot.backend.recording.application.dto.result.RecordingDetailResult;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadCompletionResult;
+import com.knot.backend.recording.application.dto.result.RecordingDetailResult;
 import com.knot.backend.recording.application.dto.result.RecordingTranscriptionRetryResult;
-import com.knot.backend.recording.application.dto.result.StoredAudioObject;
 import com.knot.backend.recording.domain.RecordingAudioUpload;
 import com.knot.backend.recording.domain.RecordingAudioUploadRepository;
 import com.knot.backend.recording.domain.RecordingAudioUploadStatus;
+import com.knot.backend.recording.domain.StoredAudioObject;
 import com.knot.backend.recording.domain.TranscriptionStatus;
 import com.knot.backend.testsupport.LlmHttpServer;
 import com.knot.backend.testsupport.TestApplicationProperties;
@@ -355,9 +355,11 @@ class RecordingTranscriptionFlowIntegrationTest {
             RecordingAudioUpload audio = uploads.findById(upload.uploadId())
                     .orElseThrow();
             audio.complete(
-                    1024,
-                    "audio/webm",
-                    "version-1",
+                    StoredAudioObject.of(
+                            1024,
+                            "audio/webm",
+                            "version-1"
+                    ),
                     NOW
             );
             audio.recordDeleted(NOW);
