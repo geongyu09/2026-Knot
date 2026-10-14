@@ -11,7 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.knot.backend.auth.domain.AuthenticatedMember;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
-import com.knot.backend.recording.application.RecordingPauseService;
+import com.knot.backend.recording.application.RecordingControlService;
 import com.knot.backend.recording.application.dto.result.RecordingPauseResult;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
@@ -43,13 +43,13 @@ class RecordingPauseControllerTest {
             {"tabId":"22222222-2222-2222-2222-222222222222","controlToken":"%s"}
             """.formatted(CONTROL_TOKEN);
 
-    private RecordingPauseService recordingPauseService;
+    private RecordingControlService recordingControlService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        recordingPauseService = mock(RecordingPauseService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new RecordingPauseController(recordingPauseService))
+        recordingControlService = mock(RecordingControlService.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(new RecordingPauseController(recordingControlService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                 .build();
@@ -67,7 +67,7 @@ class RecordingPauseControllerTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
         when(
-                recordingPauseService.pause(
+                recordingControlService.pause(
                         eq(WORKSPACE_ID),
                         eq(MEMBER_ID),
                         eq(RECORDING_ID),
@@ -107,7 +107,7 @@ class RecordingPauseControllerTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
         when(
-                recordingPauseService.pause(
+                recordingControlService.pause(
                         eq(WORKSPACE_ID),
                         eq(MEMBER_ID),
                         eq(RECORDING_ID),
@@ -154,7 +154,7 @@ class RecordingPauseControllerTest {
         result.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("controlToken"));
-        verifyNoInteractions(recordingPauseService);
+        verifyNoInteractions(recordingControlService);
     }
 
     private UsernamePasswordAuthenticationToken memberAuthentication() {

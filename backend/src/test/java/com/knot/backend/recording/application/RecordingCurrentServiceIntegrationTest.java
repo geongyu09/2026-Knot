@@ -34,18 +34,18 @@ class RecordingCurrentServiceIntegrationTest {
     private static final String CONTROL_TOKEN = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefA";
 
     private final RecordingCurrentService recordingCurrentService;
-    private final RecordingPauseService recordingPauseService;
+    private final RecordingControlService recordingControlService;
     private final RecordingStartService recordingStartService;
     private final JdbcClient jdbcClient;
 
     RecordingCurrentServiceIntegrationTest(
             RecordingCurrentService recordingCurrentService,
-            RecordingPauseService recordingPauseService,
+            RecordingControlService recordingControlService,
             RecordingStartService recordingStartService,
             JdbcClient jdbcClient
     ) {
         this.recordingCurrentService = recordingCurrentService;
-        this.recordingPauseService = recordingPauseService;
+        this.recordingControlService = recordingControlService;
         this.recordingStartService = recordingStartService;
         this.jdbcClient = jdbcClient;
     }
@@ -105,7 +105,7 @@ class RecordingCurrentServiceIntegrationTest {
                 workspaceId,
                 memberId
         );
-        RecordingPauseResult paused = recordingPauseService.pause(
+        RecordingPauseResult paused = recordingControlService.pause(
                 workspaceId,
                 memberId,
                 recording.id(),

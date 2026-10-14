@@ -44,26 +44,20 @@ class RecordingConnectionExpiryBatchIntegrationTest {
 
     private final RecordingConnectionExpiryService expiryService;
     private final RecordingStartService recordingStartService;
-    private final RecordingHeartbeatService recordingHeartbeatService;
-    private final RecordingPauseService recordingPauseService;
-    private final RecordingEndService recordingEndService;
+    private final RecordingControlService recordingControlService;
     private final WorkspaceLeaveService workspaceLeaveService;
     private final JdbcClient jdbcClient;
 
     RecordingConnectionExpiryBatchIntegrationTest(
             RecordingConnectionExpiryService expiryService,
             RecordingStartService recordingStartService,
-            RecordingHeartbeatService recordingHeartbeatService,
-            RecordingPauseService recordingPauseService,
-            RecordingEndService recordingEndService,
+            RecordingControlService recordingControlService,
             WorkspaceLeaveService workspaceLeaveService,
             JdbcClient jdbcClient
     ) {
         this.expiryService = expiryService;
         this.recordingStartService = recordingStartService;
-        this.recordingHeartbeatService = recordingHeartbeatService;
-        this.recordingPauseService = recordingPauseService;
-        this.recordingEndService = recordingEndService;
+        this.recordingControlService = recordingControlService;
         this.workspaceLeaveService = workspaceLeaveService;
         this.jdbcClient = jdbcClient;
     }
@@ -167,7 +161,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
         StartedRecording aliveRecording = startRecording(alive);
         Fixture ended = ownerFixture("종료 팀");
         StartedRecording endedRecording = startRecording(ended);
-        recordingEndService.end(
+        recordingControlService.end(
                 ended.workspaceId(),
                 ended.memberId(),
                 endedRecording.id(),
@@ -307,7 +301,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
                                 fixture,
                                 recording
                         ),
-                        () -> recordingPauseService.pause(
+                        () -> recordingControlService.pause(
                                 fixture.workspaceId(),
                                 fixture.memberId(),
                                 recording.id(),
@@ -376,7 +370,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
             Fixture fixture,
             StartedRecording recording
     ) {
-        return recordingHeartbeatService.heartbeat(
+        return recordingControlService.heartbeat(
                 fixture.workspaceId(),
                 fixture.memberId(),
                 recording.id(),

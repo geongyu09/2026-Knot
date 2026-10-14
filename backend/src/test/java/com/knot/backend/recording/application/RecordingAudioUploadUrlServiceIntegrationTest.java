@@ -44,20 +44,20 @@ class RecordingAudioUploadUrlServiceIntegrationTest {
 
     private final RecordingAudioUploadUrlService recordingAudioUploadUrlService;
     private final RecordingStartService recordingStartService;
-    private final RecordingEndService recordingEndService;
+    private final RecordingControlService recordingControlService;
     private final TransactionTemplate transactionTemplate;
     private final JdbcClient jdbcClient;
 
     RecordingAudioUploadUrlServiceIntegrationTest(
             RecordingAudioUploadUrlService recordingAudioUploadUrlService,
             RecordingStartService recordingStartService,
-            RecordingEndService recordingEndService,
+            RecordingControlService recordingControlService,
             TransactionTemplate transactionTemplate,
             JdbcClient jdbcClient
     ) {
         this.recordingAudioUploadUrlService = recordingAudioUploadUrlService;
         this.recordingStartService = recordingStartService;
-        this.recordingEndService = recordingEndService;
+        this.recordingControlService = recordingControlService;
         this.transactionTemplate = transactionTemplate;
         this.jdbcClient = jdbcClient;
     }
@@ -279,7 +279,7 @@ class RecordingAudioUploadUrlServiceIntegrationTest {
                 memberId,
                 tabId
         );
-        recordingEndService.end(
+        recordingControlService.end(
                 workspaceId,
                 memberId,
                 recordingId,
