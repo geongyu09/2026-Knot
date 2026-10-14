@@ -70,6 +70,7 @@ import { confirmDocumentApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/d
 import { getWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitation";
 import { leaveWorkspaceApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/members/me";
 import { getOwnershipTransferCandidatesApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/ownershipTransferCandidates";
+import { transferWorkspaceOwnershipApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/ownershipTransfers";
 import { createSearchConversationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations";
 import { createSearchQuestionApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions";
 import { issueWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations";
@@ -241,6 +242,15 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
           ownershipTransferCandidatesResponse,
         ),
       );
+    });
+
+    it("POST /api/v1/workspaces/:workspaceId/ownership-transfers는 본문 없이 성공한다", async () => {
+      await expect(
+        transferWorkspaceOwnershipApi({
+          workspaceId: WORKSPACE_ID,
+          body: { successorMemberId: 2 },
+        }),
+      ).resolves.toBeUndefined();
     });
   });
 
