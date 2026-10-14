@@ -4,7 +4,8 @@
 
 확인일: 2026-10-12. `be/feature/#566`의 로컬 구현 계약이다. develop 병합·운영 배포 상태를 뜻하지 않는다.
 기존 개인 대화에 질문·답변을 추가하고 첫 질문의 생성 작업·SSE를 재사용한다.
-현재 Workspace의 ARCHIVED Document만 검색한다. Transcript·오디오·DRAFT·생성 Job은 검색하지 않는다.
+2026-10-14 #670: 현재 Workspace의 생성 완료 DRAFT·ARCHIVED Document를 개인 확인 여부와 무관하게 탐색한다.
+새 탐색 실행 시작 시각까지 생성된 문서를 포함한다. Transcript·오디오·생성 중/실패 Job은 직접 검색하지 않는다.
 별도 색인이 없어 `excluded_documents.count=0`이다. 현재 기본 시스템 프롬프트의 실제 참조 문서는 최대 3개이며,
 저장 구조는 전체 사용 근거를 보존하고 응답 카드는 질문 관련도 순으로 최대 3개다.
 
@@ -66,7 +67,7 @@
 | progress | stage: String | No | SEARCHING / GENERATING. 빠른 작업은 중간 단계 생략 가능 | GENERATING |
 | delta | answerMessageId: Long, text: String | No | 저장된 부분 본문. 인접 조각은 합쳐질 수 있음 | 회의 기록에 따르면… |
 | evidence | answerMessageId: Long, items: Array | No | 실제 사용 문서 중 관련도 순 최대 3개. 없으면 [] | 아래 예시 |
-| excluded_documents | count: Integer | No | 이번 DB 직접 검색은 0. DRAFT·Job 미포함. 재연결 API에서는 전송하지 않음 | 0 |
+| excluded_documents | count: Integer | No | 이번 DB 직접 검색은 0. 생성 Job 수를 세지 않음. 재연결 API에서는 전송하지 않음 | 0 |
 | completed | answerMessageId: Long, status: String | No | 정상 종료 COMPLETED | COMPLETED |
 | failed | answerMessageId: Long, status: String, code: String | No | FAILED, 부분 본문·질문 보존. 공급자 오류 원문 노출 안 함 | ANSWER_GENERATION_FAILED |
 | stopped | answerMessageId: Long, status: String | No | 명시적 중지로 STOPPED 종료 | STOPPED |
