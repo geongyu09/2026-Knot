@@ -124,8 +124,8 @@ class SearchDocumentToolServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("현재 Workspace의 보관 문서만 페이지를 이어서 열거한다")
-    void list_success_archivedScopedPages() {
+    @DisplayName("현재 Workspace의 생성 완료 DRAFT와 ARCHIVED를 페이지로 열거한다")
+    void list_success_generatedScopedPages() {
         long first = saveDocument(
                 workspaceId,
                 "ARCHIVED",
@@ -134,14 +134,8 @@ class SearchDocumentToolServiceIntegrationTest {
         );
         long second = saveDocument(
                 workspaceId,
-                "ARCHIVED",
-                "두 번째 회의",
-                "내용"
-        );
-        saveDocument(
-                workspaceId,
                 "DRAFT",
-                "준비 문서",
+                "두 번째 회의",
                 "내용"
         );
         saveDocument(
@@ -160,6 +154,11 @@ class SearchDocumentToolServiceIntegrationTest {
         );
         assertThat(page.items()).extracting(SearchDocumentCard::documentId)
                 .containsExactly(second);
+        assertThat(
+                page.items()
+                        .getFirst()
+                        .archivedAt()
+        ).isNull();
         assertThat(page.nextCursor()).isNotNull();
         SearchDocumentPage previous = service.list(
                 scope,
