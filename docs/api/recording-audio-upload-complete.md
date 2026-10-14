@@ -45,7 +45,7 @@
 - 완료된 뒤 URL 재발급은 `409 AUDIO_UPLOAD_ALREADY_COMPLETED`다. 이미 발급한 PUT URL은 만료 전까지 유효하다.
 - 반복 완료는 실패한 전사도 다시 실행하지 않는다. [전사 재시도 API](recording-transcription-retry.md)를 사용한다.
 - 다른 녹음이 전사 중이면 새 녹음의 전사는 `FAILED/BUSY`로 저장된다. 업로드 완료 자체는 `200`이다.
-- 전사는 worker 시작 시 확인한 S3 versionId로 GET URL을 발급한다. 버전이 없는 객체는 전사 실패로 기록한다.
+- 업로드 완료 때 확인한 S3 versionId를 저장하고, 전사는 그 버전으로 GET URL을 발급한다. 완료 뒤 남은 PUT URL로 같은 key를 덮어써도 전사 입력은 바뀌지 않는다. 버전이 없는 객체는 전사 실패로 기록한다.
 
 ## 오류
 
