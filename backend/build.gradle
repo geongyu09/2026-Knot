@@ -78,6 +78,13 @@ tasks.withType(Test).configureEach {
 	maxHeapSize = '1g'
 }
 
+tasks.named('processTestResources') {
+	from('src/main/resources/db/migration') {
+		exclude 'V49__*.sql', 'V50__*.sql'
+		into 'db/transcription-queue-history'
+	}
+}
+
 tasks.named('test') {
 	useJUnitPlatform {
 		excludeTags 'integration', 'acceptance'
