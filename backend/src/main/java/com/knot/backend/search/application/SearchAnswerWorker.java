@@ -76,7 +76,7 @@ public class SearchAnswerWorker {
         if (documents.isEmpty()) {
             append(
                     work,
-                    NO_DOCUMENT_GUIDANCE
+                    answerWithoutDocuments(retrieval)
             );
             executions.complete(
                     work.answerId(),
@@ -110,6 +110,13 @@ public class SearchAnswerWorker {
                 usedIds,
                 candidates
         );
+    }
+
+    private String answerWithoutDocuments(SearchRetrievalResult retrieval) {
+        if (retrieval.directAnswer() != null) {
+            return retrieval.directAnswer();
+        }
+        return NO_DOCUMENT_GUIDANCE;
     }
 
     private void append(
