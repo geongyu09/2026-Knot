@@ -16,7 +16,6 @@ import lombok.Getter;
 @Entity
 @Table(name = "transcript_segments")
 public class TranscriptSegment {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
