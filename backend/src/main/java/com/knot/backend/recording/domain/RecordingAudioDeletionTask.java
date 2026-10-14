@@ -8,6 +8,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.Duration;
 import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -18,6 +19,10 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class RecordingAudioDeletionTask {
+    private static final String STORAGE_FAILURE_CODE = "AUDIO_STORAGE_UNAVAILABLE";
+    private static final long FIRST_RETRY_SECONDS = 60L;
+    private static final long MAX_RETRY_SECONDS = 3600L;
+    private static final int MAX_BACKOFF_SHIFT = 6;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -138,11 +143,9 @@ public class RecordingAudioDeletionTask {
         completedAt = now;
     }
 
-    public void recordFailure(
+    public void recordStorageFailure(
             int attempt,
-            Instant now,
-            Instant nextAttempt,
-            String failureCode
+            Instant now
     ) {
         validateTime(now);
         if (!isCurrentAttempt(
@@ -151,16 +154,14 @@ public class RecordingAudioDeletionTask {
         )) {
             return;
         }
-        if (nextAttempt == null || !nextAttempt.isAfter(now)) {
-            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_TIME);
-        }
-        if (failureCode == null || failureCode.isBlank() || failureCode.length() > 50) {
-            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
-        }
         status = RecordingAudioDeletionStatus.PENDING;
-        nextAttemptAt = nextAttempt;
+        nextAttemptAt = now.plus(retryBackoff(attempt));
         executionDeadlineAt = null;
-        lastFailureCode = failureCode;
+        lastFailureCode = STORAGE_FAILURE_CODE;
+    }
+
+    public boolean isSucceeded() {
+        return status == RecordingAudioDeletionStatus.SUCCEEDED;
     }
 
     private boolean isCurrentAttempt(
@@ -169,6 +170,23 @@ public class RecordingAudioDeletionTask {
     ) {
         return status == RecordingAudioDeletionStatus.RUNNING && attemptCount == attempt
                 && now.isBefore(executionDeadlineAt);
+    }
+
+    // 저장소 장애가 길어져도 삭제를 계속 시도하되 요청이 몰리지 않도록 1분부터 두 배씩, 최대 1시간까지 늦춘다.
+    private static Duration retryBackoff(int attempt) {
+        int shift = Math.min(
+                Math.max(
+                        attempt - 1,
+                        0
+                ),
+                MAX_BACKOFF_SHIFT
+        );
+        return Duration.ofSeconds(
+                Math.min(
+                        MAX_RETRY_SECONDS,
+                        FIRST_RETRY_SECONDS << shift
+                )
+        );
     }
 
     private void validateTime(Instant now) {
