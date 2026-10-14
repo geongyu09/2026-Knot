@@ -1,6 +1,7 @@
 package com.knot.backend.global.config;
 
 import com.knot.backend.auth.domain.AuthErrorCode;
+import com.knot.backend.global.logging.RequestIdFilter;
 import com.knot.backend.auth.domain.AuthException;
 import com.knot.backend.auth.infrastructure.github.GithubOAuth2UserService;
 import com.knot.backend.auth.infrastructure.jwt.JwtAuthenticationFilter;
@@ -72,7 +73,12 @@ public class SecurityConfig {
                         "X-XSRF-TOKEN"
                 )
         );
-        configuration.setExposedHeaders(List.of(HttpHeaders.RETRY_AFTER));
+        configuration.setExposedHeaders(
+                List.of(
+                        HttpHeaders.RETRY_AFTER,
+                        RequestIdFilter.HEADER
+                )
+        );
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
