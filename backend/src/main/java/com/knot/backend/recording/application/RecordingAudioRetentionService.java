@@ -17,7 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class RecordingAudioRetentionService {
-
     private final RecordingAudioDeletionRepository deletions;
     private final RetentionCleanupProperties properties;
     private final Clock clock;
