@@ -15,7 +15,10 @@ import {
   PutDocumentConfirmationResponseDto,
 } from "./document";
 import {
+  GetOwnershipTransferCandidatesResponseDto,
   GetWorkspacesResponseDto,
+  OwnershipTransferCandidateDto,
+  PostOwnershipTransferRequestDto,
   PostWorkspaceRequestDto,
   PutLastViewedWorkspaceRequestDto,
   WorkspaceListItemDto,
@@ -50,6 +53,21 @@ describe("DTO 생성자 변환", () => {
       expect(new PutLastViewedWorkspaceRequestDto({ workspaceId: 1 })).toEqual({
         workspaceId: 1,
       });
+    });
+
+    it("승계 후보 응답의 배열을 candidates 필드에 OwnershipTransferCandidateDto로 담는다", () => {
+      const dto = new GetOwnershipTransferCandidatesResponseDto([
+        { memberId: 2, nickname: "흑곰" },
+      ]);
+
+      expect(dto.candidates[0]).toBeInstanceOf(OwnershipTransferCandidateDto);
+      expect(dto.candidates).toEqual([{ memberId: 2, nickname: "흑곰" }]);
+    });
+
+    it("승계 요청 본문은 successorMemberId만 담는다", () => {
+      expect(
+        new PostOwnershipTransferRequestDto({ successorMemberId: 2 }),
+      ).toEqual({ successorMemberId: 2 });
     });
   });
 

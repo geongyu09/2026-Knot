@@ -11,6 +11,14 @@ export interface WorkspacesResponse {
 
 export interface WorkspaceDetailResponse {
   name: string;
+  myRole: "OWNER" | "MEMBER";
+  /** 나를 포함한 멤버 수 */
+  activeMemberCount: number;
+}
+
+export interface OwnershipTransferCandidate {
+  memberId: number;
+  nickname: string;
 }
 
 export interface WorkspaceCreateResponse {

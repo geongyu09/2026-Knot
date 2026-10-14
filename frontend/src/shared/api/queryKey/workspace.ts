@@ -3,4 +3,6 @@ export const workspaceKeys = {
   list: () => [...workspaceKeys.all, "list"] as const,
   detail: (workspaceId: number) =>
     [...workspaceKeys.all, "detail", workspaceId] as const,
+  ownershipTransferCandidates: (workspaceId: number) =>
+    [...workspaceKeys.all, "ownershipTransferCandidates", workspaceId] as const,
 };

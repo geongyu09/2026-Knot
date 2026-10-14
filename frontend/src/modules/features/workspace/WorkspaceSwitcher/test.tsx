@@ -1,6 +1,15 @@
-import { GetWorkspacesResponseDto } from "@api/dto/workspace";
+import {
+  GetOwnershipTransferCandidatesResponseDto,
+  GetWorkspaceResponseDto,
+  GetWorkspacesResponseDto,
+} from "@api/dto/workspace";
 import { mockServer } from "@api/mock/server";
-import { workspacesResponse } from "@api/mock/responses/workspace";
+import {
+  ownershipTransferCandidatesResponse,
+  workspaceDetailResponse,
+  workspacesResponse,
+} from "@api/mock/responses/workspace";
+import type { WorkspaceDetailResponse } from "@api/mock/types/workspace";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
 import { theme } from "@provider/themeProvider";
@@ -38,6 +47,16 @@ const OTHER_HOME_PATH = getRouterPath({
   params: { workspaceId: String(otherWorkspace.id) },
 });
 const END_RECORDING_DIALOG = "녹음을 끝내고 이동할까요?";
+const LEAVE_DIALOG = "워크스페이스에서 나갈까요?";
+const TRANSFER_DIALOG = "누구에게 owner를 넘길까요?";
+const DELETE_DIALOG = "워크스페이스를 삭제할까요?";
+const LEAVE_API = "*/api/v1/workspaces/:workspaceId/members/me";
+const TRANSFER_API = "*/api/v1/workspaces/:workspaceId/ownership-transfers";
+const expectedWorkspace = new GetWorkspaceResponseDto(workspaceDetailResponse);
+const { candidates } = new GetOwnershipTransferCandidatesResponseDto(
+  ownershipTransferCandidatesResponse,
+);
+const [firstMember, secondMember] = candidates;
 
 const renderSwitcher = () => {
   const queryClient = new QueryClient({
@@ -47,6 +66,7 @@ const renderSwitcher = () => {
     [
       { path: PATH_ROUTE.WORKSPACE_HOME, element: <WorkspaceSwitcher /> },
       { path: PATH_ROUTE.WORKSPACE_CREATE, element: null },
+      { path: PATH_ROUTE.HOME, element: null },
     ],
     { initialEntries: [HOME_PATH] },
   );
@@ -61,7 +81,7 @@ const renderSwitcher = () => {
     </ThemeProvider>,
   );
 
-  return { router };
+  return { router, queryClient };
 };
 
 const getMenuTrigger = () =>
@@ -303,6 +323,365 @@ describe("WorkspaceSwitcher", () => {
 
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       expect(useRecordingStore.getState().status).toBe("recording");
+    });
+  });
+
+  describe("워크스페이스 나가기를 고르면", () => {
+    /** 워크스페이스 조회 응답의 내 역할과 멤버 수를 이 테스트에서만 바꿔요 */
+    const respondWorkspace = (workspace: Partial<WorkspaceDetailResponse>) =>
+      mockServer.use(
+        http.get("*/api/v1/workspaces/:workspaceId", () =>
+          HttpResponse.json({ ...workspaceDetailResponse, ...workspace }),
+        ),
+      );
+
+    /** 메뉴를 열고 나가기를 눌러요 */
+    const clickLeave = async () => {
+      // 어떤 창을 띄울지는 워크스페이스 조회 결과로 정하므로 이름이 보일 때까지 기다려요
+      await screen.findByText(expectedWorkspace.name);
+      await openMenu();
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "워크스페이스 나가기" }),
+      );
+    };
+
+    /** 멤버 선택 창을 찾아요. 승계 후보는 창이 뜬 뒤에 받아 오므로 목록이 그려질 때까지 기다려요 */
+    const findTransferDialog = async () => {
+      const dialog = screen.getByRole("dialog", { name: TRANSFER_DIALOG });
+      await within(dialog).findByRole("radio", { name: firstMember.nickname });
+
+      return dialog;
+    };
+
+    /** 다른 멤버가 있는 owner로 멤버 선택 창을 띄워요 */
+    const openTransferDialog = async () => {
+      renderSwitcher();
+      await clickLeave();
+
+      return findTransferDialog();
+    };
+
+    it("일반 멤버에게는 나가기 확인 창을 띄우고 메뉴를 닫는다", async () => {
+      respondWorkspace({ myRole: "MEMBER" });
+      renderSwitcher();
+
+      await clickLeave();
+
+      const dialog = screen.getByRole("dialog", { name: LEAVE_DIALOG });
+      expect(dialog).toHaveTextContent("다시 들어오려면 초대 코드가 필요해요.");
+      expect(
+        within(dialog).getByRole("button", { name: "나가기" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("region", { name: "워크스페이스 메뉴" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("혼자 남은 워크스페이스에서는 워크스페이스도 함께 삭제된다고 알린다", async () => {
+      respondWorkspace({ activeMemberCount: 1 });
+      renderSwitcher();
+
+      await clickLeave();
+
+      expect(
+        screen.getByRole("dialog", { name: LEAVE_DIALOG }),
+      ).toHaveTextContent("남은 멤버가 없어 워크스페이스도 함께 삭제돼요.");
+    });
+
+    it("다른 멤버가 있는 owner에게는 나를 뺀 멤버 목록을 띄우고, 고르기 전에는 넘기고 나가기를 막는다", async () => {
+      const dialog = await openTransferDialog();
+
+      expect(within(dialog).getAllByRole("radio")).toHaveLength(
+        candidates.length,
+      );
+      expect(
+        within(dialog).getByRole("radio", { name: firstMember.nickname }),
+      ).not.toBeChecked();
+      expect(
+        within(dialog).getByRole("button", { name: "넘기고 나가기" }),
+      ).toBeDisabled();
+    });
+
+    it("멤버를 고르면 넘기고 나가기를 누를 수 있다", async () => {
+      const dialog = await openTransferDialog();
+
+      fireEvent.click(
+        within(dialog).getByRole("radio", { name: secondMember.nickname }),
+      );
+
+      expect(
+        within(dialog).getByRole("radio", { name: secondMember.nickname }),
+      ).toBeChecked();
+      expect(
+        within(dialog).getByRole("button", { name: "넘기고 나가기" }),
+      ).toBeEnabled();
+    });
+
+    it("워크스페이스 삭제하기를 누르면 삭제 확인 창으로 바뀐다", async () => {
+      const dialog = await openTransferDialog();
+
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "워크스페이스 삭제하기" }),
+      );
+
+      expect(
+        screen.getByRole("dialog", { name: DELETE_DIALOG }),
+      ).toHaveTextContent("문서와 녹음도 함께 사라져요.");
+      expect(
+        screen.queryByRole("dialog", { name: TRANSFER_DIALOG }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("삭제 확인 창에서 취소하면 고른 멤버가 남은 멤버 선택 창으로 돌아온다", async () => {
+      const dialog = await openTransferDialog();
+      fireEvent.click(
+        within(dialog).getByRole("radio", { name: firstMember.nickname }),
+      );
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "워크스페이스 삭제하기" }),
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "취소" }));
+
+      expect(
+        screen.queryByRole("dialog", { name: DELETE_DIALOG }),
+      ).not.toBeInTheDocument();
+      expect(
+        within(screen.getByRole("dialog", { name: TRANSFER_DIALOG })).getByRole(
+          "radio",
+          { name: firstMember.nickname },
+        ),
+      ).toBeChecked();
+    });
+
+    it("삭제 확인 창에서 ESC를 눌러도 멤버 선택 창으로 돌아온다", async () => {
+      const dialog = await openTransferDialog();
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "워크스페이스 삭제하기" }),
+      );
+
+      fireEvent.keyDown(document, { key: "Escape" });
+
+      expect(
+        screen.getByRole("dialog", { name: TRANSFER_DIALOG }),
+      ).toBeInTheDocument();
+    });
+
+    it("멤버를 고르기 전에는 바깥을 눌러 멤버 선택 창을 닫을 수 있다", async () => {
+      const dialog = await openTransferDialog();
+
+      fireEvent.click(dialog.parentElement!);
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("멤버를 고른 뒤에는 바깥을 눌러도 멤버 선택 창을 닫지 않는다", async () => {
+      const dialog = await openTransferDialog();
+      fireEvent.click(
+        within(dialog).getByRole("radio", { name: firstMember.nickname }),
+      );
+
+      fireEvent.click(dialog.parentElement!);
+
+      expect(
+        screen.getByRole("dialog", { name: TRANSFER_DIALOG }),
+      ).toBeInTheDocument();
+    });
+
+    it("멤버 선택 창에서 ESC를 누르면 멤버를 골랐어도 창을 닫는다", async () => {
+      const dialog = await openTransferDialog();
+      fireEvent.click(
+        within(dialog).getByRole("radio", { name: firstMember.nickname }),
+      );
+
+      fireEvent.keyDown(document, { key: "Escape" });
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("나가기 확인 창에서 취소하면 창만 닫는다", async () => {
+      respondWorkspace({ myRole: "MEMBER" });
+      const { router } = renderSwitcher();
+      await clickLeave();
+
+      fireEvent.click(screen.getByRole("button", { name: "취소" }));
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(router.state.location.pathname).toBe(HOME_PATH);
+    });
+
+    it("나가기를 누르면 창을 닫고, 탈퇴를 요청한 뒤 진입 분기로 이동한다", async () => {
+      const leave = vi.fn();
+      mockServer.use(
+        http.delete(LEAVE_API, () => {
+          leave();
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      respondWorkspace({ myRole: "MEMBER" });
+      const { router } = renderSwitcher();
+      await clickLeave();
+
+      fireEvent.click(screen.getByRole("button", { name: "나가기" }));
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(PATH_ROUTE.HOME),
+      );
+      expect(leave).toHaveBeenCalledTimes(1);
+    });
+
+    it("혼자 남은 워크스페이스에서 나가기를 눌러도 탈퇴를 요청한 뒤 진입 분기로 이동한다", async () => {
+      respondWorkspace({ activeMemberCount: 1 });
+      const { router } = renderSwitcher();
+      await clickLeave();
+
+      fireEvent.click(screen.getByRole("button", { name: "나가기" }));
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(PATH_ROUTE.HOME),
+      );
+    });
+
+    it("멤버를 골라 넘기고 나가기를 누르면 창을 닫고, 고른 멤버로 승계를 요청한 뒤 진입 분기로 이동한다", async () => {
+      const transfer = vi.fn();
+      const leave = vi.fn();
+      mockServer.use(
+        http.post(TRANSFER_API, async ({ request }) => {
+          transfer(await request.json());
+          return new HttpResponse(null, { status: 204 });
+        }),
+        http.delete(LEAVE_API, () => {
+          leave();
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      const { router } = renderSwitcher();
+      await clickLeave();
+      const dialog = await findTransferDialog();
+      fireEvent.click(
+        within(dialog).getByRole("radio", { name: secondMember.nickname }),
+      );
+
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "넘기고 나가기" }),
+      );
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(PATH_ROUTE.HOME),
+      );
+      expect(transfer).toHaveBeenCalledExactlyOnceWith({
+        successorMemberId: secondMember.memberId,
+      });
+      // 승계 요청이 탈퇴까지 처리하므로 탈퇴를 따로 요청하지 않아요
+      expect(leave).not.toHaveBeenCalled();
+    });
+
+    it("삭제 확인 창에서 삭제를 누르면 요청 없이 창만 닫는다", async () => {
+      const { router } = renderSwitcher();
+      await clickLeave();
+      const dialog = await findTransferDialog();
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "워크스페이스 삭제하기" }),
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "삭제" }));
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(router.state.location.pathname).toBe(HOME_PATH);
+    });
+
+    describe("녹음 중이면", () => {
+      it("나가기를 누르면 탈퇴한 뒤 이 탭의 녹음을 버린다", async () => {
+        respondWorkspace({ myRole: "MEMBER" });
+        await startRecording();
+        renderSwitcher();
+        await clickLeave();
+
+        fireEvent.click(screen.getByRole("button", { name: "나가기" }));
+
+        await waitFor(() =>
+          expect(useRecordingStore.getState().status).toBe("idle"),
+        );
+      });
+
+      it("일시정지 중이어도 녹음을 버린다", async () => {
+        respondWorkspace({ myRole: "MEMBER" });
+        await startRecording();
+        act(() => useRecordingStore.getState().pauseRecording());
+        renderSwitcher();
+        await clickLeave();
+
+        fireEvent.click(screen.getByRole("button", { name: "나가기" }));
+
+        await waitFor(() =>
+          expect(useRecordingStore.getState().status).toBe("idle"),
+        );
+      });
+
+      it("탈퇴 요청이 실패하면 이동하지 않고 녹음을 그대로 둔다", async () => {
+        mockServer.use(
+          http.delete(LEAVE_API, () =>
+            HttpResponse.json(
+              { code: "WORKSPACE_OWNER_TRANSFER_REQUIRED", message: "" },
+              { status: 409 },
+            ),
+          ),
+        );
+        respondWorkspace({ myRole: "MEMBER" });
+        await startRecording();
+        const { router, queryClient } = renderSwitcher();
+        await clickLeave();
+
+        fireEvent.click(screen.getByRole("button", { name: "나가기" }));
+
+        // 누르자마자 시작한 탈퇴 요청이 실패로 끝날 때까지 기다려요
+        expect(queryClient.isMutating()).toBe(1);
+        await waitFor(() => expect(queryClient.isMutating()).toBe(0));
+        expect(useRecordingStore.getState().status).toBe("recording");
+        expect(router.state.location.pathname).toBe(HOME_PATH);
+      });
+
+      it("넘기고 나가기를 눌러도 녹음을 버린다", async () => {
+        await startRecording();
+        const dialog = await openTransferDialog();
+        fireEvent.click(
+          within(dialog).getByRole("radio", { name: firstMember.nickname }),
+        );
+
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "넘기고 나가기" }),
+        );
+
+        await waitFor(() =>
+          expect(useRecordingStore.getState().status).toBe("idle"),
+        );
+      });
+
+      it("워크스페이스를 삭제해도 녹음을 버린다", async () => {
+        await startRecording();
+        const dialog = await openTransferDialog();
+        fireEvent.click(
+          within(dialog).getByRole("button", { name: "워크스페이스 삭제하기" }),
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "삭제" }));
+
+        expect(useRecordingStore.getState().status).toBe("idle");
+      });
+
+      it("취소하면 녹음을 그대로 둔다", async () => {
+        respondWorkspace({ myRole: "MEMBER" });
+        await startRecording();
+        renderSwitcher();
+        await clickLeave();
+
+        fireEvent.click(screen.getByRole("button", { name: "취소" }));
+
+        expect(useRecordingStore.getState().status).toBe("recording");
+      });
     });
   });
 });
