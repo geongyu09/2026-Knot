@@ -79,7 +79,27 @@ public class WorkspaceInvitation {
         );
     }
 
-    public boolean isValidAt(Instant pointInTime) {
+    public void validateUsableAt(Instant pointInTime) {
+        if (!isUsableAt(pointInTime)) {
+            throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_INVITATION_PREVIEW_NOT_FOUND);
+        }
+    }
+
+    public WorkspaceMember admit(
+            long memberId,
+            Instant joinedAt
+    ) {
+        validateUsableAt(joinedAt);
+        return WorkspaceMember.create(
+                workspaceId,
+                memberId,
+                WorkspaceMemberRole.MEMBER,
+                joinedAt
+        );
+    }
+
+    // 사용할 수 없는 이유(만료·무효화·생성 전)를 구분하지 않아야 초대 credential의 상태를 추측할 수 없다.
+    private boolean isUsableAt(Instant pointInTime) {
         validatePointInTime(pointInTime);
         boolean issued = !pointInTime.isBefore(createdAt);
         boolean unexpired = pointInTime.isBefore(expiresAt);
