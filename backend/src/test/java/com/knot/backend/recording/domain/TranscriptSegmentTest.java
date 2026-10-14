@@ -1,7 +1,7 @@
 package com.knot.backend.recording.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -61,8 +61,8 @@ class TranscriptSegmentTest {
             int position,
             long startMillis
     ) {
-        // when & then
-        assertThatThrownBy(
+        // when
+        Throwable failure = catchThrowable(
                 () -> TranscriptSegment.create(
                         transcriptId,
                         position,
@@ -71,14 +71,17 @@ class TranscriptSegmentTest {
                         null,
                         "발언"
                 )
-        ).isInstanceOf(RecordingException.class);
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class);
     }
 
     @Test
     @DisplayName("시작보다 이른 종료 시각을 거절한다")
     void create_failure_reversedTime() {
-        // when & then
-        assertThatThrownBy(
+        // when
+        Throwable failure = catchThrowable(
                 () -> TranscriptSegment.create(
                         81,
                         0,
@@ -87,15 +90,18 @@ class TranscriptSegmentTest {
                         null,
                         "발언"
                 )
-        ).isInstanceOf(RecordingException.class);
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class);
     }
 
     @ParameterizedTest
     @ValueSource(ints = {0, -1})
     @DisplayName("화자 번호는 1 이상이어야 한다")
     void create_failure_invalidSpeaker(int speakerNumber) {
-        // when & then
-        assertThatThrownBy(
+        // when
+        Throwable failure = catchThrowable(
                 () -> TranscriptSegment.create(
                         81,
                         0,
@@ -104,7 +110,10 @@ class TranscriptSegmentTest {
                         speakerNumber,
                         "발언"
                 )
-        ).isInstanceOf(RecordingException.class);
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class);
     }
 
     @ParameterizedTest
@@ -112,8 +121,8 @@ class TranscriptSegmentTest {
     @ValueSource(strings = {" ", "\t\n", "\u2003"})
     @DisplayName("문장이 없거나 공백만 있으면 거절한다")
     void create_failure_blankText(String text) {
-        // when & then
-        assertThatThrownBy(
+        // when
+        Throwable failure = catchThrowable(
                 () -> TranscriptSegment.create(
                         81,
                         0,
@@ -122,7 +131,10 @@ class TranscriptSegmentTest {
                         null,
                         text
                 )
-        ).isInstanceOf(RecordingException.class);
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class);
     }
 
     @Test
@@ -131,8 +143,8 @@ class TranscriptSegmentTest {
         // given
         long endMillis = RecordingSession.MAX_RECORDING_MILLIS + 1;
 
-        // when & then
-        assertThatThrownBy(
+        // when
+        Throwable failure = catchThrowable(
                 () -> TranscriptSegment.create(
                         81,
                         0,
@@ -141,7 +153,10 @@ class TranscriptSegmentTest {
                         null,
                         "발언"
                 )
-        ).isInstanceOf(RecordingException.class);
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class);
     }
 
     @Test
@@ -211,13 +226,16 @@ class TranscriptSegmentTest {
         // given
         List<TranscriptUtterance> utterances = List.of();
 
-        // when & then
-        assertThatThrownBy(
+        // when
+        Throwable failure = catchThrowable(
                 () -> TranscriptSegment.createAll(
                         81,
                         utterances
                 )
-        ).isInstanceOf(RecordingException.class);
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class);
     }
 
     @Test
@@ -239,12 +257,15 @@ class TranscriptSegmentTest {
                 )
         );
 
-        // when & then
-        assertThatThrownBy(
+        // when
+        Throwable failure = catchThrowable(
                 () -> TranscriptSegment.createAll(
                         81,
                         utterances
                 )
-        ).isInstanceOf(RecordingException.class);
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class);
     }
 }

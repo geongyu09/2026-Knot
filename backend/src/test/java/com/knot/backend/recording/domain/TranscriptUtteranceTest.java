@@ -1,7 +1,7 @@
 package com.knot.backend.recording.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -51,15 +51,18 @@ class TranscriptUtteranceTest {
             double startSeconds,
             double endSeconds
     ) {
-        // when & then
-        assertThatThrownBy(
+        // when
+        Throwable failure = catchThrowable(
                 () -> new TranscriptUtterance(
                         "speaker",
                         startSeconds,
                         endSeconds,
                         "발화"
                 )
-        ).isInstanceOf(RecordingException.class)
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
                 .extracting("errorCode")
                 .isEqualTo(RecordingErrorCode.INVALID_RECORDING_DATA);
     }

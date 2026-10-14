@@ -1,7 +1,7 @@
 package com.knot.backend.recording.application.dto.result;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
@@ -60,8 +60,11 @@ class AiTranscriptTest {
                 )
         );
 
-        // when & then
-        assertThatThrownBy(transcript::toUtterances).isInstanceOf(RecordingException.class)
+        // when
+        Throwable failure = catchThrowable(transcript::toUtterances);
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
                 .extracting("errorCode")
                 .isEqualTo(RecordingErrorCode.INVALID_RECORDING_DATA);
     }
@@ -82,8 +85,11 @@ class AiTranscriptTest {
                 )
         );
 
-        // when & then
-        assertThatThrownBy(transcript::toUtterances).isInstanceOf(RecordingException.class)
+        // when
+        Throwable failure = catchThrowable(transcript::toUtterances);
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
                 .extracting("errorCode")
                 .isEqualTo(RecordingErrorCode.INVALID_RECORDING_DATA);
     }
