@@ -1,8 +1,16 @@
+import { GetSearchMessagesResponseDto } from "@api/dto/search";
+import { searchMessagesResponse } from "@api/mock/responses/search";
 import { ThemeProvider } from "@emotion/react";
-import { SEARCH_MESSAGES_MOCK } from "@hooks/domain/search/useSearchMessages/mock";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it } from "vitest";
 
@@ -18,17 +26,23 @@ const CONVERSATION_PATH = getRouterPath({
   params: { workspaceId: WORKSPACE_ID, sessionId: "10" },
 });
 
-const answersWithEvidence = SEARCH_MESSAGES_MOCK.filter(
+const { items: messages } = new GetSearchMessagesResponseDto(
+  searchMessagesResponse,
+);
+const answersWithEvidence = messages.filter(
   ({ role, evidences }) => role === "ASSISTANT" && evidences.length > 0,
 );
 const [firstAnswerWithEvidence] = answersWithEvidence;
 const latestAnswerWithEvidence =
   answersWithEvidence[answersWithEvidence.length - 1];
-const answerWithoutEvidence = SEARCH_MESSAGES_MOCK.find(
+const answerWithoutEvidence = messages.find(
   ({ role, evidences }) => role === "ASSISTANT" && evidences.length === 0,
 )!;
 
-const renderToggle = (initialPath = CONVERSATION_PATH) => {
+const renderToggle = async (initialPath = CONVERSATION_PATH) => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   const router = createMemoryRouter(
     [
       { path: PATH_ROUTE.CHAT, element: <SearchEvidenceToggle /> },
@@ -39,30 +53,35 @@ const renderToggle = (initialPath = CONVERSATION_PATH) => {
 
   render(
     <ThemeProvider theme={theme}>
-      <RouterProvider router={router} />
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
     </ThemeProvider>,
   );
+
+  // 메시지 조회가 끝나야 버튼을 둘지 정해져요
+  await waitFor(() => expect(queryClient.isFetching()).toBe(0));
 
   return { router };
 };
 
 describe("SearchEvidenceToggle", () => {
-  it("근거가 있는 답변이 하나도 없으면 버튼을 두지 않는다 (Figma GNB/Floating)", () => {
-    renderToggle(CHAT_PATH);
+  it("근거가 있는 답변이 하나도 없으면 버튼을 두지 않는다 (Figma GNB/Floating)", async () => {
+    await renderToggle(CHAT_PATH);
 
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
-  it("근거가 있는 답변이 있으면 닫힌 상태의 '찾은 기록 보기' 버튼을 둔다 (Figma GNB/Floating)", () => {
-    renderToggle();
+  it("근거가 있는 답변이 있으면 닫힌 상태의 '찾은 기록 보기' 버튼을 둔다 (Figma GNB/Floating)", async () => {
+    await renderToggle();
 
     expect(
       screen.getByRole("button", { name: "찾은 기록 보기" }),
     ).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("닫힌 상태에서 누르면 근거가 있는 가장 최근 답변의 찾은 기록을 연다", async () => {
-    const { router } = renderToggle();
+  it("닫힌 상태에서 누르면 근거가 있는 가장 최근 답변의 찾은 기록을 연다 (Figma Search/FoundRecords)", async () => {
+    const { router } = await renderToggle();
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "찾은 기록 보기" }));
@@ -76,16 +95,16 @@ describe("SearchEvidenceToggle", () => {
     ).toHaveAttribute("aria-expanded", "true");
   });
 
-  it("근거 없는 답변이 주소에 열려 있으면 닫힘으로 보인다 (Figma Search/FoundRecords)", () => {
-    renderToggle(`${CONVERSATION_PATH}?messageId=${answerWithoutEvidence.id}`);
+  it("근거 없는 답변이 주소에 열려 있으면 닫힘으로 보인다 (Figma Search/FoundRecords)", async () => {
+    await renderToggle(`${CONVERSATION_PATH}?messageId=${answerWithoutEvidence.id}`);
 
     expect(
       screen.getByRole("button", { name: "찾은 기록 보기" }),
     ).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("찾은 기록이 열려 있으면 '찾은 기록 닫기'이고, 누르면 닫는다", async () => {
-    const { router } = renderToggle(
+  it("찾은 기록이 열려 있으면 '찾은 기록 닫기'이고, 누르면 닫는다 (Figma GNB/Floating)", async () => {
+    const { router } = await renderToggle(
       `${CONVERSATION_PATH}?messageId=${firstAnswerWithEvidence.id}`,
     );
     const toggle = screen.getByRole("button", { name: "찾은 기록 닫기" });

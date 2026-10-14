@@ -6,14 +6,15 @@ interface SearchEvidenceCardProps {
   title: string;
   /** 출처(근거가 나온 곳의 종류, v2는 `문서`만) */
   sourceType: string;
-  /** 문서 날짜(ISO) */
-  createdAt: string;
+  /** 문서 날짜(ISO). 없으면 날짜 자리를 비워요 */
+  createdAt?: string;
 }
 
 /**
  * 답변의 근거가 된 문서 하나를 보여주는 카드.
  *
- * 첫 줄에 문서 제목, 둘째 줄에 출처와 날짜를 그려요. 제목은 두 줄까지 보이고 넘치면 말줄임돼요.
+ * 첫 줄에 문서 제목, 둘째 줄에 출처와 날짜를 그려요. 날짜가 없으면 출처만 그려요.
+ * 제목은 두 줄까지 보이고 넘치면 말줄임돼요.
  */
 export default function SearchEvidenceCard({
   title,
@@ -25,7 +26,7 @@ export default function SearchEvidenceCard({
       <Title>{title}</Title>
       <Meta>
         <span>{sourceType}</span>
-        <span>{formatDate(createdAt)}</span>
+        {createdAt && <span>{formatDate(createdAt)}</span>}
       </Meta>
     </Container>
   );

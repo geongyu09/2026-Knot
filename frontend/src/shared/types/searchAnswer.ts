@@ -1,6 +1,10 @@
 import type useCreateSearchConversationMutation from "@api/mutations/useCreateSearchConversationMutation";
+import type useSearchMessagesQuery from "@api/queries/useSearchMessagesQuery";
 
-import type { SearchMessageStatus } from "@/shared/types/search";
+/** 저장된 탐색 메시지 하나. 메시지 조회 쿼리의 응답 항목에서 추론해요 */
+export type SearchMessage = NonNullable<
+  ReturnType<typeof useSearchMessagesQuery>["data"]
+>["items"][number];
 
 /** 첫 질문·후속 질문 스트림이 함께 내는 이벤트 한 건. 뮤테이션의 `onEvent` 인자에서 추론해요 */
 export type SearchAnswerStreamEvent = Parameters<
@@ -26,13 +30,13 @@ export type SearchAnswerEvidence = Extract<
  *
  * - `IDLE`: 보낸 질문이 없어요
  * - `SENDING`: 질문을 보냈고 서버의 접수 확인(accepted)을 기다리는 중이에요
- * - `STREAMING`·`COMPLETED`·`FAILED`·`STOPPED`: 답변 메시지 상태(`SearchMessageStatus`)와 같은 값이에요
+ * - `STREAMING`·`COMPLETED`·`FAILED`·`STOPPED`: 저장된 답변 메시지의 상태(`SearchMessage["status"]`)와 같은 값이에요
  */
 export type SearchAnswerStatus =
   | "IDLE"
   | "SENDING"
   | Extract<
-      SearchMessageStatus,
+      SearchMessage["status"],
       "STREAMING" | "COMPLETED" | "FAILED" | "STOPPED"
     >;
 

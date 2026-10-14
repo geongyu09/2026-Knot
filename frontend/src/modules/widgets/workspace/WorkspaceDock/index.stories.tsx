@@ -2,6 +2,7 @@ import DockColumn from "@primitives/layout/DockColumn";
 import { DialogProvider } from "@provider/context/dialogContext";
 import { PATH_ROUTE, getRouterPath } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
+import { useSearchAnswerStore } from "@store/searchAnswerStore";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
@@ -37,10 +38,11 @@ const markHintAsSeen = () => {
   sessionStorage.removeItem(DOCK_HINT_VISIT_KEY);
 };
 
-/** 독을 처음 상태로 되돌려요. 안내와 녹음은 브라우저·전역 저장소에 남아 스토리끼리 이어지기 때문이에요. */
+/** 독을 처음 상태로 되돌려요. 안내·녹음·보낸 질문은 브라우저·전역 저장소에 남아 스토리끼리 이어지기 때문이에요. */
 const resetDock = () => {
   markHintAsSeen();
   useRecordingStore.getState().discardRecording();
+  useSearchAnswerStore.getState().abort();
 };
 
 /** 12분 48초째 녹음 중인 상태로 만들어요. */
@@ -79,10 +81,12 @@ const grantSilentMicrophone = () => {
  * - 이 방법은 처음 세 번의 방문까지만 독 위의 말풍선으로 알려 줘요. 같은 방문 안에서 새로고침하거나 홈과 탐색을 오가도 한 번으로 셉니다. 독을 열면 이번 방문에는 다시 띄우지 않아요.
  * - 말풍선은 읽기만 하는 안내라, 떠 있는 동안에도 그 아래의 독을 그대로 누를 수 있어요.
  * - 펼친 뒤 독 바깥을 누르거나 `Esc`를 누르면 다시 접혀요. 바깥을 눌러 접을 때는 적던 글을 지우지 않고 다시 열 때 그대로 돌려줘요. `Esc`는 글까지 비워요.
- * - `Enter`로 보내고 `Shift+Enter`로 줄을 바꿔요. 입력이 비어 있으면 보내기 버튼을 누를 수 없어요. 입력창은 다섯 줄까지 자라고 그보다 길면 안에서 스크롤해요.
- * - 홈에서 질문을 보내면 탐색 화면으로 옮겨 가며 그 질문으로 대화를 시작해요.
+ * - `Enter`로 보내고 `Shift+Enter`로 줄을 바꿔요. 입력이 비어 있거나 앞 질문의 답변을 기다리거나 받는 중이면 보내기 버튼을 누를 수 없어요. 입력창은 다섯 줄까지 자라고 그보다 길면 안에서 스크롤해요.
+ * - 질문은 어느 화면에서든 독이 바로 보내요. 보내면 입력창을 곧바로 비워요.
+ * - 탐색 대화 화면에서 보내면 그 대화에 이어 묻고, 홈이나 새 대화 화면에서 보내면 새 대화를 시작해요. 서버가 질문을 받으면 그 대화 화면으로 옮겨 가요. 홈에서 보냈다면 뒤로 가기로 홈에 돌아올 수 있어요.
+ * - 서버가 질문을 받기 전에 거절하면 보낸 질문을 입력창에 되돌려 다시 보낼 수 있게 해요.
  * - 펼친 폭은 탐색 대화 열과 같아요. 고정 패널을 뺀 남은 영역의 가운데에서 양옆 40px을 두고 최대 760px까지 늘어나요. 왼쪽 패널을 고정하면 대화 열과 함께 밀려요.
- * - 탐색 화면은 채팅이 곧 화면이라 독을 늘 펼쳐 둬요. 그 화면에서 보낸 질문은 아직 받을 곳이 없어 입력만 비워요. 탐색 v2에서 대화와 다시 연결해요.
+ * - 탐색 화면은 채팅이 곧 화면이라 독을 늘 펼쳐 둬요.
  * - 접혀 있든 펼쳐 있든 회의 녹음(마이크) 버튼을 둬요. 누르면 녹음 화면에 들어가기 전에 마이크 권한을 받아 녹음을 시작하고 녹음 화면으로 옮겨 가요.
  * - 마이크 권한을 받지 못하면 모달로 알리고 지금 화면에 남아요. 「다시 시도」는 권한을 다시 묻고, 「닫기」나 `Esc`는 모달만 닫아요.
  * - 서버가 녹음 시작을 거절하면(409, 새로고침 전 녹음이 아직 열려 있음) 마이크를 끄고 「녹음을 시작할 수 없어요」 모달로 알린 뒤 지금 화면에 남아요. 「새로고침」은 페이지를 새로고침하고, 「닫기」·바깥·`Esc`는 모달만 닫아요.

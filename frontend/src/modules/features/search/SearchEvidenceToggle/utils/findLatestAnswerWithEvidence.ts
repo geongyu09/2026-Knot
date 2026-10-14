@@ -1,4 +1,4 @@
-import type { SearchMessage } from "@/shared/types/search";
+import type { SearchMessage } from "@/shared/types/searchAnswer";
 
 /**
  * 근거 문서가 하나 이상 붙은 답변(`ASSISTANT`) 중 가장 최근 것을 찾습니다.
