@@ -773,6 +773,100 @@ class SearchDocumentToolServiceIntegrationTest {
         assertThat(next.nextCursor()).isNull();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"PENDING", "CONFIRMED", "NOT_REQUIRED"})
+    @DisplayName("다른 멤버의 DRAFT를 개인 확인 의무와 무관하게 탐색하고 확인 데이터를 변경하지 않는다")
+    void tools_success_confirmationIndependent(String confirmation) {
+        // given
+        long creator = fixtures.saveMember("다른 작성자");
+        fixtures.join(
+                workspaceId,
+                creator
+        );
+        long document = messages.saveDocument(
+                workspaceId,
+                creator
+        );
+        if (!"NOT_REQUIRED".equals(confirmation)) {
+            jdbc.sql(
+                    "INSERT INTO document_confirmations (document_id, member_id, confirmed_at) "
+                            + "VALUES (:d, :m, CASE WHEN :confirmed THEN CAST(:time AS timestamptz) END)"
+            )
+                    .param(
+                            "d",
+                            document
+                    )
+                    .param(
+                            "m",
+                            memberId
+                    )
+                    .param(
+                            "confirmed",
+                            "CONFIRMED".equals(confirmation)
+                    )
+                    .param(
+                            "time",
+                            java.sql.Timestamp.from(NOW)
+                    )
+                    .update();
+        }
+        Map<String, Object> documentBefore = jdbc.sql("SELECT * FROM documents WHERE id = :d")
+                .param(
+                        "d",
+                        document
+                )
+                .query()
+                .singleRow();
+        List<Map<String, Object>> confirmationsBefore = jdbc.sql("SELECT * FROM document_confirmations")
+                .query()
+                .listOfRows();
+        // when
+        SearchDocumentPage listed = service.list(
+                scope,
+                parameters(
+                        null,
+                        null,
+                        20
+                )
+        );
+        SearchDocumentPage searched = service.search(
+                scope,
+                parameters(
+                        "문서",
+                        null,
+                        20
+                )
+        );
+        SearchDocumentSlice read = service.read(
+                scope,
+                document,
+                null
+        );
+        // then
+        assertThat(listed.items()).extracting(SearchDocumentCard::documentId)
+                .containsExactly(document);
+        assertThat(searched.items()).extracting(SearchDocumentCard::documentId)
+                .containsExactly(document);
+        assertThat(
+                read.document()
+                        .status()
+        ).isEqualTo(DocumentStatus.DRAFT);
+        assertThat(
+                jdbc.sql("SELECT * FROM documents WHERE id = :d")
+                        .param(
+                                "d",
+                                document
+                        )
+                        .query()
+                        .singleRow()
+        ).isEqualTo(documentBefore);
+        assertThat(
+                jdbc.sql("SELECT * FROM document_confirmations")
+                        .query()
+                        .listOfRows()
+        ).isEqualTo(confirmationsBefore);
+    }
+
     @Test
     void read_failure_invalidId() {
         assertThatThrownBy(
