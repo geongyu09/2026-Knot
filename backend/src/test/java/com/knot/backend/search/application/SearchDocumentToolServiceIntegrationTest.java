@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 import com.knot.backend.document.DocumentFixtures;
+import com.knot.backend.document.domain.DocumentStatus;
 import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.search.SearchMessageFixtures;
 import com.knot.backend.search.application.dto.command.SearchQuestionCommand;
@@ -635,6 +636,92 @@ class SearchDocumentToolServiceIntegrationTest {
                 .param(
                         "time",
                         java.sql.Timestamp.from(time)
+                )
+                .param(
+                        "id",
+                        document
+                )
+                .update();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("페이지 사이 보관 전환에도 기존 커서로 다음 문서를 읽는다")
+    void page_success_archiveTransition(boolean search) {
+        // given
+        long older = saveDocument(
+                workspaceId,
+                "DRAFT",
+                "결정 이전",
+                "본문"
+        );
+        long newer = saveDocument(
+                workspaceId,
+                "DRAFT",
+                "결정 최근",
+                "본문"
+        );
+        SearchDocumentPage first = documentPage(
+                search,
+                null
+        );
+        assertThat(first.items()).extracting(SearchDocumentCard::documentId)
+                .containsExactly(newer);
+        archiveDocument(older);
+        archiveDocument(newer);
+        // when
+        SearchDocumentPage next = documentPage(
+                search,
+                first.nextCursor()
+        );
+        // then
+        assertThat(next.items()).extracting(SearchDocumentCard::documentId)
+                .containsExactly(older);
+        assertThat(
+                next.items()
+                        .getFirst()
+                        .status()
+        ).isEqualTo(DocumentStatus.ARCHIVED);
+        assertThat(next.nextCursor()).isNull();
+        assertThat(
+                service.read(
+                        scope,
+                        older,
+                        null
+                )
+                        .content()
+        ).isEqualTo("본문");
+    }
+
+    private SearchDocumentPage documentPage(
+            boolean search,
+            String cursor
+    ) {
+        if (search) {
+            return service.search(
+                    scope,
+                    parameters(
+                            "결정",
+                            cursor,
+                            1
+                    )
+            );
+        }
+        return service.list(
+                scope,
+                parameters(
+                        null,
+                        cursor,
+                        1
+                )
+        );
+    }
+
+    private void archiveDocument(long document) {
+        jdbc.sql("UPDATE documents SET status = 'ARCHIVED', archived_at = :time WHERE id = :id")
+                .param(
+                        "time",
+                        java.sql.Timestamp.from(NOW.plusSeconds(1))
                 )
                 .param(
                         "id",
