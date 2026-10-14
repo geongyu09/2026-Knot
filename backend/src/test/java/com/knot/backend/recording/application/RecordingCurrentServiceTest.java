@@ -50,9 +50,11 @@ class RecordingCurrentServiceTest {
         workspaceMemberRepository = mock(WorkspaceMemberRepository.class);
         recordingSessionRepository = mock(RecordingSessionRepository.class);
         service = new RecordingCurrentService(
-                new RecordingWorkspaceAccessValidator(
+                new RecordingAccess(
                         workspaceRepository,
-                        workspaceMemberRepository
+                        workspaceMemberRepository,
+                        recordingSessionRepository,
+                        mock(RecordingControlTokenHasher.class)
                 ),
                 recordingSessionRepository,
                 Clock.fixed(
@@ -145,9 +147,11 @@ class RecordingCurrentServiceTest {
             return Optional.of(session);
         });
         RecordingCurrentService racingService = new RecordingCurrentService(
-                new RecordingWorkspaceAccessValidator(
+                new RecordingAccess(
                         workspaceRepository,
-                        workspaceMemberRepository
+                        workspaceMemberRepository,
+                        recordingSessionRepository,
+                        mock(RecordingControlTokenHasher.class)
                 ),
                 recordingSessionRepository,
                 clock

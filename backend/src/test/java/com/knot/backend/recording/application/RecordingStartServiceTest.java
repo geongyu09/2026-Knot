@@ -57,9 +57,11 @@ class RecordingStartServiceTest {
         recordingSessionRepository = mock(RecordingSessionRepository.class);
         hasher = mock(RecordingControlTokenHasher.class);
         service = new RecordingStartService(
-                new RecordingWorkspaceAccessValidator(
+                new RecordingAccess(
                         workspaceRepository,
-                        workspaceMemberRepository
+                        workspaceMemberRepository,
+                        recordingSessionRepository,
+                        hasher
                 ),
                 memberRepository,
                 recordingSessionRepository,
