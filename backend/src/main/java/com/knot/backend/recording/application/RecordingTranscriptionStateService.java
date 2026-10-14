@@ -11,14 +11,12 @@ import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.RecordingSession;
 import com.knot.backend.recording.domain.RecordingSessionRepository;
-import com.knot.backend.recording.domain.RecordingStatus;
 import com.knot.backend.recording.domain.RecordingTranscription;
 import com.knot.backend.recording.domain.RecordingTranscriptionRepository;
 import com.knot.backend.recording.domain.Transcript;
 import com.knot.backend.recording.domain.TranscriptRepository;
 import com.knot.backend.recording.domain.TranscriptSegment;
 import com.knot.backend.recording.domain.TranscriptSegmentRepository;
-import com.knot.backend.recording.domain.TranscriptionStatus;
 import com.knot.backend.workspace.domain.WorkspaceRepository;
 import java.time.Clock;
 import java.time.Instant;
@@ -92,9 +90,7 @@ public class RecordingTranscriptionStateService {
         upload.validateAudioAvailable();
         RecordingTranscription transcription = transcriptions.findByRecordingSessionIdForUpdate(recordingId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED));
-        if (transcription.getStatus() != TranscriptionStatus.FAILED) {
-            throw new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED);
-        }
+        transcription.validateRetryable();
         transcriptions.lockAdmission();
         if (transcriptions.findProcessing()
                 .isPresent()) {
@@ -137,19 +133,17 @@ public class RecordingTranscriptionStateService {
     ) {
         boolean workspaceAvailable = workspaces.findByIdForUpdate(execution.workspaceId())
                 .isPresent();
-        Optional<RecordingSession> recording = recordings.findByIdForUpdate(execution.recordingId());
-        Optional<RecordingTranscription> found = transcriptions
-                .findByRecordingSessionIdForUpdate(execution.recordingId());
-        if (found.isEmpty() || !found.orElseThrow()
-                .isProcessing(execution.attemptId())) {
+        boolean recordingAvailable = recordings.findByIdForUpdate(execution.recordingId())
+                .filter(value -> value.isTranscribableIn(execution.workspaceId()))
+                .isPresent();
+        Optional<RecordingTranscription> current = transcriptions
+                .findByRecordingSessionIdForUpdate(execution.recordingId())
+                .filter(value -> value.isProcessing(execution.attemptId()));
+        if (current.isEmpty()) {
             return;
         }
-        RecordingTranscription transcription = found.orElseThrow();
-        if (!workspaceAvailable || recording.isEmpty() || !recording.orElseThrow()
-                .belongsTo(execution.workspaceId())
-                || recording.orElseThrow()
-                        .getStatus() != RecordingStatus.ENDED
-                || !hasAvailableUpload(execution.recordingId())) {
+        RecordingTranscription transcription = current.orElseThrow();
+        if (!workspaceAvailable || !recordingAvailable || !hasAvailableUpload(execution.recordingId())) {
             transcription.fail(
                     execution.attemptId(),
                     "RECORDING_UNAVAILABLE"
