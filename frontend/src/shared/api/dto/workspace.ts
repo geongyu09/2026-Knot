@@ -7,6 +7,7 @@
  * - PUT  /api/v1/members/me/last-viewed-workspace
  * - DELETE /api/v1/workspaces/{workspaceId}/members/me (요청과 응답 본문 없음)
  * - GET  /api/v1/workspaces/{workspaceId}/ownership-transfer-candidates
+ * - POST /api/v1/workspaces/{workspaceId}/ownership-transfers
  */
 
 /** 워크스페이스 목록 항목의 서버 응답 모양 */
@@ -159,5 +160,22 @@ export class GetOwnershipTransferCandidatesResponseDto {
     this.candidates = raw.map(
       (candidate) => new OwnershipTransferCandidateDto(candidate),
     );
+  }
+}
+
+// POST /api/v1/workspaces/{workspaceId}/ownership-transfers
+
+/** OWNER 승계 시 앱이 넘기는 값 */
+export interface PostOwnershipTransferRequestInput {
+  successorMemberId: number;
+}
+
+/** OWNER 승계와 탈퇴 요청 본문. 성공 시 응답 본문 없음(204)이고 탈퇴까지 함께 처리됨 */
+export class PostOwnershipTransferRequestDto {
+  /** OWNER를 넘겨받을 멤버의 ID. 승계 후보의 `memberId` */
+  successorMemberId: number;
+
+  constructor({ successorMemberId }: PostOwnershipTransferRequestInput) {
+    this.successorMemberId = successorMemberId;
   }
 }
