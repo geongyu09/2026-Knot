@@ -3,7 +3,10 @@ import {
   SearchStreamAcceptedDto,
   SearchStreamDeltaDto,
 } from "@api/dto/search";
-import { searchMessagesResponse } from "@api/mock/responses/search";
+import {
+  searchAnswerRetryStreamResponse,
+  searchMessagesResponse,
+} from "@api/mock/responses/search";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
 import { theme } from "@provider/themeProvider";
@@ -41,6 +44,31 @@ const answersWithEvidence = answers.filter(
 );
 
 const SEARCHING_TEXT = "문서에서 찾고 있어요…";
+const FAILED_TEXT = "답변을 만들지 못했어요. 잠시 후 다시 시도해 주세요.";
+const PARTIAL_ANSWER = "끊기기 전까지 받은 답";
+
+/** 이번 테스트에서만 첫 턴의 답변을 일부 글자만 받고 실패한 답변으로 조회되게 바꿔요 */
+const respondWithFailedFirstAnswer = () => {
+  const [question, answer, ...rest] = searchMessagesResponse.items;
+  mockServer.use(
+    http.get(MESSAGES_PATH, ({ params }) =>
+      HttpResponse.json({
+        ...searchMessagesResponse,
+        conversationId: Number(params.conversationId),
+        items: [
+          question,
+          {
+            ...answer,
+            content: PARTIAL_ANSWER,
+            status: "FAILED",
+            evidences: [],
+          },
+          ...rest,
+        ],
+      }),
+    ),
+  );
+};
 
 const evidenceButtonName =(count: number) => `기록 ${count}개에서 찾았어요`;
 
@@ -273,6 +301,41 @@ describe("SearchConversation", () => {
         evidenceButtonName(evidences.length),
       ),
     );
+  });
+
+  it("실패한 답변 자리에는 받은 글자 대신 실패 안내와 '다시 시도'를 보여준다 (SEARCH-R5)", async () => {
+    respondWithFailedFirstAnswer();
+    renderConversation();
+
+    const alert = await screen.findByRole("alert");
+    const [firstTurn] = screen.getAllByRole("article");
+
+    expect(within(firstTurn).getByRole("alert")).toBe(alert);
+    expect(within(alert).getByText(FAILED_TEXT)).toBeInTheDocument();
+    expect(
+      within(alert).getByRole("button", { name: "다시 시도" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(PARTIAL_ANSWER)).not.toBeInTheDocument();
+  });
+
+  it("'다시 시도'를 누르면 같은 질문으로 다시 받은 답변을 실패했던 턴 자리에 보여준다 (SEARCH-R5)", async () => {
+    respondWithFailedFirstAnswer();
+    renderConversation();
+
+    await act(async () => {
+      fireEvent.click(
+        await screen.findByRole("button", { name: "다시 시도" }),
+      );
+    });
+
+    const retriedAnswer = searchAnswerRetryStreamResponse.deltas.join("");
+    expect(await screen.findByText(retriedAnswer)).toBeInTheDocument();
+
+    const turns = screen.getAllByRole("article");
+    expect(turns).toHaveLength(questions.length);
+    expect(within(turns[0]).getByText(questions[0].content)).toBeInTheDocument();
+    expect(within(turns[0]).getByText(retriedAnswer)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("'기록 N개에서 찾았어요'를 누르면 그 답변의 찾은 기록을 연다 (SEARCH-R2)", async () => {

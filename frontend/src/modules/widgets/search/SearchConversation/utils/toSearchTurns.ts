@@ -14,7 +14,7 @@ import type { SearchTurn } from "../types/searchTurn";
  *
  * @example
  * toSearchTurns([userMessage, assistantMessage]);
- * // [{ key: "1", question: userMessage.content, answer: { id, content, status, evidences } }]
+ * // [{ key: "1", questionId: 1, question: userMessage.content, answer: { id, content, status, evidences } }]
  */
 export const toSearchTurns = (messages: SearchMessage[]) => {
   const turns: SearchTurn[] = [];
@@ -23,6 +23,7 @@ export const toSearchTurns = (messages: SearchMessage[]) => {
     if (message.role === "USER") {
       turns.push({
         key: String(message.id),
+        questionId: message.id,
         question: message.content,
         answer: null,
       });

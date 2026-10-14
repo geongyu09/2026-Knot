@@ -33,17 +33,23 @@ interface BuildSearchTurnsParams {
 const toAnsweringTurn = ({
   status,
   question,
+  questionMessageId,
   answerMessageId,
   text,
   evidences,
 }: BuildSearchTurnsParams["answer"]): SearchTurn => {
+  const turn = {
+    key: ANSWERING_TURN_KEY,
+    questionId: questionMessageId,
+    question,
+  };
+
   if (status === "IDLE" || status === "SENDING" || answerMessageId === null) {
-    return { key: ANSWERING_TURN_KEY, question, answer: null };
+    return { ...turn, answer: null };
   }
 
   return {
-    key: ANSWERING_TURN_KEY,
-    question,
+    ...turn,
     answer: { id: answerMessageId, content: text, status, evidences },
   };
 };
@@ -53,7 +59,8 @@ const toAnsweringTurn = ({
  *
  * 저장소가 지금 화면의 대화에서 보낸 질문을 들고 있으면(첫 질문 접수 전에는 저장소와 화면 모두 대화가 없음)
  * 그 질문과 답변을 맨 뒤 턴으로 붙입니다.
- * 같은 질문·답변이 조회 결과에도 있으면 조회 쪽을 빼서 두 번 보이지 않게 합니다.
+ * 같은 질문이 조회 결과에도 있으면 그 턴 자리를 저장소의 턴으로 바꿔 두 번 보이지 않게 합니다.
+ * 실패한 답변을 다시 요청하면 저장소가 접수 전부터 그 질문 ID를 들고 있어, 가운데 턴이어도 제자리에서 다시 그려집니다.
  * 저장소는 다음 질문까지 끝난 답변을 들고 있어, 답변이 끝나 다시 조회하는 동안에도 화면이 바뀌지 않습니다.
  *
  * @param params - 저장된 메시지, 저장소의 답변, 지금 화면의 대화 ID
@@ -61,7 +68,7 @@ const toAnsweringTurn = ({
  *
  * @example
  * buildSearchTurns({ messages, answer, conversationId: 10 });
- * // [...저장된 턴, { key: "answering", question, answer }]
+ * // [...저장된 턴, { key: "answering", questionId, question, answer }]
  */
 export const buildSearchTurns = ({
   messages,
@@ -74,10 +81,16 @@ export const buildSearchTurns = ({
 
   if (!isAnsweringHere) return toSearchTurns(messages);
 
-  const answeringMessageIds = [answer.questionMessageId, answer.answerMessageId];
-  const savedMessages = messages.filter(
-    ({ id }) => !answeringMessageIds.includes(id),
+  const savedTurns = toSearchTurns(messages);
+  const answeringTurn = toAnsweringTurn(answer);
+  const replacedIndex = savedTurns.findIndex(
+    ({ questionId }) =>
+      questionId !== null && questionId === answer.questionMessageId,
   );
 
-  return [...toSearchTurns(savedMessages), toAnsweringTurn(answer)];
+  if (replacedIndex === -1) return [...savedTurns, answeringTurn];
+
+  return savedTurns.map((turn, index) =>
+    index === replacedIndex ? answeringTurn : turn,
+  );
 };

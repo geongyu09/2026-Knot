@@ -1,4 +1,5 @@
 import type {
+  SearchAnswerRetryStream,
   SearchAnswerStream,
   SearchConversations,
   SearchMessages,
@@ -64,6 +65,23 @@ export const searchQuestionAnswerStreamResponse = {
     },
   ],
 } satisfies SearchQuestionAnswerStream;
+
+/**
+ * 실패한 답변을 다시 시도했을 때의 응답이에요.
+ * 서버는 실패했던 답변 메시지를 비우고 다시 채우므로, 메시지 ID는 핸들러가 요청 경로의 질문 ID로 채워요.
+ */
+export const searchAnswerRetryStreamResponse = {
+  stages: ["SEARCHING", "GENERATING"],
+  deltas: ["다시 찾아보니 ", "탈퇴한 사용자 게시글은 ", "익명으로 남겨요."],
+  evidences: [
+    {
+      documentId: 101,
+      title: "회원 탈퇴 정책",
+      topic: "회원 관리",
+      rank: 1,
+    },
+  ],
+} satisfies SearchAnswerRetryStream;
 
 /**
  * 이미 질문이 오간 탐색 대화의 메시지 조회 응답이에요.

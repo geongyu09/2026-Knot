@@ -156,6 +156,60 @@ describe("buildSearchTurns", () => {
     ]);
   });
 
+  it("재시도하는 답변은 접수 전부터 저장된 실패 턴 자리에 그리고, 뒤의 턴은 그대로 둔다 (SEARCH-R5)", () => {
+    const failedTurnMessages = [
+      message(QUESTION_MESSAGE_ID, "USER", "실패한 질문"),
+      message(ANSWER_MESSAGE_ID, "ASSISTANT", "끊긴 답", "FAILED"),
+    ];
+    const laterMessages = [
+      message(5, "USER", "나중 질문"),
+      message(6, "ASSISTANT", "나중 답변"),
+    ];
+    const retryingAnswer: AnswerState = {
+      ...sendingAnswer(CONVERSATION_ID),
+      question: "실패한 질문",
+      questionMessageId: QUESTION_MESSAGE_ID,
+      answerMessageId: ANSWER_MESSAGE_ID,
+    };
+
+    const turns = buildSearchTurns({
+      messages: [...savedMessages, ...failedTurnMessages, ...laterMessages],
+      answer: retryingAnswer,
+      conversationId: CONVERSATION_ID,
+    });
+
+    expect(
+      turns.map(({ question, answer }) => [question, answer?.content ?? null]),
+    ).toEqual([
+      ["저장된 질문", "저장된 답변"],
+      ["실패한 질문", null],
+      ["나중 질문", "나중 답변"],
+    ]);
+  });
+
+  it("턴은 답변을 다시 요청할 때 쓰도록 질문 메시지 ID를 담는다. 접수 전 새 질문은 아직 없다 (SEARCH-R5)", () => {
+    const savedTurns = buildSearchTurns({
+      messages: savedMessages,
+      answer: IDLE_ANSWER,
+      conversationId: CONVERSATION_ID,
+    });
+    const [sendingTurn] = buildSearchTurns({
+      messages: [],
+      answer: sendingAnswer(null),
+    });
+    const streamingTurns = buildSearchTurns({
+      messages: savedMessages,
+      answer: streamingAnswer,
+      conversationId: CONVERSATION_ID,
+    });
+
+    expect(savedTurns.map(({ questionId }) => questionId)).toEqual([1]);
+    expect(sendingTurn.questionId).toBeNull();
+    expect(streamingTurns[streamingTurns.length - 1].questionId).toBe(
+      QUESTION_MESSAGE_ID,
+    );
+  });
+
   it("접수 전후로 생성 중인 턴의 key가 같다 (근거 없음)", () => {
     const [sendingTurn] = buildSearchTurns({
       messages: [],

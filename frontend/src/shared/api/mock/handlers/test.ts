@@ -71,6 +71,7 @@ import {
 } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations";
 import { getSearchMessagesApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/messages";
 import { createSearchQuestionApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions";
+import { retrySearchAnswerApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions/[questionId]/retry";
 import { issueWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations";
 import { reissueWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations/reissue";
 import { retryDocumentGenerationJobApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documentGenerationJobs/[jobId]/retry";
@@ -108,6 +109,7 @@ import {
 } from "@api/mock/responses/recording";
 import type { RecordingDetailEntry } from "@api/mock/types/recording";
 import {
+  searchAnswerRetryStreamResponse,
   searchAnswerStreamResponse,
   searchConversationsResponse,
   searchMessagesResponse,
@@ -154,7 +156,7 @@ interface ToAnswerEventsParams {
   evidences: SearchEvidenceRaw[];
 }
 
-/** 첫 질문·후속 질문이 accepted 뒤로 같은 순서로 내는 이벤트예요 */
+/** 첫 질문·후속 질문·재시도가 accepted 뒤로 같은 순서로 내는 이벤트예요 */
 const toAnswerEvents = ({
   answerMessageId,
   stages,
@@ -685,6 +687,33 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
             workspaceId: WORKSPACE_ID,
             conversationId: SEARCH_CONVERSATION_ID,
             body: { content: "그럼 초기 스키마는 누가 정리했어?", requestId: "req-2" },
+          }),
+        ),
+      ).resolves.toEqual([
+        {
+          event: "accepted",
+          data: new SearchStreamAcceptedDto({
+            conversationId: SEARCH_CONVERSATION_ID,
+            questionMessageId,
+            answerMessageId,
+          }),
+        },
+        ...toAnswerEvents({ answerMessageId, stages, deltas, evidences }),
+      ]);
+    });
+
+    it("POST .../questions/:questionId/retry는 searchAnswerRetryStreamResponse를 경로의 질문과 그다음 답변 메시지 ID로 순서대로 흘려보낸다", async () => {
+      const { stages, deltas, evidences } = searchAnswerRetryStreamResponse;
+      const questionMessageId = 3;
+      const answerMessageId = questionMessageId + 1;
+
+      await expect(
+        collectEvents(
+          retrySearchAnswerApi({
+            workspaceId: WORKSPACE_ID,
+            conversationId: SEARCH_CONVERSATION_ID,
+            questionId: questionMessageId,
+            body: { requestId: "req-3" },
           }),
         ),
       ).resolves.toEqual([
