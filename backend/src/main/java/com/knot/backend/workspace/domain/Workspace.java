@@ -55,6 +55,15 @@ public class Workspace {
         );
     }
 
+    public WorkspaceMember createOwnerMembership(long memberId) {
+        return WorkspaceMember.create(
+                id,
+                memberId,
+                WorkspaceMemberRole.OWNER,
+                createdAt
+        );
+    }
+
     public void removeMember(
             WorkspaceMember member,
             long activeMemberCount,
