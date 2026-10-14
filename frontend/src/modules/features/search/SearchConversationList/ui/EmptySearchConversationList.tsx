@@ -5,7 +5,7 @@ import styled from "@emotion/styled";
  *
  * 대화가 없는 게 오류가 아니라는 것과, 어떻게 하면 목록이 채워지는지를 알려줍니다.
  */
-export default function EmptyChatSessionList() {
+export default function EmptySearchConversationList() {
   return (
     <Container>
       <Title>아직 나눈 대화가 없어요</Title>

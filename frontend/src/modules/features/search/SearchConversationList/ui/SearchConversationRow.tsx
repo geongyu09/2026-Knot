@@ -1,8 +1,9 @@
 import styled from "@emotion/styled";
 
-interface ChatSessionRowProps {
+interface SearchConversationRowProps {
   title: string;
-  lastMessageAt: string;
+  /** 마지막으로 메시지가 오간 시각을 "2일 전"처럼 바꾼 문구 */
+  updatedAtLabel: string;
   isSelected?: boolean;
   onSelect: () => void;
 }
@@ -12,12 +13,12 @@ interface ChatSessionRowProps {
  *
  * 지금 보고 있는 대화는 `isSelected`로 채워진 모양이 되며, 이 상태를 `aria-current`로도 알립니다.
  */
-export default function ChatSessionRow({
+export default function SearchConversationRow({
   title,
-  lastMessageAt,
+  updatedAtLabel,
   isSelected = false,
   onSelect,
-}: ChatSessionRowProps) {
+}: SearchConversationRowProps) {
   return (
     <Container
       type="button"
@@ -26,7 +27,7 @@ export default function ChatSessionRow({
       onClick={onSelect}
     >
       <Title $isSelected={isSelected}>{title}</Title>
-      <Time>{lastMessageAt}</Time>
+      <Time>{updatedAtLabel}</Time>
     </Container>
   );
 }

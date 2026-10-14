@@ -24,6 +24,8 @@ interface SendQuestionParams {
  * 저장소가 할 수 없는 일(뮤테이션 호출, 주소 이동)만 맡고, 상태를 어떻게 바꿀지는 저장소가 정해요.
  * - 보내기: 대화 ID가 없으면 첫 질문, 있으면 후속 질문으로 보내요. requestId는 보낼 때마다 새로 만들어요.
  *   접수 대기·생성 중이면 저장소가 시작을 거절해 보내지 않아요(SEARCH-R6).
+ * - 질문이 접수(accepted)되면 대화 목록 조회를 무효화해요. 첫 질문은 서버가 이때 대화를 만들어 목록에 넣고,
+ *   후속 질문은 그 대화가 맨 위로 올라가요. 답변이 끝나기 전에 목록에 보이도록 접수 때 다시 받아요(COMMON-01).
  * - 첫 질문은 accepted로 받은 대화 주소로 옮겨 가요. 탐색 새 대화 화면에서 보냈으면 뒤로 가기로 입력 전 화면에
  *   돌아오지 않도록 바꿔치기하고, 홈처럼 다른 화면에서 보냈으면 뒤로 가기로 그 화면에 돌아오도록 쌓아요.
  * - 끝난 결과와 실패는 저장소에 넘기고, 화면은 저장소 상태로 읽어요.
@@ -67,6 +69,9 @@ const useSearchAnswerControl = () => {
           if (event.event !== "accepted") return;
 
           acceptedConversationId = event.data.conversationId;
+          queryClient.invalidateQueries({
+            queryKey: searchKeys.conversations(workspaceId),
+          });
 
           if (conversationId === undefined) {
             navigateToChatSession({

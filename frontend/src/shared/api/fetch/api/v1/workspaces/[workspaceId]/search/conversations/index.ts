@@ -1,4 +1,5 @@
 import {
+  GetSearchConversationsResponseDto,
   SearchStreamAcceptedDto,
   SearchStreamCompletedDto,
   SearchStreamDeltaDto,
@@ -7,14 +8,45 @@ import {
   SearchStreamFailedDto,
   SearchStreamProgressDto,
   SearchStreamStoppedDto,
+  type GetSearchConversationsResponseRaw,
   type PostSearchConversationRequestDto,
   type SearchStreamEvent,
 } from "@api/dto/search";
+import { httpClient } from "@api/httpClient";
 import type { SseEvent } from "@api/sse/parseSseEvents";
 import { requestSseStream } from "@api/sse/requestSseStream";
 
 export const WORKSPACE_SEARCH_CONVERSATIONS_API_PATH = (workspaceId: number) =>
   `/api/v1/workspaces/${workspaceId}/search/conversations`;
+
+/** 한 번에 받을 대화 수. 서버 기본값과 같아요 */
+const DEFAULT_PAGE_SIZE = 20;
+
+interface GetSearchConversationsApiParams {
+  workspaceId: number;
+  /** 한 번에 받을 대화 수. 없으면 20개 */
+  size?: number;
+}
+
+/**
+ * @description 내 탐색 대화 목록의 첫 페이지를 조회합니다. 다음 페이지는 아직 받지 않아요
+ * @param params - 워크스페이스 ID·한 번에 받을 대화 수
+ * @returns updatedAt 내림차순 대화 목록과 다음 페이지 커서
+ * @example
+ * const { items } = await getSearchConversationsApi({ workspaceId: 1 });
+ */
+export const getSearchConversationsApi = async ({
+  workspaceId,
+  size = DEFAULT_PAGE_SIZE,
+}: GetSearchConversationsApiParams) => {
+  const response = await httpClient<GetSearchConversationsResponseRaw>({
+    method: "get",
+    url: WORKSPACE_SEARCH_CONVERSATIONS_API_PATH(workspaceId),
+    params: { size },
+  });
+
+  return new GetSearchConversationsResponseDto(response.data);
+};
 
 /** 명세에 있는 이벤트만 DTO로 감싸요. 모르는 이벤트 이름은 버려요 */
 export const toSearchStreamEvent = ({

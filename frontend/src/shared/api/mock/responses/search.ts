@@ -1,5 +1,6 @@
 import type {
   SearchAnswerStream,
+  SearchConversations,
   SearchMessages,
   SearchQuestionAnswerStream,
 } from "@api/mock/types/search";
@@ -166,3 +167,34 @@ export const searchMessagesResponse = {
   hasPrevious: false,
   previousCursor: null,
 } satisfies SearchMessages;
+
+const SECOND = 1000;
+const HOUR = 60 * 60 * SECOND;
+
+// 고정 시각은 언젠가 전부 "이전"으로 묶이므로 지금 기준으로 만들어요
+const fromNow = (elapsed: number) =>
+  new Date(Date.now() - elapsed).toISOString();
+
+/**
+ * 대화 목록 조회 응답이에요. 오늘 대화와 어제 대화를 하나씩 담아 기간 묶음이 둘로 나뉘어요.
+ * 첫 번째 대화 ID는 첫 질문 mock의 대화 ID와 같아, 개발 서버에서 목록을 누르면 메시지 조회 mock으로 이어져요.
+ */
+export const searchConversationsResponse = {
+  items: [
+    {
+      id: 100,
+      title: "DB 기술 선정 관련 문서 있어?",
+      lastMessagePreview: "DB는 지난주 기술 선정 회의에서 PostgreSQL로 정해졌어요.",
+      createdAt: fromNow(2 * HOUR),
+      updatedAt: fromNow(30 * SECOND),
+    },
+    {
+      id: 101,
+      title: "온보딩 문서는 어디에 있어?",
+      lastMessagePreview: "온보딩 문서는 팀 위키의 시작하기 페이지에 있어요.",
+      createdAt: fromNow(26 * HOUR),
+      updatedAt: fromNow(25 * HOUR),
+    },
+  ],
+  nextCursor: null,
+} satisfies SearchConversations;

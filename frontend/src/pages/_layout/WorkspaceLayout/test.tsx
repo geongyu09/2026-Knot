@@ -5,6 +5,7 @@ import { documentDetailsResponse } from "@api/mock/responses/document";
 import { workspaceDetailResponse } from "@api/mock/responses/workspace";
 import {
   searchAnswerStreamResponse,
+  searchConversationsResponse,
   searchMessagesResponse,
   searchQuestionAnswerStreamResponse,
 } from "@api/mock/responses/search";
@@ -711,6 +712,46 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
     ).toHaveLength(1);
     expect(within(getConversation()).getAllByText(QUESTION)).toHaveLength(1);
     expect(within(getConversation()).getAllByRole("article")).toHaveLength(1);
+  });
+
+  it("새 대화에서 보낸 첫 질문이 접수되면 답변이 끝나기 전에 대화 목록에 새 대화가 나타난다 (SEARCH-R1, COMMON-01)", async () => {
+    const { conversationId, questionMessageId, answerMessageId } =
+      searchAnswerStreamResponse;
+    // 서버는 첫 질문을 접수한 뒤에야 대화를 만들어 목록에 넣어요
+    const list = { isAccepted: false };
+    mockServer.use(
+      http.get(SEARCH_CONVERSATIONS_PATH, () =>
+        HttpResponse.json({
+          items: list.isAccepted
+            ? [
+                {
+                  ...searchConversationsResponse.items[0],
+                  id: conversationId,
+                  title: QUESTION,
+                },
+              ]
+            : [],
+          nextCursor: null,
+        }),
+      ),
+    );
+    const stream = respondWithControlledSse(SEARCH_CONVERSATIONS_PATH);
+    renderLayout(CHAT_PATH, <SearchConversation />);
+    fireEvent.click(await screen.findByRole("button", { name: "대화 목록" }));
+    const getChatList = () =>
+      screen.getByRole("complementary", { name: "대화 목록" });
+    expect(
+      await within(getChatList()).findByText("아직 나눈 대화가 없어요"),
+    ).toBeInTheDocument();
+
+    await sendFromDock(QUESTION);
+    await stream.waitForOpen();
+    list.isAccepted = true;
+    stream.send("accepted", { conversationId, questionMessageId, answerMessageId });
+
+    expect(
+      await waitFor(() => within(getChatList()).getByText(QUESTION)),
+    ).toBeInTheDocument();
   });
 
   it("기존 대화에서 독으로 보낸 후속 질문과 답변은 저장된 턴 뒤에 이어진다 (SEARCH-R1)", async () => {

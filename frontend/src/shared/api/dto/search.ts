@@ -1,6 +1,7 @@
 /**
  * 탐색 DTO
  *
+ * - GET  /api/v1/workspaces/{workspaceId}/search/conversations
  * - POST /api/v1/workspaces/{workspaceId}/search/conversations (SSE)
  * - POST /api/v1/workspaces/{workspaceId}/search/conversations/{conversationId}/questions (SSE)
  * - GET  /api/v1/workspaces/{workspaceId}/search/conversations/{conversationId}/messages
@@ -49,6 +50,58 @@ export class SearchEvidenceDto {
     this.title = raw.title;
     this.topic = raw.topic;
     this.rank = raw.rank;
+  }
+}
+
+// GET /api/v1/workspaces/{workspaceId}/search/conversations
+
+/** 대화 목록 한 줄의 서버 응답 모양 */
+export interface SearchConversationRaw {
+  id: number;
+  title: string;
+  lastMessagePreview: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 대화 목록에 놓이는 탐색 대화 하나 */
+export class SearchConversationDto {
+  /** 탐색 대화 ID */
+  id: number;
+  /** 첫 질문에서 만든 표시 제목 */
+  title: string;
+  /** 마지막 메시지 미리보기. 메시지가 없으면 null */
+  lastMessagePreview: string | null;
+  /** 첫 질문을 접수한 시각(ISO 8601) */
+  createdAt: string;
+  /** 마지막으로 메시지가 오간 시각(ISO 8601). 목록은 이 값의 내림차순 */
+  updatedAt: string;
+
+  constructor(raw: SearchConversationRaw) {
+    this.id = raw.id;
+    this.title = raw.title;
+    this.lastMessagePreview = raw.lastMessagePreview;
+    this.createdAt = raw.createdAt;
+    this.updatedAt = raw.updatedAt;
+  }
+}
+
+/** 대화 목록 조회의 서버 응답 모양 */
+export interface GetSearchConversationsResponseRaw {
+  items: SearchConversationRaw[];
+  nextCursor: string | null;
+}
+
+/** 내 탐색 대화 목록 한 페이지 조회 응답 */
+export class GetSearchConversationsResponseDto {
+  /** 대화 목록. updatedAt 내림차순, 같으면 ID 내림차순. 빈 대화와 첫 답변이 실패한 대화는 서버가 빼요 */
+  items: SearchConversationDto[];
+  /** 다음 페이지를 받을 커서. 마지막 페이지면 null */
+  nextCursor: string | null;
+
+  constructor(raw: GetSearchConversationsResponseRaw) {
+    this.items = raw.items.map((item) => new SearchConversationDto(item));
+    this.nextCursor = raw.nextCursor;
   }
 }
 

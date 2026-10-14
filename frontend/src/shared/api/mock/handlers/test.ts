@@ -2,10 +2,6 @@ import { GetCsrfTokenResponseDto, GetMeResponseDto } from "@api/dto/auth";
 import { GetChatMessagesResponseDto } from "@api/dto/chatMessage";
 import { PostDocumentGenerationJobRetryResponseDto } from "@api/dto/documentGenerationJob";
 import {
-  GetChatSessionsResponseDto,
-  PostChatSessionResponseDto,
-} from "@api/dto/chatSession";
-import {
   GetDocumentConfirmationsResponseDto,
   GetDocumentResponseDto,
   GetDocumentsResponseDto,
@@ -23,6 +19,7 @@ import {
   PostRecordingResumeResponseDto,
 } from "@api/dto/recording";
 import {
+  GetSearchConversationsResponseDto,
   GetSearchMessagesResponseDto,
   SearchStreamAcceptedDto,
   SearchStreamCompletedDto,
@@ -57,10 +54,6 @@ import {
 } from "@api/fetch/api/v1/workspaces";
 import { getWorkspaceApi } from "@api/fetch/api/v1/workspaces/[workspaceId]";
 import {
-  createChatSessionApi,
-  getChatSessionsApi,
-} from "@api/fetch/api/v1/workspaces/[workspaceId]/conversations";
-import {
   getAllDocumentsApi,
   getDocumentsApi,
 } from "@api/fetch/api/v1/workspaces/[workspaceId]/documents";
@@ -68,7 +61,10 @@ import { getDocumentApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/docum
 import { getDocumentConfirmationsApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documents/[documentId]/confirmations";
 import { confirmDocumentApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documents/[documentId]/confirmations/me";
 import { getWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitation";
-import { createSearchConversationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations";
+import {
+  createSearchConversationApi,
+  getSearchConversationsApi,
+} from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations";
 import { getSearchMessagesApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/messages";
 import { createSearchQuestionApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions";
 import { issueWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations";
@@ -91,10 +87,6 @@ import { csrfTokenResponse, meResponse } from "@api/mock/responses/auth";
 import { documentGenerationJobRetryResponse } from "@api/mock/responses/documentGenerationJob";
 import { chatMessagesResponse } from "@api/mock/responses/chatMessage";
 import {
-  chatSessionResponse,
-  chatSessionsResponse,
-} from "@api/mock/responses/chatSession";
-import {
   documentConfirmationsResponse,
   documentDetailsResponse,
   documentsResponse,
@@ -113,6 +105,7 @@ import {
 import type { RecordingDetailEntry } from "@api/mock/types/recording";
 import {
   searchAnswerStreamResponse,
+  searchConversationsResponse,
   searchMessagesResponse,
   searchQuestionAnswerStreamResponse,
 } from "@api/mock/responses/search";
@@ -618,18 +611,6 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
   });
 
   describe("대화", () => {
-    it("GET /api/v1/workspaces/:workspaceId/conversations는 chatSessionsResponse를 돌려준다", async () => {
-      await expect(getChatSessionsApi(WORKSPACE_ID)).resolves.toEqual(
-        new GetChatSessionsResponseDto(chatSessionsResponse),
-      );
-    });
-
-    it("POST /api/v1/workspaces/:workspaceId/conversations는 chatSessionResponse를 돌려준다", async () => {
-      await expect(
-        createChatSessionApi(WORKSPACE_ID, { title: "새 대화" }),
-      ).resolves.toEqual(new PostChatSessionResponseDto(chatSessionResponse));
-    });
-
     it("GET /api/v1/conversations/:sessionId는 chatMessagesResponse를 돌려준다", async () => {
       await expect(getChatMessagesApi(SESSION_ID)).resolves.toEqual(
         new GetChatMessagesResponseDto(chatMessagesResponse),
@@ -638,6 +619,14 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
   });
 
   describe("탐색", () => {
+    it("GET /api/v1/workspaces/:workspaceId/search/conversations는 searchConversationsResponse를 돌려준다", async () => {
+      await expect(
+        getSearchConversationsApi({ workspaceId: WORKSPACE_ID }),
+      ).resolves.toEqual(
+        new GetSearchConversationsResponseDto(searchConversationsResponse),
+      );
+    });
+
     it("POST /api/v1/workspaces/:workspaceId/search/conversations는 searchAnswerStreamResponse를 순서대로 흘려보낸다", async () => {
       const { answerMessageId, stages, deltas, evidences, ...accepted } =
         searchAnswerStreamResponse;
