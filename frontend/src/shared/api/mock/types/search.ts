@@ -28,6 +28,12 @@ export type SearchQuestionAnswerStream = Omit<
   "conversationId"
 >;
 
+/** 실패한 답변 재시도 SSE 스트림의 값들. 대화·질문 ID는 요청 경로에서 받아 채워요 */
+export type SearchAnswerRetryStream = Omit<
+  SearchAnswerStream,
+  "conversationId" | "questionMessageId" | "answerMessageId"
+>;
+
 /** 탐색 메시지 하나 */
 export interface SearchMessage {
   id: number;

@@ -4,6 +4,7 @@
  * - GET  /api/v1/workspaces/{workspaceId}/search/conversations
  * - POST /api/v1/workspaces/{workspaceId}/search/conversations (SSE)
  * - POST /api/v1/workspaces/{workspaceId}/search/conversations/{conversationId}/questions (SSE)
+ * - POST /api/v1/workspaces/{workspaceId}/search/conversations/{conversationId}/questions/{questionId}/retry (SSE)
  * - GET  /api/v1/workspaces/{workspaceId}/search/conversations/{conversationId}/messages
  */
 
@@ -147,7 +148,27 @@ export class PostSearchQuestionRequestDto {
   }
 }
 
-// 아래 이벤트 DTO는 첫 질문·후속 질문 스트림이 공유
+// POST /api/v1/workspaces/{workspaceId}/search/conversations/{conversationId}/questions/{questionId}/retry (SSE)
+
+/** 실패한 답변 재시도 시 앱이 넘기는 값 */
+export interface PostSearchAnswerRetryRequestInput {
+  requestId: string;
+}
+
+/**
+ * 실패한 답변 재시도 요청 본문. 질문 내용은 경로의 질문을 다시 쓰므로 싣지 않아요.
+ * 응답은 첫 질문과 같은 SSE 스트림이고, accepted는 경로의 질문 ID와 실패했던 답변 메시지 ID를 다시 담아요
+ */
+export class PostSearchAnswerRetryRequestDto {
+  /** 같은 재시도 요청의 중복 실행을 서버가 알아보는 키(UUID) */
+  requestId: string;
+
+  constructor({ requestId }: PostSearchAnswerRetryRequestInput) {
+    this.requestId = requestId;
+  }
+}
+
+// 아래 이벤트 DTO는 첫 질문·후속 질문·재시도 스트림이 공유
 
 /** `event: accepted`의 data 모양 */
 export interface SearchStreamAcceptedRaw {
