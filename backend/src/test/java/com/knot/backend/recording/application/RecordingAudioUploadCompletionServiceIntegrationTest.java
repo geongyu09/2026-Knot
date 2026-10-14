@@ -61,7 +61,6 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
     private final TransactionTemplate transactionTemplate;
     private final JdbcClient jdbcClient;
     private final Clock clock;
-
     @MockitoBean
     private RecordingAudioStorage audioStorage;
 

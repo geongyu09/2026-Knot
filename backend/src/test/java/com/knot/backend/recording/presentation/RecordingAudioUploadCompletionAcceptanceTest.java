@@ -65,7 +65,6 @@ class RecordingAudioUploadCompletionAcceptanceTest {
     private final ObjectMapper objectMapper;
     private final JdbcClient jdbcClient;
     private final Clock clock;
-
     @MockitoBean
     private RecordingAudioStorage audioStorage;
 
