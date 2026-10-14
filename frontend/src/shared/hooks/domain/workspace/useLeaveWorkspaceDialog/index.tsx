@@ -1,0 +1,195 @@
+import { TEMP_WORKSPACE_LEAVE } from "@constants/workspace";
+import useKeyDown from "@hooks/common/useKeyDown";
+import ConfirmDialog from "@primitives/ui/ConfirmDialog";
+import Dim from "@primitives/ui/Dim";
+import MemberSelectDialog from "@primitives/ui/MemberSelectDialog";
+import { useDialog } from "@provider/context/dialogContext";
+import { useRecordingStore } from "@store/recordingStore";
+import { useState } from "react";
+
+const LEAVE_TITLE = "워크스페이스에서 나갈까요?";
+const TRANSFER_TITLE = "누구에게 owner를 넘길까요?";
+const DELETE_TITLE = "워크스페이스를 삭제할까요?";
+
+interface LeaveConfirmDialogProps {
+  description: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+interface OwnerLeaveDialogProps {
+  /** 나를 뺀 멤버 목록 */
+  members: { id: number; name: string }[];
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+/**
+ * 워크스페이스를 나가기 전에 내 처지에 맞는 확인 창을 띄우는 도메인 훅.
+ *
+ * - 일반 멤버: 나갈지 묻는 확인 창
+ * - 다른 멤버가 있는 owner: owner를 넘길 멤버를 고르는 창. 여기서 워크스페이스 삭제 확인 창으로도 갈 수 있어요
+ * - 나 혼자: 워크스페이스도 함께 삭제된다고 알리는 확인 창
+ *
+ * 아직 나가기 API가 없어 내 역할과 멤버 목록은 임시 값으로 정해요.
+ * 확인을 누르면 서버에는 알리지 않고, 이 탭에서 하던 녹음(일시정지 포함)만 버린 뒤 창을 닫아요.
+ *
+ * 저장소의 동작 하나만 필요해 `useRecordingState` 대신 저장소에서 바로 읽어요.
+ */
+const useLeaveWorkspaceDialog = () => {
+  const { open } = useDialog();
+  const discardRecording = useRecordingStore((state) => state.discardRecording);
+
+  const openLeaveWorkspaceDialog = () => {
+    const { myRole, otherMembers } = TEMP_WORKSPACE_LEAVE;
+
+    open(({ close }) => {
+      const leave = () => {
+        close();
+        discardRecording();
+      };
+
+      if (otherMembers.length === 0) {
+        return (
+          <LeaveConfirmDialog
+            description={
+              "남은 멤버가 없어 워크스페이스도 함께 삭제돼요.\n문서와 녹음을 다시 볼 수 없어요."
+            }
+            onCancel={close}
+            onConfirm={leave}
+          />
+        );
+      }
+
+      if (myRole === "OWNER") {
+        return (
+          <OwnerLeaveDialog
+            members={otherMembers}
+            onCancel={close}
+            onConfirm={leave}
+          />
+        );
+      }
+
+      return (
+        <LeaveConfirmDialog
+          description={
+            "내가 만든 문서와 녹음은 그대로 남아요.\n다시 들어오려면 초대 코드가 필요해요."
+          }
+          onCancel={close}
+          onConfirm={leave}
+        />
+      );
+    });
+  };
+
+  return { openLeaveWorkspaceDialog };
+};
+
+/**
+ * 워크스페이스에서 나갈지 묻는 확인 모달. 일반 멤버와 혼자 남은 경우에 안내만 바꿔 써요.
+ *
+ * 확인 유형이라 바깥을 누르거나 ESC를 눌러도 [취소]와 같이 모달만 닫혀요.
+ *
+ * @see {@link https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2167-24781 워크스페이스/나가기 확인}
+ * @see {@link https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2979-14001 워크스페이스/혼자일 때 나가기 확인}
+ */
+function LeaveConfirmDialog({
+  description,
+  onCancel,
+  onConfirm,
+}: LeaveConfirmDialogProps) {
+  useKeyDown({ key: "Escape", isEnabled: true, onKeyDown: onCancel });
+
+  return (
+    <Dim onClick={onCancel}>
+      <ConfirmDialog
+        role="dialog"
+        aria-modal="true"
+        aria-label={LEAVE_TITLE}
+        onClick={(e) => e.stopPropagation()}
+        title={LEAVE_TITLE}
+        description={description}
+        cancelLabel="취소"
+        confirmLabel="나가기"
+        isDestructive
+        onCancel={onCancel}
+        onConfirm={onConfirm}
+      />
+    </Dim>
+  );
+}
+
+/**
+ * 다른 멤버가 있는 owner가 나갈 때의 모달. owner를 넘길 멤버를 고르거나 워크스페이스를 삭제해요.
+ *
+ * 멤버 선택 창은 ESC로 닫히고, 바깥 클릭은 잘못 눌러 고른 멤버를 잃지 않도록 고르기 전에만 닫아요.
+ * 삭제 확인 창의 [취소], 바깥 클릭, ESC는 고른 멤버를 그대로 둔 채 멤버 선택 창으로 돌아가요.
+ *
+ * @see {@link https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2979-13959 워크스페이스/owner 나가기}
+ * @see {@link https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2979-13987 워크스페이스/삭제 확인}
+ */
+function OwnerLeaveDialog({
+  members,
+  onCancel,
+  onConfirm,
+}: OwnerLeaveDialogProps) {
+  const [selectedMemberId, setSelectedMemberId] = useState<number | null>(null);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+
+  const backToMemberSelect = () => setIsDeleteConfirmOpen(false);
+
+  useKeyDown({
+    key: "Escape",
+    isEnabled: true,
+    onKeyDown: isDeleteConfirmOpen ? backToMemberSelect : onCancel,
+  });
+
+  if (isDeleteConfirmOpen) {
+    return (
+      <Dim onClick={backToMemberSelect}>
+        <ConfirmDialog
+          role="dialog"
+          aria-modal="true"
+          aria-label={DELETE_TITLE}
+          onClick={(e) => e.stopPropagation()}
+          title={DELETE_TITLE}
+          description={
+            "멤버 모두 더 이상 들어올 수 없고,\n문서와 녹음도 함께 사라져요."
+          }
+          cancelLabel="취소"
+          confirmLabel="삭제"
+          isDestructive
+          onCancel={backToMemberSelect}
+          onConfirm={onConfirm}
+        />
+      </Dim>
+    );
+  }
+
+  return (
+    <Dim onClick={selectedMemberId === null ? onCancel : undefined}>
+      <MemberSelectDialog
+        role="dialog"
+        aria-modal="true"
+        aria-label={TRANSFER_TITLE}
+        onClick={(e) => e.stopPropagation()}
+        title={TRANSFER_TITLE}
+        description={
+          "owner 권한을 넘겨야 나갈 수 있어요.\n내가 만든 문서와 녹음은 그대로 남아요."
+        }
+        members={members}
+        selectedMemberId={selectedMemberId}
+        onSelectMember={setSelectedMemberId}
+        cancelLabel="취소"
+        confirmLabel="넘기고 나가기"
+        linkLabel="워크스페이스 삭제하기"
+        onCancel={onCancel}
+        onConfirm={onConfirm}
+        onLinkClick={() => setIsDeleteConfirmOpen(true)}
+      />
+    </Dim>
+  );
+}
+
+export default useLeaveWorkspaceDialog;
