@@ -5,10 +5,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.SearchToolScope;
+import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
+import com.knot.backend.search.domain.SearchToolException;
 import com.knot.backend.search.infrastructure.mcp.SearchMcpClient;
 import java.time.Instant;
 import java.util.List;
@@ -140,6 +144,97 @@ class SearchMcpDocumentRetrieverTest {
                         "질문"
                 )
         ).hasMessage("INCOMPLETE_DOCUMENT_EXPLORATION");
+    }
+
+    @Test
+    @DisplayName("검색 결과 없이 전체 목록만 발견하면 모델의 자유 답변 대신 빈 근거를 반환한다")
+    void retrieve_success_noSearchMatchesWithListedDocuments() {
+        // given
+        when(
+                llm.complete(
+                        eq(scope),
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                turn(
+                        "search",
+                        "search_documents",
+                        "{\"query\":\"점심\"}"
+                ),
+                turn(
+                        "list",
+                        "list_documents",
+                        "{}"
+                ),
+                mapper.readTree("{\"role\":\"assistant\",\"content\":\"모델이 임의로 작성한 답변\",\"tool_calls\":[]}")
+        );
+        when(
+                mcp.call(
+                        eq(scope),
+                        eq("search_documents"),
+                        any()
+                )
+        ).thenReturn(mapper.readTree("{\"items\":[]}"));
+        when(
+                mcp.call(
+                        eq(scope),
+                        eq("list_documents"),
+                        any()
+                )
+        ).thenReturn(mapper.readTree("{\"items\":[{\"documentId\":1,\"title\":\"결제 결정\"}]}"));
+
+        // when
+        SearchRetrievalResult result = retriever.retrieve(
+                scope,
+                "점심"
+        );
+
+        // then
+        assertThat(result.documents()).isEmpty();
+        assertThat(result.excludedCount()).isZero();
+        verify(
+                mcp,
+                never()
+        ).call(
+                eq(scope),
+                eq("read_document"),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("검색 도구 오류는 결과 없음으로 변환하지 않고 그대로 실패한다")
+    void retrieve_failure_searchToolError() {
+        // given
+        when(
+                llm.complete(
+                        eq(scope),
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                turn(
+                        "search",
+                        "search_documents",
+                        "{\"query\":\"점심\"}"
+                )
+        );
+        when(
+                mcp.call(
+                        eq(scope),
+                        eq("search_documents"),
+                        any()
+                )
+        ).thenThrow(new SearchToolException("SEARCH_TRANSPORT_FAILED"));
+
+        // when & then
+        assertThatThrownBy(
+                () -> retriever.retrieve(
+                        scope,
+                        "점심"
+                )
+        ).hasMessage("SEARCH_TRANSPORT_FAILED");
     }
 
     @Test
