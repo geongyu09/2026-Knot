@@ -6,19 +6,29 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 
 import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.auth.domain.AuthenticatedMember;
 import com.knot.backend.global.config.JwtProperties;
+import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.search.SearchMessageFixtures;
 import com.knot.backend.search.application.SearchAnswerGenerator;
 import com.knot.backend.search.application.SearchAnswerWorker;
 import com.knot.backend.search.application.SearchDocumentRetriever;
 import com.knot.backend.search.application.SearchGenerationAvailability;
+import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.search.infrastructure.SearchExploration;
+import com.knot.backend.search.infrastructure.SearchHistoryQuery;
+import com.knot.backend.search.infrastructure.SearchLlmClient;
+import com.knot.backend.search.infrastructure.SearchMcpDocumentRetriever;
+import com.knot.backend.search.infrastructure.mcp.SearchMcpClient;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.io.BufferedReader;
@@ -31,6 +41,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -432,6 +443,129 @@ class SearchQuestionAcceptanceTest {
                             .single()
             ).isEqualTo("COMPLETED");
             verifyNoInteractions(generator);
+        }
+    }
+
+    @Test
+    @DisplayName("인사 자유 문장을 재분기하여 실제 SSE 응답과 빈 근거를 보내고 DB에 정상 완료 저장한다")
+    void create_success_greetingWithoutDocumentSearch() throws Exception {
+        // given
+        String greeting = "안녕하세요! 반갑습니다. 회의 문서 검색이 필요하시면 말씀해 주세요.";
+        SearchLlmClient llm = mock(SearchLlmClient.class);
+        SearchMcpClient mcp = mock(SearchMcpClient.class);
+        SearchHistoryQuery history = mock(SearchHistoryQuery.class);
+        when(mcp.definitions(any())).thenReturn(List.of());
+        when(history.beforeQuestion(any())).thenReturn(List.of());
+        when(
+                llm.complete(
+                        any(),
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                json.readTree("{\"role\":\"assistant\",\"content\":\"안녕하세요!\",\"tool_calls\":[]}"),
+                json.valueToTree(
+                        Map.of(
+                                "role",
+                                "assistant",
+                                "tool_calls",
+                                List.of(
+                                        Map.of(
+                                                "id",
+                                                "greeting",
+                                                "type",
+                                                "function",
+                                                "function",
+                                                Map.of(
+                                                        "name",
+                                                        "answer_without_search",
+                                                        "arguments",
+                                                        json.writeValueAsString(
+                                                                Map.of(
+                                                                        "answer",
+                                                                        greeting
+                                                                )
+                                                        )
+                                                )
+                                        )
+                                )
+                        )
+                )
+        );
+        SearchMcpDocumentRetriever realRetriever = new SearchMcpDocumentRetriever(
+                llm,
+                mcp,
+                history,
+                mock(SearchToolAccess.class),
+                new SearchAgentProperties(),
+                json
+        );
+        when(
+                retriever.retrieve(
+                        any(),
+                        eq("반갑다")
+                )
+        ).thenAnswer(
+                call -> realRetriever.retrieve(
+                        call.getArgument(0),
+                        "반갑다"
+                )
+        );
+
+        // when
+        try (BufferedReader stream = reader(
+                connect(
+                        UUID.randomUUID(),
+                        "반갑다"
+                ).body()
+        )) {
+            assertThat(readEvent(stream)).startsWith("event:accepted");
+            long answer = answerId();
+            worker.execute(answer);
+            String events = stream.lines()
+                    .collect(Collectors.joining("\n"));
+
+            // then
+            assertThat(events).contains(
+                    "event:delta",
+                    greeting,
+                    "event:evidence",
+                    "\"items\":[]",
+                    "event:completed",
+                    "\"status\":\"COMPLETED\""
+            )
+                    .doesNotContain(
+                            "event:failed",
+                            "해당 내용을 확인하지 못했습니다",
+                            "answer_without_search"
+                    );
+            assertThat(status()).isEqualTo("COMPLETED");
+            assertThat(
+                    jdbc.sql("SELECT content FROM search_messages WHERE id = :id")
+                            .param(
+                                    "id",
+                                    answer
+                            )
+                            .query(String.class)
+                            .single()
+            ).isEqualTo(greeting);
+            verifyNoInteractions(generator);
+            verify(
+                    mcp,
+                    never()
+            ).call(
+                    any(),
+                    any(),
+                    any()
+            );
+            verify(
+                    llm,
+                    times(2)
+            ).complete(
+                    any(),
+                    any(),
+                    any()
+            );
         }
     }
 

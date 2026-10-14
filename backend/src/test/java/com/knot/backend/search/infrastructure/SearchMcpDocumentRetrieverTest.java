@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import com.knot.backend.global.config.SearchAgentProperties;
@@ -21,6 +22,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -58,6 +61,350 @@ class SearchMcpDocumentRetrieverTest {
                 access,
                 properties,
                 mapper
+        );
+    }
+
+    @Test
+    @DisplayName("문서 검색이 필요 없는 인사는 문서 도구를 실행하지 않고 응답한다")
+    void retrieve_success_directGreeting() {
+        when(
+                llm.complete(
+                        eq(scope),
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                turn(
+                        "greeting",
+                        "answer_without_search",
+                        "{\"answer\":\"안녕하세요! 반갑습니다.\"}"
+                )
+        );
+
+        SearchRetrievalResult result = retriever.retrieve(
+                scope,
+                "반갑다"
+        );
+
+        assertThat(result.documents()).isEmpty();
+        assertThat(result.excludedCount()).isZero();
+        assertThat(result.directAnswer()).isEqualTo("안녕하세요! 반갑습니다.");
+        verify(
+                mcp,
+                never()
+        ).call(
+                any(),
+                any(),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("도구 없이 자유 문장을 반환하면 한 번 경로를 재선택하여 인사를 완료한다")
+    void retrieve_success_retryUnroutedGreeting() {
+        when(
+                llm.complete(
+                        eq(scope),
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                mapper.readTree("{\"role\":\"assistant\",\"content\":\"안녕하세요!\",\"tool_calls\":[]}"),
+                turn(
+                        "greeting",
+                        "answer_without_search",
+                        "{\"answer\":\"안녕하세요! 반갑습니다.\"}"
+                )
+        );
+
+        SearchRetrievalResult result = retriever.retrieve(
+                scope,
+                "반갑다"
+        );
+
+        assertThat(result.documents()).isEmpty();
+        assertThat(result.directAnswer()).isEqualTo("안녕하세요! 반갑습니다.");
+        verify(
+                mcp,
+                never()
+        ).call(
+                any(),
+                any(),
+                any()
+        );
+        verify(
+                llm,
+                times(2)
+        ).complete(
+                eq(scope),
+                any(),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("문서 탐색을 시작한 뒤 직접 응답으로 근거 검증을 우회할 수 없다")
+    void retrieve_failure_directAnswerAfterSearch() {
+        when(
+                llm.complete(
+                        eq(scope),
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                turn(
+                        "search",
+                        "search_documents",
+                        "{\"query\":\"회의\"}"
+                ),
+                turn(
+                        "direct",
+                        "answer_without_search",
+                        "{\"answer\":\"회의에서 승인했습니다.\"}"
+                )
+        );
+        when(
+                mcp.call(
+                        eq(scope),
+                        eq("search_documents"),
+                        any()
+                )
+        ).thenReturn(mapper.readTree("{\"items\":[{\"documentId\":1}]}"));
+
+        assertThatThrownBy(
+                () -> retriever.retrieve(
+                        scope,
+                        "회의 결정"
+                )
+        ).hasMessage("INVALID_DIRECT_ANSWER");
+        verify(
+                mcp,
+                never()
+        ).call(
+                eq(scope),
+                eq("answer_without_search"),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("비어 있는 직접 응답은 정상 완료로 처리하지 않는다")
+    void retrieve_failure_blankDirectAnswer() {
+        when(
+                llm.complete(
+                        eq(scope),
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                turn(
+                        "greeting",
+                        "answer_without_search",
+                        "{\"answer\":\"  \"}"
+                )
+        );
+
+        assertThatThrownBy(
+                () -> retriever.retrieve(
+                        scope,
+                        "반갑다"
+                )
+        ).hasMessage("INVALID_DIRECT_ANSWER");
+        verify(
+                mcp,
+                never()
+        ).call(
+                any(),
+                any(),
+                any()
+        );
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "{\"answer\":null}", "{\"answer\":1}", "[]"})
+    @DisplayName("직접 응답 인자가 객체와 문자열 답변 계약을 어기면 실패한다")
+    void retrieve_failure_invalidDirectAnswerArguments(String arguments) {
+        when(
+                llm.complete(
+                        eq(scope),
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                turn(
+                        "greeting",
+                        "answer_without_search",
+                        arguments
+                )
+        );
+
+        assertThatThrownBy(
+                () -> retriever.retrieve(
+                        scope,
+                        "반갑다"
+                )
+        ).hasMessage("INVALID_DIRECT_ANSWER");
+        verify(
+                mcp,
+                never()
+        ).call(
+                any(),
+                any(),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("인사 경로 재선택 중 모델 호출 오류가 발생하면 임의 응답으로 완료하지 않는다")
+    void retrieve_failure_modelErrorDuringRoutingRetry() {
+        when(
+                llm.complete(
+                        eq(scope),
+                        any(),
+                        any()
+                )
+        ).thenReturn(mapper.readTree("{\"role\":\"assistant\",\"content\":\"안녕하세요\"}"))
+                .thenThrow(new SearchToolException("MODEL_TRANSPORT_FAILED"));
+
+        assertThatThrownBy(
+                () -> retriever.retrieve(
+                        scope,
+                        "반갑다"
+                )
+        ).hasMessage("MODEL_TRANSPORT_FAILED");
+        verify(
+                mcp,
+                never()
+        ).call(
+                any(),
+                any(),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("응답 경로 재선택에서 검색 도구를 고르면 기존 검색 결과 없음 판정을 적용한다")
+    void retrieve_success_documentSearchAfterRoutingRetry() {
+        when(
+                llm.complete(
+                        eq(scope),
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                mapper.readTree("{\"role\":\"assistant\",\"content\":\"검색하겠습니다\"}"),
+                turn(
+                        "search",
+                        "search_documents",
+                        "{\"query\":\"회의\"}"
+                ),
+                mapper.readTree("{\"role\":\"assistant\",\"content\":\"끝\"}")
+        );
+        when(
+                mcp.call(
+                        eq(scope),
+                        eq("search_documents"),
+                        any()
+                )
+        ).thenReturn(mapper.readTree("{\"items\":[]}"));
+
+        SearchRetrievalResult result = retriever.retrieve(
+                scope,
+                "회의 결정"
+        );
+
+        assertThat(result.documents()).isEmpty();
+        assertThat(result.directAnswer()).isNull();
+        verify(
+                llm,
+                times(3)
+        ).complete(
+                eq(scope),
+                any(),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("응답 경로 재선택에도 도구 없이 종료하면 임의 문장을 답변으로 사용하지 않는다")
+    void retrieve_failure_unroutedAnswerAfterRetry() {
+        when(
+                llm.complete(
+                        eq(scope),
+                        any(),
+                        any()
+                )
+        ).thenReturn(mapper.readTree("{\"role\":\"assistant\",\"content\":\"회의에서 승인했습니다.\",\"tool_calls\":[]}"));
+
+        assertThatThrownBy(
+                () -> retriever.retrieve(
+                        scope,
+                        "회의 결정"
+                )
+        ).hasMessage("INCOMPLETE_DOCUMENT_EXPLORATION");
+        verify(
+                llm,
+                times(2)
+        ).complete(
+                eq(scope),
+                any(),
+                any()
+        );
+        verify(
+                mcp,
+                never()
+        ).call(
+                any(),
+                any(),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("직접 응답과 문서 검색을 동시에 호출하면 두 경로를 모두 실행하지 않고 실패한다")
+    void retrieve_failure_mixedDirectAnswerAndDocumentTools() {
+        JsonNode response = mapper.valueToTree(
+                Map.of(
+                        "role",
+                        "assistant",
+                        "tool_calls",
+                        List.of(
+                                turn(
+                                        "greeting",
+                                        "answer_without_search",
+                                        "{\"answer\":\"반갑습니다\"}"
+                                ).path("tool_calls")
+                                        .get(0),
+                                turn(
+                                        "search",
+                                        "search_documents",
+                                        "{\"query\":\"회의\"}"
+                                ).path("tool_calls")
+                                        .get(0)
+                        )
+                )
+        );
+        when(
+                llm.complete(
+                        eq(scope),
+                        any(),
+                        any()
+                )
+        ).thenReturn(response);
+
+        assertThatThrownBy(
+                () -> retriever.retrieve(
+                        scope,
+                        "안녕, 회의 결정 알려줘"
+                )
+        ).hasMessage("INVALID_DIRECT_ANSWER");
+        verify(
+                mcp,
+                never()
+        ).call(
+                any(),
+                any(),
+                any()
         );
     }
 
