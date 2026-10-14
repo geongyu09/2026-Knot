@@ -23,6 +23,7 @@ import {
   PostRecordingResumeResponseDto,
 } from "@api/dto/recording";
 import {
+  GetSearchConversationsResponseDto,
   GetSearchMessagesResponseDto,
   SearchStreamAcceptedDto,
   SearchStreamCompletedDto,
@@ -68,7 +69,10 @@ import { getDocumentApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/docum
 import { getDocumentConfirmationsApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documents/[documentId]/confirmations";
 import { confirmDocumentApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documents/[documentId]/confirmations/me";
 import { getWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitation";
-import { createSearchConversationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations";
+import {
+  createSearchConversationApi,
+  getSearchConversationsApi,
+} from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations";
 import { getSearchMessagesApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/messages";
 import { createSearchQuestionApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions";
 import { issueWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations";
@@ -113,6 +117,7 @@ import {
 import type { RecordingDetailEntry } from "@api/mock/types/recording";
 import {
   searchAnswerStreamResponse,
+  searchConversationsResponse,
   searchMessagesResponse,
   searchQuestionAnswerStreamResponse,
 } from "@api/mock/responses/search";
@@ -638,6 +643,14 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
   });
 
   describe("탐색", () => {
+    it("GET /api/v1/workspaces/:workspaceId/search/conversations는 searchConversationsResponse를 돌려준다", async () => {
+      await expect(
+        getSearchConversationsApi({ workspaceId: WORKSPACE_ID }),
+      ).resolves.toEqual(
+        new GetSearchConversationsResponseDto(searchConversationsResponse),
+      );
+    });
+
     it("POST /api/v1/workspaces/:workspaceId/search/conversations는 searchAnswerStreamResponse를 순서대로 흘려보낸다", async () => {
       const { answerMessageId, stages, deltas, evidences, ...accepted } =
         searchAnswerStreamResponse;

@@ -47,3 +47,20 @@ export interface SearchMessages {
   hasPrevious: boolean;
   previousCursor: string | null;
 }
+
+/** 대화 목록 한 줄 */
+export interface SearchConversation {
+  id: number;
+  title: string;
+  lastMessagePreview: string | null;
+  /** ISO 8601 */
+  createdAt: string;
+  /** ISO 8601 */
+  updatedAt: string;
+}
+
+/** 대화 목록 조회 응답 */
+export interface SearchConversations {
+  items: SearchConversation[];
+  nextCursor: string | null;
+}

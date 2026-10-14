@@ -7,10 +7,14 @@ interface SearchMessagesKeyParams {
 /**
  * 탐색 쿼리 키
  *
+ * - `conversations` 워크스페이스의 내 탐색 대화 목록
  * - `messages` 한 탐색 대화의 메시지 목록
  */
 export const searchKeys = {
   all: ["search"] as const,
+
+  conversations: (workspaceId: number | null) =>
+    [...searchKeys.all, "conversations", workspaceId] as const,
 
   messages: ({ workspaceId, conversationId }: SearchMessagesKeyParams) =>
     [...searchKeys.all, "messages", workspaceId, conversationId] as const,

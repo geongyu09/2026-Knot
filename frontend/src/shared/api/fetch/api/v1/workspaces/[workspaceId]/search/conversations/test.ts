@@ -14,6 +14,7 @@ import {
 import { createSearchQuestionApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions";
 import {
   searchAnswerStreamResponse,
+  searchConversationsResponse,
   searchQuestionAnswerStreamResponse,
 } from "@api/mock/responses/search";
 import { mockServer } from "@api/mock/server";
@@ -21,6 +22,7 @@ import { SseRequestError } from "@api/sse/requestSseStream";
 
 import {
   createSearchConversationApi,
+  getSearchConversationsApi,
   relaySearchAnswerUntilEnd,
   SearchAnswerDisconnectedError,
   SearchAnswerFailedError,
@@ -609,5 +611,37 @@ describe("relaySearchAnswerUntilEnd", () => {
     }).catch((caught: unknown) => caught);
 
     expect(error).toBe(callbackError);
+  });
+});
+
+/** 이번 테스트에서 보낸 목록 조회 요청의 쿼리를 모아요 */
+const captureListSearchParams = () => {
+  const captured: URLSearchParams[] = [];
+  mockServer.use(
+    http.get(SEARCH_CONVERSATIONS_PATH, ({ request }) => {
+      captured.push(new URL(request.url).searchParams);
+
+      return HttpResponse.json(searchConversationsResponse);
+    }),
+  );
+
+  return captured;
+};
+
+describe("getSearchConversationsApi", () => {
+  it("size를 주지 않으면 첫 페이지 20개를 요청한다 (근거 없음)", async () => {
+    const captured = captureListSearchParams();
+
+    await getSearchConversationsApi({ workspaceId: WORKSPACE_ID });
+
+    expect(captured[0].get("size")).toBe("20");
+  });
+
+  it("커서 없이 첫 페이지만 요청한다 (근거 없음)", async () => {
+    const captured = captureListSearchParams();
+
+    await getSearchConversationsApi({ workspaceId: WORKSPACE_ID });
+
+    expect(captured[0].has("cursor")).toBe(false);
   });
 });
