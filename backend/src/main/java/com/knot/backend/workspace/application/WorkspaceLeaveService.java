@@ -3,11 +3,13 @@ package com.knot.backend.workspace.application;
 import com.knot.backend.document.application.DocumentArchivalService;
 import com.knot.backend.recording.domain.RecordingSession;
 import com.knot.backend.recording.domain.RecordingSessionRepository;
+import com.knot.backend.workspace.application.dto.result.WorkspaceOwnershipTransferCandidateResult;
 import com.knot.backend.workspace.domain.Workspace;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import com.knot.backend.workspace.domain.WorkspaceMember;
 import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.WorkspaceMemberRole;
 import com.knot.backend.workspace.domain.WorkspaceRepository;
 import java.time.Clock;
 import java.time.Instant;
@@ -19,22 +21,20 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-@Transactional
 public class WorkspaceLeaveService {
-
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
+    private final WorkspaceOwnershipTransferCandidateQuery candidateQuery;
     private final RecordingSessionRepository recordingSessionRepository;
-    private final Clock clock;
     private final DocumentArchivalService documentArchivalService;
+    private final Clock clock;
 
+    @Transactional
     public void leave(
             long memberId,
             Long workspaceId
     ) {
-        validateWorkspaceId(workspaceId);
-        Workspace workspace = workspaceRepository.findByIdForUpdate(workspaceId)
-                .orElseThrow(() -> new WorkspaceException(WorkspaceErrorCode.WORKSPACE_NOT_FOUND));
+        Workspace workspace = lockWorkspace(workspaceId);
         WorkspaceMember actor = workspaceMemberRepository.findLatestByWorkspaceIdAndMemberIdForUpdate(
                 workspaceId,
                 memberId
@@ -43,40 +43,126 @@ public class WorkspaceLeaveService {
         if (!actor.isActive()) {
             return;
         }
-
-        long activeMemberCount = workspaceMemberRepository.countActiveByWorkspaceId(workspaceId);
-        Instant leftAt = currentTime();
-        actor.leave(
-                leftAt,
-                activeMemberCount
-        );
-        if (isLastActiveMember(activeMemberCount)) {
-            workspace.delete(leftAt);
-            workspaceRepository.save(workspace);
-        }
-        workspaceMemberRepository.save(actor);
-        discardActiveRecordings(
-                findActiveRecordings(
-                        workspaceId,
-                        memberId,
-                        activeMemberCount
-                ),
+        Instant leftAt = now();
+        workspace.removeMember(
+                actor,
+                workspaceMemberRepository.countActiveByWorkspaceId(workspaceId),
                 leftAt
         );
-        workspaceMemberRepository.flush();
-        documentArchivalService.archiveAfterMemberDeparture(
+        workspaceRepository.save(workspace);
+        workspaceMemberRepository.save(actor);
+        completeDeparture(
                 workspaceId,
                 memberId,
+                findRecordingsToDiscard(
+                        workspace,
+                        workspaceId,
+                        memberId
+                ),
                 leftAt
         );
     }
 
-    private List<RecordingSession> findActiveRecordings(
-            long workspaceId,
+    @Transactional
+    public void transferOwnership(
             long memberId,
-            long activeMemberCount
+            Long workspaceId,
+            long successorMemberId
     ) {
-        if (isLastActiveMember(activeMemberCount)) {
+        lockWorkspace(workspaceId);
+        List<WorkspaceMember> participants = workspaceMemberRepository.findAllActiveByWorkspaceIdAndMemberIdsForUpdate(
+                workspaceId,
+                List.of(
+                        memberId,
+                        successorMemberId
+                )
+        );
+        WorkspaceMember owner = findOwner(
+                participants,
+                memberId
+        );
+        WorkspaceMember successor = findSuccessor(
+                participants,
+                successorMemberId
+        );
+        Instant leftAt = now();
+        owner.transferOwnershipTo(
+                successor,
+                leftAt
+        );
+        workspaceMemberRepository.saveAll(
+                List.of(
+                        owner,
+                        successor
+                )
+        );
+        completeDeparture(
+                workspaceId,
+                memberId,
+                recordingSessionRepository.findAllActiveByWorkspaceIdAndMemberIdForUpdate(
+                        workspaceId,
+                        memberId
+                ),
+                leftAt
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public List<WorkspaceOwnershipTransferCandidateResult> findOwnershipTransferCandidates(
+            Long workspaceId,
+            long memberId
+    ) {
+        validateWorkspaceId(workspaceId);
+        workspaceRepository.findById(workspaceId)
+                .orElseThrow(() -> new WorkspaceException(WorkspaceErrorCode.WORKSPACE_NOT_FOUND));
+        if (!workspaceMemberRepository.existsByWorkspaceIdAndMemberIdAndRole(
+                workspaceId,
+                memberId,
+                WorkspaceMemberRole.OWNER
+        )) {
+            throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_OWNER_REQUIRED);
+        }
+        return candidateQuery.findAll(
+                workspaceId,
+                memberId
+        );
+    }
+
+    private Workspace lockWorkspace(Long workspaceId) {
+        validateWorkspaceId(workspaceId);
+        return workspaceRepository.findByIdForUpdate(workspaceId)
+                .orElseThrow(() -> new WorkspaceException(WorkspaceErrorCode.WORKSPACE_NOT_FOUND));
+    }
+
+    private WorkspaceMember findOwner(
+            List<WorkspaceMember> participants,
+            long memberId
+    ) {
+        return participants.stream()
+                .filter(participant -> participant.getMemberId() == memberId)
+                .filter(WorkspaceMember::isOwner)
+                .findFirst()
+                .orElseThrow(() -> new WorkspaceException(WorkspaceErrorCode.WORKSPACE_OWNER_REQUIRED));
+    }
+
+    private WorkspaceMember findSuccessor(
+            List<WorkspaceMember> participants,
+            long successorMemberId
+    ) {
+        return participants.stream()
+                .filter(participant -> participant.getMemberId() == successorMemberId)
+                .findFirst()
+                .orElseThrow(
+                        () -> new WorkspaceException(WorkspaceErrorCode.WORKSPACE_OWNERSHIP_TRANSFER_TARGET_CONFLICT)
+                );
+    }
+
+    private List<RecordingSession> findRecordingsToDiscard(
+            Workspace workspace,
+            long workspaceId,
+            long memberId
+    ) {
+        if (workspace.isDeleted()) {
             return recordingSessionRepository.findAllActiveByWorkspaceIdForUpdate(workspaceId);
         }
         return recordingSessionRepository.findAllActiveByWorkspaceIdAndMemberIdForUpdate(
@@ -85,28 +171,33 @@ public class WorkspaceLeaveService {
         );
     }
 
-    private void discardActiveRecordings(
-            List<RecordingSession> recordingSessions,
-            Instant discardedAt
+    // 문서 보관이 남은 확인 대상을 DB 쿼리로 다시 계산하므로 탈퇴한 멤버십을 먼저 반영한다.
+    private void completeDeparture(
+            long workspaceId,
+            long memberId,
+            List<RecordingSession> recordingsToDiscard,
+            Instant leftAt
     ) {
-        for (RecordingSession recordingSession : recordingSessions) {
-            recordingSession.discard(discardedAt);
-            recordingSessionRepository.save(recordingSession);
+        for (RecordingSession recording : recordingsToDiscard) {
+            recording.discard(leftAt);
+            recordingSessionRepository.save(recording);
         }
-    }
-
-    private boolean isLastActiveMember(long activeMemberCount) {
-        return activeMemberCount == 1;
-    }
-
-    private Instant currentTime() {
-        return Instant.now(clock)
-                .truncatedTo(ChronoUnit.MICROS);
+        workspaceMemberRepository.flush();
+        documentArchivalService.archiveAfterMemberDeparture(
+                workspaceId,
+                memberId,
+                leftAt
+        );
     }
 
     private void validateWorkspaceId(Long workspaceId) {
         if (workspaceId == null || workspaceId <= 0) {
             throw new WorkspaceException(WorkspaceErrorCode.INVALID_WORKSPACE_ID);
         }
+    }
+
+    private Instant now() {
+        return clock.instant()
+                .truncatedTo(ChronoUnit.MICROS);
     }
 }

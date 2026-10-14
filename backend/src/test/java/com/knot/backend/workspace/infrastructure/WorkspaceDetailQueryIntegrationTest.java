@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import com.knot.backend.workspace.application.WorkspaceDetailQuery;
-import com.knot.backend.workspace.application.WorkspaceOwnershipTransferService;
+import com.knot.backend.workspace.application.WorkspaceLeaveService;
 import com.knot.backend.workspace.application.dto.result.WorkspaceDetailSnapshot;
 import com.knot.backend.workspace.domain.WorkspaceMemberRole;
 import java.time.Instant;
@@ -40,16 +40,16 @@ class WorkspaceDetailQueryIntegrationTest {
     private static final int READ_COUNT_DURING_TRANSFER = 50;
 
     private final WorkspaceDetailQuery workspaceDetailQuery;
-    private final WorkspaceOwnershipTransferService ownershipTransferService;
+    private final WorkspaceLeaveService leaveService;
     private final JdbcClient jdbcClient;
 
     WorkspaceDetailQueryIntegrationTest(
             WorkspaceDetailQuery workspaceDetailQuery,
-            WorkspaceOwnershipTransferService ownershipTransferService,
+            WorkspaceLeaveService leaveService,
             JdbcClient jdbcClient
     ) {
         this.workspaceDetailQuery = workspaceDetailQuery;
-        this.ownershipTransferService = ownershipTransferService;
+        this.leaveService = leaveService;
         this.jdbcClient = jdbcClient;
     }
 
@@ -333,7 +333,7 @@ class WorkspaceDetailQueryIntegrationTest {
                         5,
                         TimeUnit.SECONDS
                 );
-                ownershipTransferService.transferOwnership(
+                leaveService.transferOwnership(
                         ownerId,
                         workspaceId,
                         successorId
