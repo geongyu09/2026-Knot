@@ -4,7 +4,6 @@ import com.knot.backend.global.config.RetentionCleanupProperties;
 import com.knot.backend.recording.domain.RecordingAudioDeletionRepository;
 import com.knot.backend.recording.domain.RecordingAudioDeletionTask;
 import com.knot.backend.recording.domain.RecordingAudioUpload;
-import com.knot.backend.recording.domain.RecordingAudioUploadStatus;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -57,8 +56,7 @@ public class RecordingAudioRetentionService {
             RecordingAudioUpload upload,
             Instant now
     ) {
-        if (upload.getStatus() != RecordingAudioUploadStatus.COMPLETED || upload.getDeletedAt() != null
-                || deletions.hasTaskForUpload(upload.getId())) {
+        if (!upload.isAudioAvailable() || deletions.hasTaskForUpload(upload.getId())) {
             return;
         }
         deletions.saveAndFlush(

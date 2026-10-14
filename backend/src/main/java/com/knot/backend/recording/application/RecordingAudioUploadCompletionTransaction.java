@@ -72,7 +72,7 @@ public class RecordingAudioUploadCompletionTransaction {
             );
             recordingAudioUploadRepository.save(upload);
         }
-        if (transcriptionProperties.enabled() && upload.getDeletedAt() == null) {
+        if (transcriptionProperties.enabled() && upload.isAudioAvailable()) {
             transcriptionState.registerAutomatic(recordingId);
         }
         return RecordingAudioUploadCompletionResult.from(upload);

@@ -89,7 +89,7 @@ public class RecordingTranscriptionStateService {
         recording.validateEnded();
         RecordingAudioUpload upload = uploads.findByRecordingId(recordingId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
-        validateUpload(upload);
+        upload.validateAudioAvailable();
         RecordingTranscription transcription = transcriptions.findByRecordingSessionIdForUpdate(recordingId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED));
         if (transcription.getStatus() != TranscriptionStatus.FAILED) {
@@ -225,15 +225,9 @@ public class RecordingTranscriptionStateService {
         );
     }
 
-    private void validateUpload(RecordingAudioUpload upload) {
-        if (!upload.isCompleted() || upload.getDeletedAt() != null) {
-            throw new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_COMPLETED);
-        }
-    }
-
     private boolean hasAvailableUpload(long recordingId) {
         return uploads.findByRecordingId(recordingId)
-                .filter(value -> value.isCompleted() && value.getDeletedAt() == null)
+                .filter(RecordingAudioUpload::isAudioAvailable)
                 .isPresent();
     }
 
