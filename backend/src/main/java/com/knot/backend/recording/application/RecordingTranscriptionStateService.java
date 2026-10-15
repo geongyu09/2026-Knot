@@ -184,8 +184,6 @@ public class RecordingTranscriptionStateService {
             RecordingTranscriptionExecution execution,
             String failureCode
     ) {
-        // Workspace -> recording -> transcription is also the completion/deletion lock
-        // order.
         workspaces.findIncludingDeletedByIdForUpdate(execution.workspaceId());
         recordings.findByIdForUpdate(execution.recordingId());
         transcriptions.findByRecordingSessionIdForUpdate(execution.recordingId())
@@ -232,7 +230,6 @@ public class RecordingTranscriptionStateService {
     }
 
     private void validateTranscript(AiTranscript result) {
-        // HTTP에서는 JSON을 매핑하고 결과 값은 저장 전에 한 번 검사한다.
         if (result == null || result.schemaVersion() != 1 || result.rawWhisperJson() == null || result.rawWhisperJson()
                 .isBlank() || result.utterances()
                         .isEmpty()) {
