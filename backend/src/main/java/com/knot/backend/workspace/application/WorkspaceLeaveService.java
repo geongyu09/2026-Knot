@@ -171,7 +171,6 @@ public class WorkspaceLeaveService {
         );
     }
 
-    // 문서 보관이 남은 확인 대상을 DB 쿼리로 다시 계산하므로 탈퇴한 멤버십을 먼저 반영한다.
     private void completeDeparture(
             long workspaceId,
             long memberId,
