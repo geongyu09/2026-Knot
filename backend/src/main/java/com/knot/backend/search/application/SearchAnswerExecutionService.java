@@ -1,5 +1,7 @@
 package com.knot.backend.search.application;
 
+import com.knot.backend.document.domain.Document;
+import com.knot.backend.document.domain.DocumentStatus;
 import com.knot.backend.document.domain.DocumentRepository;
 import com.knot.backend.global.config.SearchWorkerProperties;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
@@ -373,14 +375,18 @@ public class SearchAnswerExecutionService {
             long workspaceId,
             long documentId
     ) {
-        com.knot.backend.document.domain.Document document = documents.findByWorkspaceIdAndIdForUpdate(
+        Document document = documents.findByWorkspaceIdAndIdForUpdate(
                 workspaceId,
                 documentId
         )
                 .orElseThrow(() -> new SearchException(SearchErrorCode.INVALID_SEARCH_STATE));
-        if (document.getStatus() != com.knot.backend.document.domain.DocumentStatus.ARCHIVED) {
-            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
+        if (document.getStatus() == DocumentStatus.DRAFT) {
+            return;
         }
+        if (document.getStatus() == DocumentStatus.ARCHIVED) {
+            return;
+        }
+        throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
     }
 
     private void validateUsedDocuments(

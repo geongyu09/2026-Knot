@@ -3,7 +3,6 @@ package com.knot.backend.testsupport;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,7 +11,7 @@ import org.slf4j.LoggerFactory;
 public final class LogCapture implements AutoCloseable {
 
     private final Map<Logger, Level> originalLevels = new LinkedHashMap<>();
-    private final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    private final SnapshotLogAppender appender = new SnapshotLogAppender();
 
     public LogCapture(Class<?>... types) {
         appender.start();

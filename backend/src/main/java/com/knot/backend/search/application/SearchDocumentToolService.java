@@ -277,6 +277,7 @@ public class SearchDocumentToolService {
                 row.documentId(),
                 row.title(),
                 row.topic(),
+                row.status(),
                 row.recordingStartedAt(),
                 row.createdAt(),
                 row.archivedAt(),

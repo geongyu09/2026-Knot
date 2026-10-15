@@ -11,7 +11,6 @@ import static org.mockito.Mockito.doAnswer;
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.search.SearchMessageFixtures;
 import com.knot.backend.search.domain.SearchException;
-import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.application.dto.command.SearchQuestionCommand;
 import com.knot.backend.search.application.dto.result.SearchAnswerSnapshotResult;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
@@ -283,7 +282,7 @@ class SearchAnswerExecutionIntegrationTest {
     void complete_failure_otherWorkspaceEvidence() {
         SearchAnswerWorkResult work = service.claim(accepted.answerMessageId())
                 .orElseThrow();
-        long valid = archivedDocument(
+        long valid = messages.saveDocument(
                 workspaceId,
                 memberId
         );
@@ -613,28 +612,75 @@ class SearchAnswerExecutionIntegrationTest {
         ).hasSize(3);
     }
 
-    @Test
-    @DisplayName("미보관 문서는 실제 사용 근거로 저장할 수 없다")
-    void complete_failure_draftEvidence() {
+    @ParameterizedTest
+    @ValueSource(strings = {"DRAFT", "ARCHIVED"})
+    @DisplayName("DRAFT 후보는 보관 전환 여부와 무관하게 실제 사용 근거와 완료 상태를 저장한다")
+    void complete_success_draftEvidence(String terminalDocumentStatus) {
         SearchAnswerWorkResult work = service.claim(accepted.answerMessageId())
                 .orElseThrow();
         long draft = messages.saveDocument(
                 workspaceId,
                 memberId
         );
-        assertThatThrownBy(
-                () -> service.complete(
+        assertThat(
+                service.recordRetrieval(
+                        work.answerId(),
+                        work.token(),
+                        0,
+                        List.of(
+                                new SearchDocumentResult(
+                                        draft,
+                                        "초안",
+                                        "주제",
+                                        "본문"
+                                )
+                        )
+                )
+        ).isTrue();
+        if ("ARCHIVED".equals(terminalDocumentStatus)) {
+            jdbc.sql("UPDATE documents SET status = 'ARCHIVED', archived_at = :time WHERE id = :id")
+                    .param(
+                            "time",
+                            java.sql.Timestamp.from(NOW.plusSeconds(1))
+                    )
+                    .param(
+                            "id",
+                            draft
+                    )
+                    .update();
+        }
+        service.append(
+                work.answerId(),
+                work.token(),
+                "DRAFT 근거 답변"
+        );
+        assertThat(
+                service.complete(
                         work.answerId(),
                         work.token(),
                         List.of(draft),
                         Set.of(draft)
                 )
-        ).isInstanceOf(SearchException.class)
-                .satisfies(
-                        exception -> assertThat(((SearchException) exception).getErrorCode())
-                                .isEqualTo(SearchErrorCode.INVALID_SEARCH_STATE)
-                );
-        assertThat(evidenceCount()).isZero();
+        ).isTrue();
+        assertThat(evidenceCount()).isEqualTo(1);
+        assertThat(
+                snapshots.read(
+                        workspaceId,
+                        memberId,
+                        work.answerId()
+                )
+                        .status()
+                        .name()
+        ).isEqualTo("COMPLETED");
+        assertThat(
+                jdbc.sql("SELECT status FROM documents WHERE id = :id")
+                        .param(
+                                "id",
+                                draft
+                        )
+                        .query(String.class)
+                        .single()
+        ).isEqualTo(terminalDocumentStatus);
     }
 
     private long archivedDocument(

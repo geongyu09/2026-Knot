@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import RecordingHeartbeat from ".";
 
-const HEARTBEAT_INTERVAL_MS = 30 * 1000;
+const HEARTBEAT_INTERVAL_MS = 10 * 1000;
 
 const WORKSPACE_ID = "1";
 const RECORDING_PATH = getRouterPath({
@@ -162,7 +162,7 @@ describe("RecordingHeartbeat", () => {
     vi.useRealTimers();
   });
 
-  it("30초마다 생존 신호를 보내고, 녹음한 시간을 서버의 누적 시간으로 맞춘다", async () => {
+  it("10초마다 생존 신호를 보내고, 녹음한 시간을 서버의 누적 시간으로 맞춘다", async () => {
     await startRecording();
     renderRecordingHeartbeat();
 
@@ -330,7 +330,7 @@ describe("RecordingHeartbeat", () => {
     expect(router.state.location.pathname).toBe(RECORDING_PATH);
   });
 
-  it("녹음한 시간이 2시간에 닿으면 30초 주기를 기다리지 않고 생존 신호를 보내, 서버가 끝낸 녹음을 올리고 홈으로 간다", async () => {
+  it("녹음한 시간이 2시간에 닿으면 10초 주기를 기다리지 않고 생존 신호를 보내, 서버가 끝낸 녹음을 올리고 홈으로 간다", async () => {
     respondHeartbeat(() =>
       HttpResponse.json({
         ...recordingHeartbeatResponse,
@@ -404,7 +404,7 @@ describe("RecordingHeartbeat", () => {
     expect(requests).toEqual(["heartbeat"]);
   });
 
-  it("서버 시간으로 맞춘 뒤 남은 시간을 넘겨서야 확인해도, 30초 주기를 기다리지 않고 신호를 보낸다", async () => {
+  it("서버 시간으로 맞춘 뒤 남은 시간을 넘겨서야 확인해도, 10초 주기를 기다리지 않고 신호를 보낸다", async () => {
     const requests = collectRequests();
     await startRecording();
     renderRecordingHeartbeat();

@@ -279,7 +279,7 @@ class SearchFollowupQuestionAcceptanceTest {
     }
 
     @Test
-    @DisplayName("중지된 부분 답변 뒤 새 질문이 완료되고 늦은 이전 작업과 녹음은 영향을 주지 않는다")
+    @DisplayName("중지 뒤 후속 질문은 DRAFT 근거로 완료하고 늦은 작업과 녹음은 영향을 주지 않는다")
     void ask_success_stopThenFollowupAndRecording() throws Exception {
         // given
         long recording = fixtures.saveRecording(
@@ -306,12 +306,6 @@ class SearchFollowupQuestionAcceptanceTest {
                 workspace,
                 member
         );
-        jdbc.sql("UPDATE documents SET status = 'ARCHIVED', archived_at = created_at WHERE id = :id")
-                .param(
-                        "id",
-                        document
-                )
-                .update();
         List<SearchDocumentResult> docs = List.of(
                 new SearchDocumentResult(
                         document,

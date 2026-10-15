@@ -63,13 +63,13 @@ export const recordingEndResponse = {
   endedAt: fromNow(0),
 } satisfies RecordingEndResponse;
 
-// 서버는 마지막 신호부터 120초 동안 신호가 없으면 녹음을 끝내요
+// 서버는 마지막 신호부터 30초 동안 신호가 없으면 녹음을 끝내요
 export const recordingHeartbeatResponse = {
   recordingId: 10,
   status: "RECORDING",
   elapsedMillis: 10 * MINUTE,
   lastSeenAt: fromNow(0),
-  expiresAt: fromNow(2 * MINUTE),
+  expiresAt: fromNow(MINUTE / 2),
   endedAt: null,
   endReason: null,
   serverNow: fromNow(0),
