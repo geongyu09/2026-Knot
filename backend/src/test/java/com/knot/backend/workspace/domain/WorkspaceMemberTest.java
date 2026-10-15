@@ -13,24 +13,102 @@ import org.junit.jupiter.params.provider.ValueSource;
 class WorkspaceMemberTest {
     private static final Instant JOINED_AT = Instant.parse("2026-08-24T00:00:00Z");
 
-    @DisplayName("승계가 확인되지 않은 대상이 있으면 OWNER 탈퇴를 거부한다")
-    @ParameterizedTest
-    @ValueSource(strings = {"missing", "self", "otherWorkspace", "member", "leftOwner"})
-    void leaveAfterOwnershipTransfer_failure_invalidSuccessor(String scenario) {
+    @DisplayName("활성 OWNER가 활성 MEMBER에게 승계하면 대상은 OWNER가 되고 요청자는 탈퇴한다")
+    @Test
+    void transferOwnershipTo_success() {
         // given
-        WorkspaceMember owner = WorkspaceMember.create(
-                1L,
+        WorkspaceMember owner = activeMember(
                 2L,
-                WorkspaceMemberRole.OWNER,
-                JOINED_AT
+                WorkspaceMemberRole.OWNER
         );
         owner.markLastViewed();
-        WorkspaceMember successor = invalidSuccessor(scenario);
+        WorkspaceMember successor = activeMember(
+                3L,
+                WorkspaceMemberRole.MEMBER
+        );
+        successor.markLastViewed();
+        Instant leftAt = JOINED_AT.plusSeconds(1);
 
         // when
-        ThrowingCallable action = () -> owner.leaveAfterOwnershipTransfer(
+        owner.transferOwnershipTo(
                 successor,
+                leftAt
+        );
+
+        // then
+        assertThat(successor.getRole()).isEqualTo(WorkspaceMemberRole.OWNER);
+        assertThat(successor.isActive()).isTrue();
+        assertThat(successor.isLastViewed()).isTrue();
+        assertThat(successor.getJoinedAt()).isEqualTo(JOINED_AT);
+        assertThat(owner.getRole()).isEqualTo(WorkspaceMemberRole.OWNER);
+        assertThat(owner.getLeftAt()).isEqualTo(leftAt);
+        assertThat(owner.isLastViewed()).isFalse();
+        assertThat(owner.isActive()).isFalse();
+    }
+
+    @DisplayName("본인에게 승계하면 본인 지정 오류로 거부하고 상태를 바꾸지 않는다")
+    @Test
+    void transferOwnershipTo_failure_self() {
+        // given
+        WorkspaceMember owner = activeMember(
+                2L,
+                WorkspaceMemberRole.OWNER
+        );
+
+        // when
+        ThrowingCallable action = () -> owner.transferOwnershipTo(
+                owner,
                 JOINED_AT.plusSeconds(1)
+        );
+
+        // then
+        assertThatThrownBy(action).isInstanceOf(WorkspaceException.class)
+                .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
+                .isEqualTo(WorkspaceErrorCode.INVALID_WORKSPACE_OWNERSHIP_TRANSFER_TARGET);
+        assertThat(owner.getRole()).isEqualTo(WorkspaceMemberRole.OWNER);
+        assertThat(owner.isActive()).isTrue();
+    }
+
+    @DisplayName("활성 OWNER가 아닌 요청자는 승계할 수 없다")
+    @ParameterizedTest
+    @ValueSource(strings = {"member", "leftOwner"})
+    void transferOwnershipTo_failure_notActiveOwner(String actorState) {
+        // given
+        WorkspaceMember actor = actor(actorState);
+        WorkspaceMember successor = activeMember(
+                3L,
+                WorkspaceMemberRole.MEMBER
+        );
+
+        // when
+        ThrowingCallable action = () -> actor.transferOwnershipTo(
+                successor,
+                JOINED_AT.plusSeconds(2)
+        );
+
+        // then
+        assertThatThrownBy(action).isInstanceOf(WorkspaceException.class)
+                .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
+                .isEqualTo(WorkspaceErrorCode.WORKSPACE_OWNER_REQUIRED);
+        assertThat(successor.getRole()).isEqualTo(WorkspaceMemberRole.MEMBER);
+    }
+
+    @DisplayName("승계 대상이 같은 워크스페이스의 활성 MEMBER가 아니면 승계를 거부하고 상태를 바꾸지 않는다")
+    @ParameterizedTest
+    @ValueSource(strings = {"missing", "otherWorkspace", "owner", "leftMember"})
+    void transferOwnershipTo_failure_invalidSuccessor(String successorState) {
+        // given
+        WorkspaceMember owner = activeMember(
+                2L,
+                WorkspaceMemberRole.OWNER
+        );
+        owner.markLastViewed();
+        WorkspaceMember successor = successor(successorState);
+
+        // when
+        ThrowingCallable action = () -> owner.transferOwnershipTo(
+                successor,
+                JOINED_AT.plusSeconds(2)
         );
 
         // then
@@ -39,7 +117,33 @@ class WorkspaceMemberTest {
                 .isEqualTo(WorkspaceErrorCode.WORKSPACE_OWNERSHIP_TRANSFER_TARGET_CONFLICT);
         assertThat(owner.isActive()).isTrue();
         assertThat(owner.isLastViewed()).isTrue();
-        assertThat(owner.getRole()).isEqualTo(WorkspaceMemberRole.OWNER);
+    }
+
+    @DisplayName("승계 시각이 참여 시각보다 빠르면 대상 역할과 요청자 상태를 바꾸지 않는다")
+    @Test
+    void transferOwnershipTo_failure_leftAtBeforeJoinedAt() {
+        // given
+        WorkspaceMember owner = activeMember(
+                2L,
+                WorkspaceMemberRole.OWNER
+        );
+        WorkspaceMember successor = activeMember(
+                3L,
+                WorkspaceMemberRole.MEMBER
+        );
+
+        // when
+        ThrowingCallable action = () -> owner.transferOwnershipTo(
+                successor,
+                JOINED_AT.minusSeconds(1)
+        );
+
+        // then
+        assertThatThrownBy(action).isInstanceOf(WorkspaceException.class)
+                .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
+                .isEqualTo(WorkspaceErrorCode.INVALID_WORKSPACE_MEMBER_LEFT_AT);
+        assertThat(successor.getRole()).isEqualTo(WorkspaceMemberRole.MEMBER);
+        assertThat(owner.isActive()).isTrue();
     }
 
     @DisplayName("워크스페이스와 멤버 식별자 및 역할로 멤버십을 생성한다")
@@ -102,105 +206,6 @@ class WorkspaceMemberTest {
         assertThat(workspaceMember.isLastViewed()).isFalse();
     }
 
-    @DisplayName("활성 MEMBER가 OWNER 권한을 승계하면 역할만 OWNER로 바뀐다")
-    @Test
-    void receiveOwnership_success() {
-        // given
-        WorkspaceMember workspaceMember = WorkspaceMember.create(
-                1L,
-                2L,
-                WorkspaceMemberRole.MEMBER,
-                JOINED_AT
-        );
-        workspaceMember.markLastViewed();
-
-        // when
-        workspaceMember.receiveOwnership();
-
-        // then
-        assertThat(workspaceMember.getRole()).isEqualTo(WorkspaceMemberRole.OWNER);
-        assertThat(workspaceMember.getJoinedAt()).isEqualTo(JOINED_AT);
-        assertThat(workspaceMember.isLastViewed()).isTrue();
-        assertThat(workspaceMember.getLeftAt()).isNull();
-        assertThat(workspaceMember.isActive()).isTrue();
-    }
-
-    @DisplayName("탈퇴한 MEMBER는 OWNER 권한을 승계할 수 없다")
-    @Test
-    void receiveOwnership_failure_leftMember() {
-        // given
-        WorkspaceMember workspaceMember = WorkspaceMember.create(
-                1L,
-                2L,
-                WorkspaceMemberRole.MEMBER,
-                JOINED_AT
-        );
-        Instant leftAt = JOINED_AT.plusSeconds(1);
-        workspaceMember.leave(
-                leftAt,
-                2L
-        );
-
-        // when
-        ThrowingCallable action = workspaceMember::receiveOwnership;
-
-        // then
-        assertThatThrownBy(action).isInstanceOf(WorkspaceException.class)
-                .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
-                .isEqualTo(WorkspaceErrorCode.WORKSPACE_OWNERSHIP_TRANSFER_TARGET_CONFLICT);
-        assertThat(workspaceMember.getRole()).isEqualTo(WorkspaceMemberRole.MEMBER);
-        assertThat(workspaceMember.getLeftAt()).isEqualTo(leftAt);
-    }
-
-    @DisplayName("이미 OWNER인 멤버십은 OWNER 권한을 다시 승계할 수 없다")
-    @Test
-    void receiveOwnership_failure_owner() {
-        // given
-        WorkspaceMember workspaceMember = WorkspaceMember.create(
-                1L,
-                2L,
-                WorkspaceMemberRole.OWNER,
-                JOINED_AT
-        );
-
-        // when
-        ThrowingCallable action = workspaceMember::receiveOwnership;
-
-        // then
-        assertThatThrownBy(action).isInstanceOf(WorkspaceException.class)
-                .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
-                .isEqualTo(WorkspaceErrorCode.WORKSPACE_OWNERSHIP_TRANSFER_TARGET_CONFLICT);
-        assertThat(workspaceMember.getRole()).isEqualTo(WorkspaceMemberRole.OWNER);
-        assertThat(workspaceMember.getLeftAt()).isNull();
-    }
-
-    @DisplayName("탈퇴한 OWNER는 OWNER 권한을 승계할 수 없다")
-    @Test
-    void receiveOwnership_failure_leftOwner() {
-        // given
-        WorkspaceMember workspaceMember = WorkspaceMember.create(
-                1L,
-                2L,
-                WorkspaceMemberRole.OWNER,
-                JOINED_AT
-        );
-        Instant leftAt = JOINED_AT.plusSeconds(1);
-        workspaceMember.leave(
-                leftAt,
-                1L
-        );
-
-        // when
-        ThrowingCallable action = workspaceMember::receiveOwnership;
-
-        // then
-        assertThatThrownBy(action).isInstanceOf(WorkspaceException.class)
-                .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
-                .isEqualTo(WorkspaceErrorCode.WORKSPACE_OWNERSHIP_TRANSFER_TARGET_CONFLICT);
-        assertThat(workspaceMember.getRole()).isEqualTo(WorkspaceMemberRole.OWNER);
-        assertThat(workspaceMember.getLeftAt()).isEqualTo(leftAt);
-    }
-
     @DisplayName("멤버십을 탈퇴 상태로 바꾸면 마지막 조회 상태도 해제한다")
     @Test
     void leave_success() {
@@ -224,154 +229,6 @@ class WorkspaceMemberTest {
         assertThat(workspaceMember.isActive()).isFalse();
         assertThat(workspaceMember.getLeftAt()).isEqualTo(leftAt);
         assertThat(workspaceMember.isLastViewed()).isFalse();
-    }
-
-    @DisplayName("승계 후 OWNER 탈퇴는 역할과 참여 시각을 보존하고 마지막 조회 상태를 해제한다")
-    @Test
-    void leaveAfterOwnershipTransfer_success() {
-        // given
-        WorkspaceMember workspaceMember = WorkspaceMember.create(
-                1L,
-                2L,
-                WorkspaceMemberRole.MEMBER,
-                JOINED_AT
-        );
-        workspaceMember.markLastViewed();
-        workspaceMember.receiveOwnership();
-        Instant leftAt = JOINED_AT.plusSeconds(1);
-
-        // when
-        workspaceMember.leaveAfterOwnershipTransfer(
-                ownershipSuccessor(),
-                leftAt
-        );
-
-        // then
-        assertThat(workspaceMember.getRole()).isEqualTo(WorkspaceMemberRole.OWNER);
-        assertThat(workspaceMember.getJoinedAt()).isEqualTo(JOINED_AT);
-        assertThat(workspaceMember.getLeftAt()).isEqualTo(leftAt);
-        assertThat(workspaceMember.isLastViewed()).isFalse();
-        assertThat(workspaceMember.isActive()).isFalse();
-    }
-
-    @DisplayName("활성 MEMBER는 승계 후 탈퇴를 수행할 수 없다")
-    @Test
-    void leaveAfterOwnershipTransfer_failure_member() {
-        // given
-        WorkspaceMember workspaceMember = WorkspaceMember.create(
-                1L,
-                2L,
-                WorkspaceMemberRole.MEMBER,
-                JOINED_AT
-        );
-        workspaceMember.markLastViewed();
-        Instant leftAt = JOINED_AT.plusSeconds(1);
-
-        // when
-        ThrowingCallable action = () -> workspaceMember.leaveAfterOwnershipTransfer(
-                ownershipSuccessor(),
-                leftAt
-        );
-
-        // then
-        assertThatThrownBy(action).isInstanceOf(WorkspaceException.class)
-                .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
-                .isEqualTo(WorkspaceErrorCode.WORKSPACE_OWNER_REQUIRED);
-        assertThat(workspaceMember.getRole()).isEqualTo(WorkspaceMemberRole.MEMBER);
-        assertThat(workspaceMember.getLeftAt()).isNull();
-        assertThat(workspaceMember.isLastViewed()).isTrue();
-    }
-
-    @DisplayName("탈퇴한 MEMBER는 승계 후 탈퇴를 수행할 수 없다")
-    @Test
-    void leaveAfterOwnershipTransfer_failure_leftMember() {
-        // given
-        WorkspaceMember workspaceMember = WorkspaceMember.create(
-                1L,
-                2L,
-                WorkspaceMemberRole.MEMBER,
-                JOINED_AT
-        );
-        Instant firstLeftAt = JOINED_AT.plusSeconds(1);
-        workspaceMember.leave(
-                firstLeftAt,
-                2L
-        );
-        Instant secondLeftAt = JOINED_AT.plusSeconds(2);
-
-        // when
-        ThrowingCallable action = () -> workspaceMember.leaveAfterOwnershipTransfer(
-                ownershipSuccessor(),
-                secondLeftAt
-        );
-
-        // then
-        assertThatThrownBy(action).isInstanceOf(WorkspaceException.class)
-                .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
-                .isEqualTo(WorkspaceErrorCode.WORKSPACE_OWNER_REQUIRED);
-        assertThat(workspaceMember.getRole()).isEqualTo(WorkspaceMemberRole.MEMBER);
-        assertThat(workspaceMember.getLeftAt()).isEqualTo(firstLeftAt);
-    }
-
-    @DisplayName("탈퇴한 OWNER는 승계 후 탈퇴를 수행할 수 없다")
-    @Test
-    void leaveAfterOwnershipTransfer_failure_leftOwner() {
-        // given
-        WorkspaceMember workspaceMember = WorkspaceMember.create(
-                1L,
-                2L,
-                WorkspaceMemberRole.OWNER,
-                JOINED_AT
-        );
-        Instant firstLeftAt = JOINED_AT.plusSeconds(1);
-        workspaceMember.leave(
-                firstLeftAt,
-                1L
-        );
-        Instant secondLeftAt = JOINED_AT.plusSeconds(2);
-
-        // when
-        ThrowingCallable action = () -> workspaceMember.leaveAfterOwnershipTransfer(
-                ownershipSuccessor(),
-                secondLeftAt
-        );
-
-        // then
-        assertThatThrownBy(action).isInstanceOf(WorkspaceException.class)
-                .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
-                .isEqualTo(WorkspaceErrorCode.WORKSPACE_OWNER_REQUIRED);
-        assertThat(workspaceMember.getRole()).isEqualTo(WorkspaceMemberRole.OWNER);
-        assertThat(workspaceMember.getLeftAt()).isEqualTo(firstLeftAt);
-    }
-
-    @DisplayName("승계 후 탈퇴 시각이 참여 시각보다 빠르면 상태를 변경하지 않는다")
-    @Test
-    void leaveAfterOwnershipTransfer_failure_leftAtBeforeJoinedAt() {
-        // given
-        WorkspaceMember workspaceMember = WorkspaceMember.create(
-                1L,
-                2L,
-                WorkspaceMemberRole.MEMBER,
-                JOINED_AT
-        );
-        workspaceMember.markLastViewed();
-        workspaceMember.receiveOwnership();
-        Instant leftAtBeforeJoinedAt = JOINED_AT.minusSeconds(1);
-
-        // when
-        ThrowingCallable action = () -> workspaceMember.leaveAfterOwnershipTransfer(
-                ownershipSuccessor(),
-                leftAtBeforeJoinedAt
-        );
-
-        // then
-        assertThatThrownBy(action).isInstanceOf(WorkspaceException.class)
-                .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
-                .isEqualTo(WorkspaceErrorCode.INVALID_WORKSPACE_MEMBER_LEFT_AT);
-        assertThat(workspaceMember.getRole()).isEqualTo(WorkspaceMemberRole.OWNER);
-        assertThat(workspaceMember.getLeftAt()).isNull();
-        assertThat(workspaceMember.isLastViewed()).isTrue();
-        assertThat(workspaceMember.isActive()).isTrue();
     }
 
     @DisplayName("이미 탈퇴한 멤버십에 다시 탈퇴를 요청하면 기존 탈퇴 시각을 유지한다")
@@ -576,31 +433,63 @@ class WorkspaceMemberTest {
                 .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
                 .isEqualTo(WorkspaceErrorCode.INVALID_WORKSPACE_MEMBER_JOINED_AT);
     }
-    private WorkspaceMember ownershipSuccessor() {
+
+    private WorkspaceMember activeMember(
+            long memberId,
+            WorkspaceMemberRole role
+    ) {
         return WorkspaceMember.create(
                 1L,
-                3L,
-                WorkspaceMemberRole.OWNER,
+                memberId,
+                role,
                 JOINED_AT
         );
     }
 
-    private WorkspaceMember invalidSuccessor(String scenario) {
-        if (scenario.equals("missing")) {
-            return null;
-        }
-        WorkspaceMember successor = WorkspaceMember.create(
-                scenario.equals("otherWorkspace") ? 2L : 1L,
-                scenario.equals("self") ? 2L : 3L,
-                scenario.equals("member") ? WorkspaceMemberRole.MEMBER : WorkspaceMemberRole.OWNER,
-                JOINED_AT
-        );
-        if (scenario.equals("leftOwner")) {
-            successor.leave(
-                    JOINED_AT.plusSeconds(1),
-                    1L
+    private WorkspaceMember actor(String actorState) {
+        if (actorState.equals("member")) {
+            return activeMember(
+                    2L,
+                    WorkspaceMemberRole.MEMBER
             );
         }
-        return successor;
+        WorkspaceMember leftOwner = activeMember(
+                2L,
+                WorkspaceMemberRole.OWNER
+        );
+        leftOwner.leave(
+                JOINED_AT.plusSeconds(1),
+                1L
+        );
+        return leftOwner;
+    }
+
+    private WorkspaceMember successor(String successorState) {
+        return switch (successorState) {
+            case "missing" -> null;
+            case "otherWorkspace" -> WorkspaceMember.create(
+                    2L,
+                    3L,
+                    WorkspaceMemberRole.MEMBER,
+                    JOINED_AT
+            );
+            case "owner" -> activeMember(
+                    3L,
+                    WorkspaceMemberRole.OWNER
+            );
+            default -> leftMember();
+        };
+    }
+
+    private WorkspaceMember leftMember() {
+        WorkspaceMember member = activeMember(
+                3L,
+                WorkspaceMemberRole.MEMBER
+        );
+        member.leave(
+                JOINED_AT.plusSeconds(1),
+                2L
+        );
+        return member;
     }
 }

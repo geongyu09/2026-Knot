@@ -15,7 +15,6 @@ import com.knot.backend.document.infrastructure.DocumentConfirmationQueryAdapter
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import com.knot.backend.workspace.application.WorkspaceLeaveService;
-import com.knot.backend.workspace.application.WorkspaceOwnershipTransferService;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import java.time.Clock;
 import java.time.Instant;
@@ -49,8 +48,6 @@ class DocumentConfirmationTransactionIntegrationTest {
     private DocumentConfirmationCommandService service;
     @Autowired
     private WorkspaceLeaveService leave;
-    @Autowired
-    private WorkspaceOwnershipTransferService transfer;
     @Autowired
     private JdbcClient jdbc;
     @MockitoBean
@@ -620,7 +617,7 @@ class DocumentConfirmationTransactionIntegrationTest {
             long successorId
     ) {
         if (ownershipTransfer) {
-            transfer.transferOwnership(
+            leave.transferOwnership(
                     memberId,
                     workspaceId,
                     successorId

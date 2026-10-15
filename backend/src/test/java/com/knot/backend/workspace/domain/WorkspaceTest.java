@@ -152,4 +152,122 @@ class WorkspaceTest {
                 .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
                 .isEqualTo(WorkspaceErrorCode.INVALID_WORKSPACE_DELETED_AT);
     }
+
+    @DisplayName("다른 활성 멤버가 남는 탈퇴는 멤버만 탈퇴시키고 워크스페이스를 유지한다")
+    @Test
+    void removeMember_success_otherMembersRemain() {
+        // given
+        Workspace workspace = Workspace.create(
+                "Knot 팀",
+                CREATED_AT
+        );
+        WorkspaceMember member = WorkspaceMember.create(
+                1L,
+                2L,
+                WorkspaceMemberRole.MEMBER,
+                CREATED_AT
+        );
+        Instant leftAt = CREATED_AT.plusSeconds(1);
+
+        // when
+        workspace.removeMember(
+                member,
+                2L,
+                leftAt
+        );
+
+        // then
+        assertThat(member.getLeftAt()).isEqualTo(leftAt);
+        assertThat(workspace.isDeleted()).isFalse();
+    }
+
+    @DisplayName("마지막 활성 멤버가 탈퇴하면 같은 시각으로 워크스페이스를 논리 삭제한다")
+    @Test
+    void removeMember_success_lastActiveMemberDeletesWorkspace() {
+        // given
+        Workspace workspace = Workspace.create(
+                "Knot 팀",
+                CREATED_AT
+        );
+        WorkspaceMember owner = WorkspaceMember.create(
+                1L,
+                2L,
+                WorkspaceMemberRole.OWNER,
+                CREATED_AT
+        );
+        Instant leftAt = CREATED_AT.plusSeconds(1);
+
+        // when
+        workspace.removeMember(
+                owner,
+                1L,
+                leftAt
+        );
+
+        // then
+        assertThat(owner.getLeftAt()).isEqualTo(leftAt);
+        assertThat(workspace.getDeletedAt()).isEqualTo(leftAt);
+    }
+
+    @DisplayName("이미 탈퇴한 멤버는 마지막 멤버 수여도 워크스페이스를 삭제하지 않는다")
+    @Test
+    void removeMember_success_alreadyLeftMemberKeepsWorkspace() {
+        // given
+        Workspace workspace = Workspace.create(
+                "Knot 팀",
+                CREATED_AT
+        );
+        WorkspaceMember member = WorkspaceMember.create(
+                1L,
+                2L,
+                WorkspaceMemberRole.MEMBER,
+                CREATED_AT
+        );
+        Instant firstLeftAt = CREATED_AT.plusSeconds(1);
+        member.leave(
+                firstLeftAt,
+                2L
+        );
+
+        // when
+        workspace.removeMember(
+                member,
+                1L,
+                CREATED_AT.plusSeconds(2)
+        );
+
+        // then
+        assertThat(member.getLeftAt()).isEqualTo(firstLeftAt);
+        assertThat(workspace.isDeleted()).isFalse();
+    }
+
+    @DisplayName("다른 활성 멤버가 있는 OWNER의 탈퇴는 승계 필요 오류로 거부하고 워크스페이스를 유지한다")
+    @Test
+    void removeMember_failure_ownerWithOtherActiveMember() {
+        // given
+        Workspace workspace = Workspace.create(
+                "Knot 팀",
+                CREATED_AT
+        );
+        WorkspaceMember owner = WorkspaceMember.create(
+                1L,
+                2L,
+                WorkspaceMemberRole.OWNER,
+                CREATED_AT
+        );
+
+        // when
+        ThrowingCallable action = () -> workspace.removeMember(
+                owner,
+                2L,
+                CREATED_AT.plusSeconds(1)
+        );
+
+        // then
+        assertThatThrownBy(action).isInstanceOf(WorkspaceException.class)
+                .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
+                .isEqualTo(WorkspaceErrorCode.WORKSPACE_OWNER_TRANSFER_REQUIRED);
+        assertThat(owner.isActive()).isTrue();
+        assertThat(workspace.isDeleted()).isFalse();
+    }
 }

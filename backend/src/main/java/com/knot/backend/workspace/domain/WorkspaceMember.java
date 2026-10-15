@@ -81,13 +81,6 @@ public class WorkspaceMember {
         lastViewed = false;
     }
 
-    public void receiveOwnership() {
-        if (!isActive() || role != WorkspaceMemberRole.MEMBER) {
-            throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_OWNERSHIP_TRANSFER_TARGET_CONFLICT);
-        }
-        this.role = WorkspaceMemberRole.OWNER;
-    }
-
     public void leave(
             Instant leftAt,
             long activeMemberCount
@@ -101,24 +94,44 @@ public class WorkspaceMember {
         this.lastViewed = false;
     }
 
-    public void leaveAfterOwnershipTransfer(
+    public void transferOwnershipTo(
             WorkspaceMember successor,
             Instant leftAt
     ) {
-        if (!isActive() || role != WorkspaceMemberRole.OWNER) {
-            throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_OWNER_REQUIRED);
-        }
-        if (successor == null || !successor.isActive() || successor.getRole() != WorkspaceMemberRole.OWNER
-                || !workspaceId.equals(successor.getWorkspaceId()) || memberId.equals(successor.getMemberId())) {
-            throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_OWNERSHIP_TRANSFER_TARGET_CONFLICT);
-        }
+        validateNotSelf(successor);
+        validateActiveOwner();
+        validateSuccessor(successor);
         validateLeftAt(leftAt);
+        successor.role = WorkspaceMemberRole.OWNER;
         this.leftAt = leftAt;
         this.lastViewed = false;
     }
 
     public boolean isActive() {
         return leftAt == null;
+    }
+
+    public boolean isOwner() {
+        return role == WorkspaceMemberRole.OWNER;
+    }
+
+    private void validateNotSelf(WorkspaceMember successor) {
+        if (successor != null && memberId.equals(successor.memberId)) {
+            throw new WorkspaceException(WorkspaceErrorCode.INVALID_WORKSPACE_OWNERSHIP_TRANSFER_TARGET);
+        }
+    }
+
+    private void validateActiveOwner() {
+        if (!isActive() || !isOwner()) {
+            throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_OWNER_REQUIRED);
+        }
+    }
+
+    private void validateSuccessor(WorkspaceMember successor) {
+        if (successor == null || !successor.isActive() || successor.role != WorkspaceMemberRole.MEMBER
+                || !workspaceId.equals(successor.workspaceId)) {
+            throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_OWNERSHIP_TRANSFER_TARGET_CONFLICT);
+        }
     }
 
     private void validateWorkspaceId(Long workspaceId) {
