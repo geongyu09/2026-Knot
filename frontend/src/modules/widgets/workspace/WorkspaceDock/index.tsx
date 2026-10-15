@@ -27,6 +27,7 @@ const fadeIn = keyframes`
  *
  * 접혀 있을 때는 동그란 버튼 하나이고, 누르면 질문 입력창으로 폭이 벌어지며 펼쳐져요.
  * 화면 아무 데서나 글자를 쳐도 같은 자리로 이어지고, 그 방법은 처음 몇 번 말풍선으로 알려줘요.
+ * 접혀 있어도 입력창은 보이지 않게 남겨 두고, 글자가 들어오면 같은 입력창 그대로 펼쳐요. 입력창이 바뀌면 조립 중인 한글이 끊기기 때문이에요.
  * 펼친 뒤 독 바깥을 누르면 다시 접혀요.
  * 채팅이 곧 화면인 탐색에서는 접지 않고 늘 펼쳐 둬요.
  *
@@ -70,22 +71,24 @@ export default function WorkspaceDock() {
     >
       {isHintVisible && <DockHintTooltip />}
 
+      <InputContainer $isHidden={!isExpanded}>
+        <GhostIcon size={24} />
+
+        <MessageField
+          ref={textareaRef}
+          rows={1}
+          aria-label="무엇이든 요청하세요"
+          placeholder="무엇이든 요청하세요"
+          // 접힌 독에서는 보이지 않으므로 Tab으로 들르지 않아요
+          tabIndex={isExpanded ? undefined : -1}
+          value={message}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+        />
+      </InputContainer>
+
       {isExpanded ? (
         <>
-          <InputContainer>
-            <GhostIcon size={24} />
-
-            <MessageField
-              ref={textareaRef}
-              rows={1}
-              aria-label="무엇이든 요청하세요"
-              placeholder="무엇이든 요청하세요"
-              value={message}
-              onChange={handleChange}
-              onKeyDown={handleKeyDown}
-            />
-          </InputContainer>
-
           <Controls>
             {isMicVisible && (
               <>
@@ -234,8 +237,13 @@ const MicButton = styled(SlotButton)`
   color: ${({ theme }) => theme.neutral[500]};
 `;
 
-/** 고스트 아이콘과 입력창을 묶는 자리. 여러 줄로 자라면 아이콘은 첫 줄에 붙어요. */
-const InputContainer = styled.div`
+/**
+ * 고스트 아이콘과 입력창을 묶는 자리. 여러 줄로 자라면 아이콘은 첫 줄에 붙어요.
+ *
+ * 접힌 독에서는 커서를 받을 수 있게 남겨 두되 자리를 차지하지 않게 감춰요.
+ * `display: none`이나 `visibility: hidden`은 커서를 받지 못해 쓰지 않아요.
+ */
+const InputContainer = styled.div<{ $isHidden: boolean }>`
   display: flex;
   flex: 1;
   align-self: center;
@@ -247,6 +255,22 @@ const InputContainer = styled.div`
     flex-shrink: 0;
     color: ${({ theme }) => theme.neutral[300]};
   }
+
+  ${({ $isHidden }) =>
+    $isHidden &&
+    `
+    && {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      opacity: 0;
+      pointer-events: none;
+      /* 펼칠 때 독 안의 다른 것들처럼 뒤따라 나타나도록, 감춰 둔 동안은 모션을 꺼 둬요 */
+      animation: none;
+    }
+  `}
 `;
 
 const MessageField = styled(Textarea)`
