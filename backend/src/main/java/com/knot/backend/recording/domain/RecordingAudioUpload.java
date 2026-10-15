@@ -96,7 +96,6 @@ public class RecordingAudioUpload {
         );
     }
 
-    // 이전에 발급한 URL도 만료 전까지 같은 key에 PUT할 수 있으므로, 재발급 때 파일 형식·크기를 바꾸지 않는다.
     public void validateReissuable(
             String contentType,
             long contentLength
@@ -119,9 +118,19 @@ public class RecordingAudioUpload {
         return status == RecordingAudioUploadStatus.COMPLETED;
     }
 
+    public boolean isAudioAvailable() {
+        return isCompleted() && deletedAt == null;
+    }
+
+    public void validateAudioAvailable() {
+        if (!isAudioAvailable()) {
+            throw new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_COMPLETED);
+        }
+    }
+
     public boolean isRetentionExpired(Instant now) {
         validateRetentionTime(now);
-        if (!isCompleted() || deletedAt != null) {
+        if (!isAudioAvailable()) {
             return false;
         }
         return !now.isBefore(completedAt.plus(AUDIO_RETENTION));
@@ -156,7 +165,6 @@ public class RecordingAudioUpload {
         }
     }
 
-    // 완료 전에 발급한 PUT URL은 만료 전까지 같은 key를 덮어쓸 수 있으므로, 이때 검증한 버전을 전사 입력으로 고정한다.
     public void complete(
             long storedContentLength,
             String storedContentType,

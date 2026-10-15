@@ -238,6 +238,101 @@ class RecordingAudioUploadTest {
                 .isEqualTo(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND);
     }
 
+    @Test
+    @DisplayName("완료되고 보존 삭제되지 않은 업로드는 사용할 수 있는 오디오다")
+    void isAudioAvailable_success_completedUpload() {
+        // given
+        RecordingAudioUpload upload = completed();
+
+        // when
+        boolean available = upload.isAudioAvailable();
+
+        // then
+        assertThat(available).isTrue();
+    }
+
+    @Test
+    @DisplayName("예약만 된 업로드는 사용할 수 있는 오디오가 아니다")
+    void isAudioAvailable_success_falseWhenReserved() {
+        // given
+        RecordingAudioUpload upload = reserved();
+
+        // when
+        boolean available = upload.isAudioAvailable();
+
+        // then
+        assertThat(available).isFalse();
+    }
+
+    @Test
+    @DisplayName("보존 삭제된 업로드는 사용할 수 있는 오디오가 아니다")
+    void isAudioAvailable_success_falseWhenDeleted() {
+        // given
+        RecordingAudioUpload upload = completed();
+        upload.recordDeleted(RESERVED_AT.plusSeconds(120));
+
+        // when
+        boolean available = upload.isAudioAvailable();
+
+        // then
+        assertThat(available).isFalse();
+    }
+
+    @Test
+    @DisplayName("사용할 수 있는 오디오는 검증을 통과한다")
+    void validateAudioAvailable_success_completedUpload() {
+        // given
+        RecordingAudioUpload upload = completed();
+
+        // when
+        Throwable failure = catchThrowable(upload::validateAudioAvailable);
+
+        // then
+        assertThat(failure).isNull();
+    }
+
+    @Test
+    @DisplayName("예약만 된 업로드는 업로드 미완료 오류로 거절한다")
+    void validateAudioAvailable_failure_reservedUpload() {
+        // given
+        RecordingAudioUpload upload = reserved();
+
+        // when
+        Throwable failure = catchThrowable(upload::validateAudioAvailable);
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.AUDIO_UPLOAD_NOT_COMPLETED);
+    }
+
+    @Test
+    @DisplayName("보존 삭제된 업로드는 업로드 미완료 오류로 거절한다")
+    void validateAudioAvailable_failure_deletedUpload() {
+        // given
+        RecordingAudioUpload upload = completed();
+        upload.recordDeleted(RESERVED_AT.plusSeconds(120));
+
+        // when
+        Throwable failure = catchThrowable(upload::validateAudioAvailable);
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.AUDIO_UPLOAD_NOT_COMPLETED);
+    }
+
+    private RecordingAudioUpload completed() {
+        RecordingAudioUpload upload = reserved();
+        upload.complete(
+                1024L,
+                "audio/webm",
+                "version-1",
+                RESERVED_AT.plusSeconds(60)
+        );
+        return upload;
+    }
+
     private RecordingAudioUpload reserved() {
         return RecordingAudioUpload.reserve(
                 1L,

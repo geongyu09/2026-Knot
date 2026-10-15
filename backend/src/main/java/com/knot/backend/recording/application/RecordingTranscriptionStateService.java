@@ -89,7 +89,7 @@ public class RecordingTranscriptionStateService {
         recording.validateEnded();
         RecordingAudioUpload upload = uploads.findByRecordingId(recordingId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
-        validateUpload(upload);
+        upload.validateAudioAvailable();
         RecordingTranscription transcription = transcriptions.findByRecordingSessionIdForUpdate(recordingId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED));
         if (transcription.getStatus() != TranscriptionStatus.FAILED) {
@@ -184,8 +184,6 @@ public class RecordingTranscriptionStateService {
             RecordingTranscriptionExecution execution,
             String failureCode
     ) {
-        // Workspace -> recording -> transcription is also the completion/deletion lock
-        // order.
         workspaces.findIncludingDeletedByIdForUpdate(execution.workspaceId());
         recordings.findByIdForUpdate(execution.recordingId());
         transcriptions.findByRecordingSessionIdForUpdate(execution.recordingId())
@@ -225,20 +223,13 @@ public class RecordingTranscriptionStateService {
         );
     }
 
-    private void validateUpload(RecordingAudioUpload upload) {
-        if (!upload.isCompleted() || upload.getDeletedAt() != null) {
-            throw new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_COMPLETED);
-        }
-    }
-
     private boolean hasAvailableUpload(long recordingId) {
         return uploads.findByRecordingId(recordingId)
-                .filter(value -> value.isCompleted() && value.getDeletedAt() == null)
+                .filter(RecordingAudioUpload::isAudioAvailable)
                 .isPresent();
     }
 
     private void validateTranscript(AiTranscript result) {
-        // HTTP에서는 JSON을 매핑하고 결과 값은 저장 전에 한 번 검사한다.
         if (result == null || result.schemaVersion() != 1 || result.rawWhisperJson() == null || result.rawWhisperJson()
                 .isBlank() || result.utterances()
                         .isEmpty()) {
