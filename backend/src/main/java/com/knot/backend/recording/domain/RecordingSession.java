@@ -366,7 +366,6 @@ public class RecordingSession {
         return currentIntervalStartedAt.plusMillis(MAX_RECORDING_MILLIS - accumulatedRecordingMillis);
     }
 
-    // 만료된 녹음의 제어 요청은 만료 종료를 남기고 이미 종료된 녹음으로 거절한다. 호출 트랜잭션은 이 예외로 롤백하지 않는다.
     private void endIfExpired(Instant now) {
         if (expireIfDue(now)) {
             throw new RecordingException(RecordingErrorCode.RECORDING_ALREADY_ENDED);

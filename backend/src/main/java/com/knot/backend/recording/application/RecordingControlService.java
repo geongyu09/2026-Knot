@@ -22,7 +22,6 @@ public class RecordingControlService {
     private final RecordingSessionRepository recordingSessionRepository;
     private final Clock clock;
 
-    // 만료된 녹음은 만료 종료를 커밋한 뒤 409로 응답해야 하므로 도메인 예외로 롤백하지 않는다.
     @Transactional(noRollbackFor = RecordingException.class)
     public RecordingPauseResult pause(
             long workspaceId,
@@ -40,7 +39,6 @@ public class RecordingControlService {
         return RecordingPauseResult.from(recordingSessionRepository.save(session));
     }
 
-    // 만료된 녹음은 만료 종료를 커밋한 뒤 409로 응답해야 하므로 도메인 예외로 롤백하지 않는다.
     @Transactional(noRollbackFor = RecordingException.class)
     public RecordingResumeResult resume(
             long workspaceId,
