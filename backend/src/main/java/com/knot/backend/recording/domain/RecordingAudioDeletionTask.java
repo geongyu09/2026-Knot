@@ -172,7 +172,7 @@ public class RecordingAudioDeletionTask {
                 && now.isBefore(executionDeadlineAt);
     }
 
-    private static Duration retryBackoff(int attempt) {
+    private Duration retryBackoff(int attempt) {
         int shift = Math.min(
                 Math.max(
                         attempt - 1,
