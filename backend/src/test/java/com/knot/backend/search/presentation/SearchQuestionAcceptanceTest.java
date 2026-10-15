@@ -137,9 +137,9 @@ class SearchQuestionAcceptanceTest {
     }
 
     @Test
-    @DisplayName("실제 HTTP에서 accepted를 먼저 받고 한글 delta·근거·제외 수·완료와 EOF를 받는다")
+    @DisplayName("실제 HTTP 첫 질문에서 DRAFT 근거·한글 delta·완료와 EOF를 받는다")
     void create_success_realSseAndUtf8() throws Exception {
-        long document = saveArchivedDocument(
+        long document = new SearchMessageFixtures(jdbc).saveDocument(
                 workspaceId,
                 memberId
         );

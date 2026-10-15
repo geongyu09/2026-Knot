@@ -5,9 +5,10 @@
 `POST /api/v1/workspaces/{workspaceId}/search/conversations`
 
 확인: 2026-10-11. 질문 접수·영속 생성 작업·SSE와 실제 MCP 문서 탐색·LLM 스트리밍 adapter를 구현했다.
-현재 Workspace의 ARCHIVED Document를 검색·목록·읽기 도구로 탐색한다. Transcript·오디오는 직접 검색하지 않는다.
+2026-10-14 #670: 현재 Workspace의 생성 완료 DRAFT·ARCHIVED Document를 개인 확인 여부와 무관하게 검색·목록·읽기 도구로 탐색한다.
+탐색 실행 시작 시각까지 생성된 문서를 포함하며 보관 전환만으로 대상에서 제외하지 않는다. Transcript·오디오는 직접 검색하지 않는다.
 실제 사용 근거는 모두 저장하고 질문 관련도가 높은 최대 3개만 카드로 반환한다.
-별도 색인 없이 DB를 조회하므로 excluded_documents.count는 0이며 DRAFT·생성 Job을 포함하지 않는다.
+별도 색인 없이 DB를 조회하므로 excluded_documents.count는 0이다. DRAFT는 정상 탐색 대상이며 생성 중·실패 Job은 Document가 아니다.
 기본 worker·agent·LLM은 비활성이다. 활성화 설정 전 신규 요청은 접수 전에 500 ANSWER_GENERATION_UNAVAILABLE로 거절된다.
 실제 공급자와 테스트 PostgreSQL·HTTP·MCP를 연결한 두 합성 사례를 검증했다. 운영 배포·프록시 동작이나 일반적인 답변 품질을 보장하는 결과는 아니다.
 
@@ -79,7 +80,7 @@
 | progress | stage: String | No | SEARCHING 또는 GENERATING. 빠른 작업은 polling 사이 중간 단계를 건너뛸 수 있음 | GENERATING |
 | delta | answerMessageId: Long, text: String | No | DB에 저장된 이후 본문. 인접 조각이 합쳐져 전송될 수 있음 | 문서 기준은… |
 | evidence | answerMessageId: Long, items: Array | No | 실제 사용 근거 중 질문 관련도가 높은 최대 3개. 없으면 [] | 아래 예시 |
-| excluded_documents | count: Integer | No | 이번 DB 직접 탐색은 0. 확보한 경우 한 연결에서 한 번 전송. DRAFT·Job 미포함 | 0 |
+| excluded_documents | count: Integer | No | 이번 DB 직접 탐색은 0. 확보한 경우 한 연결에서 한 번 전송. 생성 Job 수를 세지 않음 | 0 |
 | completed | answerMessageId: Long, status: String | No | COMPLETED 종료 | COMPLETED |
 | failed | answerMessageId: Long, status: String, code: String | No | FAILED 종료. 공급자의 오류 원문을 노출하지 않음 | ANSWER_GENERATION_FAILED |
 | stopped | answerMessageId: Long, status: String | No | STOPPED 종료 상태의 전송 지원. 실제 중지 endpoint는 #568 범위 | STOPPED |
@@ -165,7 +166,7 @@ JSON 필드의 출력 순서와 delta 조각 수는 계약이 아니다.
 - 질문 검색 결과가 모두 비었으면 전체 문서 목록에 다른 문서가 있어도 검색 없음으로 완료한다.
   전체 목록의 존재만으로 질문의 관련 근거를 확보한 것으로 판단하지 않는다.
   검색 후보를 발견했거나 검색 없이 목록 후보만 조회한 경우, 본문을 하나도 읽지 않은 종료는 계속 실패한다.
-- 실제 사용 문서는 실제 읽은 Document의 부분집합이다. 같은 Workspace의 ARCHIVED Document만 연결하고 실제 근거 전체를 보존한다. SSE·메시지 GET은 질문 관련도가 높은 상위 3개 카드만 반환한다.
+- 실제 사용 문서는 실제 읽은 Document의 부분집합이다. 같은 Workspace의 DRAFT·ARCHIVED Document를 연결하고 실제 근거 전체를 보존한다. SSE·메시지 GET은 질문 관련도가 높은 상위 3개 카드만 반환한다.
 - 2026-10-12 사용자 지정 [기본 시스템 프롬프트](../../backend/src/main/resources/prompts/search-answer-system.md)를 적용했다. 현재 생성 adapter는 서로 다른 참조 문서를 최대 3개로 제한하고 `evidenceIds`가 실제 제공된 문서에 속하는지 검증한다. 기존 전체 근거 저장 구조와 과거 근거는 유지한다.
 - 모델 입력은 `question`, 문맥용 `conversationHistory`, 사실 근거용 `evidence`로 구분한다. 모델의 JSON 응답에서 `answer`만 delta·메시지 본문으로 전달한다. 확인 질문이 별도 필드에 있으면 본문 뒤에 전달하며, `status`·`decisionState`는 이번 API의 새 응답 필드나 메시지 생성 상태가 아니다.
 - 잘린 JSON·중복 필드·잘못된 상태 조합·허용되지 않은 근거는 접수 후 생성 실패로 처리한다. 이미 전송한 답변 부분은 보존하고, JSON 외피와 내부 메타데이터는 본문으로 저장하지 않는다. 별도 LLM 근거 추출 호출은 사용하지 않는다.
@@ -175,7 +176,7 @@ JSON 필드의 출력 순서와 delta 조각 수는 계약이 아니다.
 
 ## 구현·운영 선행 조건
 
-production retriever/generator와 ARCHIVED·제외 수 0 기준을 구현했다. 활성화에는 `SEARCH_WORKER_ENABLED=true`,
+production retriever/generator와 생성 완료 DRAFT·ARCHIVED·제외 수 0 기준을 구현했다. 활성화에는 `SEARCH_WORKER_ENABLED=true`,
 `SEARCH_AGENT_ENABLED=true`, `LLM_ENABLED=true`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_TOKEN`, 최소 32자
 `SEARCH_MCP_SIGNING_KEY`, 앱 내부의 `SEARCH_MCP_BASE_URL` 설정이 필요하다. 기본 MCP 주소는 현재 server.port의 IPv4 loopback이다.
 내부 HTTP 통신이 실제 배포 구조에 맞는지는 별도 확인한다. 토큰과 서명키를 브라우저·모델에 전달하지 않는다.
