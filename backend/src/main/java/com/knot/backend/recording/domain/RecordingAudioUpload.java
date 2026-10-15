@@ -144,7 +144,6 @@ public class RecordingAudioUpload {
         return !now.isBefore(completedAt.plus(AUDIO_RETENTION));
     }
 
-    // 완료 전에 발급한 PUT URL이 만료되고 늦은 업로드가 멈출 때까지 기다려야 저장소 삭제를 확정할 수 있다.
     public Instant deletionConfirmationAfter(
             Duration legacyUrlValidity,
             Duration uploadQuiescence,

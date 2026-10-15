@@ -172,7 +172,6 @@ public class RecordingAudioDeletionTask {
                 && now.isBefore(executionDeadlineAt);
     }
 
-    // 저장소 장애가 길어져도 삭제를 계속 시도하되 요청이 몰리지 않도록 1분부터 두 배씩, 최대 1시간까지 늦춘다.
     private static Duration retryBackoff(int attempt) {
         int shift = Math.min(
                 Math.max(
