@@ -1,5 +1,6 @@
+import useSearchMessagesQuery from "@api/queries/useSearchMessagesQuery";
 import useOpenedEvidenceMessage from "@hooks/domain/search/useOpenedEvidenceMessage";
-import useSearchMessages from "@hooks/domain/search/useSearchMessages";
+import { useParams } from "react-router";
 
 interface UseOpenedSearchEvidencesParams {
   /** 대화 ID. 없으면 아직 질문을 보내지 않은 새 대화예요. */
@@ -16,7 +17,12 @@ interface UseOpenedSearchEvidencesParams {
 const useOpenedSearchEvidences = ({
   conversationId,
 }: UseOpenedSearchEvidencesParams) => {
-  const { messages } = useSearchMessages({ conversationId });
+  const { workspaceId } = useParams();
+  const { data } = useSearchMessagesQuery({
+    workspaceId: Number(workspaceId),
+    conversationId,
+  });
+  const messages = data?.items ?? [];
   const { openedMessageId } = useOpenedEvidenceMessage();
 
   const openedAnswer = messages.find(

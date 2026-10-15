@@ -1,8 +1,9 @@
+import useSearchMessagesQuery from "@api/queries/useSearchMessagesQuery";
 import styled from "@emotion/styled";
 import useConversationId from "@hooks/domain/search/useConversationId";
 import useOpenedEvidenceMessage from "@hooks/domain/search/useOpenedEvidenceMessage";
 import useOpenedSearchEvidences from "@hooks/domain/search/useOpenedSearchEvidences";
-import useSearchMessages from "@hooks/domain/search/useSearchMessages";
+import { useParams } from "react-router";
 
 import FoundRecordsIcon from "@/assets/icons/foundRecords.svg";
 
@@ -17,7 +18,12 @@ import { findLatestAnswerWithEvidence } from "./utils/findLatestAnswerWithEviden
  */
 export default function SearchEvidenceToggle() {
   const { conversationId } = useConversationId();
-  const { messages } = useSearchMessages({ conversationId });
+  const { workspaceId } = useParams();
+  const { data } = useSearchMessagesQuery({
+    workspaceId: Number(workspaceId),
+    conversationId,
+  });
+  const messages = data?.items ?? [];
   const { evidences: openedEvidences } = useOpenedSearchEvidences({
     conversationId,
   });
