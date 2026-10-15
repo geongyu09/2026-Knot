@@ -23,7 +23,7 @@ import org.springframework.test.context.TestConstructor.AutowireMode;
 
 @Tag("integration")
 @DataJpaTest(properties = "spring.jpa.hibernate.ddl-auto=validate")
-@Import({AuthSessionRepositoryImpl.class, TestcontainersConfiguration.class})
+@Import({AuthSessionRepositoryImpl.class, ConsumedRefreshTokenRepositoryImpl.class, TestcontainersConfiguration.class})
 @TestApplicationProperties
 @TestConstructor(autowireMode = AutowireMode.ALL)
 class AuthSessionRepositoryTest {
