@@ -1,6 +1,7 @@
 package com.knot.backend.workspace.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.lang.reflect.Field;
@@ -178,50 +179,50 @@ class WorkspaceInvitationTest {
                 .isEqualTo(WorkspaceErrorCode.INVALID_WORKSPACE_INVITATION_CREATED_AT);
     }
 
-    @DisplayName("생성 이후 만료 전 시점에는 초대가 유효하다")
+    @DisplayName("생성 이후 만료 전 시점에는 초대를 사용할 수 있다")
     @Test
-    void isValidAt_success_beforeExpiration() {
+    void validateUsableAt_success_beforeExpiration() {
         // given
         WorkspaceInvitation invitation = createInvitation();
         Instant pointInTime = CREATED_AT.plusSeconds(1);
 
         // when
-        boolean valid = invitation.isValidAt(pointInTime);
+        ThrowingCallable action = () -> invitation.validateUsableAt(pointInTime);
 
         // then
-        assertThat(valid).isTrue();
+        assertThatCode(action).doesNotThrowAnyException();
     }
 
-    @DisplayName("생성 전 시점에는 초대가 유효하지 않다")
+    @DisplayName("생성 전 시점에는 원인을 구분하지 않는 초대 없음으로 거부한다")
     @Test
-    void isValidAt_failure_beforeCreation() {
+    void validateUsableAt_failure_beforeCreation() {
         // given
         WorkspaceInvitation invitation = createInvitation();
         Instant pointInTime = CREATED_AT.minusNanos(1);
 
         // when
-        boolean valid = invitation.isValidAt(pointInTime);
+        ThrowingCallable action = () -> invitation.validateUsableAt(pointInTime);
 
         // then
-        assertThat(valid).isFalse();
+        assertInvitationNotFound(action);
     }
 
-    @DisplayName("만료 시각부터 초대가 유효하지 않다")
+    @DisplayName("만료 시각부터 원인을 구분하지 않는 초대 없음으로 거부한다")
     @Test
-    void isValidAt_failure_atExpiration() {
+    void validateUsableAt_failure_atExpiration() {
         // given
         WorkspaceInvitation invitation = createInvitation();
 
         // when
-        boolean valid = invitation.isValidAt(invitation.getExpiresAt());
+        ThrowingCallable action = () -> invitation.validateUsableAt(invitation.getExpiresAt());
 
         // then
-        assertThat(valid).isFalse();
+        assertInvitationNotFound(action);
     }
 
-    @DisplayName("과거에 무효화된 초대는 조회 시점과 무관하게 유효하지 않다")
+    @DisplayName("과거에 무효화된 초대는 조회 시점과 무관하게 초대 없음으로 거부한다")
     @Test
-    void isValidAt_failure_invalidated() {
+    void validateUsableAt_failure_invalidated() {
         // given
         WorkspaceInvitation invitation = createInvitation();
         setInvalidatedAt(
@@ -230,26 +231,63 @@ class WorkspaceInvitationTest {
         );
 
         // when
-        boolean valid = invitation.isValidAt(CREATED_AT.plusSeconds(2));
+        ThrowingCallable action = () -> invitation.validateUsableAt(CREATED_AT.plusSeconds(2));
 
         // then
-        assertThat(valid).isFalse();
+        assertInvitationNotFound(action);
     }
 
-    @DisplayName("확인 시각이 없으면 초대 유효성을 판단할 수 없다")
+    @DisplayName("확인 시각이 없으면 초대 사용 가능 여부를 판단할 수 없다")
     @Test
-    void isValidAt_failure_missingPointInTime() {
+    void validateUsableAt_failure_missingPointInTime() {
         // given
         WorkspaceInvitation invitation = createInvitation();
         Instant missingPointInTime = null;
 
         // when
-        ThrowingCallable action = () -> invitation.isValidAt(missingPointInTime);
+        ThrowingCallable action = () -> invitation.validateUsableAt(missingPointInTime);
 
         // then
         assertThatThrownBy(action).isInstanceOf(WorkspaceException.class)
                 .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
                 .isEqualTo(WorkspaceErrorCode.INVALID_WORKSPACE_INVITATION_POINT_IN_TIME);
+    }
+
+    @DisplayName("사용할 수 있는 초대로 참여하면 초대한 워크스페이스의 MEMBER 멤버십을 만든다")
+    @Test
+    void admit_success() {
+        // given
+        WorkspaceInvitation invitation = createInvitation();
+        Instant joinedAt = CREATED_AT.plusSeconds(1);
+
+        // when
+        WorkspaceMember member = invitation.admit(
+                2L,
+                joinedAt
+        );
+
+        // then
+        assertThat(member.getWorkspaceId()).isEqualTo(1L);
+        assertThat(member.getMemberId()).isEqualTo(2L);
+        assertThat(member.getRole()).isEqualTo(WorkspaceMemberRole.MEMBER);
+        assertThat(member.getJoinedAt()).isEqualTo(joinedAt);
+        assertThat(member.isActive()).isTrue();
+    }
+
+    @DisplayName("만료된 초대로는 멤버십을 만들지 않는다")
+    @Test
+    void admit_failure_expiredInvitation() {
+        // given
+        WorkspaceInvitation invitation = createInvitation();
+
+        // when
+        ThrowingCallable action = () -> invitation.admit(
+                2L,
+                invitation.getExpiresAt()
+        );
+
+        // then
+        assertInvitationNotFound(action);
     }
 
     private WorkspaceInvitation createInvitation() {
@@ -278,5 +316,11 @@ class WorkspaceInvitationTest {
                     exception
             );
         }
+    }
+
+    private void assertInvitationNotFound(ThrowingCallable action) {
+        assertThatThrownBy(action).isInstanceOf(WorkspaceException.class)
+                .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
+                .isEqualTo(WorkspaceErrorCode.WORKSPACE_INVITATION_PREVIEW_NOT_FOUND);
     }
 }

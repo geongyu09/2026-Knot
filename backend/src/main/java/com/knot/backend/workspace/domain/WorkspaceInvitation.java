@@ -79,7 +79,26 @@ public class WorkspaceInvitation {
         );
     }
 
-    public boolean isValidAt(Instant pointInTime) {
+    public void validateUsableAt(Instant pointInTime) {
+        if (!isUsableAt(pointInTime)) {
+            throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_INVITATION_PREVIEW_NOT_FOUND);
+        }
+    }
+
+    public WorkspaceMember admit(
+            long memberId,
+            Instant joinedAt
+    ) {
+        validateUsableAt(joinedAt);
+        return WorkspaceMember.create(
+                workspaceId,
+                memberId,
+                WorkspaceMemberRole.MEMBER,
+                joinedAt
+        );
+    }
+
+    private boolean isUsableAt(Instant pointInTime) {
         validatePointInTime(pointInTime);
         boolean issued = !pointInTime.isBefore(createdAt);
         boolean unexpired = pointInTime.isBefore(expiresAt);

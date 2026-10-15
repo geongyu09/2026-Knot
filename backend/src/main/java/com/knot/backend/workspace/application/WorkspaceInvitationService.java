@@ -1,7 +1,8 @@
 package com.knot.backend.workspace.application;
 
-import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationResult;
+import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationAcceptanceResult;
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationPreviewResult;
+import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationResult;
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationSecrets;
 import com.knot.backend.workspace.domain.Workspace;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
@@ -9,6 +10,7 @@ import com.knot.backend.workspace.domain.WorkspaceException;
 import com.knot.backend.workspace.domain.WorkspaceInvitation;
 import com.knot.backend.workspace.domain.WorkspaceInvitationRepository;
 import com.knot.backend.workspace.domain.WorkspaceInvitationSecretCollisionException;
+import com.knot.backend.workspace.domain.WorkspaceMember;
 import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
 import com.knot.backend.workspace.domain.WorkspaceRepository;
 import java.time.Clock;
@@ -64,16 +66,62 @@ public class WorkspaceInvitationService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public WorkspaceInvitationPreviewResult preview(
+            String tokenOrCode,
+            String remoteAddress
+    ) {
+        WorkspaceInvitation invitation = findInvitation(
+                tokenOrCode,
+                remoteAddress
+        );
+        invitation.validateUsableAt(currentTime());
+        Workspace workspace = workspaceRepository.findById(invitation.getWorkspaceId())
+                .orElseThrow(this::invitationNotFound);
+        return new WorkspaceInvitationPreviewResult(
+                invitation.getWorkspaceId(),
+                workspace.getName()
+        );
+    }
+
+    @Transactional
+    public WorkspaceInvitationAcceptanceResult accept(
+            String tokenOrCode,
+            String remoteAddress,
+            long memberId
+    ) {
+        WorkspaceInvitation invitation = findInvitation(
+                tokenOrCode,
+                remoteAddress
+        );
+        Workspace workspace = workspaceRepository.findByIdForUpdate(invitation.getWorkspaceId())
+                .orElseThrow(this::invitationNotFound);
+        boolean created = joinIfAbsent(
+                invitation.admit(
+                        memberId,
+                        currentTime()
+                )
+        );
+        return new WorkspaceInvitationAcceptanceResult(
+                invitation.getWorkspaceId(),
+                workspace.getName(),
+                created
+        );
+    }
+
     private WorkspaceInvitationResult issueInTransaction(
             Long workspaceId,
             long memberId
     ) {
         validateWorkspaceId(workspaceId);
-        validateIssueAllowedWithLock(
+        workspaceRepository.findByIdForUpdate(workspaceId)
+                .orElseThrow(() -> new WorkspaceException(WorkspaceErrorCode.WORKSPACE_NOT_FOUND));
+        if (!workspaceMemberRepository.existsByWorkspaceIdAndMemberId(
                 workspaceId,
                 memberId
-        );
-
+        )) {
+            throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_ACCESS_DENIED);
+        }
         WorkspaceInvitationSecrets secrets = secretGenerator.generate();
         WorkspaceInvitation invitation = workspaceInvitationRepository.save(
                 WorkspaceInvitation.create(
@@ -96,26 +144,6 @@ public class WorkspaceInvitationService {
         );
     }
 
-    @Transactional(readOnly = true)
-    public WorkspaceInvitationPreviewResult preview(
-            String tokenOrCode,
-            String remoteAddress
-    ) {
-        WorkspaceInvitationCredential credential = WorkspaceInvitationCredential.from(tokenOrCode);
-        if (credential.rateLimited()) {
-            previewRateLimiter.consume(remoteAddress);
-            credential.validate();
-        }
-
-        WorkspaceInvitation invitation = findValidPreviewInvitation(credential);
-        Workspace workspace = workspaceRepository.findById(invitation.getWorkspaceId())
-                .orElseThrow(this::previewNotFound);
-        return new WorkspaceInvitationPreviewResult(
-                invitation.getWorkspaceId(),
-                workspace.getName()
-        );
-    }
-
     private WorkspaceInvitationResult executeWithSecretCollisionRetry(Supplier<WorkspaceInvitationResult> operation) {
         WorkspaceInvitationSecretCollisionException lastCollision = null;
         for (int attempt = 0; attempt < MAX_SECRET_GENERATION_ATTEMPTS; attempt++) {
@@ -128,50 +156,44 @@ public class WorkspaceInvitationService {
         throw lastCollision;
     }
 
-    private WorkspaceInvitation findValidPreviewInvitation(WorkspaceInvitationCredential credential) {
+    private WorkspaceInvitation findInvitation(
+            String tokenOrCode,
+            String remoteAddress
+    ) {
+        WorkspaceInvitationCredential credential = WorkspaceInvitationCredential.from(tokenOrCode);
+        if (credential.rateLimited()) {
+            previewRateLimiter.consume(remoteAddress);
+            credential.validate();
+        }
         String secretHash = secretProtector.hash(
                 credential.kind(),
                 credential.secret()
         );
-        return findPreviewInvitation(
-                credential,
+        return findBySecretHash(
+                credential.kind(),
                 secretHash
-        ).filter(invitation -> invitation.isValidAt(currentTime()))
-                .orElseThrow(this::previewNotFound);
+        ).orElseThrow(this::invitationNotFound);
     }
 
-    private Optional<WorkspaceInvitation> findPreviewInvitation(
-            WorkspaceInvitationCredential credential,
+    private Optional<WorkspaceInvitation> findBySecretHash(
+            WorkspaceInvitationSecretKind kind,
             String secretHash
     ) {
-        if (credential.kind() == WorkspaceInvitationSecretKind.INVITE_CODE) {
+        if (kind == WorkspaceInvitationSecretKind.INVITE_CODE) {
             return workspaceInvitationRepository.findByInviteCodeHash(secretHash);
         }
         return workspaceInvitationRepository.findByLinkTokenHash(secretHash);
     }
 
-    private void validateIssueAllowedWithLock(
-            Long workspaceId,
-            long memberId
-    ) {
-        workspaceRepository.findByIdForUpdate(workspaceId)
-                .orElseThrow(() -> new WorkspaceException(WorkspaceErrorCode.WORKSPACE_NOT_FOUND));
-        validateMembership(
-                workspaceId,
-                memberId
-        );
-    }
-
-    private void validateMembership(
-            Long workspaceId,
-            long memberId
-    ) {
-        if (!workspaceMemberRepository.existsByWorkspaceIdAndMemberId(
-                workspaceId,
-                memberId
+    private boolean joinIfAbsent(WorkspaceMember newMember) {
+        if (workspaceMemberRepository.existsByWorkspaceIdAndMemberId(
+                newMember.getWorkspaceId(),
+                newMember.getMemberId()
         )) {
-            throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_ACCESS_DENIED);
+            return false;
         }
+        workspaceMemberRepository.save(newMember);
+        return true;
     }
 
     private void validateWorkspaceId(Long workspaceId) {
@@ -185,7 +207,7 @@ public class WorkspaceInvitationService {
                 .truncatedTo(ChronoUnit.MICROS);
     }
 
-    private WorkspaceException previewNotFound() {
+    private WorkspaceException invitationNotFound() {
         return new WorkspaceException(WorkspaceErrorCode.WORKSPACE_INVITATION_PREVIEW_NOT_FOUND);
     }
 }

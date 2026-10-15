@@ -47,7 +47,6 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
     private final WorkspaceLeaveService leaveService;
     private final WorkspaceLastViewedService lastViewedService;
     private final WorkspaceInvitationService invitationService;
-    private final WorkspaceInvitationAcceptanceService acceptanceService;
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final TransactionTemplate transactionTemplate;
@@ -58,7 +57,6 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
             WorkspaceLeaveService leaveService,
             WorkspaceLastViewedService lastViewedService,
             WorkspaceInvitationService invitationService,
-            WorkspaceInvitationAcceptanceService acceptanceService,
             WorkspaceRepository workspaceRepository,
             WorkspaceMemberRepository workspaceMemberRepository,
             TransactionTemplate transactionTemplate,
@@ -68,7 +66,6 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
         this.leaveService = leaveService;
         this.lastViewedService = lastViewedService;
         this.invitationService = invitationService;
-        this.acceptanceService = acceptanceService;
         this.workspaceRepository = workspaceRepository;
         this.workspaceMemberRepository = workspaceMemberRepository;
         this.transactionTemplate = transactionTemplate;
@@ -327,7 +324,7 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
         MembershipState oldParticipation = membership(fixture.ownerMembershipId());
 
         // when
-        acceptanceService.accept(
+        invitationService.accept(
                 invitation.code(),
                 "previous-owner-rejoin",
                 fixture.ownerId()
@@ -461,7 +458,7 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
         // when
         RaceResult result = race(
                 () -> transfer(fixture),
-                () -> acceptanceService.accept(
+                () -> invitationService.accept(
                         invitation.code(),
                         "accept-transfer-race",
                         joiningId

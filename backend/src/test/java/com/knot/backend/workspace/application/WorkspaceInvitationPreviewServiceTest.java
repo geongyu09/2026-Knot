@@ -23,7 +23,6 @@ import java.util.Optional;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 
 class WorkspaceInvitationPreviewServiceTest {
     private static final Long WORKSPACE_ID = 1L;
@@ -200,36 +199,6 @@ class WorkspaceInvitationPreviewServiceTest {
                 LINK_TOKEN_HASH,
                 CODE_HASH,
                 NOW.minus(WorkspaceInvitation.VALIDITY_PERIOD)
-        );
-        when(
-                secretProtector.hash(
-                        WorkspaceInvitationSecretKind.INVITE_CODE,
-                        CODE
-                )
-        ).thenReturn(CODE_HASH);
-        when(workspaceInvitationRepository.findByInviteCodeHash(CODE_HASH)).thenReturn(Optional.of(invitation));
-
-        // when
-        ThrowingCallable action = () -> service.preview(
-                CODE,
-                REMOTE_ADDRESS
-        );
-
-        // then
-        assertThatThrownBy(action).isInstanceOf(WorkspaceException.class)
-                .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
-                .isEqualTo(WorkspaceErrorCode.WORKSPACE_INVITATION_PREVIEW_NOT_FOUND);
-    }
-
-    @DisplayName("과거 재발급으로 무효화된 초대는 원인을 구분하지 않는 초대 없음으로 응답한다")
-    @Test
-    void preview_failure_invalidatedInvitation() {
-        // given
-        WorkspaceInvitation invitation = validInvitation();
-        ReflectionTestUtils.setField(
-                invitation,
-                "invalidatedAt",
-                NOW
         );
         when(
                 secretProtector.hash(
