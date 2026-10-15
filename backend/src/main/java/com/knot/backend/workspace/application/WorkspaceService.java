@@ -74,7 +74,6 @@ public class WorkspaceService {
         );
     }
 
-    // 마지막 조회 표시는 멤버당 하나만 허용되므로 기존 표시 해제를 먼저 반영한 뒤 대상을 표시한다.
     @Transactional
     public void updateLastViewed(
             long memberId,
@@ -92,7 +91,6 @@ public class WorkspaceService {
         workspaceMemberRepository.save(target);
     }
 
-    // 두 조회 사이에 탈퇴가 커밋되면 마지막 조회 워크스페이스가 목록에서 빠질 수 있어 목록에 있는 것만 반환한다.
     private boolean containsWorkspace(
             List<Workspace> workspaces,
             Long workspaceId
