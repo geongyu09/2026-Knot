@@ -98,7 +98,6 @@ public class WorkspaceInvitation {
         );
     }
 
-    // 사용할 수 없는 이유(만료·무효화·생성 전)를 구분하지 않아야 초대 credential의 상태를 추측할 수 없다.
     private boolean isUsableAt(Instant pointInTime) {
         validatePointInTime(pointInTime);
         boolean issued = !pointInTime.isBefore(createdAt);

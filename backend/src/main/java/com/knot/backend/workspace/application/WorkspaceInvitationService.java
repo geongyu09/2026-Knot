@@ -156,7 +156,6 @@ public class WorkspaceInvitationService {
         throw lastCollision;
     }
 
-    // 코드는 형식 검증보다 조회 제한을 먼저 소비해야 잘못된 코드로도 무제한 대입할 수 없다.
     private WorkspaceInvitation findInvitation(
             String tokenOrCode,
             String remoteAddress
