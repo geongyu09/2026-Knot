@@ -27,7 +27,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 @Tag("integration")
 @DataJpaTest
-@Import({TestcontainersConfiguration.class, DocumentGenerationJobListQueryAdapter.class})
+@Import({TestcontainersConfiguration.class, DocumentConfirmationQueryAdapter.class, DocumentDetailQueryAdapter.class,
+        DocumentGenerationJobListQueryAdapter.class, DocumentListQueryAdapter.class})
 class DocumentGenerationJobListQueryIntegrationTest {
     private static final Instant NOW = DocumentFixtures.CREATED_AT.plusSeconds(8 * 24 * 60 * 60);
 

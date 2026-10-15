@@ -26,7 +26,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 @Tag("integration")
 @DataJpaTest
-@Import({TestcontainersConfiguration.class, DocumentConfirmationQueryAdapter.class})
+@Import({TestcontainersConfiguration.class, DocumentConfirmationQueryAdapter.class, DocumentDetailQueryAdapter.class,
+        DocumentGenerationJobListQueryAdapter.class, DocumentListQueryAdapter.class})
 class DocumentConfirmationQueryIntegrationTest {
     @Autowired
     private DocumentConfirmationQuery query;
