@@ -1,8 +1,8 @@
+import useSearchMessagesQuery from "@api/queries/useSearchMessagesQuery";
 import styled from "@emotion/styled";
 import useConversationId from "@hooks/domain/search/useConversationId";
 import useSearchAnswerControl from "@hooks/domain/search/useSearchAnswerControl";
 import useSearchAnswerState from "@hooks/domain/search/useSearchAnswerState";
-import useSearchMessages from "@hooks/domain/search/useSearchMessages";
 import { useParams } from "react-router";
 
 import EmptyConversation from "./ui/EmptyConversation";
@@ -20,7 +20,11 @@ import { buildSearchTurns } from "./utils/buildSearchTurns";
 export default function SearchConversation() {
   const { workspaceId } = useParams();
   const { conversationId } = useConversationId();
-  const { messages } = useSearchMessages({ conversationId });
+  const { data } = useSearchMessagesQuery({
+    workspaceId: Number(workspaceId),
+    conversationId,
+  });
+  const messages = data?.items ?? [];
   const answer = useSearchAnswerState();
   const { retryAnswer } = useSearchAnswerControl();
 
