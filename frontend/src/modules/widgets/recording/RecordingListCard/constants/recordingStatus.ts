@@ -1,4 +1,4 @@
-import type { CurrentRecordingStatus } from "../types/currentRecording";
+import type { CurrentRecordingStatus } from "@/shared/types/recording";
 
 /** 상태 줄의 이름과 그 아래 안내 문구 */
 export const RECORDING_STATUS_COPY = {

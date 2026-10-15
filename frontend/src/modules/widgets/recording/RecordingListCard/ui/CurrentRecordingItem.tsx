@@ -2,9 +2,9 @@ import styled from "@emotion/styled";
 import Button from "@primitives/ui/Button";
 
 import MicIcon from "@/assets/icons/mic.svg";
+import type { CurrentRecordingStatus } from "@/shared/types/recording";
 
 import { RECORDING_STATUS_COPY } from "../constants/recordingStatus";
-import type { CurrentRecordingStatus } from "../types/currentRecording";
 
 interface CurrentRecordingItemProps {
   recordingStatus: CurrentRecordingStatus;
