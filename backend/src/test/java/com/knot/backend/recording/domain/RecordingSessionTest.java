@@ -1086,6 +1086,61 @@ class RecordingSessionTest {
                 .isEqualTo(RecordingErrorCode.RECORDING_ALREADY_DISCARDED);
     }
 
+    @Test
+    @DisplayName("같은 Workspace에서 종료된 녹음은 전사할 수 있다")
+    void isTranscribableIn_success_endedInSameWorkspace() {
+        // given
+        RecordingSession session = startRecording();
+        session.end(STARTED_AT.plusSeconds(10));
+
+        // when
+        boolean transcribable = session.isTranscribableIn(WORKSPACE_ID);
+
+        // then
+        assertThat(transcribable).isTrue();
+    }
+
+    @Test
+    @DisplayName("다른 Workspace 기준으로는 종료된 녹음도 전사할 수 없다")
+    void isTranscribableIn_success_falseInOtherWorkspace() {
+        // given
+        RecordingSession session = startRecording();
+        session.end(STARTED_AT.plusSeconds(10));
+
+        // when
+        boolean transcribable = session.isTranscribableIn(WORKSPACE_ID + 1);
+
+        // then
+        assertThat(transcribable).isFalse();
+    }
+
+    @Test
+    @DisplayName("아직 녹음 중인 녹음은 전사할 수 없다")
+    void isTranscribableIn_success_falseWhileRecording() {
+        // given
+        RecordingSession session = startRecording();
+
+        // when
+        boolean transcribable = session.isTranscribableIn(WORKSPACE_ID);
+
+        // then
+        assertThat(transcribable).isFalse();
+    }
+
+    @Test
+    @DisplayName("폐기된 녹음은 전사할 수 없다")
+    void isTranscribableIn_success_falseWhenDiscarded() {
+        // given
+        RecordingSession session = startRecording();
+        session.discard(STARTED_AT.plusSeconds(10));
+
+        // when
+        boolean transcribable = session.isTranscribableIn(WORKSPACE_ID);
+
+        // then
+        assertThat(transcribable).isFalse();
+    }
+
     private RecordingSession startRecording() {
         return RecordingSession.start(
                 WORKSPACE_ID,

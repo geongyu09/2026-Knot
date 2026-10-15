@@ -159,6 +159,10 @@ public class RecordingSession {
         return this.workspaceId == workspaceId;
     }
 
+    public boolean isTranscribableIn(long workspaceId) {
+        return belongsTo(workspaceId) && status == RecordingStatus.ENDED;
+    }
+
     public void validateAudioUploadable() {
         validateEnded();
     }
@@ -320,7 +324,6 @@ public class RecordingSession {
         lastSeenAt = stoppedAt;
     }
 
-    // 폐기는 사용자가 요청하지 않은 처리라서 서버 시계가 뒤로 조정돼도 탈퇴·승계를 실패시키지 않는다.
     private Instant notBeforeLastSeen(Instant pointInTime) {
         if (pointInTime != null && pointInTime.isBefore(lastSeenAt)) {
             return lastSeenAt;
