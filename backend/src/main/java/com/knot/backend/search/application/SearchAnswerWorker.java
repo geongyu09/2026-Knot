@@ -4,6 +4,10 @@ import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
+import com.knot.backend.search.domain.SearchIntent;
+import java.time.Clock;
+import java.time.Instant;
+import com.knot.backend.global.config.SearchAgentProperties;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -25,8 +29,9 @@ public class SearchAnswerWorker {
     private final SearchAnswerExecutionService executions;
     private final ObjectProvider<SearchDocumentRetriever> retrievers;
     private final ObjectProvider<SearchAnswerGenerator> generators;
-    private final java.time.Clock clock;
-    private final com.knot.backend.global.config.SearchAgentProperties agentProperties;
+    private final Clock clock;
+    private final SearchAgentProperties agentProperties;
+    private final ObjectProvider<SearchIntentClassifier> classifiers;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void execute(long answerId) {
@@ -34,7 +39,7 @@ public class SearchAnswerWorker {
         if (claimed.isEmpty()) {
             return;
         }
-        SearchAnswerWorkResult work = claimed.get();
+        SearchAnswerWorkResult work = claimed.orElseThrow();
         try {
             generate(work);
         } catch (RuntimeException exception) {
@@ -53,12 +58,32 @@ public class SearchAnswerWorker {
     }
 
     private void generate(SearchAnswerWorkResult work) {
-        java.time.Instant startedAt = clock.instant();
+        Instant startedAt = clock.instant();
         SearchToolScope scope = SearchToolScope.from(
                 work,
                 startedAt,
                 startedAt.plus(agentProperties.getBudget())
         );
+        long classificationStarted = System.nanoTime();
+        SearchIntent intent = classifiers.getObject()
+                .classify(
+                        scope,
+                        work.question()
+                );
+        log.info(
+                "Search intent classified workspaceId={} answerId={} intent={} elapsedMs={}",
+                work.workspaceId(),
+                work.answerId(),
+                intent,
+                (System.nanoTime() - classificationStarted) / 1_000_000
+        );
+        if (!intent.requiresSearch()) {
+            completeGuidance(
+                    work,
+                    intent
+            );
+            return;
+        }
         SearchDocumentRetriever retriever = retrievers.getObject();
         SearchRetrievalResult retrieval = retriever.retrieve(
                 scope,
@@ -76,7 +101,7 @@ public class SearchAnswerWorker {
         if (documents.isEmpty()) {
             append(
                     work,
-                    answerWithoutDocuments(retrieval)
+                    NO_DOCUMENT_GUIDANCE
             );
             executions.complete(
                     work.answerId(),
@@ -112,11 +137,28 @@ public class SearchAnswerWorker {
         );
     }
 
-    private String answerWithoutDocuments(SearchRetrievalResult retrieval) {
-        if (retrieval.directAnswer() != null) {
-            return retrieval.directAnswer();
+    private void completeGuidance(
+            SearchAnswerWorkResult work,
+            SearchIntent intent
+    ) {
+        if (!executions.recordRetrieval(
+                work.answerId(),
+                work.token(),
+                0,
+                List.of()
+        )) {
+            return;
         }
-        return NO_DOCUMENT_GUIDANCE;
+        append(
+                work,
+                SearchIntentGuidance.forIntent(intent)
+        );
+        executions.complete(
+                work.answerId(),
+                work.token(),
+                List.of(),
+                Set.of()
+        );
     }
 
     private void append(

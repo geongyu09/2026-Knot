@@ -14,9 +14,13 @@ public class SearchGenerationAvailability {
     private final SearchWorkerProperties properties;
     private final ObjectProvider<SearchDocumentRetriever> retrievers;
     private final ObjectProvider<SearchAnswerGenerator> generators;
+    private final ObjectProvider<SearchIntentClassifier> classifiers;
 
     public void requireAvailable() {
         if (!properties.isEnabled()) {
+            throw new SearchException(SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE);
+        }
+        if (classifiers.getIfAvailable() == null) {
             throw new SearchException(SearchErrorCode.ANSWER_GENERATION_UNAVAILABLE);
         }
         if (retrievers.getIfAvailable() == null || generators.getIfAvailable() == null) {

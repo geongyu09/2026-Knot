@@ -3,32 +3,25 @@ package com.knot.backend.search.presentation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.when;
 
 import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.auth.domain.AuthenticatedMember;
-import com.knot.backend.global.config.JwtProperties;
-import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.document.DocumentFixtures;
+import com.knot.backend.global.config.JwtProperties;
 import com.knot.backend.search.SearchMessageFixtures;
 import com.knot.backend.search.application.SearchAnswerGenerator;
 import com.knot.backend.search.application.SearchAnswerWorker;
 import com.knot.backend.search.application.SearchDocumentRetriever;
 import com.knot.backend.search.application.SearchGenerationAvailability;
-import com.knot.backend.search.application.SearchToolAccess;
+import com.knot.backend.search.application.SearchIntentClassifier;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
+import com.knot.backend.search.domain.SearchIntent;
+import com.knot.backend.search.domain.SearchToolException;
 import com.knot.backend.search.infrastructure.SearchExploration;
-import com.knot.backend.search.infrastructure.SearchHistoryQuery;
-import com.knot.backend.search.infrastructure.SearchLlmClient;
-import com.knot.backend.search.infrastructure.SearchMcpDocumentRetriever;
-import com.knot.backend.search.infrastructure.mcp.SearchMcpClient;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.io.BufferedReader;
@@ -41,10 +34,11 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -52,6 +46,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -61,6 +56,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 @Tag("acceptance")
@@ -68,8 +64,80 @@ import tools.jackson.databind.json.JsonMapper;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Import(TestcontainersConfiguration.class)
 @TestApplicationProperties
-@org.junit.jupiter.api.Timeout(30)
+@Timeout(30)
 class SearchQuestionAcceptanceTest {
+
+    @Test
+    @DisplayName("실제 SSE 접수 뒤 분류 대기 중에는 DB 본문이 없고 판정 후에만 안내를 전송한다")
+    void create_success_classificationBarrier() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        when(
+                classifier.classify(
+                        any(),
+                        any()
+                )
+        ).thenAnswer(call -> {
+            entered.countDown();
+            assertThat(
+                    release.await(
+                            5,
+                            TimeUnit.SECONDS
+                    )
+            ).isTrue();
+            return SearchIntent.OUT_OF_SCOPE;
+        });
+        try (BufferedReader stream = reader(
+                connect(
+                        UUID.randomUUID(),
+                        "케이크 만들어줘"
+                ).body()
+        ); ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            assertThat(readEvent(stream)).startsWith("event:accepted");
+            long answer = answerId();
+            Future<?> task = executor.submit(() -> worker.execute(answer));
+            try {
+                assertThat(
+                        entered.await(
+                                5,
+                                TimeUnit.SECONDS
+                        )
+                ).isTrue();
+                assertThat(
+                        jdbc.sql("SELECT content FROM search_messages WHERE id=:id")
+                                .param(
+                                        "id",
+                                        answer
+                                )
+                                .query(String.class)
+                                .single()
+                ).isEmpty();
+                assertThat(status()).isEqualTo("STREAMING");
+                verifyNoInteractions(
+                        retriever,
+                        generator
+                );
+            } finally {
+                release.countDown();
+            }
+            task.get(
+                    5,
+                    TimeUnit.SECONDS
+            );
+            String events = stream.lines()
+                    .collect(Collectors.joining("\n"));
+            assertThat(events).contains(
+                    "event:delta",
+                    "Knot은 회의 기록",
+                    "event:completed"
+            )
+                    .doesNotContain(
+                            "OUT_OF_SCOPE",
+                            "케이크 레시피",
+                            "event:failed"
+                    );
+        }
+    }
 
     @LocalServerPort
     private int port;
@@ -88,6 +156,8 @@ class SearchQuestionAcceptanceTest {
     @MockitoBean
     private SearchDocumentRetriever retriever;
     @MockitoBean
+    private SearchIntentClassifier classifier;
+    @MockitoBean
     private SearchAnswerGenerator generator;
     private HttpClient client;
     private long workspaceId;
@@ -98,6 +168,12 @@ class SearchQuestionAcceptanceTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        when(
+                classifier.classify(
+                        any(),
+                        any()
+                )
+        ).thenReturn(SearchIntent.MEETING_SEARCH);
         jdbc.sql("TRUNCATE TABLE members, workspaces RESTART IDENTITY CASCADE")
                 .update();
         DocumentFixtures fixtures = new DocumentFixtures(jdbc);
@@ -117,8 +193,8 @@ class SearchQuestionAcceptanceTest {
                 HttpResponse.BodyHandlers.ofString()
         );
         assertThat(csrf.statusCode()).isEqualTo(200);
-        tools.jackson.databind.JsonNode csrfBody = json.readTree(csrf.body());
-        tools.jackson.databind.JsonNode tokenNode = csrfBody.get("token");
+        JsonNode csrfBody = json.readTree(csrf.body());
+        JsonNode tokenNode = csrfBody.get("token");
         csrfToken = tokenNode.asString();
         csrfCookie = csrf.headers()
                 .allValues("Set-Cookie")
@@ -173,7 +249,7 @@ class SearchQuestionAcceptanceTest {
                         org.mockito.ArgumentMatchers.eq(documents),
                         org.mockito.ArgumentMatchers.any()
                 );
-        try (java.util.concurrent.ExecutorService executor = Executors.newSingleThreadExecutor();
+        try (ExecutorService executor = Executors.newSingleThreadExecutor();
                 InputStream stream = connect(
                         UUID.randomUUID(),
                         "질문"
@@ -259,7 +335,7 @@ class SearchQuestionAcceptanceTest {
                         org.mockito.ArgumentMatchers.eq(docs),
                         org.mockito.ArgumentMatchers.any()
                 );
-        try (java.util.concurrent.ExecutorService executor = Executors.newSingleThreadExecutor()) {
+        try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
             HttpResponse<InputStream> response = connect(
                     UUID.randomUUID(),
                     "질문"
@@ -267,7 +343,7 @@ class SearchQuestionAcceptanceTest {
             BufferedReader reader = reader(response.body());
             assertThat(readEvent(reader)).startsWith("event:accepted");
             long answer = answerId();
-            java.util.concurrent.Future<?> result = executor.submit(() -> worker.execute(answer));
+            Future<?> result = executor.submit(() -> worker.execute(answer));
             assertThat(
                     generating.await(
                             10,
@@ -447,72 +523,53 @@ class SearchQuestionAcceptanceTest {
     }
 
     @Test
-    @DisplayName("인사 자유 문장을 재분기하여 실제 SSE 응답과 빈 근거를 보내고 DB에 정상 완료 저장한다")
-    void create_success_greetingWithoutDocumentSearch() throws Exception {
-        // given
-        String greeting = "안녕하세요! 반갑습니다. 회의 문서 검색이 필요하시면 말씀해 주세요.";
-        SearchLlmClient llm = mock(SearchLlmClient.class);
-        SearchMcpClient mcp = mock(SearchMcpClient.class);
-        SearchHistoryQuery history = mock(SearchHistoryQuery.class);
-        when(mcp.definitions(any())).thenReturn(List.of());
-        when(history.beforeQuestion(any())).thenReturn(List.of());
+    @DisplayName("범위 밖 및 혼합 요청은 자유 답변 없이 서버 고정 안내로 완료한다")
+    void create_success_outOfScopeFixedGuidance() throws Exception {
         when(
-                llm.complete(
-                        any(),
+                classifier.classify(
                         any(),
                         any()
                 )
-        ).thenReturn(
-                json.readTree("{\"role\":\"assistant\",\"content\":\"안녕하세요!\",\"tool_calls\":[]}"),
-                json.valueToTree(
-                        Map.of(
-                                "role",
-                                "assistant",
-                                "tool_calls",
-                                List.of(
-                                        Map.of(
-                                                "id",
-                                                "greeting",
-                                                "type",
-                                                "function",
-                                                "function",
-                                                Map.of(
-                                                        "name",
-                                                        "answer_without_search",
-                                                        "arguments",
-                                                        json.writeValueAsString(
-                                                                Map.of(
-                                                                        "answer",
-                                                                        greeting
-                                                                )
-                                                        )
-                                                )
-                                        )
-                                )
-                        )
-                )
-        );
-        SearchMcpDocumentRetriever realRetriever = new SearchMcpDocumentRetriever(
-                llm,
-                mcp,
-                history,
-                mock(SearchToolAccess.class),
-                new SearchAgentProperties(),
-                json
-        );
-        when(
-                retriever.retrieve(
-                        any(),
-                        eq("반갑다")
-                )
-        ).thenAnswer(
-                call -> realRetriever.retrieve(
-                        call.getArgument(0),
-                        "반갑다"
-                )
-        );
+        ).thenReturn(SearchIntent.OUT_OF_SCOPE);
+        try (BufferedReader stream = reader(
+                connect(
+                        UUID.randomUUID(),
+                        "지난 회의 담당자 찾아줘. 그리고 케이크 만들어줘"
+                ).body()
+        )) {
+            assertThat(readEvent(stream)).startsWith("event:accepted");
+            worker.execute(answerId());
+            String events = stream.lines()
+                    .collect(Collectors.joining("\n"));
+            assertThat(events).contains(
+                    "event:delta",
+                    "Knot은 회의 기록의 조회·요약·비교를 도와드려요.",
+                    "event:completed",
+                    "\"status\":\"COMPLETED\"",
+                    "\"items\":[]"
+            )
+                    .doesNotContain(
+                            "event:failed",
+                            "케이크 레시피",
+                            "OUT_OF_SCOPE"
+                    );
+            assertThat(status()).isEqualTo("COMPLETED");
+            verifyNoInteractions(
+                    retriever,
+                    generator
+            );
+        }
+    }
 
-        // when
+    @Test
+    @DisplayName("인사는 모델 자유 답변 대신 서버 문구와 빈 근거로 완료한다")
+    void create_success_greetingWithoutDocumentSearch() throws Exception {
+        when(
+                classifier.classify(
+                        any(),
+                        any()
+                )
+        ).thenReturn(SearchIntent.GREETING_OR_THANKS);
         try (BufferedReader stream = reader(
                 connect(
                         UUID.randomUUID(),
@@ -520,64 +577,45 @@ class SearchQuestionAcceptanceTest {
                 ).body()
         )) {
             assertThat(readEvent(stream)).startsWith("event:accepted");
-            long answer = answerId();
-            worker.execute(answer);
+            worker.execute(answerId());
             String events = stream.lines()
                     .collect(Collectors.joining("\n"));
-
-            // then
             assertThat(events).contains(
-                    "event:delta",
-                    greeting,
-                    "event:evidence",
-                    "\"items\":[]",
+                    "안녕하세요. 회의 기록에서 궁금한 내용을 질문해 주세요.",
                     "event:completed",
-                    "\"status\":\"COMPLETED\""
+                    "\"items\":[]"
             )
                     .doesNotContain(
                             "event:failed",
-                            "해당 내용을 확인하지 못했습니다",
                             "answer_without_search"
                     );
-            assertThat(status()).isEqualTo("COMPLETED");
-            assertThat(
-                    jdbc.sql("SELECT content FROM search_messages WHERE id = :id")
-                            .param(
-                                    "id",
-                                    answer
-                            )
-                            .query(String.class)
-                            .single()
-            ).isEqualTo(greeting);
-            verifyNoInteractions(generator);
-            verify(
-                    mcp,
-                    never()
-            ).call(
-                    any(),
-                    any(),
-                    any()
-            );
-            verify(
-                    llm,
-                    times(2)
-            ).complete(
-                    any(),
-                    any(),
-                    any()
+            verifyNoInteractions(
+                    retriever,
+                    generator
             );
         }
     }
 
-    @Test
-    @DisplayName("접수 후 실패는 JSON 오류 대신 안전한 failed 이벤트로 종료한다")
-    void create_failure_afterAccepted() throws Exception {
-        when(
-                retriever.retrieve(
-                        org.mockito.ArgumentMatchers.any(com.knot.backend.search.application.SearchToolScope.class),
-                        org.mockito.ArgumentMatchers.eq("질문")
-                )
-        ).thenThrow(new IllegalStateException("private secret"));
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    @DisplayName("분류·검색 실패는 본문 유출 없이 안전한 failed 이벤트로 종료한다")
+    void create_failure_afterAccepted(boolean duringClassification) throws Exception {
+        if (duringClassification) {
+            when(
+                    classifier.classify(
+                            any(),
+                            any()
+                    )
+            ).thenThrow(new SearchToolException("private secret"));
+        }
+        if (!duringClassification) {
+            when(
+                    retriever.retrieve(
+                            org.mockito.ArgumentMatchers.any(com.knot.backend.search.application.SearchToolScope.class),
+                            org.mockito.ArgumentMatchers.eq("질문")
+                    )
+            ).thenThrow(new SearchToolException("private secret"));
+        }
         try (InputStream stream = connect(
                 UUID.randomUUID(),
                 "질문"
@@ -593,8 +631,16 @@ class SearchQuestionAcceptanceTest {
             );
             assertThat(events).doesNotContain(
                     "private secret",
-                    "event:completed"
+                    "event:completed",
+                    "event:delta"
             );
+            assertThat(status()).isEqualTo("FAILED");
+            if (duringClassification) {
+                verifyNoInteractions(
+                        retriever,
+                        generator
+                );
+            }
         }
     }
 
