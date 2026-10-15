@@ -418,7 +418,7 @@ class RecordingDetailServiceIntegrationTest {
                 .update();
     }
 
-    // 실제 2분을 기다리지 않도록 녹음의 모든 시각을 같은 만큼 과거로 옮겨 신호가 끊긴 상태를 만든다
+    // 실제 30초를 기다리지 않도록 녹음의 모든 시각을 같은 만큼 과거로 옮겨 신호가 끊긴 상태를 만든다
     private void disconnect(long recordingId) {
         jdbcClient.sql("""
                 UPDATE recording_sessions

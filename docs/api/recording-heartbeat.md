@@ -2,12 +2,13 @@
 
 이 문서는 [Issue #384](https://github.com/woowacourse-teams/2026-Knot/issues/384)의 구현 계약이다. 범위는 2026-10-09 Issue 코멘트로 바꾼 내용을 따른다.
 새로고침 뒤 수집 자동 재개와 복구 화면은 이 API의 범위가 아니다. 팀 Notion에 반영하거나 승인받은 문서는 아니다.
+신호 주기와 연결 끊김 기준은 [#695](https://github.com/woowacourse-teams/2026-Knot/issues/695)([ADR 695](../adr/695-recording-connection-timeout-30-seconds.md))에서 30초·120초를 10초·30초로 바꿨다.
 
 ## 규칙
 
-- 녹음을 시작한 최초 탭이 RECORDING·PAUSED 동안 30초마다 보낸다.
-- 서버는 마지막 유효 신호(`lastSeenAt`)부터 120초가 지나면 연결이 끊긴 것으로 본다. 판정은 서버 시각으로만 한다.
-- 연결이 끊긴 녹음은 `ENDED`, `endReason=CONNECTION_EXPIRED`, `endedAt = lastSeenAt + 120초`로 확정한다. `lastSeenAt`은 마지막 유효 신호 시각 그대로 둔다.
+- 녹음을 시작한 최초 탭이 RECORDING·PAUSED 동안 10초마다 보낸다.
+- 서버는 마지막 유효 신호(`lastSeenAt`)부터 30초가 지나면 연결이 끊긴 것으로 본다. 판정은 서버 시각으로만 한다.
+- 연결이 끊긴 녹음은 `ENDED`, `endReason=CONNECTION_EXPIRED`, `endedAt = lastSeenAt + 30초`로 확정한다. `lastSeenAt`은 마지막 유효 신호 시각 그대로 둔다.
 - 일시정지를 뺀 누적 녹음 시간이 2시간에 닿으면 `ENDED`, `endReason=MAX_DURATION`, `endedAt = 상한에 닿은 시각`으로 확정한다.
   연결 만료와 상한 중 먼저 닿은 시각으로 끝내고, 두 시각이 같으면 `MAX_DURATION`이다. 종료 15분 전 안내는 FE가 2시간을 상수로 두고 `elapsedMillis`로 계산한다.
 - 신호·일시정지·재개·종료·시작 재요청·새 시작이 모두 같은 판정을 먼저 한다. 늦게 도착한 요청은 끝난 녹음을 되살리지 않는다.

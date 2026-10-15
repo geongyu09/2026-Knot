@@ -272,7 +272,7 @@ class RecordingStartServiceTest {
                                 UUID.randomUUID(),
                                 UUID.randomUUID(),
                                 HASH,
-                                NOW.minusSeconds(119)
+                                NOW.minusSeconds(29)
                         )
                 )
         );
@@ -306,7 +306,7 @@ class RecordingStartServiceTest {
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 HASH,
-                NOW.minusSeconds(120)
+                NOW.minusSeconds(30)
         );
         when(recordingSessionRepository.findAllActiveByMemberIdForUpdate(MEMBER_ID)).thenReturn(List.of(disconnected));
         when(recordingSessionRepository.save(any(RecordingSession.class))).thenAnswer(
@@ -365,7 +365,7 @@ class RecordingStartServiceTest {
         // then
         assertThat(result.created()).isFalse();
         assertThat(result.status()).isEqualTo(RecordingStatus.ENDED);
-        assertThat(existing.getEndedAt()).isEqualTo(NOW.minusSeconds(180));
+        assertThat(existing.getEndedAt()).isEqualTo(NOW.minusSeconds(270));
         assertThat(existing.getLastSeenAt()).isEqualTo(NOW.minusSeconds(300));
         verify(recordingSessionRepository).save(existing);
     }
