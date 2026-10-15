@@ -137,7 +137,7 @@ class RecordingPauseServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(RecordingErrorCode.RECORDING_ALREADY_ENDED);
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(120));
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(30));
         verify(recordingSessionRepository).save(session);
     }
 
@@ -201,7 +201,7 @@ class RecordingPauseServiceTest {
         // given
         prepareAccess();
         RecordingSession session = recordingSession(MEMBER_ID);
-        session.end(STARTED_AT.plusSeconds(60));
+        session.end(STARTED_AT.plusSeconds(20));
         when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
 
         // when
@@ -297,7 +297,7 @@ class RecordingPauseServiceTest {
             Instant until
     ) {
         for (Instant at = session.getLastSeenAt()
-                .plusSeconds(60); at.isBefore(until); at = at.plusSeconds(60)) {
+                .plusSeconds(10); at.isBefore(until); at = at.plusSeconds(10)) {
             session.recordHeartbeat(at);
         }
     }

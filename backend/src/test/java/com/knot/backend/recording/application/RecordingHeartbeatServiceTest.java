@@ -35,7 +35,7 @@ import org.junit.jupiter.api.Test;
 
 class RecordingHeartbeatServiceTest {
     private static final Instant STARTED_AT = Instant.parse("2026-10-09T00:00:00Z");
-    private static final Instant NOW = Instant.parse("2026-10-09T00:01:30.123456Z");
+    private static final Instant NOW = Instant.parse("2026-10-09T00:00:20.123456Z");
     private static final long WORKSPACE_ID = 10L;
     private static final long MEMBER_ID = 1L;
     private static final long RECORDING_ID = 7L;
@@ -92,19 +92,19 @@ class RecordingHeartbeatServiceTest {
         // then
         assertThat(result.status()).isEqualTo(RecordingStatus.RECORDING);
         assertThat(result.lastSeenAt()).isEqualTo(NOW);
-        assertThat(result.expiresAt()).isEqualTo(NOW.plusSeconds(120));
-        assertThat(result.elapsedMillis()).isEqualTo(90_123L);
+        assertThat(result.expiresAt()).isEqualTo(NOW.plusSeconds(30));
+        assertThat(result.elapsedMillis()).isEqualTo(20_123L);
         assertThat(result.endedAt()).isNull();
         assertThat(result.endReason()).isNull();
         assertThat(result.serverNow()).isEqualTo(NOW);
     }
 
     @Test
-    @DisplayName("마지막 신호 후 120초가 지난 신호는 녹음을 되살리지 않고 연결 만료 종료 상태를 돌려준다")
+    @DisplayName("마지막 신호 후 30초가 지난 신호는 녹음을 되살리지 않고 연결 만료 종료 상태를 돌려준다")
     void heartbeat_success_expiredReturnsEndedSnapshot() {
         // given
         prepareAccess();
-        RecordingSession session = recordingSession(NOW.minusSeconds(120));
+        RecordingSession session = recordingSession(NOW.minusSeconds(30));
         when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
         when(recordingSessionRepository.save(session)).thenReturn(session);
 
@@ -120,7 +120,7 @@ class RecordingHeartbeatServiceTest {
         assertThat(result.status()).isEqualTo(RecordingStatus.ENDED);
         assertThat(result.endReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
         assertThat(result.endedAt()).isEqualTo(NOW);
-        assertThat(result.lastSeenAt()).isEqualTo(NOW.minusSeconds(120));
+        assertThat(result.lastSeenAt()).isEqualTo(NOW.minusSeconds(30));
         assertThat(result.expiresAt()).isNull();
         verify(recordingSessionRepository).save(session);
     }

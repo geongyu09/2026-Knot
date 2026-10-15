@@ -114,7 +114,7 @@ class RecordingConnectionExpiryIntegrationTest {
         assertThat(row.status()).isEqualTo("ENDED");
         assertThat(row.endReason()).isEqualTo("CONNECTION_EXPIRED");
         assertThat(row.lastSeenAt()).isEqualTo(lastSeenAt);
-        assertThat(row.endedAt()).isEqualTo(lastSeenAt.plusSeconds(120));
+        assertThat(row.endedAt()).isEqualTo(lastSeenAt.plusSeconds(30));
     }
 
     @Test
@@ -152,7 +152,7 @@ class RecordingConnectionExpiryIntegrationTest {
         RecordingRow row = recordingRow(recording.id());
         assertThat(row.status()).isEqualTo("ENDED");
         assertThat(row.endReason()).isEqualTo("CONNECTION_EXPIRED");
-        assertThat(row.endedAt()).isEqualTo(lastSeenAt.plusSeconds(120));
+        assertThat(row.endedAt()).isEqualTo(lastSeenAt.plusSeconds(30));
     }
 
     @Test
@@ -185,12 +185,12 @@ class RecordingConnectionExpiryIntegrationTest {
         assertThat(alive.status()).isEqualTo(RecordingStatus.RECORDING);
         assertThat(alive.expiresAt()).isEqualTo(
                 alive.lastSeenAt()
-                        .plusSeconds(120)
+                        .plusSeconds(30)
         );
         assertThat(late.status()).isEqualTo(RecordingStatus.ENDED);
         assertThat(late.endReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
         assertThat(late.lastSeenAt()).isEqualTo(lastSeenAt);
-        assertThat(late.endedAt()).isEqualTo(lastSeenAt.plusSeconds(120));
+        assertThat(late.endedAt()).isEqualTo(lastSeenAt.plusSeconds(30));
         assertThat(late.expiresAt()).isNull();
         assertThat(recordingRow(recording.id()).lastSeenAt()).isEqualTo(lastSeenAt);
     }
@@ -216,7 +216,7 @@ class RecordingConnectionExpiryIntegrationTest {
         );
 
         // then
-        assertThat(result.endedAt()).isEqualTo(lastSeenAt.plusSeconds(120));
+        assertThat(result.endedAt()).isEqualTo(lastSeenAt.plusSeconds(30));
         assertThat(recordingRow(recording.id()).endReason()).isEqualTo("CONNECTION_EXPIRED");
     }
 
@@ -504,7 +504,7 @@ class RecordingConnectionExpiryIntegrationTest {
         );
     }
 
-    // 실제 2분을 기다리지 않도록 녹음의 모든 시각을 같은 만큼 과거로 옮겨 신호가 끊긴 상태를 만든다
+    // 실제 30초를 기다리지 않도록 녹음의 모든 시각을 같은 만큼 과거로 옮겨 신호가 끊긴 상태를 만든다
     private void disconnect(long recordingId) {
         jdbcClient.sql("""
                 UPDATE recording_sessions

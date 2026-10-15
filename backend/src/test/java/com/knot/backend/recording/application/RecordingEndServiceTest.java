@@ -140,7 +140,7 @@ class RecordingEndServiceTest {
 
         // then
         assertThat(result.status()).isEqualTo(RecordingStatus.ENDED);
-        assertThat(result.endedAt()).isEqualTo(STARTED_AT.plusSeconds(120));
+        assertThat(result.endedAt()).isEqualTo(STARTED_AT.plusSeconds(30));
         assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
     }
 
@@ -150,7 +150,7 @@ class RecordingEndServiceTest {
         // given
         prepareAccess();
         RecordingSession session = recordingSession(MEMBER_ID);
-        Instant firstEndedAt = STARTED_AT.plusSeconds(60);
+        Instant firstEndedAt = STARTED_AT.plusSeconds(20);
         session.end(firstEndedAt);
         when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
         when(recordingSessionRepository.save(session)).thenReturn(session);
@@ -266,7 +266,7 @@ class RecordingEndServiceTest {
         // given
         prepareAccess();
         RecordingSession session = recordingSession(MEMBER_ID);
-        Instant firstEndedAt = STARTED_AT.plusSeconds(60);
+        Instant firstEndedAt = STARTED_AT.plusSeconds(20);
         session.end(firstEndedAt);
         when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
 
@@ -443,7 +443,7 @@ class RecordingEndServiceTest {
             Instant until
     ) {
         for (Instant at = session.getLastSeenAt()
-                .plusSeconds(60); at.isBefore(until); at = at.plusSeconds(60)) {
+                .plusSeconds(10); at.isBefore(until); at = at.plusSeconds(10)) {
             session.recordHeartbeat(at);
         }
     }

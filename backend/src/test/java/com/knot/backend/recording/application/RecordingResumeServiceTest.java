@@ -82,7 +82,7 @@ class RecordingResumeServiceTest {
         // given
         prepareAccess();
         RecordingSession session = recordingSession(MEMBER_ID);
-        session.pause(STARTED_AT.plusSeconds(60));
+        session.pause(STARTED_AT.plusSeconds(20));
         keepAlive(
                 session,
                 NOW
@@ -101,7 +101,7 @@ class RecordingResumeServiceTest {
         // then
         assertThat(result.status()).isEqualTo(RecordingStatus.RECORDING);
         assertThat(result.resumedAt()).isEqualTo(NOW);
-        assertThat(result.elapsedMillis()).isEqualTo(60_000L);
+        assertThat(result.elapsedMillis()).isEqualTo(20_000L);
         InOrder inOrder = inOrder(
                 workspaceRepository,
                 recordingSessionRepository
@@ -120,7 +120,7 @@ class RecordingResumeServiceTest {
         // given
         prepareAccess();
         RecordingSession session = recordingSession(MEMBER_ID);
-        session.pause(STARTED_AT.plusSeconds(60));
+        session.pause(STARTED_AT.plusSeconds(20));
         when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
 
         // when
@@ -175,7 +175,7 @@ class RecordingResumeServiceTest {
         // given
         prepareAccess();
         RecordingSession session = recordingSession(MEMBER_ID);
-        session.end(STARTED_AT.plusSeconds(60));
+        session.end(STARTED_AT.plusSeconds(20));
         when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
 
         // when
@@ -230,7 +230,7 @@ class RecordingResumeServiceTest {
         // given
         prepareAccess();
         RecordingSession session = recordingSession(MEMBER_ID);
-        session.pause(STARTED_AT.plusSeconds(60));
+        session.pause(STARTED_AT.plusSeconds(20));
         when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
         when(recordingSessionRepository.save(session)).thenReturn(session);
 
@@ -249,8 +249,8 @@ class RecordingResumeServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(RecordingErrorCode.RECORDING_ALREADY_ENDED);
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(180));
-        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(60_000L);
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(50));
+        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(20_000L);
         verify(recordingSessionRepository).save(session);
     }
 
@@ -301,7 +301,7 @@ class RecordingResumeServiceTest {
             Instant until
     ) {
         for (Instant at = session.getLastSeenAt()
-                .plusSeconds(60); at.isBefore(until); at = at.plusSeconds(60)) {
+                .plusSeconds(10); at.isBefore(until); at = at.plusSeconds(10)) {
             session.recordHeartbeat(at);
         }
     }
