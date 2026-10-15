@@ -878,6 +878,30 @@ describe("WorkspaceDock", () => {
           screen.queryByRole("button", { name: "녹음 끝내기" }),
         ).not.toBeInTheDocument();
       });
+
+      it("녹음을 끝내면 현재 녹음을 다시 조회해, 끝내기 전에 받은 녹음 중 응답을 다른 탭 녹음 칩으로 남기지 않는다 (근거 없음)", async () => {
+        let currentRequestCount = 0;
+        mockServer.events.on("request:start", ({ request }) => {
+          if (request.url.endsWith("/recordings/current")) {
+            currentRequestCount += 1;
+          }
+        });
+        // 녹음하는 동안 받은 현재 녹음 조회는 이 탭의 녹음을 녹음 중으로 답해요
+        respondCurrentRecordingStatus("RECORDING");
+        renderDock();
+        await waitFor(() => expect(currentRequestCount).toBe(1));
+
+        respondNoCurrentRecording();
+        await stopRecording();
+
+        await waitFor(() => expect(currentRequestCount).toBe(2));
+        expect(
+          screen.getByRole("button", { name: "회의 녹음 시작" }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole("img", { name: "녹음 중" }),
+        ).not.toBeInTheDocument();
+      });
     });
 
     describe("다른 탭에서 녹음 중이면", () => {

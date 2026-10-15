@@ -7,9 +7,11 @@ import useResumeRecordingMutation from "@api/mutations/useResumeRecordingMutatio
 import useSendRecordingHeartbeatMutation from "@api/mutations/useSendRecordingHeartbeatMutation";
 import useStartRecordingMutation from "@api/mutations/useStartRecordingMutation";
 import useUploadRecordingAudioMutation from "@api/mutations/useUploadRecordingAudioMutation";
+import { recordingKeys } from "@api/queryKey/recording";
 import useNavigateToRecordingDocuments from "@hooks/domain/recording/useNavigateToRecordingDocuments";
 import useNavigateToWorkspaceHome from "@hooks/domain/workspace/useNavigateToWorkspaceHome";
 import { useRecordingStore } from "@store/recordingStore";
+import { useQueryClient } from "@tanstack/react-query";
 import { isClosedRecordingError } from "@utils/isClosedRecordingError";
 import { isRetryableAudioUploadError } from "@utils/isRetryableAudioUploadError";
 import { isUnreachableRecordingError } from "@utils/isUnreachableRecordingError";
@@ -36,12 +38,6 @@ interface UploadRecordedAudioParams {
   recordingId: number;
   audio: Blob;
 }
-
-/** 녹음을 버리고 다음 녹음은 새 시작 요청으로 보내도록 증명을 지워요 */
-const clearRecording = () => {
-  useRecordingStore.getState().discardRecording();
-  clearRecordingStartProof();
-};
 
 // TODO: 실패 안내·재시도 정책은 기획 논의가 필요해요. 정해질 때까지 안내 UI 없이 콘솔에만 남겨요(#465)
 /**
@@ -82,19 +78,33 @@ const useRecordingControl = () => {
   const { mutateAsync: completeAudioUpload } =
     useCompleteRecordingAudioUploadMutation();
   const { openEndRecordingDialog } = useEndRecordingDialog();
+  const queryClient = useQueryClient();
   const isStartingRef = useRef(false);
+
+  /** 녹음을 버리고 다음 녹음은 새 시작 요청으로 보내도록 증명을 지워요 */
+  const clearRecording = useCallback(
+    (workspaceId: number) => {
+      useRecordingStore.getState().discardRecording();
+      clearRecordingStartProof();
+      // 녹음하는 동안 받아 둔 녹음 중 응답이 다른 탭의 녹음으로 보이지 않게, 비우고 새로 받아요
+      void queryClient.resetQueries({
+        queryKey: recordingKeys.current(workspaceId),
+      });
+    },
+    [queryClient],
+  );
 
   //TODO: shared훅에서 라우팅 제거하기
   /** 녹음을 비우고 홈으로 가요 */
   const closeRecording = useCallback(
     (workspaceId: number) => {
-      clearRecording();
+      clearRecording(workspaceId);
       navigateToWorkspaceHome({
         workspaceId: String(workspaceId),
         replace: true,
       });
     },
-    [navigateToWorkspaceHome],
+    [clearRecording, navigateToWorkspaceHome],
   );
 
   /**
@@ -330,7 +340,7 @@ const useRecordingControl = () => {
 
       // 서버에서 이미 끝났거나 버려진 녹음이면 올릴 곳이 없어 오디오를 버리고 끝낸 것으로 봐요
       if (isClosedRecordingError(error)) {
-        clearRecording();
+        clearRecording(session.workspaceId);
 
         return "notUploaded";
       }
@@ -342,10 +352,10 @@ const useRecordingControl = () => {
 
     const audio = await useRecordingStore.getState().stopRecording();
     const isUploaded = await uploadRecordedAudio({ ...session, audio });
-    clearRecording();
+    clearRecording(session.workspaceId);
 
     return isUploaded ? "uploaded" : "notUploaded";
-  }, [endRecordingSession, uploadRecordedAudio]);
+  }, [clearRecording, endRecordingSession, uploadRecordedAudio]);
 
   const endRecording = useCallback(() => {
     // 끝내는 동안 다시 눌러도 이미 끝내는 중이라 확인 창을 또 띄우지 않아요
