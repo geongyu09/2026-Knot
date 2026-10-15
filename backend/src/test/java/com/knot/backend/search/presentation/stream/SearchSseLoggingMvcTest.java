@@ -13,6 +13,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import ch.qos.logback.classic.Level;
 import com.knot.backend.auth.domain.AuthenticatedMember;
 import com.knot.backend.global.config.SearchWorkerProperties;
+import com.knot.backend.global.config.SearchWorkerConfig;
+import com.knot.backend.global.logging.RequestIdFilter;
+import org.slf4j.MDC;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
 import com.knot.backend.global.exception.SearchQuestionExceptionHandler;
 import com.knot.backend.search.application.SearchAnswerSnapshotService;
@@ -39,6 +42,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class SearchSseLoggingMvcTest {
+    private static final String TRANSPORT_ID = "0123456789abcdef0123456789abcdef";
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
@@ -71,6 +75,7 @@ class SearchSseLoggingMvcTest {
                     )
             )
                     .thenAnswer(call -> {
+                        assertThat(MDC.get("requestId")).isEqualTo(TRANSPORT_ID);
                         snapshotSent.countDown();
                         assertThat(
                                 initialized.await(
@@ -83,6 +88,7 @@ class SearchSseLoggingMvcTest {
         }
         if (!reconnect) {
             doAnswer(call -> {
+                assertThat(MDC.get("requestId")).isEqualTo(TRANSPORT_ID);
                 assertThat(
                         initialized.await(
                                 5,
@@ -97,7 +103,7 @@ class SearchSseLoggingMvcTest {
                             5
                     );
         }
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        ThreadPoolTaskExecutor executor = new SearchWorkerConfig().searchStreamExecutor(new SearchWorkerProperties());
         executor.setCorePoolSize(1);
         executor.setMaxPoolSize(1);
         executor.setWaitForTasksToCompleteOnShutdown(true);
@@ -149,6 +155,7 @@ class SearchSseLoggingMvcTest {
                     new SearchAnswerEventsController(streams)
             )
                     .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
+                    .addFilters(new RequestIdFilter())
                     .setControllerAdvice(
                             new GlobalExceptionHandler(),
                             new SearchQuestionExceptionHandler(new GlobalExceptionHandler())
@@ -162,6 +169,11 @@ class SearchSseLoggingMvcTest {
                     started.getRequest()
                             .isAsyncStarted()
             ).isTrue();
+            assertThat(
+                    started.getResponse()
+                            .getHeader("X-Request-ID")
+            ).isEqualTo(TRANSPORT_ID);
+            assertThat(MDC.get("requestId")).isNull();
             connectionMayStart.countDown();
             awaitInitialSnapshot(
                     snapshotSent,
@@ -180,6 +192,11 @@ class SearchSseLoggingMvcTest {
                     .andReturn();
             assertThat(
                     completed.getResponse()
+                            .getHeader("X-Request-ID")
+            ).isEqualTo(TRANSPORT_ID);
+            assertThat(MDC.get("requestId")).isNull();
+            assertThat(
+                    completed.getResponse()
                             .getStatus()
             ).isEqualTo(200);
             assertThat(
@@ -194,6 +211,10 @@ class SearchSseLoggingMvcTest {
                         assertThat(event.getFormattedMessage()).contains("IllegalStateException")
                                 .doesNotContain("private-sql");
                         assertThat(event.getThrowableProxy()).isNull();
+                        assertThat(event.getMDCPropertyMap()).containsEntry(
+                                "requestId",
+                                TRANSPORT_ID
+                        );
                     });
         } finally {
             connectionMayStart.countDown();
@@ -242,13 +263,20 @@ class SearchSseLoggingMvcTest {
         if (reconnect) {
             return mvc
                     .perform(
-                            get("/api/v1/workspaces/1/search/conversations/3/answers/5/events")
+                            get("/api/v1/workspaces/1/search/conversations/3/answers/5/events").header(
+                                    "X-Request-ID",
+                                    TRANSPORT_ID
+                            )
                                     .accept("text/event-stream")
                     )
                     .andReturn();
         }
         return mvc.perform(
                 post("/api/v1/workspaces/1/search/conversations").contentType("application/json")
+                        .header(
+                                "X-Request-ID",
+                                TRANSPORT_ID
+                        )
                         .accept("text/event-stream")
                         .content(
                                 "{\"content\":\"private-question\",\"requestId\":\"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee\"}"

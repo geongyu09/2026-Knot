@@ -412,7 +412,7 @@ class WorkspaceInvitationAcceptanceTest {
                 .andExpect(
                         header().string(
                                 HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS,
-                                HttpHeaders.RETRY_AFTER
+                                HttpHeaders.RETRY_AFTER + ", X-Request-ID"
                         )
                 )
                 .andExpect(jsonPath("$.code").value("WORKSPACE_INVITATION_PREVIEW_RATE_LIMIT_EXCEEDED"));

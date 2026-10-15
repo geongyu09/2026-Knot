@@ -619,7 +619,7 @@ class WorkspaceInvitationAcceptAcceptanceTest {
                 .andExpect(
                         header().string(
                                 HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS,
-                                HttpHeaders.RETRY_AFTER
+                                HttpHeaders.RETRY_AFTER + ", X-Request-ID"
                         )
                 )
                 .andExpect(

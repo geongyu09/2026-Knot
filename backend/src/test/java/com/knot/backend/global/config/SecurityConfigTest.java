@@ -79,6 +79,10 @@ class SecurityConfigTest {
                 "X-XSRF-TOKEN"
         );
         assertThat(configuration.getAllowCredentials()).isTrue();
+        assertThat(configuration.getExposedHeaders()).containsExactly(
+                "Retry-After",
+                "X-Request-ID"
+        );
     }
 
     private SecurityConfig securityConfig() {

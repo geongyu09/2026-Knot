@@ -1,6 +1,7 @@
 package com.knot.backend.global.config;
 
 import com.knot.backend.search.application.SearchAnswerSnapshotService;
+import com.knot.backend.global.logging.RequestIdTaskDecorator;
 import com.knot.backend.search.presentation.stream.SearchAnswerStream;
 import org.springframework.beans.factory.annotation.Qualifier;
 import com.knot.backend.search.application.SearchGenerationAvailability;
@@ -37,6 +38,7 @@ public class SearchWorkerConfig {
         executor.setMaxPoolSize(properties.getStreamConcurrency());
         executor.setQueueCapacity(properties.getStreamConcurrency());
         executor.setThreadNamePrefix("search-stream-");
+        executor.setTaskDecorator(new RequestIdTaskDecorator());
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
         executor.setWaitForTasksToCompleteOnShutdown(false);
         return executor;
