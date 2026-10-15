@@ -900,6 +900,168 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
     ).toBeInTheDocument();
   });
 
+  describe("찾은 기록 자동 열림 (SEARCH-R10)", () => {
+    const { questionMessageId, answerMessageId, deltas, evidences } =
+      searchQuestionAnswerStreamResponse;
+    const answerText = deltas.join("");
+    const savedItems = searchMessagesResponse.items;
+
+    const getEvidencePanel = () =>
+      screen.queryByRole("region", { name: "찾은 기록" });
+
+    /** 기존 대화에서 후속 질문을 보내 접수까지 받아요. 끝 이벤트는 테스트마다 보내요 */
+    const sendFollowUpUntilAccepted = async (answerEvidences: object[]) => {
+      respondMessages([
+        ...savedItems,
+        {
+          ...savedItems[0],
+          id: questionMessageId,
+          content: FOLLOW_UP_QUESTION,
+        },
+        {
+          ...savedItems[1],
+          id: answerMessageId,
+          content: answerText,
+          evidences: answerEvidences,
+        },
+      ]);
+      const stream = respondWithControlledSse(SEARCH_QUESTIONS_PATH);
+      const rendered = renderLayout(CONVERSATION_PATH, <SearchConversation />);
+      await findInConversation(savedItems[0].content);
+
+      await sendFromDock(FOLLOW_UP_QUESTION);
+      await stream.waitForOpen();
+      stream.send("accepted", {
+        conversationId: Number(CONVERSATION_ID),
+        questionMessageId,
+        answerMessageId,
+      });
+      deltas.forEach((text) => stream.send("delta", { answerMessageId, text }));
+
+      return { ...rendered, stream };
+    };
+
+    it("근거가 있는 답변이 끝나면 그 답변의 찾은 기록 패널을 저절로 연다", async () => {
+      const { router, stream } = await sendFollowUpUntilAccepted(evidences);
+      expect(getEvidencePanel()).not.toBeInTheDocument();
+
+      stream.send("evidence", { answerMessageId, items: evidences });
+      stream.send("completed", { answerMessageId, status: "COMPLETED" });
+
+      const panel = await waitFor(() => {
+        const found = getEvidencePanel();
+        expect(found).toBeInTheDocument();
+        return found;
+      });
+      expect(router.state.location.search).toBe(
+        `?messageId=${answerMessageId}`,
+      );
+      expect(getBody()?.lastElementChild).toContainElement(panel);
+      expect(within(panel!).getByText(evidences[0].title)).toBeInTheDocument();
+    });
+
+    it("다시 받은 대화에 끝난 답변이 아직 없어도 받은 근거로 찾은 기록 패널을 연다", async () => {
+      const { stream } = await sendFollowUpUntilAccepted(evidences);
+      respondMessages(savedItems);
+
+      stream.send("evidence", { answerMessageId, items: evidences });
+      stream.send("completed", { answerMessageId, status: "COMPLETED" });
+
+      const panel = await waitFor(() => {
+        const found = getEvidencePanel();
+        expect(found).toBeInTheDocument();
+        return found;
+      });
+      expect(within(panel!).getByText(evidences[0].title)).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("banner")).getByRole("button", {
+          name: "찾은 기록 닫기",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it.each([
+      {
+        name: "근거 없이 끝나면",
+        answerEvidences: [],
+        endFrames: [["completed", { answerMessageId, status: "COMPLETED" }]],
+      },
+      {
+        name: "근거를 받은 뒤 중지되면",
+        answerEvidences: evidences,
+        endFrames: [
+          ["evidence", { answerMessageId, items: evidences }],
+          ["stopped", { answerMessageId, status: "STOPPED" }],
+        ],
+      },
+      {
+        name: "근거를 받은 뒤 실패하면",
+        answerEvidences: evidences,
+        endFrames: [
+          ["evidence", { answerMessageId, items: evidences }],
+          [
+            "failed",
+            { answerMessageId, status: "FAILED", code: "LLM_STREAM_FAILED" },
+          ],
+        ],
+      },
+    ] as const)(
+      "답변이 $name 찾은 기록 패널을 열지 않는다",
+      async ({ answerEvidences, endFrames }) => {
+        const { router, queryClient, stream } = await sendFollowUpUntilAccepted(
+          [...answerEvidences],
+        );
+
+        endFrames.forEach(([event, data]) => stream.send(event, data));
+        await waitFor(() =>
+          expect(useSearchAnswerStore.getState().controller).toBeNull(),
+        );
+        await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+        expect(router.state.location.search).toBe("");
+        expect(getEvidencePanel()).not.toBeInTheDocument();
+      },
+    );
+
+    it("저절로 열린 찾은 기록을 닫으면 대화를 다시 받아도 다시 열지 않는다", async () => {
+      const { router, queryClient, stream } =
+        await sendFollowUpUntilAccepted(evidences);
+      stream.send("evidence", { answerMessageId, items: evidences });
+      stream.send("completed", { answerMessageId, status: "COMPLETED" });
+      await waitFor(() => expect(getEvidencePanel()).toBeInTheDocument());
+
+      await act(async () => {
+        fireEvent.click(
+          within(screen.getByRole("banner")).getByRole("button", {
+            name: "찾은 기록 닫기",
+          }),
+        );
+      });
+      await act(async () => {
+        await queryClient.invalidateQueries();
+      });
+
+      expect(router.state.location.search).toBe("");
+      expect(getEvidencePanel()).not.toBeInTheDocument();
+    });
+
+    it("답변이 끝나기 전에 홈으로 나가면 홈에서 찾은 기록을 열지 않는다", async () => {
+      const { router, stream } = await sendFollowUpUntilAccepted(evidences);
+
+      await act(async () => {
+        await router.navigate(HOME_PATH);
+      });
+      stream.send("evidence", { answerMessageId, items: evidences });
+      stream.send("completed", { answerMessageId, status: "COMPLETED" });
+      await waitFor(() =>
+        expect(useSearchAnswerStore.getState().status).toBe("COMPLETED"),
+      );
+
+      expect(router.state.location.pathname).toBe(HOME_PATH);
+      expect(router.state.location.search).toBe("");
+    });
+  });
+
   it("기존 대화에서 독으로 보낸 후속 질문과 답변은 저장된 턴 뒤에 이어진다 (SEARCH-R1)", async () => {
     const { questionMessageId, answerMessageId, deltas } =
       searchQuestionAnswerStreamResponse;

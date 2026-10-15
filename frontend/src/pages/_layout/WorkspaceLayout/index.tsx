@@ -5,6 +5,7 @@ import SearchEvidenceToggle from "@features/search/SearchEvidenceToggle";
 import useTranscriptPanel from "@hooks/domain/document/useTranscriptPanel";
 import useRecordingLeaveWarning from "@hooks/domain/recording/useRecordingLeaveWarning";
 import useAbortSearchAnswerOnLeave from "@hooks/domain/search/useAbortSearchAnswerOnLeave";
+import useOpenEvidenceOnAnswerComplete from "@hooks/domain/search/useOpenEvidenceOnAnswerComplete";
 import useWorkspaceEntry from "@hooks/domain/workspace/useWorkspaceEntry";
 import useWorkspaceNav from "@hooks/domain/workspace/useWorkspaceNav";
 import DockColumn from "@primitives/layout/DockColumn";
@@ -37,7 +38,7 @@ import type { DockedPanelName } from "./types/dockedPanel";
  * 독과 탐색 대화 열은 둘 다 본문 영역 안의 `DockColumn`에 놓여, 패널을 고정하면 함께 밀린다(SEARCH-R11).
  *
  * 탐색 화면에서는 찾은 기록 패널이 본문 오른쪽 레일을 차지해, 열리면 본문 영역이 줄어 같은 규칙을 따른다.
- * 찾은 기록은 GNB 오른쪽 버튼과 답변 아래 버튼이 주소(`?messageId=`)로 여닫는다.
+ * 찾은 기록은 GNB 오른쪽 버튼과 답변 아래 버튼이 주소(`?messageId=`)로 여닫고, 근거가 있는 답변이 끝나면 저절로 열린다(SEARCH-R10).
  *
  * 문서 하나를 보는 화면에서는 원문 패널이 같은 오른쪽 자리를 쓴다. GNB 오른쪽의 원문 버튼으로 여닫고,
  * 회원이 마지막에 둔 상태를 다음 문서에도 그대로 적용한다(DOC-R3 · DOC-R4).
@@ -63,6 +64,7 @@ export default function WorkspaceLayout() {
 
   useRecordingLeaveWarning();
   useAbortSearchAnswerOnLeave();
+  useOpenEvidenceOnAnswerComplete();
 
   // 대화 목록 버튼은 탐색 화면에만 있으므로, 홈으로 나가면 고른 적 없던 것으로 봐요
   const dockedPanel =
