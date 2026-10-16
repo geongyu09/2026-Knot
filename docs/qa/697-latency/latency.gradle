@@ -6,7 +6,8 @@ allprojects {
             classpath = sourceSets.test.runtimeClasspath
             useJUnitPlatform { includeTags 'manual-live-model' }
             systemProperty 'latency.variant', System.getProperty('latency.variant')
-            systemProperty 'latency.samples', System.getProperty('latency.samples', '5')
+            systemProperty 'latency.samples', System.getProperty('latency.samples', '30')
+            systemProperty 'latency.scenario', System.getProperty('latency.scenario', 'single_meeting')
             maxHeapSize = '1g'
             testLogging.showStandardStreams = true
         }
