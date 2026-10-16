@@ -8,7 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 class AudioInspector {
-    private static final double MAXIMUM_DURATION_SECONDS = 7200;
+    static final int MAXIMUM_DURATION_SECONDS = 7200;
     private static final long MAXIMUM_PCM_BYTES = 230_400_000L;
     private static final long WAV_HEADER_ALLOWANCE_BYTES = 1_048_576L;
     private static final int RIFF_CHUNK_ID = 0x52494646;
