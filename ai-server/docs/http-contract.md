@@ -75,7 +75,7 @@ EC2는 성공 결과를 저장한 뒤 다음 작업을 제출해야 합니다. �
 | FFmpeg 변환 timeout | 15분, `AI_CONVERSION_TIMEOUT` |
 | 모델 실행 timeout | 12시간, `AI_INFERENCE_TIMEOUT` |
 
-다운로드 후 FFmpeg로 PCM16 mono 16kHz WAV를 만들고 실제 PCM 길이를 검사합니다. FFmpeg 출력 크기도 제한하며, 2시간 초과 녹음을 잘라 성공으로 처리하지 않습니다. runner는 음량 정규화 후 Whisper와 화자 분리를 병렬 실행하고 발화를 병합합니다.
+다운로드 후 FFmpeg로 앞 7,200초까지 PCM16 mono 16kHz WAV로 변환하고 실제 PCM 길이를 검사합니다. 2시간 미만 입력은 원래 길이를 유지하며, 초과 입력은 앞 2시간만 전사합니다. 업로드한 S3 원본은 변경하지 않습니다. 다운로드·출력 크기 제한과 변환 결과의 PCM 형식·길이 검증은 유지합니다. runner는 제한된 WAV를 음량 정규화한 뒤 Whisper와 화자 분리를 병렬 실행하고 발화를 병합합니다.
 
 Python supervisor는 제한 시간과 부모 JVM 생존 여부를 감시하고 소유한 프로세스 그룹을 정리합니다. 서버 시작 때도 잔존 프로세스를 먼저 회수합니다. 소유권을 확인할 수 없으면 서버 시작 또는 새 작업 접수를 막습니다. 정리 대상은 전용 work directory의 UUID 작업 디렉터리입니다.
 
