@@ -44,14 +44,14 @@ class WorkspaceLeaveServiceIntegrationTest {
     private static final Instant JOINED_AT = Instant.parse("2026-08-31T00:01:00Z");
 
     private final WorkspaceLeaveService workspaceLeaveService;
-    private final WorkspaceLastViewedService workspaceLastViewedService;
+    private final WorkspaceService workspaceLastViewedService;
     private final WorkspaceInvitationService workspaceInvitationService;
     private final TransactionTemplate transactionTemplate;
     private final JdbcClient jdbcClient;
 
     WorkspaceLeaveServiceIntegrationTest(
             WorkspaceLeaveService workspaceLeaveService,
-            WorkspaceLastViewedService workspaceLastViewedService,
+            WorkspaceService workspaceLastViewedService,
             WorkspaceInvitationService workspaceInvitationService,
             TransactionTemplate transactionTemplate,
             JdbcClient jdbcClient
@@ -253,7 +253,7 @@ class WorkspaceLeaveServiceIntegrationTest {
         );
         Callable<WorkspaceErrorCode> updateLastViewed = outcomeAfterBarrier(
                 barrier,
-                () -> workspaceLastViewedService.update(
+                () -> workspaceLastViewedService.updateLastViewed(
                         leavingMemberId,
                         workspaceId
                 )

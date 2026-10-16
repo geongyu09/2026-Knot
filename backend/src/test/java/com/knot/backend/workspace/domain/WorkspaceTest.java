@@ -3,6 +3,7 @@ package com.knot.backend.workspace.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.lang.reflect.Field;
 import java.time.Instant;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.DisplayName;
@@ -269,5 +270,65 @@ class WorkspaceTest {
                 .isEqualTo(WorkspaceErrorCode.WORKSPACE_OWNER_TRANSFER_REQUIRED);
         assertThat(owner.isActive()).isTrue();
         assertThat(workspace.isDeleted()).isFalse();
+    }
+
+    @DisplayName("저장된 워크스페이스는 생성자를 생성 시각에 참여한 OWNER 멤버십으로 만든다")
+    @Test
+    void createOwnerMembership_success() {
+        // given
+        Workspace workspace = Workspace.create(
+                "Knot 팀",
+                CREATED_AT
+        );
+        assignId(
+                workspace,
+                7L
+        );
+
+        // when
+        WorkspaceMember owner = workspace.createOwnerMembership(3L);
+
+        // then
+        assertThat(owner.getWorkspaceId()).isEqualTo(7L);
+        assertThat(owner.getMemberId()).isEqualTo(3L);
+        assertThat(owner.getRole()).isEqualTo(WorkspaceMemberRole.OWNER);
+        assertThat(owner.getJoinedAt()).isEqualTo(CREATED_AT);
+    }
+
+    @DisplayName("저장되지 않아 ID가 없는 워크스페이스는 OWNER 멤버십을 만들 수 없다")
+    @Test
+    void createOwnerMembership_failure_unsavedWorkspace() {
+        // given
+        Workspace workspace = Workspace.create(
+                "Knot 팀",
+                CREATED_AT
+        );
+
+        // when
+        ThrowingCallable action = () -> workspace.createOwnerMembership(3L);
+
+        // then
+        assertThatThrownBy(action).isInstanceOf(WorkspaceException.class)
+                .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
+                .isEqualTo(WorkspaceErrorCode.INVALID_WORKSPACE_ID);
+    }
+
+    private void assignId(
+            Workspace workspace,
+            long id
+    ) {
+        try {
+            Field field = Workspace.class.getDeclaredField("id");
+            field.setAccessible(true);
+            field.set(
+                    workspace,
+                    id
+            );
+        } catch (NoSuchFieldException | IllegalAccessException exception) {
+            throw new IllegalStateException(
+                    "저장된 워크스페이스 fixture를 만들 수 없습니다",
+                    exception
+            );
+        }
     }
 }

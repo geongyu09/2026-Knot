@@ -45,7 +45,7 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
     private static final Instant JOINED_AT = Instant.parse("2026-08-31T00:01:00Z");
 
     private final WorkspaceLeaveService leaveService;
-    private final WorkspaceLastViewedService lastViewedService;
+    private final WorkspaceService lastViewedService;
     private final WorkspaceInvitationService invitationService;
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
@@ -55,7 +55,7 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
 
     WorkspaceOwnershipTransferServiceIntegrationTest(
             WorkspaceLeaveService leaveService,
-            WorkspaceLastViewedService lastViewedService,
+            WorkspaceService lastViewedService,
             WorkspaceInvitationService invitationService,
             WorkspaceRepository workspaceRepository,
             WorkspaceMemberRepository workspaceMemberRepository,
@@ -501,7 +501,7 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
         // when
         RaceResult result = race(
                 () -> transfer(fixture),
-                () -> lastViewedService.update(
+                () -> lastViewedService.updateLastViewed(
                         viewerId,
                         fixture.workspaceId()
                 )

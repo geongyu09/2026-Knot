@@ -8,11 +8,7 @@ public record WorkspaceDetailResult(
         long activeMemberCount
 ) {
 
-    public static WorkspaceDetailResult from(WorkspaceDetailSnapshot snapshot) {
-        return new WorkspaceDetailResult(
-                snapshot.name(),
-                snapshot.myRole(),
-                snapshot.activeMemberCount()
-        );
+    public boolean isMember() {
+        return myRole != null;
     }
 }

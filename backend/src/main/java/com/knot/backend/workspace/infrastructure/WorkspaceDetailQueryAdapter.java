@@ -1,7 +1,7 @@
 package com.knot.backend.workspace.infrastructure;
 
 import com.knot.backend.workspace.application.WorkspaceDetailQuery;
-import com.knot.backend.workspace.application.dto.result.WorkspaceDetailSnapshot;
+import com.knot.backend.workspace.application.dto.result.WorkspaceDetailResult;
 import com.knot.backend.workspace.domain.WorkspaceMemberRole;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +13,7 @@ public class WorkspaceDetailQueryAdapter implements WorkspaceDetailQuery {
     private final WorkspaceJpaRepository workspaceJpaRepository;
 
     @Override
-    public Optional<WorkspaceDetailSnapshot> find(
+    public Optional<WorkspaceDetailResult> find(
             long workspaceId,
             long memberId
     ) {
@@ -22,7 +22,7 @@ public class WorkspaceDetailQueryAdapter implements WorkspaceDetailQuery {
                 memberId
         )
                 .map(
-                        row -> new WorkspaceDetailSnapshot(
+                        row -> new WorkspaceDetailResult(
                                 row.name(),
                                 toRole(row.myRole()),
                                 row.activeMemberCount()
