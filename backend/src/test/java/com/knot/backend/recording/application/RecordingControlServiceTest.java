@@ -66,11 +66,9 @@ class RecordingControlServiceTest {
         when(hasher.hash(CONTROL_TOKEN)).thenReturn(HASH);
         when(hasher.hash(OTHER_CONTROL_TOKEN)).thenReturn(OTHER_HASH);
         service = new RecordingControlService(
-                new RecordingControlledSessionLoader(
-                        new RecordingWorkspaceAccessValidator(
-                                workspaceRepository,
-                                workspaceMemberRepository
-                        ),
+                new RecordingAccess(
+                        workspaceRepository,
+                        workspaceMemberRepository,
                         recordingSessionRepository,
                         hasher
                 ),

@@ -19,6 +19,7 @@ import com.knot.backend.recording.domain.RecordingAudioUploadStatus;
 import com.knot.backend.recording.domain.RecordingEndReason;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
+import com.knot.backend.recording.domain.RecordingSessionRepository;
 import com.knot.backend.recording.domain.RecordingStatus;
 import com.knot.backend.workspace.domain.Workspace;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
@@ -55,9 +56,11 @@ class RecordingDetailServiceTest {
         transcriptionState = mock(RecordingTranscriptionStateService.class);
         documentProgress = mock(DocumentGenerationProgressService.class);
         service = new RecordingDetailService(
-                new RecordingWorkspaceAccessValidator(
+                new RecordingAccess(
                         workspaceRepository,
-                        workspaceMemberRepository
+                        workspaceMemberRepository,
+                        mock(RecordingSessionRepository.class),
+                        mock(RecordingControlTokenHasher.class)
                 ),
                 recordingDetailQuery,
                 transcriptionState,

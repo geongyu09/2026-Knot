@@ -33,7 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class RecordingTranscriptionStateService {
-    private final RecordingWorkspaceAccessValidator access;
+    private final RecordingAccess recordingAccess;
     private final WorkspaceRepository workspaces;
     private final RecordingSessionRepository recordings;
     private final RecordingAudioUploadRepository uploads;
@@ -72,17 +72,12 @@ public class RecordingTranscriptionStateService {
             long memberId,
             long recordingId
     ) {
-        access.validateAndLock(
+        recordingAccess.loadOwnedForUpdate(
                 workspaceId,
-                memberId
-        );
-        RecordingSession recording = recordings.findByIdForUpdate(recordingId)
-                .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND));
-        recording.validateControlledBy(
-                workspaceId,
-                memberId
-        );
-        recording.validateEnded();
+                memberId,
+                recordingId
+        )
+                .validateEnded();
         RecordingAudioUpload upload = uploads.findByRecordingId(recordingId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
         upload.validateAudioAvailable();

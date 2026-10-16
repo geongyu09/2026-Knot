@@ -5,10 +5,6 @@ import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadUrlResult;
 import com.knot.backend.recording.domain.RecordingAudioUpload;
 import com.knot.backend.recording.domain.RecordingAudioUploadRepository;
-import com.knot.backend.recording.domain.RecordingErrorCode;
-import com.knot.backend.recording.domain.RecordingException;
-import com.knot.backend.recording.domain.RecordingSession;
-import com.knot.backend.recording.domain.RecordingSessionRepository;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
@@ -22,8 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class RecordingAudioUploadUrlService {
     private static final String STORAGE_KEY_PREFIX = "recordings/";
 
-    private final RecordingWorkspaceAccessValidator workspaceAccessValidator;
-    private final RecordingSessionRepository recordingSessionRepository;
+    private final RecordingAccess recordingAccess;
     private final RecordingAudioUploadRepository recordingAudioUploadRepository;
     private final RecordingAudioStorage audioStorage;
     private final Clock clock;
@@ -35,20 +30,12 @@ public class RecordingAudioUploadUrlService {
             long recordingId,
             RecordingAudioUploadUrlCommand command
     ) {
-        workspaceAccessValidator.validateAndLock(
+        recordingAccess.loadOwnedForUpdate(
                 workspaceId,
-                memberId
-        );
-        if (recordingId <= 0) {
-            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
-        }
-        RecordingSession session = recordingSessionRepository.findByIdForUpdate(recordingId)
-                .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND));
-        session.validateControlledBy(
-                workspaceId,
-                memberId
-        );
-        session.validateAudioUploadable();
+                memberId,
+                recordingId
+        )
+                .validateAudioUploadable();
 
         Optional<RecordingAudioUpload> existing = recordingAudioUploadRepository.findByRecordingId(recordingId);
         existing.ifPresent(

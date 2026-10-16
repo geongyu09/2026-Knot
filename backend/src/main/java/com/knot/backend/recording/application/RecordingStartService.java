@@ -18,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class RecordingStartService {
-    private final RecordingWorkspaceAccessValidator workspaceAccessValidator;
+    private final RecordingAccess recordingAccess;
     private final MemberRepository memberRepository;
     private final RecordingSessionRepository recordingSessionRepository;
     private final RecordingControlTokenHasher controlTokenHasher;
@@ -30,7 +30,7 @@ public class RecordingStartService {
             long memberId,
             RecordingStartCommand command
     ) {
-        workspaceAccessValidator.validateAndLock(
+        recordingAccess.lockMember(
                 workspaceId,
                 memberId
         );

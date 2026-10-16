@@ -18,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class RecordingControlService {
-    private final RecordingControlledSessionLoader controlledSessionLoader;
+    private final RecordingAccess recordingAccess;
     private final RecordingSessionRepository recordingSessionRepository;
     private final Clock clock;
 
@@ -29,7 +29,7 @@ public class RecordingControlService {
             long recordingId,
             RecordingControlCommand command
     ) {
-        RecordingSession session = controlledSessionLoader.loadForUpdate(
+        RecordingSession session = recordingAccess.loadControlledForUpdate(
                 workspaceId,
                 memberId,
                 recordingId,
@@ -46,7 +46,7 @@ public class RecordingControlService {
             long recordingId,
             RecordingControlCommand command
     ) {
-        RecordingSession session = controlledSessionLoader.loadForUpdate(
+        RecordingSession session = recordingAccess.loadControlledForUpdate(
                 workspaceId,
                 memberId,
                 recordingId,
@@ -63,7 +63,7 @@ public class RecordingControlService {
             long recordingId,
             RecordingControlCommand command
     ) {
-        RecordingSession session = controlledSessionLoader.loadForUpdate(
+        RecordingSession session = recordingAccess.loadControlledForUpdate(
                 workspaceId,
                 memberId,
                 recordingId,
@@ -80,7 +80,7 @@ public class RecordingControlService {
             long recordingId,
             RecordingControlCommand command
     ) {
-        RecordingSession session = controlledSessionLoader.loadForUpdate(
+        RecordingSession session = recordingAccess.loadControlledForUpdate(
                 workspaceId,
                 memberId,
                 recordingId,
