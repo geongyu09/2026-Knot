@@ -1,5 +1,7 @@
 package com.knot.backend.search.presentation;
 
+import com.knot.backend.search.domain.SearchIntent;
+import com.knot.backend.search.application.SearchIntentClassifier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -103,6 +105,8 @@ class SearchAnswerEventsAcceptanceTest {
     @MockitoBean
     private SearchDocumentRetriever retriever;
     @MockitoBean
+    private SearchIntentClassifier classifier;
+    @MockitoBean
     private SearchAnswerGenerator generator;
     @Autowired
     private RequestObserver requestObserver;
@@ -115,6 +119,12 @@ class SearchAnswerEventsAcceptanceTest {
 
     @BeforeEach
     void setUp() {
+        when(
+                classifier.classify(
+                        any(),
+                        any()
+                )
+        ).thenReturn(SearchIntent.MEETING_SEARCH);
         jdbc.sql("TRUNCATE TABLE members, workspaces RESTART IDENTITY CASCADE")
                 .update();
         fixtures = new DocumentFixtures(jdbc);

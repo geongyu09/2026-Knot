@@ -1,8 +1,11 @@
 package com.knot.backend.search.presentation;
 
+import com.knot.backend.search.domain.SearchIntent;
+import com.knot.backend.search.application.SearchIntentClassifier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doAnswer;
@@ -90,6 +93,8 @@ class SearchAnswerRetryAcceptanceTest {
     @MockitoBean
     private SearchDocumentRetriever retriever;
     @MockitoBean
+    private SearchIntentClassifier classifier;
+    @MockitoBean
     private SearchAnswerGenerator generator;
     private HttpClient client;
     private DocumentFixtures fixtures;
@@ -102,6 +107,12 @@ class SearchAnswerRetryAcceptanceTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        when(
+                classifier.classify(
+                        any(),
+                        any()
+                )
+        ).thenReturn(SearchIntent.MEETING_SEARCH);
         jdbc.sql("TRUNCATE TABLE members, workspaces RESTART IDENTITY CASCADE")
                 .update();
         fixtures = new DocumentFixtures(jdbc);
@@ -207,6 +218,49 @@ class SearchAnswerRetryAcceptanceTest {
                 .query(Long.class)
                 .list()
                 .forEach(worker::execute);
+    }
+
+    @Test
+    @DisplayName("재시도도 의도를 다시 확인하고 고정 안내로 기존 답변을 완료한다")
+    void retry_success_outOfScopeGuidance() throws Exception {
+        when(
+                classifier.classify(
+                        any(),
+                        any()
+                )
+        ).thenReturn(SearchIntent.OUT_OF_SCOPE);
+        try (InputStream stream = connect(body(UUID.randomUUID())).body(); BufferedReader reader = reader(stream)) {
+            assertAccepted(accepted(reader));
+            worker.execute(first.answerMessageId());
+            assertThat(
+                    reader.lines()
+                            .collect(Collectors.joining("\n"))
+            ).contains(
+                    "event:completed",
+                    "Knot은 회의 기록의 조회·요약·비교",
+                    "\"items\":[]"
+            )
+                    .doesNotContain(
+                            "event:failed",
+                            "실패한 부분",
+                            "OUT_OF_SCOPE"
+                    );
+        }
+        verifyNoInteractions(
+                retriever,
+                generator
+        );
+        assertThat(count("search_messages")).isEqualTo(2);
+        assertThat(
+                jdbc.sql("SELECT status FROM search_messages WHERE role = 'ASSISTANT'")
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("COMPLETED");
+        assertThat(
+                jdbc.sql("SELECT visible_in_list FROM search_conversations")
+                        .query(Boolean.class)
+                        .single()
+        ).isTrue();
     }
 
     @Test

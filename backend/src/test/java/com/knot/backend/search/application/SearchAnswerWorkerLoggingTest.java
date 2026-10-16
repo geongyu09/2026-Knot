@@ -1,5 +1,6 @@
 package com.knot.backend.search.application;
 
+import com.knot.backend.search.domain.SearchIntent;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
@@ -31,6 +32,8 @@ class SearchAnswerWorkerLoggingTest {
     private ObjectProvider<SearchDocumentRetriever> retrievers;
     @org.mockito.Mock
     private ObjectProvider<SearchAnswerGenerator> generators;
+    @org.mockito.Mock
+    private ObjectProvider<SearchIntentClassifier> classifiers;
 
     @Test
     @DisplayName("탐색 생성과 실패 저장이 연달아 실패해도 최초 원인을 기록하고 저장 오류를 전파한다")
@@ -51,7 +54,12 @@ class SearchAnswerWorkerLoggingTest {
                 );
         try (LogCapture logs = new LogCapture(SearchAnswerWorker.class)) {
             assertThatThrownBy(() -> worker.execute(5)).isSameAs(persistence);
-            assertThat(logs.events()).singleElement()
+            assertThat(
+                    logs.events()
+                            .stream()
+                            .filter(event -> event.getLevel() != Level.INFO)
+                            .toList()
+            ).singleElement()
                     .satisfies(event -> {
                         assertThat(event.getLevel()).isEqualTo(Level.ERROR);
                         assertThat(event.getFormattedMessage()).contains(
@@ -81,7 +89,12 @@ class SearchAnswerWorkerLoggingTest {
         ).thenThrow(new CancellationException("private"));
         try (LogCapture logs = new LogCapture(SearchAnswerWorker.class)) {
             worker.execute(5);
-            assertThat(logs.events()).singleElement()
+            assertThat(
+                    logs.events()
+                            .stream()
+                            .filter(event -> event.getLevel() != Level.INFO)
+                            .toList()
+            ).singleElement()
                     .satisfies(event -> assertThat(event.getLevel()).isEqualTo(Level.DEBUG));
         }
         verify(executions).fail(
@@ -106,12 +119,21 @@ class SearchAnswerWorkerLoggingTest {
                 )
         );
         when(retrievers.getObject()).thenReturn(retriever);
+        SearchIntentClassifier classifier = mock(SearchIntentClassifier.class);
+        when(classifiers.getObject()).thenReturn(classifier);
+        when(
+                classifier.classify(
+                        any(),
+                        any()
+                )
+        ).thenReturn(SearchIntent.MEETING_SEARCH);
         return new SearchAnswerWorker(
                 executions,
                 retrievers,
                 generators,
                 Clock.systemUTC(),
-                new SearchAgentProperties()
+                new SearchAgentProperties(),
+                classifiers
         );
     }
 }

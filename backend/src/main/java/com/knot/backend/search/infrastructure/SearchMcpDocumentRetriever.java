@@ -20,7 +20,6 @@ import tools.jackson.databind.ObjectMapper;
 @RequiredArgsConstructor
 public class SearchMcpDocumentRetriever implements SearchDocumentRetriever {
     private static final int PAGE_SIZE_LIMIT = 20;
-    private static final String DIRECT_ANSWER_TOOL = "answer_without_search";
     private static final String INSTRUCTIONS = """
             You explore generated DRAFT and ARCHIVED meeting documents in the current workspace. Use the tools to find and READ evidence before answering.
             DRAFT and ARCHIVED describe member confirmation and archiving, not factual verification or meeting decision states.
@@ -30,11 +29,7 @@ public class SearchMcpDocumentRetriever implements SearchDocumentRetriever {
             pagination (each page returns at most 20 documents), read the relevant meetings in chronological context. Rewrite searches when necessary.
             A snippet is NOT a full document. Use read_document and continuation cursors for relevant missing context.
             Never claim coverage outside documents actually read. When ready, finish without tool calls.
-            For greetings, thanks, or requests about your capabilities that need no meeting-document facts,
-            call answer_without_search with a helpful answer in the user's language, before any document tool.
-            Never use answer_without_search for questions about meeting facts, decisions, summaries, or missing records.
             For document questions, use document tools and do not generate the final answer during exploration.
-            If intent needs clarification without document facts, answer_without_search may ask the user to clarify.
             Never infer facts from missing evidence. Do not finish with plain text before selecting a tool.
             """;
 
@@ -52,7 +47,6 @@ public class SearchMcpDocumentRetriever implements SearchDocumentRetriever {
     ) {
         access.validate(scope);
         List<Map<String, Object>> tools = new ArrayList<>(mcp.definitions(scope));
-        tools.add(directAnswerTool());
         List<Map<String, Object>> messages = new ArrayList<>();
         messages.add(
                 Map.of(
@@ -79,7 +73,6 @@ public class SearchMcpDocumentRetriever implements SearchDocumentRetriever {
         Set<String> repeated = new HashSet<>();
         Set<String> callIds = new HashSet<>();
         int count = 0;
-        boolean routeRetried = false;
         while (count <= properties.getToolCallLimit()) {
             access.validate(scope);
             context.validate(messages);
@@ -90,30 +83,10 @@ public class SearchMcpDocumentRetriever implements SearchDocumentRetriever {
             );
             JsonNode calls = response.path("tool_calls");
             boolean finished = hasNoToolCalls(calls);
-            if (finished && count == 0 && !routeRetried) {
-                routeRetried = true;
-                messages.add(assistantMessage(response));
-                messages.add(
-                        Map.of(
-                                "role",
-                                "system",
-                                "content",
-                                "Select a tool: answer_without_search only for input needing no meeting facts; "
-                                        + "otherwise search/list/read documents. Do not return plain text."
-                        )
-                );
-                continue;
-            }
             if (finished) {
                 return new SearchRetrievalResult(
                         exploration.finish(),
                         0
-                );
-            }
-            if (hasDirectAnswer(calls)) {
-                return directAnswer(
-                        calls,
-                        count
                 );
             }
             messages.add(assistantMessage(response));
@@ -154,86 +127,6 @@ public class SearchMcpDocumentRetriever implements SearchDocumentRetriever {
                                 String.class,
                                 Object.class
                         )
-        );
-    }
-
-    private Map<String, Object> directAnswerTool() {
-        return Map.of(
-                "type",
-                "function",
-                "function",
-                Map.of(
-                        "name",
-                        DIRECT_ANSWER_TOOL,
-                        "description",
-                        "Reply to greetings, thanks, capability questions, or ask for clarification. "
-                                + "Only when no meeting-document facts are required. Never for meeting search or summaries.",
-                        "parameters",
-                        Map.of(
-                                "type",
-                                "object",
-                                "properties",
-                                Map.of(
-                                        "answer",
-                                        Map.of(
-                                                "type",
-                                                "string",
-                                                "minLength",
-                                                1
-                                        )
-                                ),
-                                "required",
-                                List.of("answer"),
-                                "additionalProperties",
-                                false
-                        )
-                )
-        );
-    }
-
-    private boolean hasDirectAnswer(JsonNode calls) {
-        for (JsonNode call : calls) {
-            JsonNode function = call.path("function");
-            if (DIRECT_ANSWER_TOOL.equals(
-                    function.path("name")
-                            .asString()
-            )) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private SearchRetrievalResult directAnswer(
-            JsonNode calls,
-            int count
-    ) {
-        if (count != 0 || calls.size() != 1) {
-            throw new SearchToolException("INVALID_DIRECT_ANSWER");
-        }
-        JsonNode call = calls.get(0);
-        String id = call.path("id")
-                .asString();
-        if (id == null || id.isBlank()) {
-            throw new SearchToolException("INVALID_MODEL_TOOL_CALL");
-        }
-        JsonNode function = call.path("function");
-        JsonNode arguments = mapper.readTree(
-                function.path("arguments")
-                        .asString()
-        );
-        if (!arguments.isObject()) {
-            throw new SearchToolException("INVALID_DIRECT_ANSWER");
-        }
-        JsonNode answer = arguments.path("answer");
-        if (!answer.isString() || answer.asString()
-                .isBlank()) {
-            throw new SearchToolException("INVALID_DIRECT_ANSWER");
-        }
-        return new SearchRetrievalResult(
-                List.of(),
-                0,
-                answer.asString()
         );
     }
 
@@ -278,6 +171,14 @@ public class SearchMcpDocumentRetriever implements SearchDocumentRetriever {
                 .path("name")
                 .asString();
         if (id == null || id.isBlank() || name == null || !callIds.add(id)) {
+            throw new SearchToolException("INVALID_MODEL_TOOL_CALL");
+        }
+        if (!List.of(
+                "search_documents",
+                "list_documents",
+                "read_document"
+        )
+                .contains(name)) {
             throw new SearchToolException("INVALID_MODEL_TOOL_CALL");
         }
         JsonNode arguments = mapper.readTree(

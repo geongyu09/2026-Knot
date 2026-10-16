@@ -1,5 +1,6 @@
 package com.knot.backend.search.application;
 
+import com.knot.backend.search.infrastructure.SearchQwenIntentClassifier;
 import com.knot.backend.search.infrastructure.SearchTransportCancellation;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -1074,11 +1075,14 @@ class SearchDocumentToolServiceIntegrationTest {
             List<JsonNode> captured = new ArrayList<>();
             server.respond(exchange -> {
                 captured.add(mapper.readTree(server.requestBody()));
-                int turn = turns.incrementAndGet();
-                String body = response(
-                        turn,
-                        document
-                );
+                String body = "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"intent\\\":\\\"MEETING_SEARCH\\\"}\"}}]}";
+                if (!mapper.readTree(server.requestBody())
+                        .has("response_format")) {
+                    body = response(
+                            turns.incrementAndGet(),
+                            document
+                    );
+                }
                 byte[] bytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
                 exchange.sendResponseHeaders(
                         200,
@@ -1127,12 +1131,23 @@ class SearchDocumentToolServiceIntegrationTest {
                             mapper
                     )
             );
+            adapters.addBean(
+                    "classifier",
+                    new SearchQwenIntentClassifier(
+                            llm,
+                            history,
+                            access,
+                            properties,
+                            mapper
+                    )
+            );
             SearchAnswerWorker worker = new SearchAnswerWorker(
                     executions,
                     adapters.getBeanProvider(SearchDocumentRetriever.class),
                     adapters.getBeanProvider(SearchAnswerGenerator.class),
                     clock,
-                    properties
+                    properties,
+                    adapters.getBeanProvider(SearchIntentClassifier.class)
             );
             SearchQuestionAcceptedResult accepted = intake.acceptFirst(
                     workspaceId,
