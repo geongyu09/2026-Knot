@@ -11,7 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.knot.backend.auth.domain.AuthenticatedMember;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
-import com.knot.backend.recording.application.RecordingEndService;
+import com.knot.backend.recording.application.RecordingControlService;
 import com.knot.backend.recording.application.dto.command.RecordingControlCommand;
 import com.knot.backend.recording.application.dto.result.RecordingEndResult;
 import com.knot.backend.recording.domain.RecordingErrorCode;
@@ -44,13 +44,13 @@ class RecordingEndControllerTest {
             {"tabId":"22222222-2222-2222-2222-222222222222","controlToken":"%s"}
             """.formatted(CONTROL_TOKEN);
 
-    private RecordingEndService recordingEndService;
+    private RecordingControlService recordingControlService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        recordingEndService = mock(RecordingEndService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new RecordingEndController(recordingEndService))
+        recordingControlService = mock(RecordingControlService.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(new RecordingEndController(recordingControlService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                 .build();
@@ -68,7 +68,7 @@ class RecordingEndControllerTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
         when(
-                recordingEndService.end(
+                recordingControlService.end(
                         WORKSPACE_ID,
                         MEMBER_ID,
                         RECORDING_ID,
@@ -109,7 +109,7 @@ class RecordingEndControllerTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
         when(
-                recordingEndService.end(
+                recordingControlService.end(
                         eq(WORKSPACE_ID),
                         eq(MEMBER_ID),
                         eq(RECORDING_ID),
@@ -151,7 +151,7 @@ class RecordingEndControllerTest {
 
         // then
         result.andExpect(status().isBadRequest());
-        verifyNoInteractions(recordingEndService);
+        verifyNoInteractions(recordingControlService);
     }
 
     @Test
@@ -177,7 +177,7 @@ class RecordingEndControllerTest {
         result.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("controlToken"));
-        verifyNoInteractions(recordingEndService);
+        verifyNoInteractions(recordingControlService);
     }
 
     @Test
@@ -199,7 +199,7 @@ class RecordingEndControllerTest {
         // then
         result.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST_BODY"));
-        verifyNoInteractions(recordingEndService);
+        verifyNoInteractions(recordingControlService);
     }
 
     private UsernamePasswordAuthenticationToken memberAuthentication() {

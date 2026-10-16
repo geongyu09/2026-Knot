@@ -49,27 +49,18 @@ class RecordingConnectionExpiryIntegrationTest {
     private static final int TASK_COUNT = 3;
 
     private final RecordingStartService recordingStartService;
-    private final RecordingPauseService recordingPauseService;
-    private final RecordingResumeService recordingResumeService;
-    private final RecordingHeartbeatService recordingHeartbeatService;
-    private final RecordingEndService recordingEndService;
+    private final RecordingControlService recordingControlService;
     private final WorkspaceLeaveService workspaceLeaveService;
     private final JdbcClient jdbcClient;
 
     RecordingConnectionExpiryIntegrationTest(
             RecordingStartService recordingStartService,
-            RecordingPauseService recordingPauseService,
-            RecordingResumeService recordingResumeService,
-            RecordingHeartbeatService recordingHeartbeatService,
-            RecordingEndService recordingEndService,
+            RecordingControlService recordingControlService,
             WorkspaceLeaveService workspaceLeaveService,
             JdbcClient jdbcClient
     ) {
         this.recordingStartService = recordingStartService;
-        this.recordingPauseService = recordingPauseService;
-        this.recordingResumeService = recordingResumeService;
-        this.recordingHeartbeatService = recordingHeartbeatService;
-        this.recordingEndService = recordingEndService;
+        this.recordingControlService = recordingControlService;
         this.workspaceLeaveService = workspaceLeaveService;
         this.jdbcClient = jdbcClient;
     }
@@ -98,7 +89,7 @@ class RecordingConnectionExpiryIntegrationTest {
 
         // when
         Throwable thrown = catchThrowable(
-                () -> recordingPauseService.pause(
+                () -> recordingControlService.pause(
                         fixture.workspaceId(),
                         fixture.memberId(),
                         recording.id(),
@@ -126,7 +117,7 @@ class RecordingConnectionExpiryIntegrationTest {
                 fixture.workspaceId(),
                 fixture.memberId()
         );
-        recordingPauseService.pause(
+        recordingControlService.pause(
                 fixture.workspaceId(),
                 fixture.memberId(),
                 recording.id(),
@@ -137,7 +128,7 @@ class RecordingConnectionExpiryIntegrationTest {
 
         // when
         Throwable thrown = catchThrowable(
-                () -> recordingResumeService.resume(
+                () -> recordingControlService.resume(
                         fixture.workspaceId(),
                         fixture.memberId(),
                         recording.id(),
@@ -208,7 +199,7 @@ class RecordingConnectionExpiryIntegrationTest {
         Instant lastSeenAt = recordingRow(recording.id()).lastSeenAt();
 
         // when
-        RecordingEndResult result = recordingEndService.end(
+        RecordingEndResult result = recordingControlService.end(
                 fixture.workspaceId(),
                 fixture.memberId(),
                 recording.id(),
@@ -362,7 +353,7 @@ class RecordingConnectionExpiryIntegrationTest {
                                 memberId,
                                 startCommand(UUID.randomUUID())
                         ),
-                        () -> recordingHeartbeatService.heartbeat(
+                        () -> recordingControlService.heartbeat(
                                 otherWorkspaceId,
                                 memberId,
                                 previous.id(),
@@ -454,7 +445,7 @@ class RecordingConnectionExpiryIntegrationTest {
             Fixture fixture,
             StartedRecording recording
     ) {
-        return recordingHeartbeatService.heartbeat(
+        return recordingControlService.heartbeat(
                 fixture.workspaceId(),
                 fixture.memberId(),
                 recording.id(),

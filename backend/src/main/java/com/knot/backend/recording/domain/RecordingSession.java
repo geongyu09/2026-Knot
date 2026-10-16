@@ -125,13 +125,20 @@ public class RecordingSession {
         );
     }
 
-    public boolean matchesStart(
-            Long workspaceId,
+    public void validateStartRetry(
+            long workspaceId,
             UUID tabId,
             String controlTokenHash
     ) {
-        return this.workspaceId.equals(workspaceId) && this.tabId.equals(tabId)
-                && sameControlTokenHash(controlTokenHash);
+        if (this.workspaceId != workspaceId || !this.tabId.equals(tabId) || !sameControlTokenHash(controlTokenHash)) {
+            throw new RecordingException(RecordingErrorCode.RECORDING_START_REQUEST_CONFLICT);
+        }
+    }
+
+    public void releaseForNewRecording(Instant now) {
+        if (!expireIfDue(now)) {
+            throw new RecordingException(RecordingErrorCode.ACTIVE_RECORDING_ALREADY_EXISTS);
+        }
     }
 
     public void validateControlledBy(
@@ -176,7 +183,7 @@ public class RecordingSession {
 
     public void pause(Instant pausedAt) {
         ensureActive();
-        ensureNotDue(pausedAt);
+        endIfExpired(pausedAt);
         if (status == RecordingStatus.PAUSED) {
             return;
         }
@@ -195,7 +202,7 @@ public class RecordingSession {
 
     public void resume(Instant resumedAt) {
         ensureActive();
-        ensureNotDue(resumedAt);
+        endIfExpired(resumedAt);
         if (status == RecordingStatus.RECORDING) {
             return;
         }
@@ -249,10 +256,9 @@ public class RecordingSession {
     }
 
     public void recordHeartbeat(Instant receivedAt) {
-        if (!isActive()) {
+        if (!isActive() || expireIfDue(receivedAt)) {
             return;
         }
-        ensureNotDue(receivedAt);
         if (receivedAt.isAfter(lastSeenAt)) {
             lastSeenAt = receivedAt;
         }
@@ -360,8 +366,8 @@ public class RecordingSession {
         return currentIntervalStartedAt.plusMillis(MAX_RECORDING_MILLIS - accumulatedRecordingMillis);
     }
 
-    private void ensureNotDue(Instant now) {
-        if (isDue(now)) {
+    private void endIfExpired(Instant now) {
+        if (expireIfDue(now)) {
             throw new RecordingException(RecordingErrorCode.RECORDING_ALREADY_ENDED);
         }
     }

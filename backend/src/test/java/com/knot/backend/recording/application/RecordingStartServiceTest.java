@@ -108,13 +108,15 @@ class RecordingStartServiceTest {
                         .getMemberId()
         ).isEqualTo(MEMBER_ID);
         assertThat(
-                created.getValue()
-                        .matchesStart(
-                                WORKSPACE_ID,
-                                command.tabId(),
-                                HASH
-                        )
-        ).isTrue();
+                catchThrowable(
+                        () -> created.getValue()
+                                .validateStartRetry(
+                                        WORKSPACE_ID,
+                                        command.tabId(),
+                                        HASH
+                                )
+                )
+        ).isNull();
         org.mockito.InOrder order = org.mockito.Mockito.inOrder(
                 workspaceRepository,
                 workspaceMemberRepository,
@@ -224,13 +226,6 @@ class RecordingStartServiceTest {
         // given
         prepareAccess();
         RecordingSession existing = mock(RecordingSession.class);
-        when(
-                existing.matchesStart(
-                        WORKSPACE_ID,
-                        command.tabId(),
-                        HASH
-                )
-        ).thenReturn(true);
         when(existing.getId()).thenReturn(7L);
         when(existing.getStatus()).thenReturn(RecordingStatus.ENDED);
         when(existing.getStartedAt()).thenReturn(NOW);

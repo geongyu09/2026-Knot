@@ -11,7 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.knot.backend.auth.domain.AuthenticatedMember;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
-import com.knot.backend.recording.application.RecordingResumeService;
+import com.knot.backend.recording.application.RecordingControlService;
 import com.knot.backend.recording.application.dto.result.RecordingResumeResult;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
@@ -43,13 +43,13 @@ class RecordingResumeControllerTest {
             {"tabId":"22222222-2222-2222-2222-222222222222","controlToken":"%s"}
             """.formatted(CONTROL_TOKEN);
 
-    private RecordingResumeService recordingResumeService;
+    private RecordingControlService recordingControlService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        recordingResumeService = mock(RecordingResumeService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new RecordingResumeController(recordingResumeService))
+        recordingControlService = mock(RecordingControlService.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(new RecordingResumeController(recordingControlService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                 .build();
@@ -67,7 +67,7 @@ class RecordingResumeControllerTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
         when(
-                recordingResumeService.resume(
+                recordingControlService.resume(
                         eq(WORKSPACE_ID),
                         eq(MEMBER_ID),
                         eq(RECORDING_ID),
@@ -107,7 +107,7 @@ class RecordingResumeControllerTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
         when(
-                recordingResumeService.resume(
+                recordingControlService.resume(
                         eq(WORKSPACE_ID),
                         eq(MEMBER_ID),
                         eq(RECORDING_ID),
@@ -154,7 +154,7 @@ class RecordingResumeControllerTest {
         result.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("controlToken"));
-        verifyNoInteractions(recordingResumeService);
+        verifyNoInteractions(recordingControlService);
     }
 
     private UsernamePasswordAuthenticationToken memberAuthentication() {

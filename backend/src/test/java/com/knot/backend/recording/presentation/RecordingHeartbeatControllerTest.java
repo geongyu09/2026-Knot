@@ -11,7 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.knot.backend.auth.domain.AuthenticatedMember;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
-import com.knot.backend.recording.application.RecordingHeartbeatService;
+import com.knot.backend.recording.application.RecordingControlService;
 import com.knot.backend.recording.application.dto.result.RecordingHeartbeatResult;
 import com.knot.backend.recording.domain.RecordingEndReason;
 import com.knot.backend.recording.domain.RecordingErrorCode;
@@ -44,13 +44,13 @@ class RecordingHeartbeatControllerTest {
             {"tabId":"22222222-2222-2222-2222-222222222222","controlToken":"%s"}
             """.formatted(CONTROL_TOKEN);
 
-    private RecordingHeartbeatService recordingHeartbeatService;
+    private RecordingControlService recordingControlService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        recordingHeartbeatService = mock(RecordingHeartbeatService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new RecordingHeartbeatController(recordingHeartbeatService))
+        recordingControlService = mock(RecordingControlService.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(new RecordingHeartbeatController(recordingControlService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                 .build();
@@ -68,7 +68,7 @@ class RecordingHeartbeatControllerTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
         when(
-                recordingHeartbeatService.heartbeat(
+                recordingControlService.heartbeat(
                         eq(WORKSPACE_ID),
                         eq(MEMBER_ID),
                         eq(RECORDING_ID),
@@ -116,7 +116,7 @@ class RecordingHeartbeatControllerTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
         when(
-                recordingHeartbeatService.heartbeat(
+                recordingControlService.heartbeat(
                         eq(WORKSPACE_ID),
                         eq(MEMBER_ID),
                         eq(RECORDING_ID),
@@ -160,7 +160,7 @@ class RecordingHeartbeatControllerTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
         when(
-                recordingHeartbeatService.heartbeat(
+                recordingControlService.heartbeat(
                         eq(WORKSPACE_ID),
                         eq(MEMBER_ID),
                         eq(RECORDING_ID),
@@ -207,7 +207,7 @@ class RecordingHeartbeatControllerTest {
         result.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("controlToken"));
-        verifyNoInteractions(recordingHeartbeatService);
+        verifyNoInteractions(recordingControlService);
     }
 
     private UsernamePasswordAuthenticationToken memberAuthentication() {

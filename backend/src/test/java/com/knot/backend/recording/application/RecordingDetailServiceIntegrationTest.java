@@ -48,26 +48,20 @@ class RecordingDetailServiceIntegrationTest {
 
     private final RecordingDetailService recordingDetailService;
     private final RecordingStartService recordingStartService;
-    private final RecordingPauseService recordingPauseService;
-    private final RecordingEndService recordingEndService;
-    private final RecordingHeartbeatService recordingHeartbeatService;
+    private final RecordingControlService recordingControlService;
     private final WorkspaceLeaveService workspaceLeaveService;
     private final JdbcClient jdbcClient;
 
     RecordingDetailServiceIntegrationTest(
             RecordingDetailService recordingDetailService,
             RecordingStartService recordingStartService,
-            RecordingPauseService recordingPauseService,
-            RecordingEndService recordingEndService,
-            RecordingHeartbeatService recordingHeartbeatService,
+            RecordingControlService recordingControlService,
             WorkspaceLeaveService workspaceLeaveService,
             JdbcClient jdbcClient
     ) {
         this.recordingDetailService = recordingDetailService;
         this.recordingStartService = recordingStartService;
-        this.recordingPauseService = recordingPauseService;
-        this.recordingEndService = recordingEndService;
-        this.recordingHeartbeatService = recordingHeartbeatService;
+        this.recordingControlService = recordingControlService;
         this.workspaceLeaveService = workspaceLeaveService;
         this.jdbcClient = jdbcClient;
     }
@@ -90,7 +84,7 @@ class RecordingDetailServiceIntegrationTest {
         StartedRecording recording = startRecording(recordingFixture);
         Fixture pausedFixture = ownerFixture("일시정지 팀");
         StartedRecording paused = startRecording(pausedFixture);
-        recordingPauseService.pause(
+        recordingControlService.pause(
                 pausedFixture.workspaceId(),
                 pausedFixture.memberId(),
                 paused.id(),
@@ -171,7 +165,7 @@ class RecordingDetailServiceIntegrationTest {
         Fixture fixture = ownerFixture("만료 팀");
         StartedRecording recording = startRecording(fixture);
         disconnect(recording.id());
-        RecordingHeartbeatResult heartbeat = recordingHeartbeatService.heartbeat(
+        RecordingHeartbeatResult heartbeat = recordingControlService.heartbeat(
                 fixture.workspaceId(),
                 fixture.memberId(),
                 recording.id(),
@@ -320,7 +314,7 @@ class RecordingDetailServiceIntegrationTest {
                         5,
                         TimeUnit.SECONDS
                 );
-                recordingEndService.end(
+                recordingControlService.end(
                         fixture.workspaceId(),
                         fixture.memberId(),
                         recording.id(),
@@ -380,7 +374,7 @@ class RecordingDetailServiceIntegrationTest {
 
     private StartedRecording endedRecording(Fixture fixture) {
         StartedRecording recording = startRecording(fixture);
-        recordingEndService.end(
+        recordingControlService.end(
                 fixture.workspaceId(),
                 fixture.memberId(),
                 recording.id(),
