@@ -19,7 +19,6 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class RecordingAudioDeletionTask {
-    private static final String STORAGE_FAILURE_CODE = "AUDIO_STORAGE_UNAVAILABLE";
     private static final long FIRST_RETRY_SECONDS = 60L;
     private static final long MAX_RETRY_SECONDS = 3600L;
     private static final int MAX_BACKOFF_SHIFT = 6;
@@ -157,7 +156,7 @@ public class RecordingAudioDeletionTask {
         status = RecordingAudioDeletionStatus.PENDING;
         nextAttemptAt = now.plus(retryBackoff(attempt));
         executionDeadlineAt = null;
-        lastFailureCode = STORAGE_FAILURE_CODE;
+        lastFailureCode = RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE.getCode();
     }
 
     public boolean isSucceeded() {
