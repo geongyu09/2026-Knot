@@ -3,11 +3,9 @@ package com.knot.backend.recording.application;
 import com.knot.backend.global.config.RetentionCleanupProperties;
 import com.knot.backend.recording.application.dto.result.RecordingAudioDeletionExecution;
 import com.knot.backend.recording.domain.RecordingAudioDeletionRepository;
-import com.knot.backend.recording.domain.RecordingAudioDeletionStatus;
 import com.knot.backend.recording.domain.RecordingAudioDeletionTask;
 import com.knot.backend.recording.domain.RecordingAudioUpload;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
@@ -19,7 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class RecordingAudioDeletionStateService {
-
     private final RecordingAudioDeletionRepository deletions;
     private final RetentionCleanupProperties properties;
     private final Clock clock;
@@ -63,7 +60,7 @@ public class RecordingAudioDeletionStateService {
                 attempt,
                 now
         );
-        if (stored.getStatus() == RecordingAudioDeletionStatus.SUCCEEDED) {
+        if (stored.isSucceeded()) {
             deletions.findUploadForUpdate(stored.getUploadId())
                     .orElseThrow()
                     .recordDeleted(now);
@@ -75,31 +72,10 @@ public class RecordingAudioDeletionStateService {
             long taskId,
             int attempt
     ) {
-        Optional<RecordingAudioDeletionTask> task = lockUploadAndTask(taskId);
-        if (task.isEmpty()) {
-            return;
-        }
-        RecordingAudioDeletionTask stored = task.orElseThrow();
-        Instant now = now();
-        stored.recordFailure(
-                attempt,
-                now,
-                now.plus(retryBackoff(attempt)),
-                "AUDIO_STORAGE_UNAVAILABLE"
-        );
-    }
-
-    private Duration retryBackoff(int attempt) {
-        return Duration.ofSeconds(
-                Math.min(
-                        3600L,
-                        60L << Math.min(
-                                Math.max(
-                                        attempt - 1,
-                                        0
-                                ),
-                                6
-                        )
+        lockUploadAndTask(taskId).ifPresent(
+                stored -> stored.recordStorageFailure(
+                        attempt,
+                        now()
                 )
         );
     }

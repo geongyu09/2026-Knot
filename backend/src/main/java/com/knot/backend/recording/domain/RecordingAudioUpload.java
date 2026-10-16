@@ -144,6 +144,18 @@ public class RecordingAudioUpload {
         return !now.isBefore(completedAt.plus(AUDIO_RETENTION));
     }
 
+    public Instant deletionConfirmationAfter(
+            Duration legacyUrlValidity,
+            Duration uploadQuiescence,
+            Instant now
+    ) {
+        Instant confirmation = lastUploadUrlExpiry(legacyUrlValidity).plus(uploadQuiescence);
+        if (confirmation.isBefore(now)) {
+            return now;
+        }
+        return confirmation;
+    }
+
     public void recordUploadUrlExpiry(Instant expiresAt) {
         validateRetentionTime(expiresAt);
         if (isCompleted()) {
@@ -165,6 +177,13 @@ public class RecordingAudioUpload {
         if (this.deletedAt == null) {
             this.deletedAt = deletedAt;
         }
+    }
+
+    private Instant lastUploadUrlExpiry(Duration legacyUrlValidity) {
+        if (lastUploadUrlExpiresAt == null) {
+            return completedAt.plus(legacyUrlValidity);
+        }
+        return lastUploadUrlExpiresAt;
     }
 
     private void validateRetentionTime(Instant time) {

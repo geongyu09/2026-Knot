@@ -63,28 +63,13 @@ public class RecordingAudioRetentionService {
                         upload.getId(),
                         upload.getStorageKey(),
                         now,
-                        confirmationAfter(
-                                upload,
+                        upload.deletionConfirmationAfter(
+                                properties.getLegacyUrlValidity(),
+                                properties.getUploadQuiescence(),
                                 now
                         )
                 )
         );
-    }
-
-    private Instant confirmationAfter(
-            RecordingAudioUpload upload,
-            Instant now
-    ) {
-        Instant expiry = upload.getLastUploadUrlExpiresAt();
-        if (expiry == null) {
-            expiry = upload.getCompletedAt()
-                    .plus(properties.getLegacyUrlValidity());
-        }
-        Instant confirmation = expiry.plus(properties.getUploadQuiescence());
-        if (confirmation.isBefore(now)) {
-            return now;
-        }
-        return confirmation;
     }
 
     private Instant now() {
