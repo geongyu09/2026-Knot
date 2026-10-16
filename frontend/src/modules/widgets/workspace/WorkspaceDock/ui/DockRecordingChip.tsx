@@ -6,8 +6,8 @@ interface DockRecordingChipProps {
   /** 녹음한 시간. 예: `12:48` */
   elapsedTime: string;
   isPaused: boolean;
-  /** 칩을 누르면 녹음 화면으로 가요 */
-  onOpen: () => void;
+  /** 넘기면 칩을 눌러 녹음 화면으로 가요. 넘기지 않으면 점과 시간만 보여 주는 칩이에요 */
+  onOpen?: () => void;
   /** 넘기면 칩 오른쪽에 중지 버튼을 둬요. 펼친 독은 옆에 보내기 버튼이 있어 두지 않아요 */
   onStop?: () => void;
 }
@@ -16,6 +16,7 @@ interface DockRecordingChipProps {
  * 녹음 화면이 아닌 곳에서 녹음이 이어지고 있을 때 마이크 자리에 놓이는 녹음 칩.
  *
  * 빨간 점·녹음한 시간·`›`를 누르면 녹음 화면으로 가고, 접힌 독에서는 오른쪽 중지 버튼으로 녹음을 끝내요.
+ * 다른 탭의 녹음이면 녹음 화면으로 갈 수도 끝낼 수도 없어 점과 시간만 보여 줘요(STT-R28).
  */
 export default function DockRecordingChip({
   elapsedTime,
@@ -23,13 +24,31 @@ export default function DockRecordingChip({
   onOpen,
   onStop,
 }: DockRecordingChipProps) {
+  const status = (
+    <>
+      <RecDot
+        role="img"
+        aria-label={isPaused ? "일시정지" : "녹음 중"}
+        $isPaused={isPaused}
+      />
+      <ElapsedTime>{elapsedTime}</ElapsedTime>
+    </>
+  );
+
   return (
     <Container $hasStop={onStop !== undefined}>
-      <OpenButton type="button" aria-label="녹음 화면으로 이동" onClick={onOpen}>
-        <RecDot aria-hidden="true" $isPaused={isPaused} />
-        <ElapsedTime>{elapsedTime}</ElapsedTime>
-        <ChevronRightIcon size={12} />
-      </OpenButton>
+      {onOpen ? (
+        <OpenButton
+          type="button"
+          aria-label="녹음 화면으로 이동"
+          onClick={onOpen}
+        >
+          {status}
+          <ChevronRightIcon size={12} />
+        </OpenButton>
+      ) : (
+        status
+      )}
 
       {onStop && (
         <StopButton type="button" aria-label="녹음 끝내기" onClick={onStop}>
@@ -82,6 +101,7 @@ const RecDot = styled.span<{ $isPaused: boolean }>`
 `;
 
 const ElapsedTime = styled.span`
+  color: ${({ theme }) => theme.neutral[0]};
   font-variant-numeric: tabular-nums; /* 숫자가 바뀌어도 폭이 흔들리지 않아요 */
   white-space: nowrap;
   ${({ theme }) => theme.text.label01};

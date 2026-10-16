@@ -4,6 +4,7 @@ import useRecordingState from "@hooks/domain/recording/useRecordingState";
 import useRecordingControl from "@hooks/domain/recording/useRecordingControl";
 import useRecordingElapsedTime from "@hooks/domain/recording/useRecordingElapsedTime";
 import useRecordingStartRefusedDialog from "@hooks/domain/recording/useRecordingStartRefusedDialog";
+import useServerRecording from "@hooks/domain/recording/useServerRecording";
 import { PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { formatRecordingTime } from "@utils/formatRecordingTime";
 import { useEffect } from "react";
@@ -18,6 +19,8 @@ import { useMatch, useParams } from "react-router";
  *
  * 녹음 화면이 아닌 곳에서 녹음이 이어지고 있으면 마이크 대신 녹음 칩을 보여줘요.
  * 칩을 누르면 권한을 다시 묻지 않고 녹음 화면으로 가고, 중지를 누르면 녹음을 끝내 올린 뒤 그 녹음의 문서 정리 화면으로 가요.
+ * 이 탭의 녹음이 없을 때 현재 녹음 조회가 녹음 중·일시정지로 답하면 다른 탭의 녹음(`isOtherTabRecording`)으로 칩을 보여줘요.
+ * 조회 중이거나 실패하면 마이크를 둬요.
  *
  * 독은 어느 화면에서나 떠 있으므로, 녹음 중에 마이크가 끊겼다는 알림도 여기서 같은 모달로 띄워요.
  * 녹음은 저장소가 이미 일시정지해 두었으므로 서버에도 일시정지를 알리고, [다시 시도]는 마이크를 다시 받아 이어 가요.
@@ -31,8 +34,13 @@ export const useDockRecording = () => {
   const { status, isRecordingActive, isMicrophoneLost, clearMicrophoneLost } =
     useRecordingState();
   const { elapsedSeconds } = useRecordingElapsedTime();
+  const { status: serverStatus, elapsedTime: serverElapsedTime } =
+    useServerRecording();
   const { startRecording, syncPause, resumeRecording, endRecording } =
     useRecordingControl();
+
+  const isOtherTabRecording = !isRecordingActive && serverStatus !== null;
+  const hasRecording = isRecordingActive || isOtherTabRecording;
 
   // 녹음 중 마이크가 끊기면 다시 시도 모달을 띄워요
   useEffect(() => {
@@ -82,10 +90,15 @@ export const useDockRecording = () => {
   };
 
   return {
-    isMicVisible: !isRecordingPageActive && !isRecordingActive,
-    isRecordingChipVisible: !isRecordingPageActive && isRecordingActive,
-    isRecordingPaused: status === "paused",
-    elapsedTime: formatRecordingTime(elapsedSeconds),
+    isMicVisible: !isRecordingPageActive && !hasRecording,
+    isRecordingChipVisible: !isRecordingPageActive && hasRecording,
+    isOtherTabRecording,
+    isRecordingPaused: isOtherTabRecording
+      ? serverStatus === "paused"
+      : status === "paused",
+    elapsedTime: isOtherTabRecording
+      ? serverElapsedTime
+      : formatRecordingTime(elapsedSeconds),
     handleMicClick,
     handleOpenRecording,
     handleStopRecording: () => void endRecording(),

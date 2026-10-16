@@ -34,6 +34,7 @@ const fadeIn = keyframes`
  * 질문은 어느 화면에서든 이 독이 바로 보내요. 새 대화는 서버가 접수하면 그 대화 화면으로 옮겨 가요.
  * 접혀 있든 펼쳐 있든 회의 녹음(마이크) 슬롯을 두고, 누르면 마이크 권한을 받아 녹음을 시작해요.
  * 녹음 화면이 아닌 곳에서 녹음이 이어지고 있으면 마이크 자리에 녹음 칩을 둬요. 접힌 독에는 중지 버튼도 함께 둬요.
+ * 다른 탭의 녹음이면 칩은 점과 시간만 보여 주고 누를 수 없으며 중지 버튼도 두지 않아요.
  * 녹음 화면에서는 마이크를 숨겨요. Figma에서 숨겨져 있는 글 작성 슬롯은 만들지 않아요.
  *
  * 놓일 자리와 펼친 폭은 이 독을 쓰는 레이아웃이 정해요.
@@ -54,6 +55,7 @@ export default function WorkspaceDock() {
   const {
     isMicVisible,
     isRecordingChipVisible,
+    isOtherTabRecording,
     isRecordingPaused,
     elapsedTime,
     handleMicClick,
@@ -107,7 +109,7 @@ export default function WorkspaceDock() {
               <DockRecordingChip
                 elapsedTime={elapsedTime}
                 isPaused={isRecordingPaused}
-                onOpen={handleOpenRecording}
+                onOpen={isOtherTabRecording ? undefined : handleOpenRecording}
               />
             )}
 
@@ -146,8 +148,8 @@ export default function WorkspaceDock() {
               <DockRecordingChip
                 elapsedTime={elapsedTime}
                 isPaused={isRecordingPaused}
-                onOpen={handleOpenRecording}
-                onStop={handleStopRecording}
+                onOpen={isOtherTabRecording ? undefined : handleOpenRecording}
+                onStop={isOtherTabRecording ? undefined : handleStopRecording}
               />
             </>
           )}

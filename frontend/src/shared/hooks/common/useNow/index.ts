@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 const TICK_INTERVAL_MS = 1000;
 
 /** 현재 시각. `isTicking`인 동안만 1초마다 갱신해요. */
-export const useNow = (isTicking: boolean) => {
+const useNow = (isTicking: boolean) => {
   const [now, setNow] = useState(() => Date.now());
 
   const { start, reset } = useInterval({
@@ -20,3 +20,5 @@ export const useNow = (isTicking: boolean) => {
 
   return now;
 };
+
+export default useNow;
