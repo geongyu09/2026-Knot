@@ -2,6 +2,8 @@ package com.knot.backend.global.config;
 
 import com.knot.backend.search.application.SearchAnswerGenerator;
 import com.knot.backend.search.application.SearchDocumentRetriever;
+import com.knot.backend.search.application.SearchIntentClassifier;
+import com.knot.backend.search.infrastructure.SearchQwenIntentClassifier;
 import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.infrastructure.SearchAgentHttp;
 import com.knot.backend.search.infrastructure.SearchTransportCancellation;
@@ -23,6 +25,23 @@ import tools.jackson.databind.ObjectMapper;
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = {"knot.search.agent.enabled", "knot.llm.enabled"}, havingValue = "true")
 public class SearchAgentConfig {
+
+    @Bean
+    public SearchIntentClassifier searchIntentClassifier(
+            SearchLlmClient llm,
+            SearchHistoryQuery history,
+            SearchToolAccess access,
+            SearchAgentProperties properties,
+            ObjectMapper mapper
+    ) {
+        return new SearchQwenIntentClassifier(
+                llm,
+                history,
+                access,
+                properties,
+                mapper
+        );
+    }
 
     @Bean(destroyMethod = "close")
     public SearchTransportCancellation searchTransportCancellation(

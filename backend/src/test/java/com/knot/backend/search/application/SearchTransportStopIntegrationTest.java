@@ -1,5 +1,7 @@
 package com.knot.backend.search.application;
 
+import static org.mockito.Mockito.when;
+import com.knot.backend.search.domain.SearchIntent;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,6 +20,10 @@ import com.knot.backend.search.infrastructure.SearchTransportCancellation;
 import com.knot.backend.search.infrastructure.mcp.SearchMcpClient;
 import com.knot.backend.search.infrastructure.mcp.SearchToolTokenCodec;
 import com.knot.backend.global.config.SearchAgentProperties;
+import com.knot.backend.global.config.LlmProperties;
+import com.knot.backend.search.infrastructure.SearchHistoryQuery;
+import com.knot.backend.search.infrastructure.SearchLlmClient;
+import com.knot.backend.search.infrastructure.SearchQwenIntentClassifier;
 import com.knot.backend.testsupport.LlmHttpServer;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
@@ -60,6 +66,8 @@ class SearchTransportStopIntegrationTest {
     @Autowired
     private SearchToolAccess access;
     @Autowired
+    private SearchHistoryQuery history;
+    @Autowired
     private SearchAnswerWorker worker;
     @Autowired
     private JdbcClient jdbc;
@@ -68,6 +76,8 @@ class SearchTransportStopIntegrationTest {
     @MockitoBean
     private SearchDocumentRetriever retriever;
     @MockitoBean
+    private SearchIntentClassifier classifier;
+    @MockitoBean
     private SearchAnswerGenerator generator;
     private long workspaceId;
     private long memberId;
@@ -75,6 +85,12 @@ class SearchTransportStopIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        when(
+                classifier.classify(
+                        any(),
+                        any()
+                )
+        ).thenReturn(SearchIntent.MEETING_SEARCH);
         jdbc.sql("TRUNCATE TABLE members, workspaces RESTART IDENTITY CASCADE")
                 .update();
         DocumentFixtures fixtures = new DocumentFixtures(jdbc);
@@ -182,9 +198,10 @@ class SearchTransportStopIntegrationTest {
         }
     }
 
-    @Test
-    @DisplayName("실제 worker의 HTTP 대기 중 중지는 worker를 반환시키고 실패로 덮어쓰지 않는다")
-    void execute_success_cancelledWorker() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    @DisplayName("분류·검색 HTTP 대기 중 중지는 worker를 반환시키고 실패로 덮어쓰지 않는다")
+    void execute_success_cancelledWorker(boolean duringClassification) throws Exception {
         CountDownLatch requested = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         try (LlmHttpServer server = new LlmHttpServer();
@@ -219,27 +236,60 @@ class SearchTransportStopIntegrationTest {
                             .interrupt();
                 }
             });
-            doAnswer(invocation -> {
-                SearchToolScope scope = invocation.getArgument(0);
-                executions.append(
-                        scope.answerId(),
-                        scope.token(),
-                        "보존"
-                );
-                http.json(
+            if (duringClassification) {
+                LlmProperties llm = new LlmProperties();
+                llm.setBaseUrl(
                         server.baseUrl()
-                                .resolve("/v1/chat/completions"),
-                        "test",
-                        Map.of(),
-                        scope,
-                        Map.of()
+                                .resolve("/v1")
                 );
-                throw new IllegalStateException("silent provider unexpectedly returned");
-            }).when(retriever)
-                    .retrieve(
-                            any(),
-                            any()
+                llm.setApiToken("test");
+                llm.setModel("test-model");
+                SearchQwenIntentClassifier delegate = new SearchQwenIntentClassifier(
+                        new SearchLlmClient(
+                                http,
+                                llm
+                        ),
+                        history,
+                        access,
+                        new SearchAgentProperties(),
+                        JsonMapper.builder()
+                                .build()
+                );
+                when(
+                        classifier.classify(
+                                any(),
+                                any()
+                        )
+                ).thenAnswer(
+                        invocation -> delegate.classify(
+                                invocation.getArgument(0),
+                                invocation.getArgument(1)
+                        )
+                );
+            }
+            if (!duringClassification) {
+                doAnswer(invocation -> {
+                    SearchToolScope scope = invocation.getArgument(0);
+                    executions.append(
+                            scope.answerId(),
+                            scope.token(),
+                            "보존"
                     );
+                    http.json(
+                            server.baseUrl()
+                                    .resolve("/v1/chat/completions"),
+                            "test",
+                            Map.of(),
+                            scope,
+                            Map.of()
+                    );
+                    throw new IllegalStateException("silent provider unexpectedly returned");
+                }).when(retriever)
+                        .retrieve(
+                                any(),
+                                any()
+                        );
+            }
             Future<?> running = executor.submit(() -> worker.execute(accepted.answerMessageId()));
             assertThat(
                     requested.await(
@@ -247,6 +297,10 @@ class SearchTransportStopIntegrationTest {
                             TimeUnit.SECONDS
                     )
             ).isTrue();
+            String expectedContent = "";
+            if (!duringClassification) {
+                expectedContent = "보존";
+            }
             assertThat(
                     executions.stop(
                             workspaceId,
@@ -255,12 +309,16 @@ class SearchTransportStopIntegrationTest {
                             accepted.answerMessageId()
                     )
                             .content()
-            ).isEqualTo("보존");
+            ).isEqualTo(expectedContent);
             running.get(
                     3,
                     TimeUnit.SECONDS
             );
             verifyNoInteractions(generator);
+            if (duringClassification) {
+                verifyNoInteractions(retriever);
+                assertThat(server.requestBody()).contains("response_format");
+            }
             assertThat(
                     jdbc.sql("SELECT status FROM search_messages WHERE role='ASSISTANT'")
                             .query(String.class)

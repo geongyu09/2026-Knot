@@ -80,7 +80,7 @@ class RecordingHeartbeatControllerTest {
                         RecordingStatus.RECORDING,
                         90_000L,
                         SEEN_AT,
-                        SEEN_AT.plusSeconds(120),
+                        SEEN_AT.plusSeconds(30),
                         null,
                         null,
                         SEEN_AT
@@ -103,7 +103,7 @@ class RecordingHeartbeatControllerTest {
                 .andExpect(jsonPath("$.status").value("RECORDING"))
                 .andExpect(jsonPath("$.elapsedMillis").value(90_000L))
                 .andExpect(jsonPath("$.lastSeenAt").value("2026-10-09T00:01:30Z"))
-                .andExpect(jsonPath("$.expiresAt").value("2026-10-09T00:03:30Z"))
+                .andExpect(jsonPath("$.expiresAt").value("2026-10-09T00:02:00Z"))
                 .andExpect(jsonPath("$.endedAt").isEmpty())
                 .andExpect(jsonPath("$.endReason").isEmpty())
                 .andExpect(jsonPath("$.serverNow").value("2026-10-09T00:01:30Z"));
@@ -129,7 +129,7 @@ class RecordingHeartbeatControllerTest {
                         120_000L,
                         SEEN_AT,
                         null,
-                        SEEN_AT.plusSeconds(120),
+                        SEEN_AT.plusSeconds(30),
                         RecordingEndReason.CONNECTION_EXPIRED,
                         SEEN_AT.plusSeconds(300)
                 )
@@ -148,7 +148,7 @@ class RecordingHeartbeatControllerTest {
         // then
         result.andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ENDED"))
-                .andExpect(jsonPath("$.endedAt").value("2026-10-09T00:03:30Z"))
+                .andExpect(jsonPath("$.endedAt").value("2026-10-09T00:02:00Z"))
                 .andExpect(jsonPath("$.endReason").value("CONNECTION_EXPIRED"))
                 .andExpect(jsonPath("$.expiresAt").isEmpty());
     }

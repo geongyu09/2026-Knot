@@ -2,6 +2,7 @@ import { http, HttpResponse } from "msw";
 
 import { AUTH_ME_API_PATH } from "@api/fetch/api/v1/auth/me";
 import { AUTH_NICKNAME_API_PATH } from "@api/fetch/api/v1/auth/nickname";
+import { AUTH_REFRESH_API_PATH } from "@api/fetch/api/v1/auth/refresh";
 import { meResponse } from "@api/mock/responses/auth";
 
 /**
@@ -25,7 +26,7 @@ export const MOCK_AUTH_STATUS = {
  * 플로우를 개발 서버에서 재현해요. OAuth 진입 자체는 페이지 네비게이션이라 msw가
  * 가로채지 못하므로 `webpack.config.js`의 devServer 미들웨어가 302로 대신해요.
  *
- * `browser.ts`에서만 기본 핸들러 앞에 둬(먼저 맞는 핸들러가 이겨요) me·nickname을
+ * `browser.ts`에서만 기본 핸들러 앞에 둬(먼저 맞는 핸들러가 이겨요) me·nickname·refresh를
  * 덮어요. vitest(server.ts)는 항상 로그인된 기본 핸들러를 그대로 쓰므로 넣지 않아요.
  */
 export const devAuthHandlers = [
@@ -47,5 +48,14 @@ export const devAuthHandlers = [
     document.cookie = `${MOCK_AUTH_COOKIE_NAME}=${MOCK_AUTH_STATUS.MEMBER}; path=/; SameSite=Lax`;
 
     return new HttpResponse(null, { status: 200 });
+  }),
+
+  // 실제 백엔드처럼 회원 쿠키가 있어야 재발급돼요. 쿠키가 없으면 재발급도 401이라 로그인 화면으로 가요
+  http.post(`*${AUTH_REFRESH_API_PATH}`, ({ cookies }) => {
+    if (cookies[MOCK_AUTH_COOKIE_NAME] !== MOCK_AUTH_STATUS.MEMBER) {
+      return new HttpResponse(null, { status: 401 });
+    }
+
+    return new HttpResponse(null, { status: 204 });
   }),
 ];

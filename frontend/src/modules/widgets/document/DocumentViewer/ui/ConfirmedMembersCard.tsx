@@ -8,6 +8,8 @@ interface ConfirmationMember {
   memberId: number;
   nickname: string;
   profileImageUrl: string | null;
+  /** 로그인한 나인지. 이름 옆에 「(나)」를 붙여요 */
+  isMe: boolean;
 }
 
 interface ConfirmedMembersCardProps {
@@ -79,7 +81,10 @@ function MemberRow({ member, isMuted = false }: MemberRowProps) {
         name={member.nickname}
         size={24}
       />
-      <Name>{member.nickname}</Name>
+      <NameContainer>
+        <Name>{member.nickname}</Name>
+        {member.isMe && <MyLabel>(나)</MyLabel>}
+      </NameContainer>
     </Member>
   );
 }
@@ -107,11 +112,25 @@ const Member = styled.li<{ $isMuted: boolean }>`
   opacity: ${({ $isMuted }) => ($isMuted ? 0.4 : 1)};
 `;
 
+/** 이름이 길면 이름만 줄이고 「(나)」는 남겨요 */
+const NameContainer = styled.span`
+  display: flex;
+  gap: 0.25rem; /* 4px */
+  min-width: 0;
+`;
+
 const Name = styled.span`
   overflow: hidden;
   color: ${({ theme }) => theme.neutral[900]};
   white-space: nowrap;
   text-overflow: ellipsis;
+
+  ${({ theme }) => theme.text.body01};
+`;
+
+const MyLabel = styled.span`
+  flex-shrink: 0;
+  color: ${({ theme }) => theme.neutral[900]};
 
   ${({ theme }) => theme.text.body01};
 `;

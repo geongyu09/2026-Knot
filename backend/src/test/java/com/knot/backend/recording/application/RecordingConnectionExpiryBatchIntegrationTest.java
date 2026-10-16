@@ -73,7 +73,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
     }
 
     @Test
-    @DisplayName("요청이 없는 녹음은 회수 작업이 실행 시각이 아니라 마지막 신호 + 120초로 종료한다")
+    @DisplayName("요청이 없는 녹음은 회수 작업이 실행 시각이 아니라 마지막 신호 + 30초로 종료한다")
     void expireDue_success_endsAtLastSeenPlusTimeout() {
         // given
         StartedRecording recording = startRecording(ownerFixture("회수 팀"));
@@ -91,7 +91,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
         assertThat(expiredCount).isEqualTo(1);
         assertThat(row.status()).isEqualTo("ENDED");
         assertThat(row.endReason()).isEqualTo("CONNECTION_EXPIRED");
-        assertThat(row.endedAt()).isEqualTo(lastSeenAt.plusSeconds(120));
+        assertThat(row.endedAt()).isEqualTo(lastSeenAt.plusSeconds(30));
         assertThat(row.lastSeenAt()).isEqualTo(lastSeenAt);
     }
 
@@ -136,7 +136,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
         StartedRecording reached = startRecording(ownerFixture("도달 팀"));
         rewindRecording(
                 reached.id(),
-                5_460,
+                5_410,
                 1_800_000L
         );
         Instant reachedIntervalStartedAt = recordingRow(reached.id()).currentIntervalStartedAt();
@@ -253,7 +253,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
         StartedRecording kept = startRecording(keptFixture);
         disconnect(
                 kept.id(),
-                119
+                29
         );
         heartbeat(
                 keptFixture,
@@ -315,7 +315,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
         RecordingRow row = recordingRow(recording.id());
         assertThat(row.status()).isEqualTo("ENDED");
         assertThat(row.endReason()).isEqualTo("CONNECTION_EXPIRED");
-        assertThat(row.endedAt()).isEqualTo(lastSeenAt.plusSeconds(120));
+        assertThat(row.endedAt()).isEqualTo(lastSeenAt.plusSeconds(30));
     }
 
     private List<Outcome> runTogether(List<Callable<?>> tasks) throws Exception {
@@ -440,7 +440,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
         );
     }
 
-    // 신호는 90초 전에 받아 연결은 살아 있고, 현재 녹음 구간만 오래 이어진 상태를 만든다
+    // 신호는 20초 전에 받아 연결은 살아 있고, 현재 녹음 구간만 오래 이어진 상태를 만든다
     private void rewindRecording(
             long recordingId,
             int currentIntervalSeconds,
@@ -450,7 +450,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
                 UPDATE recording_sessions
                 SET started_at = started_at - make_interval(secs => :seconds),
                     current_interval_started_at = current_interval_started_at - make_interval(secs => :seconds),
-                    last_seen_at = last_seen_at - INTERVAL '90 seconds',
+                    last_seen_at = last_seen_at - INTERVAL '20 seconds',
                     accumulated_recording_millis = :accumulatedMillis
                 WHERE id = :recordingId
                 """)

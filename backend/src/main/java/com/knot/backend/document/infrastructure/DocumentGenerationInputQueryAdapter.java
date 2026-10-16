@@ -9,8 +9,8 @@ import org.springframework.stereotype.Repository;
 @Repository
 @RequiredArgsConstructor
 public class DocumentGenerationInputQueryAdapter implements DocumentGenerationInputQuery {
-
     private final DocumentGenerationInputJpaRepository repository;
+    private final DocumentTranscriptTextReader transcriptTextReader = new DocumentTranscriptTextReader();
 
     @Override
     public Optional<DocumentGenerationInputResult> findForUpdate(
@@ -25,7 +25,7 @@ public class DocumentGenerationInputQueryAdapter implements DocumentGenerationIn
                         transcript -> new DocumentGenerationInputResult(
                                 transcript.getId(),
                                 transcript.getRecordingSessionId(),
-                                transcript.getContent()
+                                transcriptTextReader.read(transcript.getContent())
                         )
                 );
     }

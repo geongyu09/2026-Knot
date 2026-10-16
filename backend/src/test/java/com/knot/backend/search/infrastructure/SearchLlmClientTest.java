@@ -3,24 +3,176 @@ package com.knot.backend.search.infrastructure;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
-import com.knot.backend.search.application.SearchToolAccess;
-import java.time.Duration;
-import org.junit.jupiter.api.AfterEach;
+
+import ch.qos.logback.classic.Level;
 import com.knot.backend.global.config.LlmProperties;
+import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.SearchToolScope;
+import com.knot.backend.search.domain.SearchToolException;
 import com.knot.backend.testsupport.LlmHttpServer;
+import com.knot.backend.testsupport.LogCapture;
 import java.net.http.HttpClient;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 class SearchLlmClientTest {
+
+    @Test
+    @DisplayName("모델 호출은 안전한 입력 크기와 provider 토큰 사용량만 기록한다")
+    void complete_success_logsCallTimingAndUsageWithoutPrompt() throws Exception {
+        try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
+            server.respond(
+                    200,
+                    "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}],"
+                            + "\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":7}}"
+            );
+            try (LogCapture logs = new LogCapture(SearchLlmClient.class)) {
+                client(
+                        server,
+                        http
+                ).complete(
+                        scope(),
+                        List.of(
+                                Map.of(
+                                        "role",
+                                        "user",
+                                        "content",
+                                        "private-question"
+                                )
+                        ),
+                        List.of()
+                );
+                assertThat(logs.events()).singleElement()
+                        .satisfies(event -> {
+                            assertThat(event.getLevel()).isEqualTo(Level.INFO);
+                            assertThat(event.getFormattedMessage()).contains(
+                                    "phase=llm_call",
+                                    "operation=complete",
+                                    "answerId=2",
+                                    "messageContentChars=16",
+                                    "promptTokens=11",
+                                    "completionTokens=7",
+                                    "outcome=success"
+                            )
+                                    .doesNotContain("private-question");
+                        });
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("의도 분류는 추론을 끄고 제한된 JSON Schema를 한 번 요청한다")
+    void intent_success_strictRequest() throws Exception {
+        try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
+            server.respond(
+                    200,
+                    "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"intent\\\":\\\"MEETING_SEARCH\\\"}\"}}]}"
+            );
+            client(
+                    server,
+                    http
+            ).intent(
+                    scope(),
+                    List.of()
+            );
+            JsonNode body = JsonMapper.builder()
+                    .build()
+                    .readTree(server.requestBody());
+            assertThat(
+                    body.path("stream")
+                            .asBoolean(true)
+            ).isFalse();
+            assertThat(
+                    body.path("max_tokens")
+                            .asInt()
+            ).isEqualTo(128);
+            assertThat(
+                    body.path("temperature")
+                            .asInt(-1)
+            ).isZero();
+            assertThat(
+                    body.path("reasoning_effort")
+                            .asString()
+            ).isEqualTo("none");
+            assertThat(body.has("tools")).isFalse();
+            assertThat(
+                    body.path("response_format")
+                            .path("json_schema")
+                            .path("schema")
+                            .path("properties")
+                            .path("intent")
+                            .path("enum")
+            ).hasSize(5);
+            assertThat(server.requestCount()).isEqualTo(1);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "{\"choices\":[]}",
+            "{\"choices\":[{\"finish_reason\":\"length\",\"message\":{\"role\":\"assistant\",\"content\":\"{}\"}}]}",
+            "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"{}\"}}]}",
+            "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"{}\",\"tool_calls\":[{\"id\":\"call-1\"}]}}]}",
+            "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"user\",\"content\":\"{}\"}}]}"})
+    @DisplayName("의도 분류의 비정상 종료나 도구 호출은 정상 의도로 수용하지 않는다")
+    void intent_failure_invalidEnvelope(String response) throws Exception {
+        try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
+            server.respond(
+                    200,
+                    response
+            );
+            assertThatThrownBy(
+                    () -> client(
+                            server,
+                            http
+                    ).intent(
+                            scope(),
+                            List.of()
+                    )
+            ).isInstanceOf(SearchToolException.class);
+            assertThat(server.requestCount()).isEqualTo(1);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"[]", "null"})
+    @DisplayName("LM Studio의 비어 있는 tool_calls 메타데이터는 실제 도구 호출로 취급하지 않는다")
+    void intent_success_emptyToolCalls(String tools) throws Exception {
+        try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
+            server.respond(
+                    200,
+                    """
+                            {"choices":[{"finish_reason":"stop","message":{"role":"assistant",
+                            "content":"{\\"intent\\":\\"MEETING_SEARCH\\"}","tool_calls":%s}}]}
+                            """.formatted(tools)
+            );
+            assertThat(
+                    client(
+                            server,
+                            http
+                    ).intent(
+                            scope(),
+                            List.of()
+                    )
+                            .path("content")
+                            .asString()
+            ).contains("MEETING_SEARCH");
+            assertThat(server.requestCount()).isEqualTo(1);
+        }
+    }
 
     private final SearchTransportCancellation cancellation = new SearchTransportCancellation(
             mock(SearchToolAccess.class),
@@ -108,6 +260,62 @@ class SearchLlmClientTest {
     }
 
     @Test
+    @DisplayName("스트림은 빈 청크를 제외하고 첫 모델 콘텐츠 시각과 provider 사용량을 한 번 기록한다")
+    void stream_success_logsFirstContentAndUsage() throws Exception {
+        try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
+            server.respond(
+                    200,
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"\"}}]}\n\n"
+                            + "data: {\"choices\":[{\"delta\":{\"content\":\"answer\"}}]}\n\n"
+                            + "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],"
+                            + "\"usage\":{\"prompt_tokens\":19,\"completion_tokens\":4}}\n\n" + "data: [DONE]\n\n"
+            );
+            try (LogCapture logs = new LogCapture(SearchLlmClient.class)) {
+                client(
+                        server,
+                        http
+                ).stream(
+                        scope(),
+                        List.of(
+                                Map.of(
+                                        "role",
+                                        "user",
+                                        "content",
+                                        "private-question"
+                                )
+                        ),
+                        text -> {
+                        }
+                );
+                assertThat(logs.events()).filteredOn(
+                        event -> event.getFormattedMessage()
+                                .contains("phase=llm_first_content")
+                )
+                        .singleElement()
+                        .satisfies(
+                                event -> assertThat(event.getFormattedMessage()).contains(
+                                        "operation=stream",
+                                        "answerId=2",
+                                        "outcome=received"
+                                )
+                                        .doesNotContain("private-question")
+                        );
+                assertThat(logs.events()).filteredOn(
+                        event -> event.getFormattedMessage()
+                                .contains("phase=llm_usage")
+                )
+                        .singleElement()
+                        .satisfies(
+                                event -> assertThat(event.getFormattedMessage()).contains(
+                                        "promptTokens=19",
+                                        "completionTokens=4"
+                                )
+                        );
+            }
+        }
+    }
+
+    @Test
     @DisplayName("DONE 없이 끊긴 스트림은 실패한다")
     void stream_failure_truncated() throws Exception {
         try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
@@ -141,9 +349,9 @@ class SearchLlmClientTest {
                 exchange.getResponseBody()
                         .flush();
                 try {
-                    new java.util.concurrent.CountDownLatch(1).await(
+                    new CountDownLatch(1).await(
                             3,
-                            java.util.concurrent.TimeUnit.SECONDS
+                            TimeUnit.SECONDS
                     );
                 } catch (InterruptedException exception) {
                     Thread.currentThread()
@@ -172,13 +380,13 @@ class SearchLlmClientTest {
                             text -> {
                             }
                     )
-            ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class);
+            ).isInstanceOf(SearchToolException.class);
             assertThat(java.time.Duration.ofNanos(System.nanoTime() - started))
                     .isLessThan(java.time.Duration.ofSeconds(2));
         }
     }
 
-    @org.junit.jupiter.params.ParameterizedTest
+    @ParameterizedTest
     @org.junit.jupiter.params.provider.MethodSource("invalidStreamEvents")
     void stream_failure_providerErrors(
             String event,
@@ -199,7 +407,7 @@ class SearchLlmClientTest {
                             text -> {
                             }
                     )
-            ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class)
+            ).isInstanceOf(SearchToolException.class)
                     .hasMessage(code);
         }
     }
@@ -245,7 +453,7 @@ class SearchLlmClientTest {
                             List.of(),
                             List.of()
                     )
-            ).isInstanceOf(com.knot.backend.search.domain.SearchToolException.class)
+            ).isInstanceOf(SearchToolException.class)
                     .hasMessage("INVALID_MODEL_RESPONSE");
         }
     }

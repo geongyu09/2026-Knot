@@ -1,7 +1,7 @@
 import { searchMessagesResponse } from "@api/mock/responses/search";
 import { PATH_ROUTE, getRouterPath } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
 
 import SearchConversation from ".";
@@ -31,6 +31,8 @@ const MESSAGES_URL =
  * - 저장된 질문·답변 뒤에는 이 대화에서 독으로 보내 지금 받고 있는 질문과 답변을 이어 그려요. 서버가 질문을 받기 전에는 질문만 보이고, 답변은 도착하는 대로 늘어나요.
  * - 답변이 끝나 대화를 다시 불러와도 같은 답변이 두 번 보이지 않아요.
  * - 답변을 만들지 못했으면 받은 글자는 보여주지 않고, 그 자리에 실패 안내와 `다시 시도`를 둬요. `다시 시도`를 누르면 같은 질문으로 다시 받은 답변이 그 자리에 흘러들어요.
+ * - 지난 대화의 메시지를 받는 동안에는 시작 전 안내를 띄우지 않아요. 보던 대화에서 옮겨 왔으면 응답이 올 때까지 보던 대화를 누를 수 없게 둔 채 보여주고, 보여 줄 대화가 없으면 스켈레톤을 그려요(SEARCH-15).
+ * - 메시지를 받지 못하면 칸 안에 불러오기 실패 안내와 `다시 시도`를 둬요.
  * - 대화는 메시지 조회 mock 응답으로 그려요. 근거가 2개·3개·없는 답변이 한 턴씩 있어요.
  */
 const meta = {
@@ -140,6 +142,42 @@ export const AnswerFailed: Story = {
             ],
           });
         }),
+      },
+    },
+  },
+};
+
+/**
+ * 새로고침이나 주소로 지난 대화에 들어와, 보여 줄 대화 없이 메시지를 받는 중이에요.
+ * 보던 대화에서 옮겨 온 경우에는 이 화면 대신 보던 대화를 그대로 둬요.
+ */
+export const Loading: Story = {
+  parameters: {
+    initialPath: CONVERSATION_PATH,
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3818-39781",
+    },
+    msw: {
+      handlers: {
+        messages: http.get(MESSAGES_URL, async () => {
+          await delay("infinite");
+          return HttpResponse.json(searchMessagesResponse);
+        }),
+      },
+    },
+  },
+};
+
+/** 지난 대화의 메시지를 받지 못한 상태예요. 피그마 시안이 아직 없어요. */
+export const LoadFailed: Story = {
+  parameters: {
+    initialPath: CONVERSATION_PATH,
+    msw: {
+      handlers: {
+        messages: http.get(MESSAGES_URL, () =>
+          HttpResponse.json(null, { status: 500 }),
+        ),
       },
     },
   },

@@ -8,11 +8,14 @@ import com.knot.backend.search.domain.SearchMessageStatus;
 import com.knot.backend.search.domain.SearchProgressStage;
 import java.io.IOException;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+@Slf4j
 final class SearchAnswerSseConnection implements Runnable {
 
     private final SseEmitter emitter;
@@ -100,7 +103,7 @@ final class SearchAnswerSseConnection implements Runnable {
             }
             sendProgress(snapshot);
             sendExcludedCount(snapshot.excludedCount());
-            sendContent(snapshot.content());
+            sendContent(snapshot);
             if (snapshot.status() != SearchMessageStatus.STREAMING) {
                 sendTerminal(snapshot);
                 return;
@@ -152,23 +155,72 @@ final class SearchAnswerSseConnection implements Runnable {
         sentExcludedCount = true;
     }
 
-    private void sendContent(String content) throws IOException {
+    private void sendContent(SearchAnswerSnapshotResult snapshot) throws IOException {
+        String content = snapshot.content();
         if (content.length() < sentLength) {
             throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
         if (content.length() == sentLength) {
             return;
         }
-        send(
-                "delta",
-                Map.of(
-                        "answerMessageId",
-                        answerId,
-                        "text",
-                        content.substring(sentLength)
-                )
-        );
+        boolean firstDelta = sentLength == 0;
+        long sendStarted = System.nanoTime();
+        try {
+            send(
+                    "delta",
+                    Map.of(
+                            "answerMessageId",
+                            answerId,
+                            "text",
+                            content.substring(sentLength)
+                    )
+            );
+            if (firstDelta) {
+                logFirstDelta(
+                        snapshot,
+                        sendStarted,
+                        "success"
+                );
+            }
+        } catch (IOException exception) {
+            if (firstDelta) {
+                logFirstDelta(
+                        snapshot,
+                        sendStarted,
+                        "failure"
+                );
+            }
+            throw exception;
+        }
         sentLength = content.length();
+    }
+
+    private void logFirstDelta(
+            SearchAnswerSnapshotResult snapshot,
+            long sendStarted,
+            String outcome
+    ) {
+        String persistedAtToSendMs = "unavailable";
+        if (snapshot.contentUpdatedAt() != null) {
+            persistedAtToSendMs = Long.toString(
+                    Math.max(
+                            0,
+                            Duration.between(
+                                    snapshot.contentUpdatedAt(),
+                                    Instant.now()
+                            )
+                                    .toMillis()
+                    )
+            );
+        }
+        log.info(
+                "Search latency phase=sse_first_delta workspaceId={} answerId={} contentPersistedAtToSseSendMs={} sendElapsedMs={} outcome={}",
+                workspaceId,
+                answerId,
+                persistedAtToSendMs,
+                (System.nanoTime() - sendStarted) / 1_000_000,
+                outcome
+        );
     }
 
     private void sendTerminal(SearchAnswerSnapshotResult snapshot) throws IOException {

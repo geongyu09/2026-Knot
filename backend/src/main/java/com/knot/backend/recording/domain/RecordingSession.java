@@ -24,7 +24,7 @@ public class RecordingSession {
     public static final long MAX_RECORDING_MILLIS = Duration.ofHours(2)
             .toMillis();
     private static final Pattern SHA_256_HEX_PATTERN = Pattern.compile("^[0-9a-f]{64}$");
-    private static final Duration CONNECTION_TIMEOUT = Duration.ofSeconds(120);
+    private static final Duration CONNECTION_TIMEOUT = Duration.ofSeconds(30);
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

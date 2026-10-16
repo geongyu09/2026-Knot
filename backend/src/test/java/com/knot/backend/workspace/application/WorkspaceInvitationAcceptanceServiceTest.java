@@ -50,12 +50,14 @@ class WorkspaceInvitationAcceptanceServiceTest {
     private final WorkspaceMemberRepository workspaceMemberRepository = mock(WorkspaceMemberRepository.class);
     private final WorkspaceInvitationSecretProtector secretProtector = mock(WorkspaceInvitationSecretProtector.class);
     private final WorkspaceInvitationPreviewRateLimiter rateLimiter = mock(WorkspaceInvitationPreviewRateLimiter.class);
-    private final WorkspaceInvitationAcceptanceService service = new WorkspaceInvitationAcceptanceService(
+    private final WorkspaceInvitationService service = new WorkspaceInvitationService(
             workspaceRepository,
             workspaceMemberRepository,
             workspaceInvitationRepository,
+            mock(WorkspaceInvitationSecretGenerator.class),
             secretProtector,
             rateLimiter,
+            mock(WorkspaceInvitationTransactionExecutor.class),
             Clock.fixed(
                     NOW,
                     ZoneOffset.UTC
@@ -283,12 +285,14 @@ class WorkspaceInvitationAcceptanceServiceTest {
     void accept_failure_expiredWhileWaitingForLock() {
         // given
         Clock clock = mock(Clock.class);
-        WorkspaceInvitationAcceptanceService lockWaitingService = new WorkspaceInvitationAcceptanceService(
+        WorkspaceInvitationService lockWaitingService = new WorkspaceInvitationService(
                 workspaceRepository,
                 workspaceMemberRepository,
                 workspaceInvitationRepository,
+                mock(WorkspaceInvitationSecretGenerator.class),
                 secretProtector,
                 rateLimiter,
+                mock(WorkspaceInvitationTransactionExecutor.class),
                 clock
         );
         WorkspaceInvitation invitation = WorkspaceInvitation.create(

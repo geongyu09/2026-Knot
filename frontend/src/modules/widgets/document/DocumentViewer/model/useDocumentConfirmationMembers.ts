@@ -1,4 +1,5 @@
 import useDocumentConfirmationsQuery from "@api/queries/useDocumentConfirmationsQuery";
+import useMeQuery from "@api/queries/useMeQuery";
 
 interface UseDocumentConfirmationMembersParams {
   workspaceId: number;
@@ -14,6 +15,7 @@ interface UseDocumentConfirmationMembersParams {
  *
  * 확인하지 않은 채 워크스페이스를 나간 사람(EXCLUDED)은 목록에 넣지 않아요.
  * 서버 정렬에 기대지 않고, 확인한 사람과 아직 확인하지 않은 사람을 여기서 나눠요(CONF-R5).
+ * 로그인한 내 항목에는 `isMe`를 붙여, 팝오버가 내 이름 옆에 「(나)」를 그리게 해요(CONF-R5).
  */
 export const useDocumentConfirmationMembers = ({
   workspaceId,
@@ -25,7 +27,13 @@ export const useDocumentConfirmationMembers = ({
     isFetching,
     refetch,
   } = useDocumentConfirmationsQuery({ workspaceId, documentId });
-  const items = confirmations?.items ?? [];
+  const { data: me } = useMeQuery();
+
+  // 내 회원 정보를 아직 받지 못했으면 아무도 나로 표시하지 않아요
+  const members = (confirmations?.items ?? []).map((item) => ({
+    ...item,
+    isMe: item.memberId === me?.memberId,
+  }));
 
   const getStatus = () => {
     // 다시 불러오기만 실패한 경우에도 이미 받은 목록은 계속 보여줘요
@@ -45,8 +53,8 @@ export const useDocumentConfirmationMembers = ({
 
   return {
     status,
-    confirmedMembers: items.filter(({ state }) => state === "CONFIRMED"),
-    pendingMembers: items.filter(({ state }) => state === "PENDING"),
+    confirmedMembers: members.filter(({ state }) => state === "CONFIRMED"),
+    pendingMembers: members.filter(({ state }) => state === "PENDING"),
     retryIfFailed,
   };
 };

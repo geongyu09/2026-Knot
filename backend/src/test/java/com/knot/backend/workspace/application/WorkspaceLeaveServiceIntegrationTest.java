@@ -46,7 +46,6 @@ class WorkspaceLeaveServiceIntegrationTest {
     private final WorkspaceLeaveService workspaceLeaveService;
     private final WorkspaceLastViewedService workspaceLastViewedService;
     private final WorkspaceInvitationService workspaceInvitationService;
-    private final WorkspaceInvitationAcceptanceService workspaceInvitationAcceptanceService;
     private final TransactionTemplate transactionTemplate;
     private final JdbcClient jdbcClient;
 
@@ -54,14 +53,12 @@ class WorkspaceLeaveServiceIntegrationTest {
             WorkspaceLeaveService workspaceLeaveService,
             WorkspaceLastViewedService workspaceLastViewedService,
             WorkspaceInvitationService workspaceInvitationService,
-            WorkspaceInvitationAcceptanceService workspaceInvitationAcceptanceService,
             TransactionTemplate transactionTemplate,
             JdbcClient jdbcClient
     ) {
         this.workspaceLeaveService = workspaceLeaveService;
         this.workspaceLastViewedService = workspaceLastViewedService;
         this.workspaceInvitationService = workspaceInvitationService;
-        this.workspaceInvitationAcceptanceService = workspaceInvitationAcceptanceService;
         this.transactionTemplate = transactionTemplate;
         this.jdbcClient = jdbcClient;
     }
@@ -313,7 +310,7 @@ class WorkspaceLeaveServiceIntegrationTest {
         MembershipState leftMembership = membershipState(leftMembershipId);
 
         // when
-        WorkspaceInvitationAcceptanceResult result = workspaceInvitationAcceptanceService.accept(
+        WorkspaceInvitationAcceptanceResult result = workspaceInvitationService.accept(
                 invitation.code(),
                 "rejoin-remote",
                 leavingMemberId
@@ -607,7 +604,7 @@ class WorkspaceLeaveServiceIntegrationTest {
                         "deleted-preview"
                 );
             } else {
-                workspaceInvitationAcceptanceService.accept(
+                workspaceInvitationService.accept(
                         invitation.code(),
                         "deleted-accept",
                         joiningId
@@ -677,7 +674,7 @@ class WorkspaceLeaveServiceIntegrationTest {
             );
             try {
                 return AcceptOutcome.accepted(
-                        workspaceInvitationAcceptanceService.accept(
+                        workspaceInvitationService.accept(
                                 credential,
                                 "accept-race-remote",
                                 memberId

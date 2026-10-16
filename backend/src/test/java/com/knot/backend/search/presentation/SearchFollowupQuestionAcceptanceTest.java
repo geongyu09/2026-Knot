@@ -1,9 +1,12 @@
 package com.knot.backend.search.presentation;
 
+import com.knot.backend.search.domain.SearchIntent;
+import com.knot.backend.search.application.SearchIntentClassifier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doNothing;
 
@@ -90,6 +93,8 @@ class SearchFollowupQuestionAcceptanceTest {
     @MockitoBean
     private SearchDocumentRetriever retriever;
     @MockitoBean
+    private SearchIntentClassifier classifier;
+    @MockitoBean
     private SearchAnswerGenerator generator;
     private HttpClient client;
     private DocumentFixtures fixtures;
@@ -102,6 +107,12 @@ class SearchFollowupQuestionAcceptanceTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        when(
+                classifier.classify(
+                        any(),
+                        any()
+                )
+        ).thenReturn(SearchIntent.MEETING_SEARCH);
         jdbc.sql("TRUNCATE TABLE members, workspaces RESTART IDENTITY CASCADE")
                 .update();
         fixtures = new DocumentFixtures(jdbc);
@@ -227,7 +238,48 @@ class SearchFollowupQuestionAcceptanceTest {
     }
 
     @Test
-    @DisplayName("중지된 부분 답변 뒤 새 질문이 완료되고 늦은 이전 작업과 녹음은 영향을 주지 않는다")
+    @DisplayName("후속 질문의 범위 밖 판정은 문서 조회 없이 고정 안내로 완료한다")
+    void ask_success_outOfScopeGuidance() throws Exception {
+        when(
+                classifier.classify(
+                        any(),
+                        any()
+                )
+        ).thenReturn(SearchIntent.OUT_OF_SCOPE);
+        try (InputStream stream = connect(
+                body(
+                        UUID.randomUUID(),
+                        "케이크 만들어줘"
+                )
+        ).body(); BufferedReader reader = reader(stream)) {
+            JsonNode receipt = accepted(reader);
+            worker.execute(
+                    receipt.path("answerMessageId")
+                            .asLong()
+            );
+            assertThat(
+                    reader.lines()
+                            .collect(Collectors.joining("\n"))
+            ).contains(
+                    "event:completed",
+                    "Knot은 회의 기록의 조회·요약·비교",
+                    "\"items\":[]"
+            )
+                    .doesNotContain(
+                            "event:failed",
+                            "MEETING_SEARCH",
+                            "OUT_OF_SCOPE"
+                    );
+        }
+        verifyNoInteractions(
+                retriever,
+                generator
+        );
+        assertThat(countMessages()).isEqualTo(4);
+    }
+
+    @Test
+    @DisplayName("중지 뒤 후속 질문은 DRAFT 근거로 완료하고 늦은 작업과 녹음은 영향을 주지 않는다")
     void ask_success_stopThenFollowupAndRecording() throws Exception {
         // given
         long recording = fixtures.saveRecording(
@@ -254,12 +306,6 @@ class SearchFollowupQuestionAcceptanceTest {
                 workspace,
                 member
         );
-        jdbc.sql("UPDATE documents SET status = 'ARCHIVED', archived_at = created_at WHERE id = :id")
-                .param(
-                        "id",
-                        document
-                )
-                .update();
         List<SearchDocumentResult> docs = List.of(
                 new SearchDocumentResult(
                         document,

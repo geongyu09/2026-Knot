@@ -243,11 +243,11 @@ class RecordingSessionTest {
         session.pause(STARTED_AT.plusSeconds(10));
 
         // when
-        session.end(STARTED_AT.plusSeconds(100));
+        session.end(STARTED_AT.plusSeconds(30));
 
         // then
         assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(10_000);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(100));
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(30));
     }
 
     @Test
@@ -258,7 +258,7 @@ class RecordingSessionTest {
         session.pause(STARTED_AT.plusSeconds(10));
 
         // when
-        session.pause(STARTED_AT.plusSeconds(100));
+        session.pause(STARTED_AT.plusSeconds(30));
 
         // then
         assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(10_000);
@@ -669,37 +669,37 @@ class RecordingSessionTest {
     }
 
     @Test
-    @DisplayName("마지막 신호 후 119.999초에는 만료하지 않고 녹음을 유지한다")
+    @DisplayName("마지막 신호 후 29.999초에는 만료하지 않고 녹음을 유지한다")
     void expireIfDue_success_keepsBeforeTimeout() {
         // given
         RecordingSession session = startRecording();
 
         // when
-        boolean expired = session.expireIfDue(STARTED_AT.plusMillis(119_999));
+        boolean expired = session.expireIfDue(STARTED_AT.plusMillis(29_999));
 
         // then
         assertThat(expired).isFalse();
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.RECORDING);
-        assertThat(session.getExpiresAt()).isEqualTo(STARTED_AT.plusSeconds(120));
+        assertThat(session.getExpiresAt()).isEqualTo(STARTED_AT.plusSeconds(30));
     }
 
     @Test
-    @DisplayName("마지막 신호 후 정확히 120초가 되면 마지막 신호 시각은 두고 120초 뒤를 종료 시각으로 확정한다")
+    @DisplayName("마지막 신호 후 정확히 30초가 되면 마지막 신호 시각은 두고 30초 뒤를 종료 시각으로 확정한다")
     void expireIfDue_success_endsAtTimeoutAndKeepsLastSeen() {
         // given
         RecordingSession session = startRecording();
-        session.recordHeartbeat(STARTED_AT.plusSeconds(30));
+        session.recordHeartbeat(STARTED_AT.plusSeconds(10));
 
         // when
-        boolean expired = session.expireIfDue(STARTED_AT.plusSeconds(150));
+        boolean expired = session.expireIfDue(STARTED_AT.plusSeconds(40));
 
         // then
         assertThat(expired).isTrue();
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
         assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(150));
-        assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT.plusSeconds(30));
-        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(150_000L);
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(40));
+        assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT.plusSeconds(10));
+        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(40_000L);
         assertThat(session.getExpiresAt()).isNull();
     }
 
@@ -713,8 +713,8 @@ class RecordingSessionTest {
         session.expireIfDue(STARTED_AT.plusSeconds(3_600));
 
         // then
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(120));
-        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(120_000L);
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(30));
+        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(30_000L);
     }
 
     @Test
@@ -722,16 +722,16 @@ class RecordingSessionTest {
     void expireIfDue_success_pausedKeepsAccumulatedTime() {
         // given
         RecordingSession session = startRecording();
-        session.pause(STARTED_AT.plusSeconds(40));
+        session.pause(STARTED_AT.plusSeconds(20));
 
         // when
         session.expireIfDue(STARTED_AT.plusSeconds(200));
 
         // then
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(160));
-        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(40_000L);
-        assertThat(session.getPausedAt()).isEqualTo(STARTED_AT.plusSeconds(40));
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(50));
+        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(20_000L);
+        assertThat(session.getPausedAt()).isEqualTo(STARTED_AT.plusSeconds(20));
     }
 
     @Test
@@ -755,17 +755,17 @@ class RecordingSessionTest {
     void recordHeartbeat_success_pausedKeepsState() {
         // given
         RecordingSession session = startRecording();
-        session.pause(STARTED_AT.plusSeconds(40));
+        session.pause(STARTED_AT.plusSeconds(20));
 
         // when
-        session.recordHeartbeat(STARTED_AT.plusSeconds(100));
+        session.recordHeartbeat(STARTED_AT.plusSeconds(40));
 
         // then
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.PAUSED);
-        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(40_000L);
-        assertThat(session.getPausedAt()).isEqualTo(STARTED_AT.plusSeconds(40));
-        assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT.plusSeconds(100));
-        assertThat(session.getExpiresAt()).isEqualTo(STARTED_AT.plusSeconds(220));
+        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(20_000L);
+        assertThat(session.getPausedAt()).isEqualTo(STARTED_AT.plusSeconds(20));
+        assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT.plusSeconds(40));
+        assertThat(session.getExpiresAt()).isEqualTo(STARTED_AT.plusSeconds(70));
     }
 
     @Test
@@ -773,13 +773,13 @@ class RecordingSessionTest {
     void recordHeartbeat_success_ignoresOlderSignal() {
         // given
         RecordingSession session = startRecording();
-        session.recordHeartbeat(STARTED_AT.plusSeconds(60));
+        session.recordHeartbeat(STARTED_AT.plusSeconds(20));
 
         // when
-        session.recordHeartbeat(STARTED_AT.plusSeconds(30));
+        session.recordHeartbeat(STARTED_AT.plusSeconds(10));
 
         // then
-        assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT.plusSeconds(60));
+        assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT.plusSeconds(20));
     }
 
     @Test
@@ -789,12 +789,12 @@ class RecordingSessionTest {
         RecordingSession session = startRecording();
 
         // when
-        session.recordHeartbeat(STARTED_AT.plusSeconds(130));
+        session.recordHeartbeat(STARTED_AT.plusSeconds(40));
 
         // then
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
         assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(120));
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(30));
         assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT);
     }
 
@@ -803,10 +803,10 @@ class RecordingSessionTest {
     void recordHeartbeat_success_ignoresEnded() {
         // given
         RecordingSession session = startRecording();
-        session.expireIfDue(STARTED_AT.plusSeconds(120));
+        session.expireIfDue(STARTED_AT.plusSeconds(30));
 
         // when
-        session.recordHeartbeat(STARTED_AT.plusSeconds(130));
+        session.recordHeartbeat(STARTED_AT.plusSeconds(40));
 
         // then
         assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT);
@@ -820,7 +820,7 @@ class RecordingSessionTest {
         RecordingSession session = startRecording();
 
         // when
-        Throwable thrown = catchThrowable(() -> session.pause(STARTED_AT.plusSeconds(130)));
+        Throwable thrown = catchThrowable(() -> session.pause(STARTED_AT.plusSeconds(40)));
 
         // then
         assertThat(thrown).isInstanceOf(RecordingException.class)
@@ -828,7 +828,7 @@ class RecordingSessionTest {
                 .isEqualTo(RecordingErrorCode.RECORDING_ALREADY_ENDED);
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
         assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(120));
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(30));
     }
 
     @Test
@@ -836,18 +836,18 @@ class RecordingSessionTest {
     void resume_failure_disconnected() {
         // given
         RecordingSession session = startRecording();
-        session.pause(STARTED_AT.plusSeconds(60));
+        session.pause(STARTED_AT.plusSeconds(20));
 
         // when
-        Throwable thrown = catchThrowable(() -> session.resume(STARTED_AT.plusSeconds(200)));
+        Throwable thrown = catchThrowable(() -> session.resume(STARTED_AT.plusSeconds(60)));
 
         // then
         assertThat(thrown).isInstanceOf(RecordingException.class)
                 .extracting("errorCode")
                 .isEqualTo(RecordingErrorCode.RECORDING_ALREADY_ENDED);
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(180));
-        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(60_000L);
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(50));
+        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(20_000L);
     }
 
     @Test
@@ -861,7 +861,7 @@ class RecordingSessionTest {
 
         // then
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(120));
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(30));
         assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
         assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT);
     }
@@ -873,10 +873,10 @@ class RecordingSessionTest {
         RecordingSession session = startRecording();
 
         // when
-        session.end(STARTED_AT.plusSeconds(60));
+        session.end(STARTED_AT.plusSeconds(20));
 
         // then
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(60));
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(20));
         assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.USER_ENDED);
     }
 
@@ -885,7 +885,7 @@ class RecordingSessionTest {
     void disconnectionThreshold_success_matchesExpiry() {
         // given
         RecordingSession session = startRecording();
-        Instant now = STARTED_AT.plusSeconds(120);
+        Instant now = STARTED_AT.plusSeconds(30);
 
         // when
         Instant threshold = RecordingSession.disconnectionThreshold(now);
@@ -935,7 +935,7 @@ class RecordingSessionTest {
         assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.MAX_DURATION);
         assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(7_200));
         assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(7_200_000L);
-        assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT.plusSeconds(7_140));
+        assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT.plusSeconds(7_190));
     }
 
     @Test
@@ -975,14 +975,14 @@ class RecordingSessionTest {
         RecordingSession session = startRecording();
         keepAlive(
                 session,
-                STARTED_AT.plusSeconds(7_081)
+                STARTED_AT.plusSeconds(7_171)
         );
 
         // when
         session.expireIfDue(STARTED_AT.plusSeconds(7_200));
 
         // then
-        assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT.plusSeconds(7_080));
+        assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT.plusSeconds(7_170));
         assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.MAX_DURATION);
         assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(7_200));
     }
@@ -1002,8 +1002,8 @@ class RecordingSessionTest {
 
         // then
         assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(7_080));
-        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(7_080_000L);
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(7_020));
+        assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(7_020_000L);
     }
 
     @Test
@@ -1196,12 +1196,12 @@ class RecordingSessionTest {
         RecordingSession session = startRecording();
 
         // when
-        session.releaseForNewRecording(STARTED_AT.plusSeconds(130));
+        session.releaseForNewRecording(STARTED_AT.plusSeconds(40));
 
         // then
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
         assertThat(session.getEndReason()).isEqualTo(RecordingEndReason.CONNECTION_EXPIRED);
-        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(120));
+        assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(30));
     }
 
     @Test
@@ -1211,7 +1211,7 @@ class RecordingSessionTest {
         RecordingSession session = startRecording();
 
         // when
-        Throwable failure = catchThrowable(() -> session.releaseForNewRecording(STARTED_AT.plusSeconds(60)));
+        Throwable failure = catchThrowable(() -> session.releaseForNewRecording(STARTED_AT.plusSeconds(20)));
 
         // then
         assertThat(failure).isInstanceOf(RecordingException.class)
@@ -1236,7 +1236,7 @@ class RecordingSessionTest {
             Instant until
     ) {
         for (Instant at = session.getLastSeenAt()
-                .plusSeconds(60); at.isBefore(until); at = at.plusSeconds(60)) {
+                .plusSeconds(10); at.isBefore(until); at = at.plusSeconds(10)) {
             session.recordHeartbeat(at);
         }
     }

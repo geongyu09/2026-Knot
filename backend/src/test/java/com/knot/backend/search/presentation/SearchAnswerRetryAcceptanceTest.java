@@ -1,8 +1,11 @@
 package com.knot.backend.search.presentation;
 
+import com.knot.backend.search.domain.SearchIntent;
+import com.knot.backend.search.application.SearchIntentClassifier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doAnswer;
@@ -10,6 +13,7 @@ import static org.mockito.Mockito.doAnswer;
 import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.auth.domain.AuthenticatedMember;
 import com.knot.backend.document.DocumentFixtures;
+import com.knot.backend.search.SearchMessageFixtures;
 import com.knot.backend.global.config.JwtProperties;
 import com.knot.backend.global.config.SearchWorkerProperties;
 import com.knot.backend.search.application.SearchAnswerWorker;
@@ -89,6 +93,8 @@ class SearchAnswerRetryAcceptanceTest {
     @MockitoBean
     private SearchDocumentRetriever retriever;
     @MockitoBean
+    private SearchIntentClassifier classifier;
+    @MockitoBean
     private SearchAnswerGenerator generator;
     private HttpClient client;
     private DocumentFixtures fixtures;
@@ -101,6 +107,12 @@ class SearchAnswerRetryAcceptanceTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        when(
+                classifier.classify(
+                        any(),
+                        any()
+                )
+        ).thenReturn(SearchIntent.MEETING_SEARCH);
         jdbc.sql("TRUNCATE TABLE members, workspaces RESTART IDENTITY CASCADE")
                 .update();
         fixtures = new DocumentFixtures(jdbc);
@@ -206,6 +218,49 @@ class SearchAnswerRetryAcceptanceTest {
                 .query(Long.class)
                 .list()
                 .forEach(worker::execute);
+    }
+
+    @Test
+    @DisplayName("재시도도 의도를 다시 확인하고 고정 안내로 기존 답변을 완료한다")
+    void retry_success_outOfScopeGuidance() throws Exception {
+        when(
+                classifier.classify(
+                        any(),
+                        any()
+                )
+        ).thenReturn(SearchIntent.OUT_OF_SCOPE);
+        try (InputStream stream = connect(body(UUID.randomUUID())).body(); BufferedReader reader = reader(stream)) {
+            assertAccepted(accepted(reader));
+            worker.execute(first.answerMessageId());
+            assertThat(
+                    reader.lines()
+                            .collect(Collectors.joining("\n"))
+            ).contains(
+                    "event:completed",
+                    "Knot은 회의 기록의 조회·요약·비교",
+                    "\"items\":[]"
+            )
+                    .doesNotContain(
+                            "event:failed",
+                            "실패한 부분",
+                            "OUT_OF_SCOPE"
+                    );
+        }
+        verifyNoInteractions(
+                retriever,
+                generator
+        );
+        assertThat(count("search_messages")).isEqualTo(2);
+        assertThat(
+                jdbc.sql("SELECT status FROM search_messages WHERE role = 'ASSISTANT'")
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("COMPLETED");
+        assertThat(
+                jdbc.sql("SELECT visible_in_list FROM search_conversations")
+                        .query(Boolean.class)
+                        .single()
+        ).isTrue();
     }
 
     @Test
@@ -567,6 +622,94 @@ class SearchAnswerRetryAcceptanceTest {
                         "receiptId",
                         "excluded_documents"
                 );
+        assertThat(count("search_messages")).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("실패 답변 재시도는 DRAFT 근거로 완료하고 재연결에서 근거를 복구한다")
+    void retry_success_draftEvidenceAndReconnect() throws Exception {
+        // given
+        long document = new SearchMessageFixtures(jdbc).saveDocument(
+                workspace,
+                member
+        );
+        when(
+                retriever.retrieve(
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                new SearchRetrievalResult(
+                        List.of(
+                                new SearchDocumentResult(
+                                        document,
+                                        "초안",
+                                        "주제",
+                                        "본문"
+                                )
+                        ),
+                        0
+                )
+        );
+        doAnswer(call -> {
+            Consumer<String> delta = call.getArgument(3);
+            delta.accept("DRAFT 기반 답변");
+            return List.of(document);
+        }).when(generator)
+                .generate(
+                        any(),
+                        any(),
+                        any(),
+                        any()
+                );
+        // when
+        try (InputStream stream = connect(body(UUID.randomUUID())).body(); BufferedReader reader = reader(stream)) {
+            assertAccepted(accepted(reader));
+        }
+        worker.execute(first.answerMessageId());
+        String path = "/api/v1/workspaces/" + workspace + "/search/conversations/" + first.conversationId()
+                + "/answers/" + first.answerMessageId() + "/events";
+        HttpResponse<String> response = client.send(
+                HttpRequest.newBuilder(uri(path))
+                        .header(
+                                "Cookie",
+                                cookies
+                        )
+                        .header(
+                                "Accept",
+                                "text/event-stream"
+                        )
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString()
+        );
+        // then
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains(
+                "event:snapshot",
+                "DRAFT 기반 답변",
+                "event:evidence",
+                "\"documentId\":" + document,
+                "event:completed"
+        );
+        assertThat(
+                jdbc.sql("SELECT document_id FROM search_evidences WHERE message_id = :id")
+                        .param(
+                                "id",
+                                first.answerMessageId()
+                        )
+                        .query(Long.class)
+                        .list()
+        ).containsExactly(document);
+        assertThat(
+                jdbc.sql("SELECT status FROM documents WHERE id = :id")
+                        .param(
+                                "id",
+                                document
+                        )
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("DRAFT");
         assertThat(count("search_messages")).isEqualTo(2);
     }
 

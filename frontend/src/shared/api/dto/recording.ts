@@ -352,7 +352,7 @@ export class PostRecordingEndResponseDto {
 // POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/heartbeat
 
 /**
- * 녹음이 끝난 사유. `USER_ENDED`는 사용자가 직접 끝냄, `CONNECTION_EXPIRED`는 생존 신호가 120초 동안 없어 서버가 끝냄,
+ * 녹음이 끝난 사유. `USER_ENDED`는 사용자가 직접 끝냄, `CONNECTION_EXPIRED`는 생존 신호가 30초 동안 없어 서버가 끝냄,
  * `MAX_DURATION`은 누적 녹음 시간이 2시간에 닿아 서버가 끝냄
  */
 export type RecordingEndReason =

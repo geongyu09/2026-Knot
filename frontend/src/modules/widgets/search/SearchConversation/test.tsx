@@ -70,7 +70,47 @@ const respondWithFailedFirstAnswer = () => {
   );
 };
 
-const evidenceButtonName =(count: number) => `기록 ${count}개에서 찾았어요`;
+const EMPTY_TITLE = "무엇을 찾고 있나요?";
+const LOADING_LABEL = "대화를 불러오고 있어요";
+const LOAD_FAILED_TEXT = "대화를 불러오지 못했어요. 다시 시도해 주세요.";
+const OTHER_CONVERSATION_ID = "11";
+const OTHER_CONVERSATION_PATH = getRouterPath({
+  routeKey: "CHAT_SESSION",
+  params: { workspaceId: WORKSPACE_ID, sessionId: OTHER_CONVERSATION_ID },
+});
+const OTHER_QUESTION = "옮겨 간 대화의 질문";
+
+/**
+ * 이번 테스트에서만 옮겨 갈 대화(11)의 메시지 응답을 `respond`를 부를 때까지 붙잡아 둬요.
+ * 다른 대화는 기본 mock 응답 그대로예요.
+ */
+const holdOtherConversationMessages = () => {
+  let respond = () => {};
+  const responded = new Promise<void>((resolve) => {
+    respond = resolve;
+  });
+
+  mockServer.use(
+    http.get(MESSAGES_PATH, async ({ params }) => {
+      if (params.conversationId !== OTHER_CONVERSATION_ID) {
+        return HttpResponse.json(searchMessagesResponse);
+      }
+
+      await responded;
+      return HttpResponse.json({
+        ...searchMessagesResponse,
+        conversationId: Number(OTHER_CONVERSATION_ID),
+        items: [
+          { ...searchMessagesResponse.items[0], content: OTHER_QUESTION },
+        ],
+      });
+    }),
+  );
+
+  return { respond: () => act(async () => respond()) };
+};
+
+const evidenceButtonName = (count: number) => `기록 ${count}개에서 찾았어요`;
 
 const renderConversation = (initialPath = CONVERSATION_PATH) => {
   const queryClient = new QueryClient({
@@ -169,7 +209,11 @@ describe("SearchConversation", () => {
   });
 
   it("접수 전에는 진행 문구 없이 질문만 보여준다 (Figma 탐색/질문 보내는 중)", () => {
-    streamAnswer({ conversationId: null, question: "방금 보낸 질문", text: "" });
+    streamAnswer({
+      conversationId: null,
+      question: "방금 보낸 질문",
+      text: "",
+    });
     renderConversation(CHAT_PATH);
 
     expect(screen.queryByText(SEARCHING_TEXT)).not.toBeInTheDocument();
@@ -263,6 +307,110 @@ describe("SearchConversation", () => {
     expect(await screen.findByText(otherQuestion)).toBeInTheDocument();
   });
 
+  it("보던 대화에서 다른 대화로 옮기면 응답이 올 때까지 보던 대화를 누를 수 없게 둔 채 보여준다 (SEARCH-15)", async () => {
+    const { respond } = holdOtherConversationMessages();
+    const { router } = renderConversation();
+    await screen.findByText(questions[0].content);
+
+    await act(async () => {
+      router.navigate(OTHER_CONVERSATION_PATH);
+    });
+
+    const conversation = screen.getByRole("region", { name: "대화" });
+    expect(screen.getByText(questions[0].content)).toBeInTheDocument();
+    expect(conversation).toHaveAttribute("inert");
+    expect(conversation).toHaveAttribute("aria-busy", "true");
+    expect(
+      screen.queryByRole("heading", { name: EMPTY_TITLE }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("status", { name: LOADING_LABEL }),
+    ).not.toBeInTheDocument();
+
+    await respond();
+
+    expect(await screen.findByText(OTHER_QUESTION)).toBeInTheDocument();
+    expect(screen.queryByText(questions[0].content)).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "대화" })).not.toHaveAttribute(
+      "inert",
+    );
+  });
+
+  it("보여 줄 대화 없이 지난 대화를 열면 받는 동안 시작 전 안내 대신 스켈레톤을 보여준다 (SEARCH-15)", async () => {
+    const { respond } = holdOtherConversationMessages();
+    renderConversation(OTHER_CONVERSATION_PATH);
+
+    expect(
+      await screen.findByRole("status", { name: LOADING_LABEL }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: EMPTY_TITLE }),
+    ).not.toBeInTheDocument();
+
+    await respond();
+
+    expect(await screen.findByText(OTHER_QUESTION)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("status", { name: LOADING_LABEL }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("답변을 만드는 중인 대화는 메시지를 받는 동안에도 스켈레톤 대신 그 턴을 보여준다 (SEARCH-15, SEARCH-04)", async () => {
+    holdOtherConversationMessages();
+    const { accept } = streamAnswer({
+      conversationId: null,
+      question: "홈에서 보낸 질문",
+      text: "흘러드는 답",
+    });
+    accept(Number(OTHER_CONVERSATION_ID));
+    renderConversation(OTHER_CONVERSATION_PATH);
+
+    expect(await screen.findByText("흘러드는 답")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("status", { name: LOADING_LABEL }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("보던 대화에서 새 대화로 옮기면 보던 대화를 남기지 않고 시작 전 안내를 보여준다 (SEARCH-15)", async () => {
+    const { router } = renderConversation();
+    await screen.findByText(questions[0].content);
+
+    await act(async () => {
+      router.navigate(CHAT_PATH);
+    });
+
+    expect(
+      screen.getByRole("heading", { name: EMPTY_TITLE }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(questions[0].content)).not.toBeInTheDocument();
+  });
+
+  it("메시지를 받지 못하면 불러오기 실패 안내를 보여주고, '다시 시도'로 그 대화를 다시 불러온다 (SEARCH-15)", async () => {
+    let shouldFail = true;
+    mockServer.use(
+      http.get(MESSAGES_PATH, () =>
+        shouldFail
+          ? HttpResponse.json(null, { status: 500 })
+          : HttpResponse.json(searchMessagesResponse),
+      ),
+    );
+    renderConversation();
+
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText(LOAD_FAILED_TEXT)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: EMPTY_TITLE }),
+    ).not.toBeInTheDocument();
+
+    shouldFail = false;
+    await act(async () => {
+      fireEvent.click(within(alert).getByRole("button", { name: "다시 시도" }));
+    });
+
+    expect(await screen.findByText(questions[0].content)).toBeInTheDocument();
+    expect(screen.queryByText(LOAD_FAILED_TEXT)).not.toBeInTheDocument();
+  });
+
   it("대화가 있으면 빈 화면 대신 질문을 순서대로 보여준다 (근거 없음)", async () => {
     renderConversation();
 
@@ -323,9 +471,7 @@ describe("SearchConversation", () => {
     renderConversation();
 
     await act(async () => {
-      fireEvent.click(
-        await screen.findByRole("button", { name: "다시 시도" }),
-      );
+      fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
     });
 
     const retriedAnswer = searchAnswerRetryStreamResponse.deltas.join("");
@@ -333,7 +479,9 @@ describe("SearchConversation", () => {
 
     const turns = screen.getAllByRole("article");
     expect(turns).toHaveLength(questions.length);
-    expect(within(turns[0]).getByText(questions[0].content)).toBeInTheDocument();
+    expect(
+      within(turns[0]).getByText(questions[0].content),
+    ).toBeInTheDocument();
     expect(within(turns[0]).getByText(retriedAnswer)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });

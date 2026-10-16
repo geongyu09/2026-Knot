@@ -6,29 +6,11 @@ import java.util.List;
 
 public record SearchRetrievalResult(
         List<SearchDocumentResult> documents,
-        int excludedCount,
-        String directAnswer
+        int excludedCount
 ) {
-    public SearchRetrievalResult(
-            List<SearchDocumentResult> documents,
-            int excludedCount
-    ) {
-        this(
-                documents,
-                excludedCount,
-                null
-        );
-    }
-
     public SearchRetrievalResult {
         documents = List.copyOf(documents);
         if (excludedCount < 0) {
-            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
-        }
-        if (directAnswer != null && directAnswer.isBlank()) {
-            throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
-        }
-        if (directAnswer != null && (!documents.isEmpty() || excludedCount != 0)) {
             throw new SearchException(SearchErrorCode.INVALID_SEARCH_STATE);
         }
     }

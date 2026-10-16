@@ -1,6 +1,7 @@
 package com.knot.backend.global.exception;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -23,6 +24,9 @@ import com.knot.backend.auth.presentation.handler.JwtLogoutHandler;
 import com.knot.backend.auth.presentation.handler.OAuth2AuthenticationFailureHandler;
 import com.knot.backend.auth.presentation.handler.OAuth2AuthenticationSuccessHandler;
 import com.knot.backend.global.config.SecurityConfig;
+import com.knot.backend.global.logging.RequestIdFilter;
+import com.knot.backend.testsupport.LogCapture;
+import org.slf4j.MDC;
 import com.knot.backend.search.application.SearchAnswerRetryService;
 import com.knot.backend.search.application.SearchQuestionIntakeService;
 import com.knot.backend.search.presentation.SearchAnswerEventsController;
@@ -88,6 +92,7 @@ class GlobalExceptionHandlerSecurityMvcTest {
                 )
         );
         mvc = MockMvcBuilders.webAppContextSetup(context)
+                .addFilters(new RequestIdFilter())
                 .apply(springSecurity())
                 .build();
     }
@@ -102,6 +107,12 @@ class GlobalExceptionHandlerSecurityMvcTest {
         // when & then
         mvc.perform(request)
                 .andExpect(status().isOk())
+                .andExpect(
+                        header().string(
+                                "X-Request-ID",
+                                matchesPattern("[0-9a-f]{32}")
+                        )
+                )
                 .andExpect(content().string("ok"));
     }
 
@@ -130,6 +141,12 @@ class GlobalExceptionHandlerSecurityMvcTest {
         // when & then
         mvc.perform(request)
                 .andExpect(status().isUnauthorized())
+                .andExpect(
+                        header().string(
+                                "X-Request-ID",
+                                matchesPattern("[0-9a-f]{32}")
+                        )
+                )
                 .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
     }
 
@@ -145,6 +162,12 @@ class GlobalExceptionHandlerSecurityMvcTest {
         // when & then
         mvc.perform(request)
                 .andExpect(status().isForbidden())
+                .andExpect(
+                        header().string(
+                                "X-Request-ID",
+                                matchesPattern("[0-9a-f]{32}")
+                        )
+                )
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }
 
@@ -301,6 +324,50 @@ class GlobalExceptionHandlerSecurityMvcTest {
                 retries,
                 streams
         );
+    }
+
+    @Test
+    @DisplayName("인증·CSRF 통과 후 500 오류의 응답과 안전한 오류 로그에 같은 ID를 기록한다")
+    void search_failure_preservesRequestIdOnServerError() throws Exception {
+        // given
+        String requestId = "0123456789abcdef0123456789abcdef";
+        when(streams.reserve()).thenThrow(new IllegalStateException("private-error"));
+        MockHttpServletRequestBuilder request = post(SEARCH_PATH);
+        request.cookie(accessCookie());
+        request.with(validCsrf());
+        request.header(
+                "X-Request-ID",
+                requestId
+        );
+        request.contentType(MediaType.APPLICATION_JSON);
+        request.accept(MediaType.TEXT_EVENT_STREAM);
+        request.content("{\"content\":\"test\",\"requestId\":\"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee\"}");
+
+        try (LogCapture logs = new LogCapture(
+                SearchQuestionExceptionHandler.class,
+                GlobalExceptionHandler.class
+        )) {
+            // when & then
+            mvc.perform(request)
+                    .andExpect(status().isInternalServerError())
+                    .andExpect(
+                            header().string(
+                                    "X-Request-ID",
+                                    requestId
+                            )
+                    )
+                    .andExpect(content().contentType(MediaType.APPLICATION_JSON));
+            assertThat(logs.events()).singleElement()
+                    .satisfies(event -> {
+                        assertThat(event.getMDCPropertyMap()).containsEntry(
+                                "requestId",
+                                requestId
+                        );
+                        assertThat(event.getFormattedMessage()).doesNotContain("private-error");
+                        assertThat(event.getThrowableProxy()).isNull();
+                    });
+            assertThat(MDC.get("requestId")).isNull();
+        }
     }
 
     private RequestPostProcessor validCsrf() {

@@ -114,7 +114,7 @@ class RecordingHeartbeatAcceptanceTest {
     }
 
     @Test
-    @DisplayName("마지막 신호 후 120초가 지난 신호는 200과 연결 만료 종료 상태를 반환하고 녹음을 되살리지 않는다")
+    @DisplayName("마지막 신호 후 30초가 지난 신호는 200과 연결 만료 종료 상태를 반환하고 녹음을 되살리지 않는다")
     void heartbeat_success_expiredRecording() throws Exception {
         // given
         long memberId = saveMember("member");
@@ -368,7 +368,7 @@ class RecordingHeartbeatAcceptanceTest {
         );
     }
 
-    // 실제 2분을 기다리지 않도록 녹음의 모든 시각을 같은 만큼 과거로 옮겨 신호가 끊긴 상태를 만든다
+    // 실제 30초를 기다리지 않도록 녹음의 모든 시각을 같은 만큼 과거로 옮겨 신호가 끊긴 상태를 만든다
     private void disconnect(long recordingId) {
         jdbcClient.sql("""
                 UPDATE recording_sessions
