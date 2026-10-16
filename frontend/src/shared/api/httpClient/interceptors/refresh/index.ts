@@ -21,6 +21,20 @@ const isSkippedRequest = (url?: string) =>
 const isUnauthorized = (error: unknown) =>
   axios.isAxiosError(error) && error.response?.status === 401;
 
+/** 탭 사이에서 재발급을 하나씩 실행하려고 잡는 Web Locks 이름. 같은 출처의 모든 탭이 같은 이름을 써요. */
+const REFRESH_LOCK_NAME = "knot-auth-refresh";
+
+/**
+ * 탭 사이 잠금을 잡은 채로 `task`를 실행해요. Web Locks가 없는 브라우저는 잠금 없이 바로 실행해요.
+ *
+ * 탭마다 자바스크립트가 따로 돌아서, 탭 안의 「재발급 한 번」만으로는 다른 탭의 재발급을 막지 못해요.
+ * 앞 탭의 재발급 응답이 새 쿠키를 저장한 뒤에 다음 탭의 재발급이 나가야 같은 refresh 토큰이 두 번 쓰이지 않아요.
+ */
+const withRefreshLock = (task: () => Promise<void>) =>
+  "locks" in navigator
+    ? navigator.locks.request(REFRESH_LOCK_NAME, task)
+    : task();
+
 /** 지금 진행 중인 재발급. 같은 탭에서 동시에 401을 받은 요청들이 이 하나를 함께 기다려요. */
 let refreshing: Promise<void> | undefined;
 
@@ -35,8 +49,9 @@ let refreshCount = 0;
 
 /** 진행 중인 재발급이 있으면 그것을 기다리고, 없으면 새로 시작해요. */
 const refreshTokens = (client: AxiosInstance) => {
-  refreshing ??= client
-    .post(REFRESH_API_PATH)
+  refreshing ??= withRefreshLock(async () => {
+    await client.post(REFRESH_API_PATH);
+  })
     .then(() => {
       refreshCount += 1;
     })
@@ -56,8 +71,9 @@ const refreshTokens = (client: AxiosInstance) => {
  * 재발급이 실패하거나 다시 보낸 요청도 401이면 원래 오류를 그대로 던져, 화면마다의 401 처리(로그인 화면 이동)가 그대로 동작하게 해요.
  * 다시 보낸 요청의 401은 재발급하지 않아, 계속 401인 상황에서 요청이 반복되지 않습니다.
  *
- * 같은 탭에서 401이 여러 개 와도 재발급은 한 번만 보내요. 백엔드는 이미 쓴 refresh 토큰이 다시 오면
- * 그 세션을 끊으므로, 같은 토큰으로 재발급이 두 번 나가면 로그인이 풀려요.
+ * 같은 탭에서 401이 여러 개 와도 재발급은 한 번만 보내고, 탭 사이에서는 Web Locks로 하나씩 보내요.
+ * 백엔드는 이미 쓴 refresh 토큰이 다시 오면 그 세션을 끊으므로, 같은 토큰으로 재발급이 두 번 나가면 로그인이 풀려요.
+ * 원래 요청은 잠금을 놓은 뒤에 다시 보내, 다른 탭의 재발급을 오래 막지 않아요.
  *
  * 401을 보고 판단하므로 `httpErrorInterceptor`보다 안쪽에 `use`하고,
  * 다시 보낸 요청에도 CSRF 토큰이 붙도록 `csrfInterceptor`보다 바깥에 `use`해요.

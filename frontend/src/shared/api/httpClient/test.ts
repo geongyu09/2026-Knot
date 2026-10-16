@@ -2,7 +2,7 @@ import { AUTH_CSRF_API_PATH } from "@api/fetch/api/v1/auth/csrf";
 import { AUTH_REFRESH_API_PATH } from "@api/fetch/api/v1/auth/refresh";
 import { mockServer } from "@api/mock/server";
 import { delay, http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getCsrfToken, httpClient } from ".";
 import { HTTP_ERROR_TYPE, isHttpError } from "./error";
@@ -266,5 +266,70 @@ describe("httpClient의 토큰 재발급", () => {
 
     expect(refresh.calls).toHaveLength(1);
     expect(late.attempts.count).toBe(2);
+  });
+});
+
+/** 잠금을 잡은 동안만 `isHeld`가 참인 가짜 Web Locks. 받은 잠금 이름을 기록해요 */
+const stubWebLocks = () => {
+  const lock = { isHeld: false, names: [] as string[] };
+  const request = vi.fn(
+    async (name: string, callback: () => Promise<unknown>) => {
+      lock.names.push(name);
+      lock.isHeld = true;
+      try {
+        return await callback();
+      } finally {
+        lock.isHeld = false;
+      }
+    },
+  );
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: { request },
+  });
+
+  return lock;
+};
+
+describe("httpClient의 탭 사이 재발급 잠금", () => {
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "locks");
+  });
+
+  it("Web Locks가 있으면 탭 사이 잠금을 잡은 채로 재발급을 보낸다", async () => {
+    const lock = stubWebLocks();
+    const isHeldAtRefresh: boolean[] = [];
+    mockServer.use(
+      http.post(`*${AUTH_REFRESH_API_PATH}`, () => {
+        isHeldAtRefresh.push(lock.isHeld);
+        return new HttpResponse(null, { status: 204 });
+      }),
+      failingThenOkHandler({ status: 401, failures: 1 }).handler,
+    );
+
+    const { data } = await httpClient.get(TEST_PATH);
+
+    expect(data).toEqual({ ok: true });
+    expect(lock.names).toEqual(["knot-auth-refresh"]);
+    expect(isHeldAtRefresh).toEqual([true]);
+  });
+
+  it("다시 보내는 원래 요청은 잠금을 놓은 뒤에 보낸다", async () => {
+    const lock = stubWebLocks();
+    const isHeldAtRetry: boolean[] = [];
+    let attempts = 0;
+    mockServer.use(
+      http.get(`*${TEST_PATH}`, () => {
+        attempts += 1;
+        if (attempts === 1) return new HttpResponse(null, { status: 401 });
+
+        isHeldAtRetry.push(lock.isHeld);
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    await httpClient.get(TEST_PATH);
+
+    expect(isHeldAtRetry).toEqual([false]);
   });
 });
