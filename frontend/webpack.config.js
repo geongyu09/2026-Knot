@@ -213,6 +213,12 @@ ${exports}
         ),
         // 문자열 리터럴로 넣어 src/index.tsx의 분기가 빌드 시점에 접혀요
         "process.env.API_MOCKING": JSON.stringify(String(isApiMockingEnabled)),
+        "process.env.POSTHOG_KEY": JSON.stringify(
+          process.env.POSTHOG_KEY ?? "",
+        ),
+        "process.env.POSTHOG_HOST": JSON.stringify(
+          process.env.POSTHOG_HOST ?? "",
+        ),
       }),
     ],
   };
