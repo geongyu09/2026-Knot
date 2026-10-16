@@ -93,6 +93,8 @@ public class HeadlessTranscriptionEngine implements TranscriptionEngine {
                         "16000",
                         "-c:a",
                         "pcm_s16le",
+                        "-t",
+                        Integer.toString(AudioInspector.MAXIMUM_DURATION_SECONDS),
                         "-fs",
                         "231448576",
                         wav.toString()
