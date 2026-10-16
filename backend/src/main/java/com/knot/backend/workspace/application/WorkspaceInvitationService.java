@@ -17,7 +17,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
-import java.util.function.Supplier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -58,12 +57,20 @@ public class WorkspaceInvitationService {
             Long workspaceId,
             long memberId
     ) {
-        return executeWithSecretCollisionRetry(
-                () -> issueInTransaction(
-                        workspaceId,
-                        memberId
-                )
-        );
+        WorkspaceInvitationSecretCollisionException lastCollision = null;
+        for (int attempt = 0; attempt < MAX_SECRET_GENERATION_ATTEMPTS; attempt++) {
+            try {
+                return transactionExecutor.execute(
+                        () -> issueInTransaction(
+                                workspaceId,
+                                memberId
+                        )
+                );
+            } catch (WorkspaceInvitationSecretCollisionException exception) {
+                lastCollision = exception;
+            }
+        }
+        throw lastCollision;
     }
 
     @Transactional(readOnly = true)
@@ -144,24 +151,12 @@ public class WorkspaceInvitationService {
         );
     }
 
-    private WorkspaceInvitationResult executeWithSecretCollisionRetry(Supplier<WorkspaceInvitationResult> operation) {
-        WorkspaceInvitationSecretCollisionException lastCollision = null;
-        for (int attempt = 0; attempt < MAX_SECRET_GENERATION_ATTEMPTS; attempt++) {
-            try {
-                return transactionExecutor.execute(operation);
-            } catch (WorkspaceInvitationSecretCollisionException exception) {
-                lastCollision = exception;
-            }
-        }
-        throw lastCollision;
-    }
-
     private WorkspaceInvitation findInvitation(
             String tokenOrCode,
             String remoteAddress
     ) {
         WorkspaceInvitationCredential credential = WorkspaceInvitationCredential.from(tokenOrCode);
-        if (credential.rateLimited()) {
+        if (credential.kind() == WorkspaceInvitationSecretKind.INVITE_CODE) {
             previewRateLimiter.consume(remoteAddress);
             credential.validate();
         }

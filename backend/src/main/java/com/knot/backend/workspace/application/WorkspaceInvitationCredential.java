@@ -6,11 +6,9 @@ import java.util.Locale;
 
 public record WorkspaceInvitationCredential(
         WorkspaceInvitationSecretKind kind,
-        String secret,
-        boolean rateLimited
+        String secret
 ) {
     static final int CODE_LENGTH = 6;
-    private static final String CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ23456789";
 
     public static WorkspaceInvitationCredential from(String tokenOrCode) {
         if (tokenOrCode == null || tokenOrCode.isBlank()) {
@@ -22,8 +20,7 @@ public record WorkspaceInvitationCredential(
         }
         return new WorkspaceInvitationCredential(
                 WorkspaceInvitationSecretKind.LINK_TOKEN,
-                tokenOrCode,
-                false
+                tokenOrCode
         );
     }
 
@@ -31,22 +28,13 @@ public record WorkspaceInvitationCredential(
         String normalizedCode = stripped.toUpperCase(Locale.ROOT);
         return new WorkspaceInvitationCredential(
                 WorkspaceInvitationSecretKind.INVITE_CODE,
-                normalizedCode,
-                true
+                normalizedCode
         );
     }
 
     public void validate() {
-        if (kind != WorkspaceInvitationSecretKind.INVITE_CODE) {
-            return;
-        }
-        if (secret.length() != CODE_LENGTH) {
+        if (kind == WorkspaceInvitationSecretKind.INVITE_CODE && !secret.matches("[A-Z2-9]{6}")) {
             throw previewNotFound();
-        }
-        for (int index = 0; index < secret.length(); index++) {
-            if (CODE_ALPHABET.indexOf(secret.charAt(index)) < 0) {
-                throw previewNotFound();
-            }
         }
     }
 

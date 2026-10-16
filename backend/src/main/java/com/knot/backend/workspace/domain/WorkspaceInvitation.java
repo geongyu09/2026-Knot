@@ -60,7 +60,7 @@ public class WorkspaceInvitation {
         this.workspaceId = workspaceId;
         this.linkTokenHash = linkTokenHash;
         this.inviteCodeHash = inviteCodeHash;
-        Instant databasePrecisionCreatedAt = truncateToDatabasePrecision(createdAt);
+        Instant databasePrecisionCreatedAt = createdAt.truncatedTo(ChronoUnit.MICROS);
         this.expiresAt = databasePrecisionCreatedAt.plus(VALIDITY_PERIOD);
         this.createdAt = databasePrecisionCreatedAt;
     }
@@ -80,7 +80,8 @@ public class WorkspaceInvitation {
     }
 
     public void validateUsableAt(Instant pointInTime) {
-        if (!isUsableAt(pointInTime)) {
+        validatePointInTime(pointInTime);
+        if (pointInTime.isBefore(createdAt) || !pointInTime.isBefore(expiresAt) || invalidatedAt != null) {
             throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_INVITATION_PREVIEW_NOT_FOUND);
         }
     }
@@ -96,14 +97,6 @@ public class WorkspaceInvitation {
                 WorkspaceMemberRole.MEMBER,
                 joinedAt
         );
-    }
-
-    private boolean isUsableAt(Instant pointInTime) {
-        validatePointInTime(pointInTime);
-        boolean issued = !pointInTime.isBefore(createdAt);
-        boolean unexpired = pointInTime.isBefore(expiresAt);
-        boolean uninvalidated = invalidatedAt == null;
-        return issued && unexpired && uninvalidated;
     }
 
     private void validateWorkspaceId(Long workspaceId) {
@@ -134,9 +127,5 @@ public class WorkspaceInvitation {
         if (pointInTime == null) {
             throw new WorkspaceException(WorkspaceErrorCode.INVALID_WORKSPACE_INVITATION_POINT_IN_TIME);
         }
-    }
-
-    private Instant truncateToDatabasePrecision(Instant instant) {
-        return instant.truncatedTo(ChronoUnit.MICROS);
     }
 }
