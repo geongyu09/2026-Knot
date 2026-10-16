@@ -158,11 +158,17 @@ JSON 필드의 출력 순서와 delta 조각 수는 계약이 아니다.
 - 첫 답변 FAILED는 대화 목록에서 숨긴다. 질문·부분 답변은 보존되며 소유자는 메시지 GET으로 읽을 수 있다.
 - 첫 답변 재시도 중에는 목록 숨김을 유지한다. 재시도가 COMPLETED 또는 STOPPED로 끝나면 빈 본문 여부와 관계없이 목록을 복원하며, 다시 FAILED로 끝나면 계속 숨긴다. 2026-10-12 사용자 결정과 PostgreSQL 통합 테스트 기준이다.
 - 검색 없음은 녹음 안내 COMPLETED로 처리한다. 검색 오류는 FAILED로 구분한다.
-- 2026-10-14 사용자 결정: 인사·감사·기능 안내 등 문서 근거가 필요 없는 입력은 모델이
-  `answer_without_search` 경로를 선택하면 해당 답변과 빈 근거로 COMPLETED 처리한다.
-  문서 도구 호출 전 한 번만 선택할 수 있으며, 탐색을 시작한 뒤 직접 답변으로 전환하거나
-  직접 답변과 문서 도구를 동시에 호출하면 실패한다. 도구 없이 자유 문장만 반환하면 한 번
-  경로 재선택을 요청하고, 다시 도구 없이 종료하면 실패한다. 모델/MCP 오류는 계속 FAILED다.
+- #697의 [JSON 의도 분류 결정](../adr/697-search-intent-classification.md)이 2026-10-14의 자유 답변 경로를 대체한다.
+  첫 본문 delta 전에 Qwen을 한 번 호출해 현재 질문과 문맥용 대화 이력을 다섯 의도로 분류한다.
+  `MEETING_SEARCH`만 문서 탐색과 근거 답변 생성을 진행한다.
+  `GREETING_OR_THANKS`·`SERVICE_GUIDE`·`NEEDS_CLARIFICATION`·`OUT_OF_SCOPE`는 의도별 서버 고정 안내와
+  빈 근거를 저장하고 기존 delta → completed 이벤트, COMPLETED 상태로 종료한다.
+  새 산출물 작성과 회의 검색·범위 밖 작업의 혼합 요청은 전체를 OUT_OF_SCOPE로 안내한다.
+  의도 JSON과 분류명은 내부 제어 정보이며 FE 응답·메시지 본문으로 전달하지 않는다.
+- 분류 호출 장애·잘못되거나 잘린 JSON은 FAILED다. 분류 재시도나 검색 fallback은 하지 않는다.
+  `answer_without_search`와 모델 자유 답변 전달, 무도구 응답에 대한 경로 재선택 재시도는 제거했다.
+  탐색을 시작하기도 전에 도구 없이 종료하면 즉시 FAILED이며, 유효한 도구 탐색 후의 정상 종료와는 구분한다.
+  모델/MCP 오류는 계속 FAILED다. 이 분류·고정 안내 규칙은 후속 질문과 실패 답변 재시도에도 동일하게 적용한다.
 - 질문 검색 결과가 모두 비었으면 전체 문서 목록에 다른 문서가 있어도 검색 없음으로 완료한다.
   전체 목록의 존재만으로 질문의 관련 근거를 확보한 것으로 판단하지 않는다.
   검색 후보를 발견했거나 검색 없이 목록 후보만 조회한 경우, 본문을 하나도 읽지 않은 종료는 계속 실패한다.
@@ -176,7 +182,7 @@ JSON 필드의 출력 순서와 delta 조각 수는 계약이 아니다.
 
 ## 구현·운영 선행 조건
 
-production retriever/generator와 생성 완료 DRAFT·ARCHIVED·제외 수 0 기준을 구현했다. 활성화에는 `SEARCH_WORKER_ENABLED=true`,
+production classifier/retriever/generator와 생성 완료 DRAFT·ARCHIVED·제외 수 0 기준을 구현했다. 활성화에는 `SEARCH_WORKER_ENABLED=true`,
 `SEARCH_AGENT_ENABLED=true`, `LLM_ENABLED=true`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_TOKEN`, 최소 32자
 `SEARCH_MCP_SIGNING_KEY`, 앱 내부의 `SEARCH_MCP_BASE_URL` 설정이 필요하다. 기본 MCP 주소는 현재 server.port의 IPv4 loopback이다.
 내부 HTTP 통신이 실제 배포 구조에 맞는지는 별도 확인한다. 토큰과 서명키를 브라우저·모델에 전달하지 않는다.
