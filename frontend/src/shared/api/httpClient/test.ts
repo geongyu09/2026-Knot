@@ -1,7 +1,7 @@
 import { AUTH_CSRF_API_PATH } from "@api/fetch/api/v1/auth/csrf";
 import { AUTH_REFRESH_API_PATH } from "@api/fetch/api/v1/auth/refresh";
 import { mockServer } from "@api/mock/server";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { getCsrfToken, httpClient } from ".";
@@ -81,29 +81,46 @@ describe("httpClient의 CSRF 처리", () => {
   });
 });
 
-/** 받은 재발급 요청 수와 그때의 CSRF 헤더를 기록하는 재발급 핸들러 */
-const countingRefreshHandler = ({ status = 204 }: { status?: number } = {}) => {
+/** 받은 재발급 요청 수와 그때의 CSRF 헤더를 기록하는 재발급 핸들러. `delayMs`만큼 늦게 답해요 */
+const countingRefreshHandler = ({
+  status = 204,
+  delayMs = 0,
+}: { status?: number; delayMs?: number } = {}) => {
   const calls: (string | null)[] = [];
-  const handler = http.post(`*${AUTH_REFRESH_API_PATH}`, ({ request }) => {
-    calls.push(request.headers.get(CSRF_HEADER_NAME));
-    return new HttpResponse(null, { status });
-  });
+  const handler = http.post(
+    `*${AUTH_REFRESH_API_PATH}`,
+    async ({ request }) => {
+      calls.push(request.headers.get(CSRF_HEADER_NAME));
+      await delay(delayMs);
+      return new HttpResponse(null, { status });
+    },
+  );
 
   return { handler, calls };
 };
 
-/** 처음 `failures`번은 `status`로 실패하고 그 뒤로는 성공하는 조회 핸들러. 받은 요청 수를 셉니다 */
+/**
+ * 처음 `failures`번은 `status`로 실패하고 그 뒤로는 성공하는 조회 핸들러. 받은 요청 수를 셉니다.
+ * 실패 응답은 `failureDelayMs`만큼 늦게 줘요
+ */
 const failingThenOkHandler = ({
   status,
   failures,
+  path = TEST_PATH,
+  failureDelayMs = 0,
 }: {
   status: number;
   failures: number;
+  path?: string;
+  failureDelayMs?: number;
 }) => {
   const attempts = { count: 0 };
-  const handler = http.get(`*${TEST_PATH}`, () => {
+  const handler = http.get(`*${path}`, async () => {
     attempts.count += 1;
-    if (attempts.count <= failures) return new HttpResponse(null, { status });
+    if (attempts.count <= failures) {
+      await delay(failureDelayMs);
+      return new HttpResponse(null, { status });
+    }
 
     return HttpResponse.json({ ok: true });
   });
@@ -199,5 +216,55 @@ describe("httpClient의 토큰 재발급", () => {
 
     expect(isHttpError(error, HTTP_ERROR_TYPE.unauthorized)).toBe(true);
     expect(refresh.calls).toHaveLength(0);
+  });
+
+  it("동시에 401을 받은 요청들은 재발급 한 번을 함께 기다렸다가 각자 다시 보낸다", async () => {
+    const refresh = countingRefreshHandler({ delayMs: 50 });
+    const requests = ["/__refresh-a", "/__refresh-b", "/__refresh-c"].map(
+      (path) => ({
+        path,
+        ...failingThenOkHandler({ status: 401, failures: 1, path }),
+      }),
+    );
+    mockServer.use(refresh.handler, ...requests.map(({ handler }) => handler));
+
+    const responses = await Promise.all(
+      requests.map(({ path }) => httpClient.get(path)),
+    );
+
+    expect(responses.map(({ data }) => data)).toEqual([
+      { ok: true },
+      { ok: true },
+      { ok: true },
+    ]);
+    expect(refresh.calls).toHaveLength(1);
+    requests.forEach(({ attempts }) => {
+      expect(attempts.count).toBe(2);
+    });
+  });
+
+  it("다른 요청이 재발급을 끝낸 뒤에 도착한 401은 재발급 없이 다시 보낸다", async () => {
+    const refresh = countingRefreshHandler();
+    const early = failingThenOkHandler({
+      status: 401,
+      failures: 1,
+      path: "/__refresh-early",
+    });
+    // 만료된 토큰으로 함께 보냈지만 401이 늦게 도착하는 요청이에요
+    const late = failingThenOkHandler({
+      status: 401,
+      failures: 1,
+      path: "/__refresh-late",
+      failureDelayMs: 100,
+    });
+    mockServer.use(refresh.handler, early.handler, late.handler);
+
+    await Promise.all([
+      httpClient.get("/__refresh-early"),
+      httpClient.get("/__refresh-late"),
+    ]);
+
+    expect(refresh.calls).toHaveLength(1);
+    expect(late.attempts.count).toBe(2);
   });
 });
