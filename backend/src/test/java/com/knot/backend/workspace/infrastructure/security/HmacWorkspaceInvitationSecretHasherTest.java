@@ -1,12 +1,11 @@
 package com.knot.backend.workspace.infrastructure.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
 import com.knot.backend.workspace.application.WorkspaceInvitationSecretKind;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-class HmacWorkspaceInvitationSecretProtectorTest {
+class HmacWorkspaceInvitationSecretHasherTest {
     private static final String LOOKUP_HASH_KEY = "ZmVkY2JhOTg3NjU0MzIxMGZlZGNiYTk4NzY1NDMyMTA";
     private static final String SECRET = "secret-value";
 
@@ -14,7 +13,7 @@ class HmacWorkspaceInvitationSecretProtectorTest {
     @Test
     void hash_success_deterministic() {
         // given
-        HmacWorkspaceInvitationSecretProtector protector = protector();
+        HmacWorkspaceInvitationSecretHasher protector = protector();
         String firstHash = protector.hash(
                 WorkspaceInvitationSecretKind.INVITE_CODE,
                 SECRET
@@ -34,7 +33,7 @@ class HmacWorkspaceInvitationSecretProtectorTest {
     @Test
     void hash_success_separatesSecretKinds() {
         // given
-        HmacWorkspaceInvitationSecretProtector protector = protector();
+        HmacWorkspaceInvitationSecretHasher protector = protector();
         String inviteCodeHash = protector.hash(
                 WorkspaceInvitationSecretKind.INVITE_CODE,
                 SECRET
@@ -50,7 +49,7 @@ class HmacWorkspaceInvitationSecretProtectorTest {
         assertThat(linkTokenHash).isNotEqualTo(inviteCodeHash);
     }
 
-    private HmacWorkspaceInvitationSecretProtector protector() {
-        return new HmacWorkspaceInvitationSecretProtector(new WorkspaceInvitationSecurityProperties(LOOKUP_HASH_KEY));
+    private HmacWorkspaceInvitationSecretHasher protector() {
+        return new HmacWorkspaceInvitationSecretHasher(new WorkspaceInvitationSecurityProperties(LOOKUP_HASH_KEY));
     }
 }

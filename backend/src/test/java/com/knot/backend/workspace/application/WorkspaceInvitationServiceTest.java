@@ -9,7 +9,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationResult;
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationSecrets;
 import com.knot.backend.workspace.domain.Workspace;
@@ -46,22 +45,26 @@ class WorkspaceInvitationServiceTest {
     private final WorkspaceInvitationRepository workspaceInvitationRepository = mock(
             WorkspaceInvitationRepository.class
     );
-    private final WorkspaceInvitationSecretGenerator secretGenerator = mock(WorkspaceInvitationSecretGenerator.class);
-    private final WorkspaceInvitationSecretProtector secretProtector = mock(WorkspaceInvitationSecretProtector.class);
-    private final WorkspaceInvitationPreviewRateLimiter previewRateLimiter = mock(
+    private final WorkspaceInvitationSecretGenerator workspaceInvitationSecretGenerator = mock(
+            WorkspaceInvitationSecretGenerator.class
+    );
+    private final WorkspaceInvitationSecretHasher workspaceInvitationSecretHasher = mock(
+            WorkspaceInvitationSecretHasher.class
+    );
+    private final WorkspaceInvitationPreviewRateLimiter workspaceInvitationPreviewRateLimiter = mock(
             WorkspaceInvitationPreviewRateLimiter.class
     );
-    private final WorkspaceInvitationTransactionExecutor transactionExecutor = mock(
+    private final WorkspaceInvitationTransactionExecutor workspaceInvitationTransactionExecutor = mock(
             WorkspaceInvitationTransactionExecutor.class
     );
     private final WorkspaceInvitationService service = new WorkspaceInvitationService(
             workspaceRepository,
             workspaceMemberRepository,
             workspaceInvitationRepository,
-            secretGenerator,
-            secretProtector,
-            previewRateLimiter,
-            transactionExecutor,
+            workspaceInvitationSecretGenerator,
+            workspaceInvitationSecretHasher,
+            workspaceInvitationPreviewRateLimiter,
+            workspaceInvitationTransactionExecutor,
             Clock.fixed(
                     NOW,
                     ZoneOffset.UTC
@@ -69,7 +72,7 @@ class WorkspaceInvitationServiceTest {
     );
 
     WorkspaceInvitationServiceTest() {
-        when(transactionExecutor.execute(any())).thenAnswer(
+        when(workspaceInvitationTransactionExecutor.execute(any())).thenAnswer(
                 invocation -> invocation.<Supplier<WorkspaceInvitationResult>>getArgument(0)
                         .get()
         );
@@ -115,7 +118,7 @@ class WorkspaceInvitationServiceTest {
                 invocation -> invocation.<Supplier<WorkspaceInvitationResult>>getArgument(0)
                         .get()
         )
-                .when(transactionExecutor)
+                .when(workspaceInvitationTransactionExecutor)
                 .execute(any());
         allowMemberWithWorkspaceLock();
         prepareNewInvitation();
@@ -129,7 +132,7 @@ class WorkspaceInvitationServiceTest {
         // then
         assertThat(result.code()).isEqualTo(CODE);
         verify(
-                transactionExecutor,
+                workspaceInvitationTransactionExecutor,
                 times(2)
         ).execute(any());
     }
@@ -141,7 +144,7 @@ class WorkspaceInvitationServiceTest {
         WorkspaceInvitationSecretCollisionException collision = new WorkspaceInvitationSecretCollisionException(
                 new DataIntegrityViolationException("secret collision")
         );
-        doThrow(collision).when(transactionExecutor)
+        doThrow(collision).when(workspaceInvitationTransactionExecutor)
                 .execute(any());
 
         // when
@@ -155,7 +158,7 @@ class WorkspaceInvitationServiceTest {
         // then
         assertThat(thrown).isSameAs(collision);
         verify(
-                transactionExecutor,
+                workspaceInvitationTransactionExecutor,
                 times(WorkspaceInvitationService.MAX_SECRET_GENERATION_ATTEMPTS)
         ).execute(any());
     }
@@ -167,7 +170,7 @@ class WorkspaceInvitationServiceTest {
         DataIntegrityViolationException integrityViolation = new DataIntegrityViolationException(
                 "foreign key violation"
         );
-        doThrow(integrityViolation).when(transactionExecutor)
+        doThrow(integrityViolation).when(workspaceInvitationTransactionExecutor)
                 .execute(any());
 
         // when
@@ -180,7 +183,7 @@ class WorkspaceInvitationServiceTest {
 
         // then
         assertThat(thrown).isSameAs(integrityViolation);
-        verify(transactionExecutor).execute(any());
+        verify(workspaceInvitationTransactionExecutor).execute(any());
     }
 
     @DisplayName("워크스페이스 멤버가 아니면 초대를 발급하지 않는다")
@@ -216,7 +219,7 @@ class WorkspaceInvitationServiceTest {
                 exception -> assertThat(exception.getErrorCode()).isEqualTo(WorkspaceErrorCode.WORKSPACE_ACCESS_DENIED)
         );
         verify(
-                secretGenerator,
+                workspaceInvitationSecretGenerator,
                 never()
         ).generate();
     }
@@ -243,20 +246,20 @@ class WorkspaceInvitationServiceTest {
     }
 
     private void prepareNewInvitation() {
-        when(secretGenerator.generate()).thenReturn(
+        when(workspaceInvitationSecretGenerator.generate()).thenReturn(
                 new WorkspaceInvitationSecrets(
                         CODE,
                         LINK_TOKEN
                 )
         );
         when(
-                secretProtector.hash(
+                workspaceInvitationSecretHasher.hash(
                         WorkspaceInvitationSecretKind.INVITE_CODE,
                         CODE
                 )
         ).thenReturn(CODE_HASH);
         when(
-                secretProtector.hash(
+                workspaceInvitationSecretHasher.hash(
                         WorkspaceInvitationSecretKind.LINK_TOKEN,
                         LINK_TOKEN
                 )

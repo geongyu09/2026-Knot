@@ -11,7 +11,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
-
 import com.knot.backend.global.config.TranscriptionProperties;
 import com.knot.backend.recording.application.dto.result.AiTranscript;
 import com.knot.backend.recording.application.dto.result.AiTranscriptionJob;
@@ -46,11 +45,11 @@ class RecordingTranscriptionServiceTest {
     private static final UUID ATTEMPT = UUID.fromString("019bbbc0-51ae-7000-8000-000000000001");
 
     @Mock
-    private RecordingTranscriptionStateService state;
+    private RecordingTranscriptionStateService recordingTranscriptionStateService;
     @Mock
-    private TranscriptionClient client;
+    private TranscriptionClient transcriptionClient;
     @Mock
-    private RecordingAudioStorage storage;
+    private RecordingAudioStorage recordingAudioStorage;
     private RecordingTranscriptionService service;
 
     @AfterEach
@@ -71,9 +70,9 @@ class RecordingTranscriptionServiceTest {
 
         // then
         verifyNoInteractions(
-                state,
-                client,
-                storage
+                recordingTranscriptionStateService,
+                transcriptionClient,
+                recordingAudioStorage
         );
     }
 
@@ -85,7 +84,7 @@ class RecordingTranscriptionServiceTest {
         CountDownLatch submitted = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         when(
-                client.submit(
+                transcriptionClient.submit(
                         ATTEMPT,
                         "https://immutable.example/audio"
                 )
@@ -112,17 +111,17 @@ class RecordingTranscriptionServiceTest {
         // then
         release.countDown();
         verify(
-                state,
+                recordingTranscriptionStateService,
                 timeout(2000)
         ).complete(
                 execution,
                 transcript()
         );
-        verify(client).submit(
+        verify(transcriptionClient).submit(
                 ATTEMPT,
                 "https://immutable.example/audio"
         );
-        verify(state).findProcessing();
+        verify(recordingTranscriptionStateService).findProcessing();
     }
 
     @ParameterizedTest
@@ -132,12 +131,12 @@ class RecordingTranscriptionServiceTest {
         // given
         RecordingTranscriptionExecution execution = prepare();
         when(
-                client.submit(
+                transcriptionClient.submit(
                         ATTEMPT,
                         "https://immutable.example/audio"
                 )
         ).thenThrow(new RecordingException(code));
-        when(client.get(ATTEMPT)).thenReturn(succeeded(ATTEMPT));
+        when(transcriptionClient.get(ATTEMPT)).thenReturn(succeeded(ATTEMPT));
         service = service(true);
 
         // when
@@ -145,17 +144,17 @@ class RecordingTranscriptionServiceTest {
 
         // then
         verify(
-                state,
+                recordingTranscriptionStateService,
                 timeout(2000)
         ).complete(
                 execution,
                 transcript()
         );
-        verify(client).submit(
+        verify(transcriptionClient).submit(
                 ATTEMPT,
                 "https://immutable.example/audio"
         );
-        verify(client).get(ATTEMPT);
+        verify(transcriptionClient).get(ATTEMPT);
     }
 
     @Test
@@ -164,12 +163,12 @@ class RecordingTranscriptionServiceTest {
         // given
         RecordingTranscriptionExecution execution = prepare();
         when(
-                client.submit(
+                transcriptionClient.submit(
                         ATTEMPT,
                         "https://immutable.example/audio"
                 )
         ).thenThrow(new RecordingException(RecordingErrorCode.AI_TIMEOUT));
-        when(client.get(ATTEMPT)).thenThrow(new RecordingException(RecordingErrorCode.AI_JOB_NOT_FOUND));
+        when(transcriptionClient.get(ATTEMPT)).thenThrow(new RecordingException(RecordingErrorCode.AI_JOB_NOT_FOUND));
         service = service(true);
 
         // when
@@ -177,13 +176,13 @@ class RecordingTranscriptionServiceTest {
 
         // then
         verify(
-                state,
+                recordingTranscriptionStateService,
                 timeout(2000)
         ).fail(
                 execution,
                 "AI_JOB_NOT_FOUND"
         );
-        verify(client).submit(
+        verify(transcriptionClient).submit(
                 ATTEMPT,
                 "https://immutable.example/audio"
         );
@@ -195,12 +194,12 @@ class RecordingTranscriptionServiceTest {
         // given
         RecordingTranscriptionExecution execution = prepare();
         when(
-                client.submit(
+                transcriptionClient.submit(
                         ATTEMPT,
                         "https://immutable.example/audio"
                 )
         ).thenReturn(processing());
-        when(client.get(ATTEMPT)).thenReturn(succeeded(ATTEMPT));
+        when(transcriptionClient.get(ATTEMPT)).thenReturn(succeeded(ATTEMPT));
         service = service(true);
 
         // when
@@ -208,13 +207,13 @@ class RecordingTranscriptionServiceTest {
 
         // then
         verify(
-                state,
+                recordingTranscriptionStateService,
                 timeout(2000)
         ).complete(
                 execution,
                 transcript()
         );
-        verify(client).get(ATTEMPT);
+        verify(transcriptionClient).get(ATTEMPT);
     }
 
     @Test
@@ -225,7 +224,7 @@ class RecordingTranscriptionServiceTest {
                 ATTEMPT,
                 NOW.minusSeconds(100)
         );
-        when(state.findProcessing()).thenReturn(Optional.of(execution));
+        when(recordingTranscriptionStateService.findProcessing()).thenReturn(Optional.of(execution));
         service = service(true);
 
         // when
@@ -233,15 +232,15 @@ class RecordingTranscriptionServiceTest {
 
         // then
         verify(
-                state,
+                recordingTranscriptionStateService,
                 timeout(2000)
         ).fail(
                 execution,
                 "AI_TIMEOUT"
         );
         verifyNoInteractions(
-                client,
-                storage
+                transcriptionClient,
+                recordingAudioStorage
         );
     }
 
@@ -251,7 +250,7 @@ class RecordingTranscriptionServiceTest {
         // given
         RecordingTranscriptionExecution execution = prepare();
         when(
-                client.submit(
+                transcriptionClient.submit(
                         ATTEMPT,
                         "https://immutable.example/audio"
                 )
@@ -270,14 +269,14 @@ class RecordingTranscriptionServiceTest {
 
         // then
         verify(
-                state,
+                recordingTranscriptionStateService,
                 timeout(2000)
         ).fail(
                 execution,
                 "STT_FAILED"
         );
         verify(
-                state,
+                recordingTranscriptionStateService,
                 never()
         ).complete(
                 any(),
@@ -291,12 +290,12 @@ class RecordingTranscriptionServiceTest {
         // given
         RecordingTranscriptionExecution execution = prepare();
         when(
-                client.submit(
+                transcriptionClient.submit(
                         ATTEMPT,
                         "https://immutable.example/audio"
                 )
         ).thenReturn(succeeded(ATTEMPT));
-        doThrow(new IllegalStateException("테스트 저장 실패")).when(state)
+        doThrow(new IllegalStateException("테스트 저장 실패")).when(recordingTranscriptionStateService)
                 .complete(
                         execution,
                         transcript()
@@ -304,7 +303,7 @@ class RecordingTranscriptionServiceTest {
         service = service(true);
         service.dispatch();
         verify(
-                state,
+                recordingTranscriptionStateService,
                 timeout(2000)
         ).fail(
                 execution,
@@ -316,10 +315,10 @@ class RecordingTranscriptionServiceTest {
 
         // then
         verify(
-                state,
+                recordingTranscriptionStateService,
                 times(2)
         ).findProcessing();
-        verify(client).submit(
+        verify(transcriptionClient).submit(
                 ATTEMPT,
                 "https://immutable.example/audio"
         );
@@ -332,12 +331,12 @@ class RecordingTranscriptionServiceTest {
         RecordingTranscriptionExecution execution = prepare();
         CountDownLatch failed = new CountDownLatch(1);
         when(
-                client.submit(
+                transcriptionClient.submit(
                         ATTEMPT,
                         "https://immutable.example/audio"
                 )
         ).thenReturn(succeeded(ATTEMPT));
-        doThrow(new IllegalStateException("테스트 결과 저장 실패")).when(state)
+        doThrow(new IllegalStateException("테스트 결과 저장 실패")).when(recordingTranscriptionStateService)
                 .complete(
                         execution,
                         transcript()
@@ -345,7 +344,7 @@ class RecordingTranscriptionServiceTest {
         doAnswer(call -> {
             failed.countDown();
             throw new IllegalStateException("테스트 실패 상태 저장 실패");
-        }).when(state)
+        }).when(recordingTranscriptionStateService)
                 .fail(
                         execution,
                         "RESULT_STORAGE_FAILED"
@@ -363,8 +362,8 @@ class RecordingTranscriptionServiceTest {
         service.dispatch();
 
         // then
-        verify(state).findProcessing();
-        verify(client).submit(
+        verify(recordingTranscriptionStateService).findProcessing();
+        verify(transcriptionClient).submit(
                 ATTEMPT,
                 "https://immutable.example/audio"
         );
@@ -377,7 +376,7 @@ class RecordingTranscriptionServiceTest {
         RecordingTranscriptionExecution execution = prepare();
         CountDownLatch submitted = new CountDownLatch(1);
         when(
-                client.submit(
+                transcriptionClient.submit(
                         ATTEMPT,
                         "https://immutable.example/audio"
                 )
@@ -386,13 +385,13 @@ class RecordingTranscriptionServiceTest {
             return processing();
         });
         service = new RecordingTranscriptionService(
-                state,
+                recordingTranscriptionStateService,
                 properties(
                         true,
                         Duration.ofHours(1)
                 ),
-                client,
-                storage,
+                transcriptionClient,
+                recordingAudioStorage,
                 clock()
         );
         service.dispatch();
@@ -407,12 +406,12 @@ class RecordingTranscriptionServiceTest {
         service.close();
 
         // then
-        verify(state).fail(
+        verify(recordingTranscriptionStateService).fail(
                 execution,
                 "AI_INTERRUPTED"
         );
         verify(
-                client,
+                transcriptionClient,
                 never()
         ).get(any());
     }
@@ -427,19 +426,19 @@ class RecordingTranscriptionServiceTest {
                 nextId,
                 NOW
         );
-        when(state.findProcessing()).thenReturn(
+        when(recordingTranscriptionStateService.findProcessing()).thenReturn(
                 Optional.of(first),
                 Optional.of(next),
                 Optional.empty()
         );
         when(
-                client.submit(
+                transcriptionClient.submit(
                         ATTEMPT,
                         "https://immutable.example/audio"
                 )
         ).thenReturn(succeeded(ATTEMPT));
         when(
-                client.submit(
+                transcriptionClient.submit(
                         nextId,
                         "https://immutable.example/audio"
                 )
@@ -453,7 +452,7 @@ class RecordingTranscriptionServiceTest {
                     TimeUnit.SECONDS
             );
             return null;
-        }).when(state)
+        }).when(recordingTranscriptionStateService)
                 .complete(
                         first,
                         transcript()
@@ -477,17 +476,17 @@ class RecordingTranscriptionServiceTest {
                     TimeUnit.SECONDS
             );
             verify(
-                    state,
+                    recordingTranscriptionStateService,
                     timeout(2000)
             ).complete(
                     next,
                     transcript()
             );
-            verify(client).submit(
+            verify(transcriptionClient).submit(
                     ATTEMPT,
                     "https://immutable.example/audio"
             );
-            verify(client).submit(
+            verify(transcriptionClient).submit(
                     nextId,
                     "https://immutable.example/audio"
             );
@@ -512,9 +511,9 @@ class RecordingTranscriptionServiceTest {
         // then
         assertThat(failure).hasMessage(RecordingErrorCode.TRANSCRIPTION_DISABLED.getMessage());
         verifyNoInteractions(
-                state,
-                client,
-                storage
+                recordingTranscriptionStateService,
+                transcriptionClient,
+                recordingAudioStorage
         );
     }
 
@@ -537,9 +536,9 @@ class RecordingTranscriptionServiceTest {
         // then
         assertThat(failure).hasMessage(RecordingErrorCode.AI_NOT_READY.getMessage());
         verifyNoInteractions(
-                state,
-                client,
-                storage
+                recordingTranscriptionStateService,
+                transcriptionClient,
+                recordingAudioStorage
         );
     }
 
@@ -548,12 +547,12 @@ class RecordingTranscriptionServiceTest {
                 ATTEMPT,
                 NOW
         );
-        when(state.findProcessing()).thenReturn(
+        when(recordingTranscriptionStateService.findProcessing()).thenReturn(
                 Optional.of(execution),
                 Optional.empty()
         );
         when(
-                storage.presignDownload(
+                recordingAudioStorage.presignDownload(
                         "recording.webm",
                         "version-1",
                         "audio/webm",
@@ -615,13 +614,13 @@ class RecordingTranscriptionServiceTest {
 
     private RecordingTranscriptionService service(boolean enabled) {
         return new RecordingTranscriptionService(
-                state,
+                recordingTranscriptionStateService,
                 properties(
                         enabled,
                         Duration.ofMillis(1)
                 ),
-                client,
-                storage,
+                transcriptionClient,
+                recordingAudioStorage,
                 clock()
         );
     }

@@ -1,9 +1,8 @@
 package com.knot.backend.workspace.infrastructure.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
 import com.knot.backend.workspace.application.WorkspaceInvitationSecretGenerator;
-import com.knot.backend.workspace.application.WorkspaceInvitationSecretProtector;
+import com.knot.backend.workspace.application.WorkspaceInvitationSecretHasher;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -25,7 +24,7 @@ class WorkspaceInvitationSecurityConfigTest {
         configuredRunner.run(context -> {
             // then
             assertThat(context).hasSingleBean(WorkspaceInvitationSecretGenerator.class)
-                    .hasSingleBean(WorkspaceInvitationSecretProtector.class);
+                    .hasSingleBean(WorkspaceInvitationSecretHasher.class);
         });
     }
 

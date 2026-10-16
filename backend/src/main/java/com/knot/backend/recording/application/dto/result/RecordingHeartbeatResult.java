@@ -25,7 +25,7 @@ public record RecordingHeartbeatResult(
                 session.getStatus(),
                 session.getRecordingDurationMillis(serverNow),
                 session.getLastSeenAt(),
-                session.getExpiresAt(),
+                session.getConnectionExpiresAt(),
                 session.getEndedAt(),
                 session.getEndReason(),
                 serverNow

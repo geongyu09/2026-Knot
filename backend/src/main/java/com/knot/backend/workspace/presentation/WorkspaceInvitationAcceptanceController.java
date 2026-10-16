@@ -125,7 +125,7 @@ public class WorkspaceInvitationAcceptanceController {
                 authenticatedMember.getMemberId()
         );
         WorkspaceInvitationAcceptanceResponse response = WorkspaceInvitationAcceptanceResponse.from(result);
-        if (result.created()) {
+        if (result.membershipCreated()) {
             return ResponseEntity.status(201)
                     .body(response);
         }

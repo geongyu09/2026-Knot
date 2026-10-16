@@ -10,7 +10,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
-
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationAcceptanceResult;
 import com.knot.backend.workspace.domain.Workspace;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
@@ -48,14 +47,16 @@ class WorkspaceInvitationAcceptanceServiceTest {
     );
     private final WorkspaceRepository workspaceRepository = mock(WorkspaceRepository.class);
     private final WorkspaceMemberRepository workspaceMemberRepository = mock(WorkspaceMemberRepository.class);
-    private final WorkspaceInvitationSecretProtector secretProtector = mock(WorkspaceInvitationSecretProtector.class);
+    private final WorkspaceInvitationSecretHasher workspaceInvitationSecretHasher = mock(
+            WorkspaceInvitationSecretHasher.class
+    );
     private final WorkspaceInvitationPreviewRateLimiter rateLimiter = mock(WorkspaceInvitationPreviewRateLimiter.class);
     private final WorkspaceInvitationService service = new WorkspaceInvitationService(
             workspaceRepository,
             workspaceMemberRepository,
             workspaceInvitationRepository,
             mock(WorkspaceInvitationSecretGenerator.class),
-            secretProtector,
+            workspaceInvitationSecretHasher,
             rateLimiter,
             mock(WorkspaceInvitationTransactionExecutor.class),
             Clock.fixed(
@@ -70,7 +71,7 @@ class WorkspaceInvitationAcceptanceServiceTest {
         // given
         WorkspaceInvitation invitation = validInvitation();
         when(
-                secretProtector.hash(
+                workspaceInvitationSecretHasher.hash(
                         WorkspaceInvitationSecretKind.INVITE_CODE,
                         CODE
                 )
@@ -94,7 +95,7 @@ class WorkspaceInvitationAcceptanceServiceTest {
         // then
         assertThat(result.workspaceId()).isEqualTo(WORKSPACE_ID);
         assertThat(result.workspaceName()).isEqualTo(WORKSPACE_NAME);
-        assertThat(result.created()).isTrue();
+        assertThat(result.membershipCreated()).isTrue();
         ArgumentCaptor<WorkspaceMember> memberCaptor = ArgumentCaptor.forClass(WorkspaceMember.class);
         verify(workspaceMemberRepository).save(memberCaptor.capture());
         assertThat(memberCaptor.getValue()).extracting(
@@ -130,7 +131,7 @@ class WorkspaceInvitationAcceptanceServiceTest {
         // given
         WorkspaceInvitation invitation = validInvitation();
         when(
-                secretProtector.hash(
+                workspaceInvitationSecretHasher.hash(
                         WorkspaceInvitationSecretKind.LINK_TOKEN,
                         LINK_TOKEN
                 )
@@ -152,7 +153,7 @@ class WorkspaceInvitationAcceptanceServiceTest {
         );
 
         // then
-        assertThat(result.created()).isTrue();
+        assertThat(result.membershipCreated()).isTrue();
         verifyNoInteractions(rateLimiter);
         verify(workspaceMemberRepository).save(any(WorkspaceMember.class));
     }
@@ -163,7 +164,7 @@ class WorkspaceInvitationAcceptanceServiceTest {
         // given
         WorkspaceInvitation invitation = validInvitation();
         when(
-                secretProtector.hash(
+                workspaceInvitationSecretHasher.hash(
                         WorkspaceInvitationSecretKind.INVITE_CODE,
                         CODE
                 )
@@ -187,7 +188,7 @@ class WorkspaceInvitationAcceptanceServiceTest {
         // then
         assertThat(result.workspaceId()).isEqualTo(WORKSPACE_ID);
         assertThat(result.workspaceName()).isEqualTo(WORKSPACE_NAME);
-        assertThat(result.created()).isFalse();
+        assertThat(result.membershipCreated()).isFalse();
         verify(
                 workspaceMemberRepository,
                 never()
@@ -212,7 +213,7 @@ class WorkspaceInvitationAcceptanceServiceTest {
                 .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
                 .isEqualTo(WorkspaceErrorCode.WORKSPACE_INVITATION_PREVIEW_NOT_FOUND);
         verify(rateLimiter).consume(REMOTE_ADDRESS);
-        verifyNoInteractions(secretProtector);
+        verifyNoInteractions(workspaceInvitationSecretHasher);
     }
 
     @DisplayName("초대가 없으면 멤버십을 만들지 않고 초대 없음으로 응답한다")
@@ -220,7 +221,7 @@ class WorkspaceInvitationAcceptanceServiceTest {
     void accept_failure_invitationNotFound() {
         // given
         when(
-                secretProtector.hash(
+                workspaceInvitationSecretHasher.hash(
                         WorkspaceInvitationSecretKind.INVITE_CODE,
                         CODE
                 )
@@ -258,7 +259,7 @@ class WorkspaceInvitationAcceptanceServiceTest {
                 NOW.minus(WorkspaceInvitation.VALIDITY_PERIOD)
         );
         when(
-                secretProtector.hash(
+                workspaceInvitationSecretHasher.hash(
                         WorkspaceInvitationSecretKind.INVITE_CODE,
                         CODE
                 )
@@ -290,7 +291,7 @@ class WorkspaceInvitationAcceptanceServiceTest {
                 workspaceMemberRepository,
                 workspaceInvitationRepository,
                 mock(WorkspaceInvitationSecretGenerator.class),
-                secretProtector,
+                workspaceInvitationSecretHasher,
                 rateLimiter,
                 mock(WorkspaceInvitationTransactionExecutor.class),
                 clock
@@ -303,7 +304,7 @@ class WorkspaceInvitationAcceptanceServiceTest {
                         .plusSeconds(1)
         );
         when(
-                secretProtector.hash(
+                workspaceInvitationSecretHasher.hash(
                         WorkspaceInvitationSecretKind.INVITE_CODE,
                         CODE
                 )

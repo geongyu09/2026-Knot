@@ -617,7 +617,7 @@ class DocumentConfirmationTransactionIntegrationTest {
             long successorId
     ) {
         if (ownershipTransfer) {
-            leave.transferOwnership(
+            leave.transferOwnershipAndLeave(
                     memberId,
                     workspaceId,
                     successorId

@@ -7,7 +7,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadCompletionResult;
 import com.knot.backend.recording.domain.RecordingAudioUploadStatus;
 import com.knot.backend.recording.domain.StoredAudioObject;
@@ -25,20 +24,20 @@ class RecordingAudioUploadCompletionServiceTest {
     private static final long UPLOAD_ID = 30L;
     private static final String STORAGE_KEY = "recordings/7/key";
 
-    private RecordingAudioUploadCompletionTransaction completionTransaction;
-    private RecordingAudioStorage audioStorage;
+    private RecordingAudioUploadCompletionTransaction recordingAudioUploadCompletionTransaction;
+    private RecordingAudioStorage recordingAudioStorage;
     private RecordingAudioUploadCompletionService service;
-    private RecordingTranscriptionService transcriptionService;
+    private RecordingTranscriptionService recordingTranscriptionService;
 
     @BeforeEach
     void setUp() {
-        completionTransaction = mock(RecordingAudioUploadCompletionTransaction.class);
-        audioStorage = mock(RecordingAudioStorage.class);
-        transcriptionService = mock(RecordingTranscriptionService.class);
+        recordingAudioUploadCompletionTransaction = mock(RecordingAudioUploadCompletionTransaction.class);
+        recordingAudioStorage = mock(RecordingAudioStorage.class);
+        recordingTranscriptionService = mock(RecordingTranscriptionService.class);
         service = new RecordingAudioUploadCompletionService(
-                completionTransaction,
-                audioStorage,
-                transcriptionService
+                recordingAudioUploadCompletionTransaction,
+                recordingAudioStorage,
+                recordingTranscriptionService
         );
     }
 
@@ -52,7 +51,7 @@ class RecordingAudioUploadCompletionServiceTest {
                 "version-1"
         );
         when(findStorageKeyToConfirm()).thenReturn(Optional.of(STORAGE_KEY));
-        when(audioStorage.findStoredObject(STORAGE_KEY)).thenReturn(storedObject);
+        when(recordingAudioStorage.findStoredObject(STORAGE_KEY)).thenReturn(storedObject);
         when(complete(storedObject)).thenReturn(completedResult());
 
         // when
@@ -66,20 +65,20 @@ class RecordingAudioUploadCompletionServiceTest {
         // then
         assertThat(result.uploadStatus()).isEqualTo(RecordingAudioUploadStatus.COMPLETED);
         InOrder inOrder = inOrder(
-                completionTransaction,
-                audioStorage,
-                transcriptionService
+                recordingAudioUploadCompletionTransaction,
+                recordingAudioStorage,
+                recordingTranscriptionService
         );
-        inOrder.verify(completionTransaction)
+        inOrder.verify(recordingAudioUploadCompletionTransaction)
                 .findStorageKeyToConfirm(
                         WORKSPACE_ID,
                         MEMBER_ID,
                         RECORDING_ID,
                         UPLOAD_ID
                 );
-        inOrder.verify(audioStorage)
+        inOrder.verify(recordingAudioStorage)
                 .findStoredObject(STORAGE_KEY);
-        inOrder.verify(completionTransaction)
+        inOrder.verify(recordingAudioUploadCompletionTransaction)
                 .complete(
                         WORKSPACE_ID,
                         MEMBER_ID,
@@ -87,7 +86,7 @@ class RecordingAudioUploadCompletionServiceTest {
                         UPLOAD_ID,
                         storedObject
                 );
-        inOrder.verify(transcriptionService)
+        inOrder.verify(recordingTranscriptionService)
                 .dispatch();
     }
 
@@ -109,13 +108,13 @@ class RecordingAudioUploadCompletionServiceTest {
         // then
         assertThat(result.uploadId()).isEqualTo(UPLOAD_ID);
         verify(
-                audioStorage,
+                recordingAudioStorage,
                 never()
         ).findStoredObject(anyString());
     }
 
     private Optional<String> findStorageKeyToConfirm() {
-        return completionTransaction.findStorageKeyToConfirm(
+        return recordingAudioUploadCompletionTransaction.findStorageKeyToConfirm(
                 WORKSPACE_ID,
                 MEMBER_ID,
                 RECORDING_ID,
@@ -124,7 +123,7 @@ class RecordingAudioUploadCompletionServiceTest {
     }
 
     private RecordingAudioUploadCompletionResult complete(StoredAudioObject storedObject) {
-        return completionTransaction.complete(
+        return recordingAudioUploadCompletionTransaction.complete(
                 WORKSPACE_ID,
                 MEMBER_ID,
                 RECORDING_ID,

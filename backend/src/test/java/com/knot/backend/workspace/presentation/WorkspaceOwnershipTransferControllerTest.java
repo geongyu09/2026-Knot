@@ -10,7 +10,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 import com.knot.backend.auth.domain.AuthenticatedMember;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
 import com.knot.backend.workspace.application.WorkspaceLeaveService;
@@ -76,7 +75,7 @@ class WorkspaceOwnershipTransferControllerTest {
         // then
         result.andExpect(status().isNoContent())
                 .andExpect(content().string(""));
-        verify(workspaceLeaveService).transferOwnership(
+        verify(workspaceLeaveService).transferOwnershipAndLeave(
                 1L,
                 7L,
                 2L
@@ -142,7 +141,7 @@ class WorkspaceOwnershipTransferControllerTest {
                 .setAuthentication(memberAuthentication());
         doThrow(new WorkspaceException(WorkspaceErrorCode.WORKSPACE_OWNERSHIP_TRANSFER_TARGET_CONFLICT))
                 .when(workspaceLeaveService)
-                .transferOwnership(
+                .transferOwnershipAndLeave(
                         1L,
                         7L,
                         2L
@@ -162,7 +161,7 @@ class WorkspaceOwnershipTransferControllerTest {
         // then
         result.andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("WORKSPACE_OWNERSHIP_TRANSFER_TARGET_CONFLICT"));
-        verify(workspaceLeaveService).transferOwnership(
+        verify(workspaceLeaveService).transferOwnershipAndLeave(
                 1L,
                 7L,
                 2L
@@ -182,7 +181,7 @@ class WorkspaceOwnershipTransferControllerTest {
                         new SQLException("database-secret")
                 )
         ).when(workspaceLeaveService)
-                .transferOwnership(
+                .transferOwnershipAndLeave(
                         1L,
                         7L,
                         2L
@@ -204,7 +203,7 @@ class WorkspaceOwnershipTransferControllerTest {
                 .andExpect(jsonPath("$.code").value("INTERNAL_SERVER_ERROR"))
                 .andReturn();
         assertNoTechnicalInformation(mvcResult);
-        verify(workspaceLeaveService).transferOwnership(
+        verify(workspaceLeaveService).transferOwnershipAndLeave(
                 1L,
                 7L,
                 2L

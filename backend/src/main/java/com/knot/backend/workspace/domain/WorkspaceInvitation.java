@@ -85,7 +85,7 @@ public class WorkspaceInvitation {
         }
     }
 
-    public WorkspaceMember admit(
+    public WorkspaceMember createMembership(
             long memberId,
             Instant joinedAt
     ) {
@@ -102,8 +102,8 @@ public class WorkspaceInvitation {
         validatePointInTime(pointInTime);
         boolean issued = !pointInTime.isBefore(createdAt);
         boolean unexpired = pointInTime.isBefore(expiresAt);
-        boolean uninvalidated = invalidatedAt == null;
-        return issued && unexpired && uninvalidated;
+        boolean notInvalidated = invalidatedAt == null;
+        return issued && unexpired && notInvalidated;
     }
 
     private void validateWorkspaceId(Long workspaceId) {
