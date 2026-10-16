@@ -280,7 +280,7 @@ class TranscriptionMigrationHistoryIntegrationTest {
     private Flyway currentFlyway() {
         FluentConfiguration configuration = configuration(
                 CURRENT_LOCATION,
-                "latest"
+                "51"
         );
         return configuration.load();
     }
