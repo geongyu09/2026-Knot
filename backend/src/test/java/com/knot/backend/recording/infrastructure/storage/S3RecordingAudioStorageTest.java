@@ -4,9 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
-import com.knot.backend.recording.application.dto.result.StoredAudioObject;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
+import com.knot.backend.recording.domain.StoredAudioObject;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;

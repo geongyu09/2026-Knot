@@ -1,4 +1,4 @@
-package com.knot.backend.recording.application.dto.result;
+package com.knot.backend.recording.domain;
 
 public record StoredAudioObject(
         boolean exists,
@@ -27,5 +27,12 @@ public record StoredAudioObject(
                 contentType,
                 versionId
         );
+    }
+
+    public boolean matches(
+            String expectedContentType,
+            long expectedContentLength
+    ) {
+        return exists && contentLength == expectedContentLength && expectedContentType.equals(contentType);
     }
 }

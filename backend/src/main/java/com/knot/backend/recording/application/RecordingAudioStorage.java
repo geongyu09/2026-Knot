@@ -1,7 +1,7 @@
 package com.knot.backend.recording.application;
 
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
-import com.knot.backend.recording.application.dto.result.StoredAudioObject;
+import com.knot.backend.recording.domain.StoredAudioObject;
 
 public interface RecordingAudioStorage {
 
