@@ -21,6 +21,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
 class SearchAnswerSnapshotServiceTest {
+    private static final Instant CONTENT_UPDATED_AT = Instant.parse("2026-10-16T00:00:00Z");
 
     private final SearchRepository repository = mock(SearchRepository.class);
     private final WorkspaceMemberRepository memberships = mock(WorkspaceMemberRepository.class);
@@ -37,6 +38,7 @@ class SearchAnswerSnapshotServiceTest {
         when(conversation.getId()).thenReturn(40L);
         when(conversation.getWorkspaceId()).thenReturn(1L);
         when(conversation.getMemberId()).thenReturn(2L);
+        when(conversation.getUpdatedAt()).thenReturn(CONTENT_UPDATED_AT);
         when(repository.findConversation(40)).thenReturn(Optional.of(conversation));
         when(
                 memberships.existsByWorkspaceIdAndMemberId(
@@ -67,6 +69,7 @@ class SearchAnswerSnapshotServiceTest {
         );
         assertThat(snapshot.answerId()).isEqualTo(50);
         assertThat(snapshot.content()).isEqualTo("저장된 답변 😀");
+        assertThat(snapshot.contentUpdatedAt()).isEqualTo(CONTENT_UPDATED_AT);
     }
 
     @ParameterizedTest
