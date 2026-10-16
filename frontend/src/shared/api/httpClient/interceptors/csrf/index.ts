@@ -4,7 +4,7 @@ import axios from "axios";
 import type { HttpInterceptor } from "../../types/interceptor";
 
 /** CSRF 토큰을 발급받는 경로. 응답 본문으로 토큰을 주고 `XSRF-TOKEN` 쿠키도 함께 내려줘요. */
-const CSRF_API_PATH = "/api/v1/auth/csrf";
+export const CSRF_API_PATH = "/api/v1/auth/csrf";
 
 const CSRF_HEADER_NAME = "X-XSRF-TOKEN";
 
