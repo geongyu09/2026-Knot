@@ -13,8 +13,13 @@ import static org.mockito.ArgumentMatchers.eq;
 import ch.qos.logback.classic.Level;
 import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
+import com.knot.backend.search.application.dto.result.SearchDocumentResult;
+import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.testsupport.LogCapture;
 import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
@@ -25,15 +30,62 @@ import org.springframework.beans.factory.ObjectProvider;
 @org.junit.jupiter.api.extension.ExtendWith(org.mockito.junit.jupiter.MockitoExtension.class)
 class SearchAnswerWorkerLoggingTest {
     private static final UUID TOKEN = UUID.fromString("00000000-0000-0000-0000-000000000099");
+    private static final Instant WORKER_STARTED_AT = Instant.parse("2026-10-16T00:00:05Z");
 
     private final SearchAnswerExecutionService executions = mock(SearchAnswerExecutionService.class);
     private final SearchDocumentRetriever retriever = mock(SearchDocumentRetriever.class);
+    private final SearchAnswerGenerator generator = mock(SearchAnswerGenerator.class);
+    private final SearchIntentClassifier classifier = mock(SearchIntentClassifier.class);
     @org.mockito.Mock
     private ObjectProvider<SearchDocumentRetriever> retrievers;
     @org.mockito.Mock
     private ObjectProvider<SearchAnswerGenerator> generators;
     @org.mockito.Mock
     private ObjectProvider<SearchIntentClassifier> classifiers;
+
+    @Test
+    @DisplayName("작업 대기 시간은 answer ID와 기록하고 질문 본문은 로그에 남기지 않는다")
+    void execute_success_logsQueueWaitWithoutContent() {
+        SearchAnswerWorker worker = worker(
+                Clock.fixed(
+                        WORKER_STARTED_AT,
+                        ZoneOffset.UTC
+                )
+        );
+        when(executions.claim(5)).thenReturn(
+                Optional.of(
+                        new SearchAnswerWorkResult(
+                                1,
+                                2,
+                                3,
+                                4,
+                                5,
+                                TOKEN,
+                                "private-question",
+                                WORKER_STARTED_AT.minusMillis(1250)
+                        )
+                )
+        );
+        try (LogCapture logs = new LogCapture(SearchAnswerWorker.class)) {
+            worker.execute(5);
+            assertThat(
+                    logs.events()
+                            .stream()
+                            .filter(
+                                    event -> event.getFormattedMessage()
+                                            .contains("phase=queue_wait")
+                            )
+                            .toList()
+            ).singleElement()
+                    .satisfies(
+                            event -> assertThat(event.getFormattedMessage()).contains(
+                                    "answerId=5",
+                                    "elapsedMs=1250"
+                            )
+                                    .doesNotContain("private-question")
+                    );
+        }
+    }
 
     @Test
     @DisplayName("탐색 생성과 실패 저장이 연달아 실패해도 최초 원인을 기록하고 저장 오류를 전파한다")
@@ -104,7 +156,71 @@ class SearchAnswerWorkerLoggingTest {
         );
     }
 
+    @Test
+    @DisplayName("답변 생성 실패 시간과 단계는 기록하고 본문은 남기지 않는다")
+    void execute_failure_logsGenerationPhaseWithoutContent() {
+        SearchAnswerWorker worker = worker();
+        SearchDocumentResult document = new SearchDocumentResult(
+                7,
+                "private-title",
+                "private-topic",
+                "private-document"
+        );
+        when(
+                retriever.retrieve(
+                        any(),
+                        eq("private-question")
+                )
+        ).thenReturn(
+                new SearchRetrievalResult(
+                        List.of(document),
+                        0
+                )
+        );
+        when(
+                executions.recordRetrieval(
+                        5,
+                        TOKEN,
+                        0,
+                        List.of(document)
+                )
+        ).thenReturn(true);
+        when(generators.getObject()).thenReturn(generator);
+        when(
+                generator.generate(
+                        any(),
+                        eq("private-question"),
+                        eq(List.of(document)),
+                        any()
+                )
+        ).thenThrow(new IllegalStateException("private-provider"));
+        try (LogCapture logs = new LogCapture(SearchAnswerWorker.class)) {
+            worker.execute(5);
+            assertThat(logs.events()).filteredOn(
+                    event -> event.getFormattedMessage()
+                            .contains("phase=answer_generation")
+            )
+                    .singleElement()
+                    .satisfies(
+                            event -> assertThat(event.getFormattedMessage()).contains(
+                                    "answerId=5",
+                                    "outcome=failure"
+                            )
+                                    .doesNotContain(
+                                            "private-question",
+                                            "private-document",
+                                            "private-title",
+                                            "private-provider"
+                                    )
+                    );
+        }
+    }
+
     private SearchAnswerWorker worker() {
+        return worker(Clock.systemUTC());
+    }
+
+    private SearchAnswerWorker worker(Clock clock) {
         when(executions.claim(5)).thenReturn(
                 Optional.of(
                         new SearchAnswerWorkResult(
@@ -114,12 +230,12 @@ class SearchAnswerWorkerLoggingTest {
                                 4,
                                 5,
                                 TOKEN,
-                                "private-question"
+                                "private-question",
+                                clock.instant()
                         )
                 )
         );
         when(retrievers.getObject()).thenReturn(retriever);
-        SearchIntentClassifier classifier = mock(SearchIntentClassifier.class);
         when(classifiers.getObject()).thenReturn(classifier);
         when(
                 classifier.classify(
@@ -131,7 +247,7 @@ class SearchAnswerWorkerLoggingTest {
                 executions,
                 retrievers,
                 generators,
-                Clock.systemUTC(),
+                clock,
                 new SearchAgentProperties(),
                 classifiers
         );

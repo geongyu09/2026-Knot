@@ -73,7 +73,9 @@ class SearchAnswerWorkerIntentTest {
                                 4,
                                 5,
                                 token,
-                                "질문"
+                                "질문",
+                                Clock.systemUTC()
+                                        .instant()
                         )
                 )
         );

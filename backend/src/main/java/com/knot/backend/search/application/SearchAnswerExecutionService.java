@@ -185,7 +185,8 @@ public class SearchAnswerExecutionService {
                         question.getId(),
                         answerId,
                         token,
-                        question.getContent()
+                        question.getContent(),
+                        execution.getCreatedAt()
                 )
         );
     }

@@ -138,6 +138,7 @@ class SearchAnswerExecutionIntegrationTest {
     void fail_success_partialAndHidden() {
         SearchAnswerWorkResult work = service.claim(accepted.answerMessageId())
                 .orElseThrow();
+        assertThat(work.createdAt()).isEqualTo(NOW);
         assertThat(
                 service.append(
                         work.answerId(),
