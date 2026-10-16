@@ -4,6 +4,7 @@ import {
   getCsrfToken as getCsrfTokenWith,
 } from "./interceptors/csrf";
 import { httpErrorInterceptor } from "./interceptors/httpError";
+import { refreshInterceptor } from "./interceptors/refresh";
 
 const TIMEOUT_DURATION = 10_000;
 
@@ -13,6 +14,7 @@ export const httpClient = createHttpClientBuilder({
   withCredentials: true,
 })
   .use(httpErrorInterceptor)
+  .use(refreshInterceptor)
   .use(csrfInterceptor)
   .build();
 

@@ -1,4 +1,5 @@
 import { AUTH_CSRF_API_PATH } from "@api/fetch/api/v1/auth/csrf";
+import { AUTH_REFRESH_API_PATH } from "@api/fetch/api/v1/auth/refresh";
 import { mockServer } from "@api/mock/server";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -77,5 +78,126 @@ describe("httpClient의 CSRF 처리", () => {
 
     expect(isHttpError(error, HTTP_ERROR_TYPE.forbidden)).toBe(true);
     expect(attempts).toBe(2);
+  });
+});
+
+/** 받은 재발급 요청 수와 그때의 CSRF 헤더를 기록하는 재발급 핸들러 */
+const countingRefreshHandler = ({ status = 204 }: { status?: number } = {}) => {
+  const calls: (string | null)[] = [];
+  const handler = http.post(`*${AUTH_REFRESH_API_PATH}`, ({ request }) => {
+    calls.push(request.headers.get(CSRF_HEADER_NAME));
+    return new HttpResponse(null, { status });
+  });
+
+  return { handler, calls };
+};
+
+/** 처음 `failures`번은 `status`로 실패하고 그 뒤로는 성공하는 조회 핸들러. 받은 요청 수를 셉니다 */
+const failingThenOkHandler = ({
+  status,
+  failures,
+}: {
+  status: number;
+  failures: number;
+}) => {
+  const attempts = { count: 0 };
+  const handler = http.get(`*${TEST_PATH}`, () => {
+    attempts.count += 1;
+    if (attempts.count <= failures) return new HttpResponse(null, { status });
+
+    return HttpResponse.json({ ok: true });
+  });
+
+  return { handler, attempts };
+};
+
+describe("httpClient의 토큰 재발급", () => {
+  it("401이 오면 토큰을 재발급하고 원래 요청을 한 번 다시 보낸다", async () => {
+    const refresh = countingRefreshHandler();
+    const request = failingThenOkHandler({ status: 401, failures: 1 });
+    mockServer.use(refresh.handler, request.handler);
+
+    const { data } = await httpClient.get(TEST_PATH);
+
+    expect(data).toEqual({ ok: true });
+    expect(request.attempts.count).toBe(2);
+    expect(refresh.calls).toHaveLength(1);
+  });
+
+  it("재발급 요청에는 CSRF 토큰을 붙인다", async () => {
+    const refresh = countingRefreshHandler();
+    mockServer.use(
+      refresh.handler,
+      failingThenOkHandler({ status: 401, failures: 1 }).handler,
+    );
+
+    await httpClient.get(TEST_PATH);
+
+    expect(refresh.calls[0]).toBe(await getCsrfToken());
+  });
+
+  it("재발급이 실패하면 원래 요청을 다시 보내지 않고 401로 실패한다", async () => {
+    const refresh = countingRefreshHandler({ status: 401 });
+    const request = failingThenOkHandler({ status: 401, failures: 1 });
+    mockServer.use(refresh.handler, request.handler);
+
+    const error = await httpClient.get(TEST_PATH).catch((e: unknown) => e);
+
+    expect(isHttpError(error, HTTP_ERROR_TYPE.unauthorized)).toBe(true);
+    expect(request.attempts.count).toBe(1);
+    expect(refresh.calls).toHaveLength(1);
+  });
+
+  it("다시 보낸 요청도 401이면 더 재발급하지 않고 401로 실패한다", async () => {
+    const refresh = countingRefreshHandler();
+    const request = failingThenOkHandler({ status: 401, failures: 2 });
+    mockServer.use(refresh.handler, request.handler);
+
+    const error = await httpClient.get(TEST_PATH).catch((e: unknown) => e);
+
+    expect(isHttpError(error, HTTP_ERROR_TYPE.unauthorized)).toBe(true);
+    expect(request.attempts.count).toBe(2);
+    expect(refresh.calls).toHaveLength(1);
+  });
+
+  it("401이 아닌 실패에는 재발급하지 않는다", async () => {
+    const refresh = countingRefreshHandler();
+    const request = failingThenOkHandler({ status: 500, failures: 1 });
+    mockServer.use(refresh.handler, request.handler);
+
+    const error = await httpClient.get(TEST_PATH).catch((e: unknown) => e);
+
+    expect(isHttpError(error, HTTP_ERROR_TYPE.serverError)).toBe(true);
+    expect(refresh.calls).toHaveLength(0);
+  });
+
+  it("재발급 요청 자체가 401이면 재발급을 다시 부르지 않는다", async () => {
+    const refresh = countingRefreshHandler({ status: 401 });
+    mockServer.use(refresh.handler);
+
+    const error = await httpClient
+      .post(AUTH_REFRESH_API_PATH)
+      .catch((e: unknown) => e);
+
+    expect(isHttpError(error, HTTP_ERROR_TYPE.unauthorized)).toBe(true);
+    expect(refresh.calls).toHaveLength(1);
+  });
+
+  it("CSRF 토큰 조회가 401이면 재발급을 부르지 않는다", async () => {
+    const refresh = countingRefreshHandler();
+    mockServer.use(
+      refresh.handler,
+      http.get(
+        `*${AUTH_CSRF_API_PATH}`,
+        () => new HttpResponse(null, { status: 401 }),
+      ),
+    );
+
+    const error = await httpClient
+      .get(AUTH_CSRF_API_PATH)
+      .catch((e: unknown) => e);
+
+    expect(isHttpError(error, HTTP_ERROR_TYPE.unauthorized)).toBe(true);
+    expect(refresh.calls).toHaveLength(0);
   });
 });
