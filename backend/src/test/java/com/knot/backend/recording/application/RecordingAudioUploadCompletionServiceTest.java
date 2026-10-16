@@ -25,18 +25,18 @@ class RecordingAudioUploadCompletionServiceTest {
     private static final long UPLOAD_ID = 30L;
     private static final String STORAGE_KEY = "recordings/7/key";
 
-    private RecordingAudioUploadCompletionTransaction completionTransaction;
+    private RecordingAudioUploadService recordingAudioUploadService;
     private RecordingAudioStorage audioStorage;
     private RecordingAudioUploadCompletionService service;
     private RecordingTranscriptionService transcriptionService;
 
     @BeforeEach
     void setUp() {
-        completionTransaction = mock(RecordingAudioUploadCompletionTransaction.class);
+        recordingAudioUploadService = mock(RecordingAudioUploadService.class);
         audioStorage = mock(RecordingAudioStorage.class);
         transcriptionService = mock(RecordingTranscriptionService.class);
         service = new RecordingAudioUploadCompletionService(
-                completionTransaction,
+                recordingAudioUploadService,
                 audioStorage,
                 transcriptionService
         );
@@ -66,11 +66,11 @@ class RecordingAudioUploadCompletionServiceTest {
         // then
         assertThat(result.uploadStatus()).isEqualTo(RecordingAudioUploadStatus.COMPLETED);
         InOrder inOrder = inOrder(
-                completionTransaction,
+                recordingAudioUploadService,
                 audioStorage,
                 transcriptionService
         );
-        inOrder.verify(completionTransaction)
+        inOrder.verify(recordingAudioUploadService)
                 .findStorageKeyToConfirm(
                         WORKSPACE_ID,
                         MEMBER_ID,
@@ -79,7 +79,7 @@ class RecordingAudioUploadCompletionServiceTest {
                 );
         inOrder.verify(audioStorage)
                 .findStoredObject(STORAGE_KEY);
-        inOrder.verify(completionTransaction)
+        inOrder.verify(recordingAudioUploadService)
                 .complete(
                         WORKSPACE_ID,
                         MEMBER_ID,
@@ -115,7 +115,7 @@ class RecordingAudioUploadCompletionServiceTest {
     }
 
     private Optional<String> findStorageKeyToConfirm() {
-        return completionTransaction.findStorageKeyToConfirm(
+        return recordingAudioUploadService.findStorageKeyToConfirm(
                 WORKSPACE_ID,
                 MEMBER_ID,
                 RECORDING_ID,
@@ -124,7 +124,7 @@ class RecordingAudioUploadCompletionServiceTest {
     }
 
     private RecordingAudioUploadCompletionResult complete(StoredAudioObject storedObject) {
-        return completionTransaction.complete(
+        return recordingAudioUploadService.complete(
                 WORKSPACE_ID,
                 MEMBER_ID,
                 RECORDING_ID,

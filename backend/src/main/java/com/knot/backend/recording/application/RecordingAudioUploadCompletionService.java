@@ -8,7 +8,7 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class RecordingAudioUploadCompletionService {
-    private final RecordingAudioUploadCompletionTransaction completionTransaction;
+    private final RecordingAudioUploadService recordingAudioUploadService;
     private final RecordingAudioStorage audioStorage;
     private final RecordingTranscriptionService transcriptionService;
 
@@ -18,7 +18,7 @@ public class RecordingAudioUploadCompletionService {
             long recordingId,
             long uploadId
     ) {
-        StoredAudioObject storedObject = completionTransaction.findStorageKeyToConfirm(
+        StoredAudioObject storedObject = recordingAudioUploadService.findStorageKeyToConfirm(
                 workspaceId,
                 memberId,
                 recordingId,
@@ -26,7 +26,7 @@ public class RecordingAudioUploadCompletionService {
         )
                 .map(audioStorage::findStoredObject)
                 .orElseGet(StoredAudioObject::missing);
-        RecordingAudioUploadCompletionResult result = completionTransaction.complete(
+        RecordingAudioUploadCompletionResult result = recordingAudioUploadService.complete(
                 workspaceId,
                 memberId,
                 recordingId,

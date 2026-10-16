@@ -69,10 +69,9 @@ public class RecordingAudioUpload {
                 || reservedAt == null) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
         }
-        validateFile(
-                contentType,
-                contentLength
-        );
+        if (!ALLOWED_CONTENT_TYPE.equals(contentType) || contentLength <= 0 || contentLength > MAX_CONTENT_LENGTH) {
+            throw new RecordingException(RecordingErrorCode.INVALID_AUDIO_UPLOAD);
+        }
         this.recordingId = recordingId;
         this.storageKey = storageKey;
         this.contentType = contentType;
@@ -137,7 +136,7 @@ public class RecordingAudioUpload {
     }
 
     public boolean isRetentionExpired(Instant now) {
-        validateRetentionTime(now);
+        validateTimeNotBeforeReservation(now);
         if (!isAudioAvailable()) {
             return false;
         }
@@ -157,7 +156,7 @@ public class RecordingAudioUpload {
     }
 
     public void recordUploadUrlExpiry(Instant expiresAt) {
-        validateRetentionTime(expiresAt);
+        validateTimeNotBeforeReservation(expiresAt);
         if (isCompleted()) {
             throw new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_ALREADY_COMPLETED);
         }
@@ -167,7 +166,7 @@ public class RecordingAudioUpload {
     }
 
     public void recordDeleted(Instant deletedAt) {
-        validateRetentionTime(deletedAt);
+        validateTimeNotBeforeReservation(deletedAt);
         if (!isCompleted()) {
             throw new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_COMPLETED);
         }
@@ -186,7 +185,7 @@ public class RecordingAudioUpload {
         return lastUploadUrlExpiresAt;
     }
 
-    private void validateRetentionTime(Instant time) {
+    private void validateTimeNotBeforeReservation(Instant time) {
         if (time == null || time.isBefore(reservedAt)) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_TIME);
         }
@@ -205,20 +204,9 @@ public class RecordingAudioUpload {
         )) {
             throw new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_COMPLETED);
         }
-        if (completedAt == null || completedAt.isBefore(reservedAt)) {
-            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_TIME);
-        }
+        validateTimeNotBeforeReservation(completedAt);
         this.status = RecordingAudioUploadStatus.COMPLETED;
         this.completedAt = completedAt;
         this.storageVersionId = storedObject.versionId();
-    }
-
-    private void validateFile(
-            String contentType,
-            long contentLength
-    ) {
-        if (!ALLOWED_CONTENT_TYPE.equals(contentType) || contentLength <= 0 || contentLength > MAX_CONTENT_LENGTH) {
-            throw new RecordingException(RecordingErrorCode.INVALID_AUDIO_UPLOAD);
-        }
     }
 }
