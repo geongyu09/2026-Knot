@@ -231,3 +231,11 @@ git diff --check
 - 반영 후 Java25 `./gradlew spotlessCheck check bootJar` PASS(5m14s). 단위1,460 + 통합660 + 인수567 = **2,687**, failure/error/skip0. Governance 단위 테스트10건과 `git diff --check`도 PASS.
 - develop 대비 production 변경은 +394/-135줄로 동일하다. 신규 API 경로 없이 첫 질문·후속 질문·재시도의 공통 worker 경계에 적용하며 base `develop`, head `be/feature/#697`의 단일 Draft PR로 준비한다.
 - 초기 Persona 종료 미통과와 실제 모델 관측의 한계는 그대로 남긴다. 이번 최신 develop 정합 검증은 로컬 Gradle·HTTP fixture·PostgreSQL 기준이며 실제 모델을 다시 호출한 결과로 표현하지 않는다.
+
+## 9. 2026-10-16 PR #702 리뷰 보완
+
+- 기존 GitHub CI는 모두 통과했고 승인 리뷰에서 API 명세의 이전 자유 답변 계약과 첫 delta 미측정이 지적됐다.
+- 첫 질문 API 명세를 다섯 의도·서버 고정 안내·빈 근거·COMPLETED 및 분류 실패·탐색 시작 전 무도구 종료 실패 규칙으로 정합했다. 제품 서버 코드는 변경하지 않았다.
+- 실제 Qwen·제품 MCP·로컬 PostgreSQL/HTTP SSE로 변경 전 `456f5024`와 변경 후 `495454e5`를 비교했다. 워밍업 각 1건을 제외한 5건씩 모두 정상 완료했다. 첫 delta p50은 26.736초 → 36.120초, p95는 87.189초 → 36.884초이며 분류 자체 p50은 0.947초다.
+- 이번 표본의 중앙값 증가 9.384초와 변경 전 느린 표본도 보존했다. 소규모·실행 순서·서버 부하/캐시 미격리·prompt/도구 변경을 포함한 비교이므로 분류 단독 비용이나 운영 p95로 일반화하지 않는다.
+- [QA 기록](../qa/697-search-intent-classification.md)에 측정 경계·원시 CSV·재현용 opt-in 실행기·초기 측정기 오류를 남겼다. 관련 단위 테스트48건·포맷·Governance10건과 수동 실제 모델 양쪽 실행이 통과했다. 기존 Persona 종료 경로 문제는 별개다.

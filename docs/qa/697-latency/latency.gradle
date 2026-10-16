@@ -1,0 +1,14 @@
+allprojects {
+    plugins.withId('java') {
+        sourceSets.test.java.srcDir(System.getProperty('latency.source'))
+        tasks.register('intentLatency', Test) {
+            testClassesDirs = sourceSets.test.output.classesDirs
+            classpath = sourceSets.test.runtimeClasspath
+            useJUnitPlatform { includeTags 'manual-live-model' }
+            systemProperty 'latency.variant', System.getProperty('latency.variant')
+            systemProperty 'latency.samples', System.getProperty('latency.samples', '5')
+            maxHeapSize = '1g'
+            testLogging.showStandardStreams = true
+        }
+    }
+}
