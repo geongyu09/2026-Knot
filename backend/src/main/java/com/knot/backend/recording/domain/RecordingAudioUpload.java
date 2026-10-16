@@ -50,9 +50,6 @@ public class RecordingAudioUpload {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
-    @Column(name = "last_upload_url_expires_at")
-    private Instant lastUploadUrlExpiresAt;
-
     @Column(name = "storage_version_id")
     private String storageVersionId;
 
@@ -144,28 +141,6 @@ public class RecordingAudioUpload {
         return !now.isBefore(completedAt.plus(AUDIO_RETENTION));
     }
 
-    public Instant deletionConfirmationAfter(
-            Duration legacyUrlValidity,
-            Duration uploadQuiescence,
-            Instant now
-    ) {
-        Instant confirmation = lastUploadUrlExpiry(legacyUrlValidity).plus(uploadQuiescence);
-        if (confirmation.isBefore(now)) {
-            return now;
-        }
-        return confirmation;
-    }
-
-    public void recordUploadUrlExpiry(Instant expiresAt) {
-        validateRetentionTime(expiresAt);
-        if (isCompleted()) {
-            throw new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_ALREADY_COMPLETED);
-        }
-        if (lastUploadUrlExpiresAt == null || expiresAt.isAfter(lastUploadUrlExpiresAt)) {
-            lastUploadUrlExpiresAt = expiresAt;
-        }
-    }
-
     public void recordDeleted(Instant deletedAt) {
         validateRetentionTime(deletedAt);
         if (!isCompleted()) {
@@ -177,13 +152,6 @@ public class RecordingAudioUpload {
         if (this.deletedAt == null) {
             this.deletedAt = deletedAt;
         }
-    }
-
-    private Instant lastUploadUrlExpiry(Duration legacyUrlValidity) {
-        if (lastUploadUrlExpiresAt == null) {
-            return completedAt.plus(legacyUrlValidity);
-        }
-        return lastUploadUrlExpiresAt;
     }
 
     private void validateRetentionTime(Instant time) {
