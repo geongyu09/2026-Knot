@@ -4,6 +4,7 @@
 
 - 상태: 2026-10-16 승인 실험 완료·최종 채택 보류. 아래 본문은 실행 전 계획을 보존한다.
 - 결과: [개선안 5 결과 문서](../experiments/715-ci-document-persistence-context.md). 대상 74개·전후 각3회·격리·최종 회귀는 통과했지만, 전체 관측 실행에서 스케줄러 deadlock 1회가 있어 전체 시간 개선과 최종 채택은 보류했다.
+- 후속 재측정: [스케줄러 수정 통제 후 전체 비교 결과](../experiments/715-ci-document-persistence-context-recheck.md). 양쪽 동일 스케줄러로 전후 각3회 모두 649개 통과. 초기화 각각4회 감소를 재확인했으나 전체 중앙값은 159.825→160.671초였고 변경 후 지연 표본도 남아, 최종 채택 보류를 유지했다.
 - 확인일: 2026-10-16.
 - 관련 Issue: [#715 — Backend CI 실행 시간 개선](https://github.com/woowacourse-teams/2026-knot/issues/715).
 - 브랜치: `be/refactor/#715`.
