@@ -10,10 +10,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @RequiredArgsConstructor
+@Slf4j
 public class SearchMcpClient {
     private static final Map<String, String> HEADERS = Map.of(
             "Accept",
@@ -44,7 +46,8 @@ public class SearchMcpClient {
                                 "version",
                                 "1.0.0"
                         )
-                )
+                ),
+                null
         );
         if (!"2025-06-18".equals(
                 initialized.path("protocolVersion")
@@ -52,26 +55,12 @@ public class SearchMcpClient {
         )) {
             throw new SearchToolException("UNSUPPORTED_MCP_PROTOCOL");
         }
-        http.notification(
-                properties.getMcpBaseUrl()
-                        .resolve("/internal/mcp"),
-                tokens.encode(
-                        "knot-search-mcp",
-                        scope
-                ),
-                Map.of(
-                        "jsonrpc",
-                        "2.0",
-                        "method",
-                        "notifications/initialized"
-                ),
-                scope,
-                HEADERS
-        );
+        notifyInitialized(scope);
         JsonNode tools = rpc(
                 scope,
                 "tools/list",
-                Map.of()
+                Map.of(),
+                null
         ).path("tools");
         if (!tools.isArray() || tools.size() != 3) {
             throw new SearchToolException("INVALID_MCP_TOOLS");
@@ -123,7 +112,8 @@ public class SearchMcpClient {
                         name,
                         "arguments",
                         arguments
-                )
+                ),
+                name
         );
         if (result.path("isError")
                 .asBoolean(false)) {
@@ -139,35 +129,119 @@ public class SearchMcpClient {
     private JsonNode rpc(
             SearchToolScope scope,
             String method,
-            Map<String, Object> params
+            Map<String, Object> params,
+            String toolName
     ) {
         URI endpoint = properties.getMcpBaseUrl()
                 .resolve("/internal/mcp");
         long id = ids.incrementAndGet();
-        JsonNode response = http.json(
-                endpoint,
-                tokens.encode(
-                        "knot-search-mcp",
-                        scope
-                ),
-                Map.of(
-                        "jsonrpc",
-                        "2.0",
-                        "id",
-                        id,
-                        "method",
-                        method,
-                        "params",
-                        params
-                ),
-                scope,
-                HEADERS
-        );
-        if (response.has("error") || response.path("id")
-                .asLong() != id || !response.path("result")
-                        .isObject()) {
-            throw new SearchToolException("INVALID_MCP_RESPONSE");
+        long started = System.nanoTime();
+        try {
+            JsonNode response = http.json(
+                    endpoint,
+                    tokens.encode(
+                            "knot-search-mcp",
+                            scope
+                    ),
+                    Map.of(
+                            "jsonrpc",
+                            "2.0",
+                            "id",
+                            id,
+                            "method",
+                            method,
+                            "params",
+                            params
+                    ),
+                    scope,
+                    HEADERS
+            );
+            if (response.has("error") || response.path("id")
+                    .asLong() != id || !response.path("result")
+                            .isObject()) {
+                throw new SearchToolException("INVALID_MCP_RESPONSE");
+            }
+            logRpc(
+                    scope,
+                    method,
+                    toolName,
+                    (System.nanoTime() - started) / 1_000_000,
+                    "success"
+            );
+            return response.path("result");
+        } catch (RuntimeException exception) {
+            logRpc(
+                    scope,
+                    method,
+                    toolName,
+                    (System.nanoTime() - started) / 1_000_000,
+                    "failure"
+            );
+            throw exception;
         }
-        return response.path("result");
+    }
+
+    private void notifyInitialized(SearchToolScope scope) {
+        long started = System.nanoTime();
+        try {
+            http.notification(
+                    properties.getMcpBaseUrl()
+                            .resolve("/internal/mcp"),
+                    tokens.encode(
+                            "knot-search-mcp",
+                            scope
+                    ),
+                    Map.of(
+                            "jsonrpc",
+                            "2.0",
+                            "method",
+                            "notifications/initialized"
+                    ),
+                    scope,
+                    HEADERS
+            );
+            log.info(
+                    "Search latency phase=mcp_handshake operation=notifications_initialized workspaceId={} answerId={} elapsedMs={} outcome=success",
+                    scope.workspaceId(),
+                    scope.answerId(),
+                    (System.nanoTime() - started) / 1_000_000
+            );
+        } catch (RuntimeException exception) {
+            log.info(
+                    "Search latency phase=mcp_handshake operation=notifications_initialized workspaceId={} answerId={} elapsedMs={} outcome=failure",
+                    scope.workspaceId(),
+                    scope.answerId(),
+                    (System.nanoTime() - started) / 1_000_000
+            );
+            throw exception;
+        }
+    }
+
+    private void logRpc(
+            SearchToolScope scope,
+            String method,
+            String toolName,
+            long elapsedMs,
+            String outcome
+    ) {
+        if ("tools/call".equals(method)) {
+            log.info(
+                    "Search latency phase=mcp_call toolName={} workspaceId={} answerId={} elapsedMs={} outcome={}",
+                    toolName,
+                    scope.workspaceId(),
+                    scope.answerId(),
+                    elapsedMs,
+                    outcome
+            );
+            return;
+        }
+        log.info(
+                "Search latency phase=mcp_handshake operation={} workspaceId={} answerId={} elapsedMs={} outcome={}",
+                method,
+                scope.workspaceId(),
+                scope.answerId(),
+                elapsedMs,
+                outcome
+        );
     }
 }

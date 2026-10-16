@@ -1,5 +1,6 @@
 package com.knot.backend.search.application.dto.result;
 
+import java.time.Instant;
 import java.util.UUID;
 
 public record SearchAnswerWorkResult(
@@ -9,6 +10,7 @@ public record SearchAnswerWorkResult(
         long questionId,
         long answerId,
         UUID token,
-        String question
+        String question,
+        Instant createdAt
 ) {
 }

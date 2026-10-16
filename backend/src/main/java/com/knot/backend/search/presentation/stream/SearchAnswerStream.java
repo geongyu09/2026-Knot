@@ -9,9 +9,11 @@ import com.knot.backend.search.domain.SearchException;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.Semaphore;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+@Slf4j
 public class SearchAnswerStream {
 
     private final SearchAnswerSnapshotService snapshots;
@@ -97,6 +99,13 @@ public class SearchAnswerStream {
                     SseEmitter.event()
                             .name("accepted")
                             .data(acceptedData)
+            );
+            log.info(
+                    "Search latency phase=accepted workspaceId={} answerId={} conversationId={} questionId={}",
+                    workspaceId,
+                    accepted.answerMessageId(),
+                    accepted.conversationId(),
+                    accepted.questionMessageId()
             );
             reservation.attach(
                     new SearchAnswerSseConnection(

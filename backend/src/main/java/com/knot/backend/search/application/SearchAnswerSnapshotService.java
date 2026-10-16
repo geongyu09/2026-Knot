@@ -55,7 +55,8 @@ public class SearchAnswerSnapshotService {
                 conversationId,
                 answerId,
                 answer,
-                execution
+                execution,
+                conversation
         );
     }
 
@@ -81,7 +82,8 @@ public class SearchAnswerSnapshotService {
                 conversation.getId(),
                 answerId,
                 answer,
-                execution
+                execution,
+                conversation
         );
     }
 
@@ -91,7 +93,8 @@ public class SearchAnswerSnapshotService {
             long conversationId,
             long answerId,
             SearchMessage answer,
-            SearchAnswerExecution execution
+            SearchAnswerExecution execution,
+            SearchConversation conversation
     ) {
         List<SearchEvidenceItemResult> evidences = messages.findEvidences(
                 workspaceId,
@@ -114,7 +117,8 @@ public class SearchAnswerSnapshotService {
                 List.copyOf(evidences),
                 repository.findLatestReceipt(answerId)
                         .map(receipt -> receipt.getId())
-                        .orElse(0L)
+                        .orElse(0L),
+                conversation.getUpdatedAt()
         );
     }
 

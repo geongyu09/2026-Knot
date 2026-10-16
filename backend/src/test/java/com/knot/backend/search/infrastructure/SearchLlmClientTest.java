@@ -4,11 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
+import ch.qos.logback.classic.Level;
 import com.knot.backend.global.config.LlmProperties;
 import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.SearchToolScope;
 import com.knot.backend.search.domain.SearchToolException;
 import com.knot.backend.testsupport.LlmHttpServer;
+import com.knot.backend.testsupport.LogCapture;
 import java.net.http.HttpClient;
 import java.time.Clock;
 import java.time.Duration;
@@ -28,6 +30,49 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 class SearchLlmClientTest {
+
+    @Test
+    @DisplayName("모델 호출은 안전한 입력 크기와 provider 토큰 사용량만 기록한다")
+    void complete_success_logsCallTimingAndUsageWithoutPrompt() throws Exception {
+        try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
+            server.respond(
+                    200,
+                    "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}],"
+                            + "\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":7}}"
+            );
+            try (LogCapture logs = new LogCapture(SearchLlmClient.class)) {
+                client(
+                        server,
+                        http
+                ).complete(
+                        scope(),
+                        List.of(
+                                Map.of(
+                                        "role",
+                                        "user",
+                                        "content",
+                                        "private-question"
+                                )
+                        ),
+                        List.of()
+                );
+                assertThat(logs.events()).singleElement()
+                        .satisfies(event -> {
+                            assertThat(event.getLevel()).isEqualTo(Level.INFO);
+                            assertThat(event.getFormattedMessage()).contains(
+                                    "phase=llm_call",
+                                    "operation=complete",
+                                    "answerId=2",
+                                    "messageContentChars=16",
+                                    "promptTokens=11",
+                                    "completionTokens=7",
+                                    "outcome=success"
+                            )
+                                    .doesNotContain("private-question");
+                        });
+            }
+        }
+    }
 
     @Test
     @DisplayName("의도 분류는 추론을 끄고 제한된 JSON Schema를 한 번 요청한다")
@@ -211,6 +256,62 @@ class SearchLlmClientTest {
             );
             assertThat(parts).containsExactly("한글 😀");
             assertThat(server.requestBody()).contains("\"stream\":true");
+        }
+    }
+
+    @Test
+    @DisplayName("스트림은 빈 청크를 제외하고 첫 모델 콘텐츠 시각과 provider 사용량을 한 번 기록한다")
+    void stream_success_logsFirstContentAndUsage() throws Exception {
+        try (LlmHttpServer server = new LlmHttpServer(); SearchAgentHttp http = transport()) {
+            server.respond(
+                    200,
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"\"}}]}\n\n"
+                            + "data: {\"choices\":[{\"delta\":{\"content\":\"answer\"}}]}\n\n"
+                            + "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],"
+                            + "\"usage\":{\"prompt_tokens\":19,\"completion_tokens\":4}}\n\n" + "data: [DONE]\n\n"
+            );
+            try (LogCapture logs = new LogCapture(SearchLlmClient.class)) {
+                client(
+                        server,
+                        http
+                ).stream(
+                        scope(),
+                        List.of(
+                                Map.of(
+                                        "role",
+                                        "user",
+                                        "content",
+                                        "private-question"
+                                )
+                        ),
+                        text -> {
+                        }
+                );
+                assertThat(logs.events()).filteredOn(
+                        event -> event.getFormattedMessage()
+                                .contains("phase=llm_first_content")
+                )
+                        .singleElement()
+                        .satisfies(
+                                event -> assertThat(event.getFormattedMessage()).contains(
+                                        "operation=stream",
+                                        "answerId=2",
+                                        "outcome=received"
+                                )
+                                        .doesNotContain("private-question")
+                        );
+                assertThat(logs.events()).filteredOn(
+                        event -> event.getFormattedMessage()
+                                .contains("phase=llm_usage")
+                )
+                        .singleElement()
+                        .satisfies(
+                                event -> assertThat(event.getFormattedMessage()).contains(
+                                        "promptTokens=19",
+                                        "completionTokens=4"
+                                )
+                        );
+            }
         }
     }
 
