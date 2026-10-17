@@ -50,45 +50,45 @@ class RecordingAudioFinalizationIntegrationTest {
     @BeforeEach
     void setUp() {
         when(clock.instant()).thenReturn(NOW);
-        jdbc.sql(
-                "TRUNCATE TABLE recording_sessions, workspace_members, workspaces, oauth_identities, members RESTART IDENTITY CASCADE"
-        )
+        jdbc.sql("""
+                TRUNCATE TABLE recording_sessions, workspace_members, workspaces, oauth_identities,
+                members RESTART IDENTITY CASCADE
+                """)
                 .update();
-        jdbc.sql("INSERT INTO members (nickname) VALUES ('최종화')")
+        jdbc.sql("""
+                INSERT INTO members (nickname) VALUES ('최종화')
+                """)
                 .update();
-        jdbc.sql("INSERT INTO workspaces (name, created_at) VALUES ('최종화', now())")
+        jdbc.sql("""
+                INSERT INTO workspaces (name, created_at) VALUES ('최종화', now())
+                """)
                 .update();
-        jdbc.sql(
-                "INSERT INTO workspace_members (workspace_id, member_id, role, joined_at, last_viewed) VALUES
-                    (1,1,'OWNER',now(),FALSE)"
-        )
+        jdbc.sql("""
+                INSERT INTO workspace_members (workspace_id, member_id, role, joined_at, last_viewed)
+                VALUES (1,1,'OWNER',now(),FALSE)
+                """)
                 .update();
-        recordingId = jdbc
-                .sql(
-                        """
-                                INSERT INTO recording_sessions
-                    (workspace_id,member_id,request_id,tab_id,control_token_hash,status,audio_mode,
-                                    started_at,last_seen_at,ended_at,end_reason)
-                                VALUES
-                    (1,1,gen_random_uuid(),gen_random_uuid(),repeat('a',64),'ENDED','PCM16_CHUNKS_V1',
-                                    CAST(:time AS TIMESTAMPTZ)-INTERVAL '10 seconds',CAST(:time AS
-                    TIMESTAMPTZ),CAST(:time AS TIMESTAMPTZ),'USER_ENDED') RETURNING id
-                                """
-                )
+        recordingId = jdbc.sql("""
+                            INSERT INTO recording_sessions
+                (workspace_id,member_id,request_id,tab_id,control_token_hash,status,audio_mode,
+                                started_at,last_seen_at,ended_at,end_reason)
+                            VALUES
+                (1,1,gen_random_uuid(),gen_random_uuid(),repeat('a',64),'ENDED','PCM16_CHUNKS_V1',
+                                CAST(:time AS TIMESTAMPTZ)-INTERVAL '10 seconds',CAST(:time AS
+                TIMESTAMPTZ),CAST(:time AS TIMESTAMPTZ),'USER_ENDED') RETURNING id
+                            """)
                 .param(
                         "time",
                         NOW.toString()
                 )
                 .query(Long.class)
                 .single();
-        jdbc.sql(
-                """
-                        INSERT INTO recording_audio_streams(recording_id,next_sequence,total_frame_count,seal_ki
-                    nd,sealed_at,accept_until,tail_unknown)
-                        VALUES (:id,2,1,'NORMAL',CAST(:time AS TIMESTAMPTZ),CAST(:time AS TIMESTAMPTZ)+INTERVAL
-                    '120 seconds',FALSE)
-                        """
-        )
+        jdbc.sql("""
+                    INSERT INTO recording_audio_streams(recording_id, next_sequence, total_frame_count,
+                        seal_kind, sealed_at, accept_until, tail_unknown)
+                    VALUES (:id,2,1,'NORMAL',CAST(:time AS TIMESTAMPTZ),CAST(:time AS TIMESTAMPTZ)+INTERVAL
+                '120 seconds',FALSE)
+                    """)
                 .param(
                         "id",
                         recordingId
@@ -98,14 +98,12 @@ class RecordingAudioFinalizationIntegrationTest {
                         NOW.toString()
                 )
                 .update();
-        jdbc.sql(
-                """
-                        INSERT INTO recording_audio_chunks(recording_id,sequence,sample_offset,frame_count,byte_
-                    length,checksum_sha256,storage_key,status,upload_url_expires_at)
-                        VALUES (:id,1,0,1,2,:hash,'chunk-1','RESERVED',CAST(:time AS TIMESTAMPTZ)+INTERVAL '120
-                    seconds')
-                        """
-        )
+        jdbc.sql("""
+                    INSERT INTO recording_audio_chunks(recording_id, sequence, sample_offset, frame_count,
+                        byte_length, checksum_sha256, storage_key, status, upload_url_expires_at)
+                    VALUES (:id,1,0,1,2,:hash,'chunk-1','RESERVED',CAST(:time AS TIMESTAMPTZ)+INTERVAL '120
+                seconds')
+                    """)
                 .param(
                         "id",
                         recordingId
@@ -127,10 +125,10 @@ class RecordingAudioFinalizationIntegrationTest {
         // given
         AudioFinalizationClaim claim = transaction.claim(recordingId)
                 .orElseThrow();
-        jdbc.sql(
-                "UPDATE recording_audio_chunks SET status='VERIFIED',
-                    storage_version_id='ack-v1',verified_at=CAST(:time AS TIMESTAMPTZ) WHERE recording_id=:id"
-        )
+        jdbc.sql("""
+                UPDATE recording_audio_chunks SET status='VERIFIED',
+                storage_version_id='ack-v1',verified_at=CAST(:time AS TIMESTAMPTZ) WHERE recording_id=:id
+                """)
                 .param(
                         "time",
                         NOW.toString()
@@ -343,7 +341,9 @@ class RecordingAudioFinalizationIntegrationTest {
                         )
                 )
         );
-        jdbc.sql("UPDATE recording_sessions SET status='DISCARDED' WHERE id=:id")
+        jdbc.sql("""
+                UPDATE recording_sessions SET status='DISCARDED',end_reason=NULL WHERE id=:id
+                """)
                 .param(
                         "id",
                         recordingId

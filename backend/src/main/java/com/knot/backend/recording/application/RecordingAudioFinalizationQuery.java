@@ -46,13 +46,7 @@ public class RecordingAudioFinalizationQuery {
             RecordingAudioSaveResult state,
             RecordingAudioFinalization job
     ) {
-        String status = switch (job.getStatus()) {
-            case QUEUED -> job.getManifestJson() == null ? "DRAINING" : "FINALIZING";
-            case PROCESSING -> "FINALIZING";
-            case READY -> "READY";
-            case FAILED -> "FAILED";
-            case DISCARDED -> "DISCARDED";
-        };
+        String status = job.audioSaveStatus();
         boolean expired = sessions.findById(recordingId)
                 .map(
                         session -> session.getEndedAt() != null && !clock.instant()

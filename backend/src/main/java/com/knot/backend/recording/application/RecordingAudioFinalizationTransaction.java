@@ -51,6 +51,7 @@ public class RecordingAudioFinalizationTransaction {
     private final WorkspaceMemberRepository members;
     private final RecordingAccess access;
     private final RecordingTranscriptionStateService transcriptions;
+    private final RecordingTranscriptionService dispatcher;
     private final ObjectMapper mapper;
     private final Clock clock;
 
@@ -125,18 +126,10 @@ public class RecordingAudioFinalizationTransaction {
         stream.validateNotFrozen();
         List<RecordingAudioChunk> all = chunks.findAllByRecordingIdOrderBySequence(claim.recordingId());
         for (RecordingAudioChunk chunk : all) {
-            if (chunk.getStatus() != RecordingAudioChunkStatus.VERIFIED) {
-                StoredAudioChunk observation = observations.get(chunk.getSequence());
-                if (observation != null && observation.exists()) {
-                    if (observation.checksumSha256() == null || observation.versionId() == null) {
-                        throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
-                    }
-                    chunk.verify(
-                            observation,
-                            clock.instant()
-                    );
-                }
-            }
+            reconcileChunk(
+                    chunk,
+                    observations.get(chunk.getSequence())
+            );
         }
         boolean missing = all.stream()
                 .anyMatch(chunk -> chunk.getStatus() != RecordingAudioChunkStatus.VERIFIED);
@@ -152,22 +145,14 @@ public class RecordingAudioFinalizationTransaction {
             return Optional.empty();
         }
         List<AudioManifestPart> manifest = all.stream()
-                .map(
-                        chunk -> new AudioManifestPart(
-                                chunk.getSequence(),
-                                chunk.getSampleOffset(),
-                                chunk.getFrameCount(),
-                                chunk.getStorageKey(),
-                                chunk.getChecksumSha256(),
-                                chunk.getStatus() == RecordingAudioChunkStatus.VERIFIED
-                                        ? chunk.getStorageVersionId()
-                                        : null
-                        )
-                )
+                .map(this::manifestPart)
                 .toList();
         String json = mapper.writeValueAsString(manifest);
         String hash = hash(json);
-        String quality = missing || stream.isTailUnknown() ? "PARTIAL" : "COMPLETE";
+        String quality = quality(
+                missing,
+                stream.isTailUnknown()
+        );
         stream.freeze();
         job.freeze(
                 claim.ownerToken(),
@@ -244,6 +229,13 @@ public class RecordingAudioFinalizationTransaction {
                 stored
         );
         transcriptions.registerAutomatic(claim.recordingId());
+        org.springframework.transaction.support.TransactionSynchronizationManager
+                .registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        dispatcher.dispatch();
+                    }
+                });
     }
 
     @Transactional
@@ -347,6 +339,47 @@ public class RecordingAudioFinalizationTransaction {
                         session.getWorkspaceId(),
                         session.getMemberId()
                 );
+    }
+
+    private void reconcileChunk(
+            RecordingAudioChunk chunk,
+            StoredAudioChunk observation
+    ) {
+        if (chunk.getStatus() == RecordingAudioChunkStatus.VERIFIED || observation == null || !observation.exists()) {
+            return;
+        }
+        if (observation.checksumSha256() == null || observation.versionId() == null) {
+            throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+        }
+        chunk.verify(
+                observation,
+                clock.instant()
+        );
+    }
+
+    private AudioManifestPart manifestPart(RecordingAudioChunk chunk) {
+        String version = null;
+        if (chunk.getStatus() == RecordingAudioChunkStatus.VERIFIED) {
+            version = chunk.getStorageVersionId();
+        }
+        return new AudioManifestPart(
+                chunk.getSequence(),
+                chunk.getSampleOffset(),
+                chunk.getFrameCount(),
+                chunk.getStorageKey(),
+                chunk.getChecksumSha256(),
+                version
+        );
+    }
+
+    private String quality(
+            boolean missing,
+            boolean tailUnknown
+    ) {
+        if (missing || tailUnknown) {
+            return "PARTIAL";
+        }
+        return "COMPLETE";
     }
 
     private String hash(String value) {

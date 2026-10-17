@@ -30,7 +30,10 @@ public class S3RecordingAudioFinalStorage implements RecordingAudioFinalStorage 
     ) {
         this.client = client;
         this.bucket = bucket;
-        this.keyPrefix = keyPrefix == null ? "" : keyPrefix;
+        this.keyPrefix = java.util.Objects.requireNonNullElse(
+                keyPrefix,
+                ""
+        );
     }
 
     @Override
@@ -113,7 +116,10 @@ public class S3RecordingAudioFinalStorage implements RecordingAudioFinalStorage 
             );
             return new StoredAudioChunk(
                     true,
-                    response.contentLength() == null ? -1 : response.contentLength(),
+                    java.util.Objects.requireNonNullElse(
+                            response.contentLength(),
+                            -1L
+                    ),
                     response.contentType(),
                     response.checksumSHA256(),
                     response.versionId()
