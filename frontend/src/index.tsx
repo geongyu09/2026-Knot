@@ -8,7 +8,8 @@ import { GlobalStyle, theme } from "./shared/provider/themeProvider";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./shared/provider/queryClient";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import { DialogProvider } from "./shared/provider/context/dialogContext";
+import AppProviders from "@provider/AppProviders";
+import { routes } from "@routes/routes";
 import posthog from "posthog-js";
 
 // 키가 없는 환경(로컬, 테스트)에서는 사용 기록을 보내지 않아요
@@ -36,9 +37,9 @@ const renderApp = () => {
         <GlobalStyle />
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>
-            <DialogProvider>
+            <AppProviders routes={routes}>
               <App />
-            </DialogProvider>
+            </AppProviders>
           </BrowserRouter>
           <ReactQueryDevtools initialIsOpen={false} />
         </QueryClientProvider>
