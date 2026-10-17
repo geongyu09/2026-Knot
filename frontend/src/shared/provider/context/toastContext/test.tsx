@@ -2,9 +2,13 @@ import { ThemeProvider } from "@emotion/react";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { StrictMode, useEffect, useLayoutEffect } from "react";
 import {
+  BrowserRouter,
   createMemoryRouter,
   MemoryRouter,
+  Navigate,
   Outlet,
+  Route,
+  Routes,
   RouterProvider,
   useBlocker,
   useNavigate,
@@ -15,6 +19,75 @@ import { theme } from "@provider/themeProvider";
 import AppProviders from "@provider/AppProviders";
 
 import { ToastProvider, ToastViewport, useToast } from ".";
+
+function RedirectToastTrigger() {
+  const { navigateWithToast } = useToast();
+
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        navigateWithToast({
+          to: "/guarded",
+          toast: { variant: "caution", message: "이동 안내" },
+        })
+      }
+    >
+      가드 화면으로 이동
+    </button>
+  );
+}
+
+function LayoutRedirect() {
+  const navigate = useNavigate();
+  useLayoutEffect(() => {
+    navigate("/target", { replace: true });
+  }, [navigate]);
+  return null;
+}
+
+describe("토스트를 전달한 화면의 즉시 리다이렉트", () => {
+  for (const isStrictMode of [false, true]) {
+    for (const isLayoutRedirect of [false, true]) {
+      it(`가드의 이동을 유지한다 (StrictMode=${isStrictMode}, layout=${isLayoutRedirect})`, async () => {
+        window.history.replaceState(null, "", "/start");
+        const app = (
+          <ThemeProvider theme={theme}>
+            <BrowserRouter>
+              <ToastProvider>
+                <Routes>
+                  <Route path="/start" element={<RedirectToastTrigger />} />
+                  <Route
+                    path="/guarded"
+                    element={
+                      isLayoutRedirect ? (
+                        <LayoutRedirect />
+                      ) : (
+                        <Navigate to="/target" replace />
+                      )
+                    }
+                  />
+                  <Route path="/target" element={<p>최종 도착 화면</p>} />
+                </Routes>
+              </ToastProvider>
+            </BrowserRouter>
+          </ThemeProvider>
+        );
+        render(isStrictMode ? <StrictMode>{app}</StrictMode> : app);
+
+        await act(async () => {
+          fireEvent.click(
+            screen.getByRole("button", { name: "가드 화면으로 이동" }),
+          );
+        });
+
+        expect(window.location.pathname).toBe("/target");
+        expect(screen.getByText("최종 도착 화면")).toBeInTheDocument();
+        expect(window.history.state.usr).toBeNull();
+      });
+    }
+  }
+});
 
 const SAVED = "녹음을 저장했어요";
 const COPIED = "초대 링크를 복사했어요";

@@ -4,6 +4,7 @@ import ToastList, {
 } from "@composites/ToastList";
 import {
   createContext,
+  startTransition,
   useCallback,
   useContext,
   useEffect,
@@ -129,6 +130,9 @@ export function ToastProvider({
   const { show } = stack;
   const location = useLocation();
   const navigate = useNavigate();
+  const [consumedLocationKey, setConsumedLocationKey] = useState<string | null>(
+    null,
+  );
 
   const navigateWithToast = useCallback(
     ({ to, toast, replace = false }: NavigateWithToastParams) => {
@@ -146,7 +150,14 @@ export function ToastProvider({
 
     if (!toast) return;
 
-    show(toast);
+    // 자식 가드의 이동이 반영된 다음에도 같은 기록에 머물 때만 state를 정리해요.
+    // 같은 effect에서 바로 이동하면 가드의 리다이렉트를 이전 주소로 덮어쓸 수 있어요.
+    if (consumedLocationKey !== location.key) {
+      show(toast);
+      // BrowserRouter의 이동과 같은 우선순위로 처리해야 이전 주소의 정리가 먼저 실행되지 않아요.
+      startTransition(() => setConsumedLocationKey(location.key));
+      return;
+    }
     // 기록에 토스트를 남겨 두면 새로고침·뒤로가기 때 다시 떠서 비워요
     navigate(
       {
@@ -159,7 +170,7 @@ export function ToastProvider({
         state: Object.keys(remainingState).length > 0 ? remainingState : null,
       },
     );
-  }, [location, navigate, show]);
+  }, [location, navigate, show, consumedLocationKey]);
 
   const contextValue = useMemo<ToastControls>(
     () => ({ show, navigateWithToast }),

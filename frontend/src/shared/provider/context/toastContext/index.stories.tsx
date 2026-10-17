@@ -1,6 +1,6 @@
 import styled from "@emotion/styled";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Navigate, Route, Routes } from "react-router";
 
 import DockColumn, {
   DOCK_BOTTOM,
@@ -92,6 +92,38 @@ export const AboveDock: Story = {
     </ToastProvider>
   ),
 };
+
+/** 도착 화면이 즉시 다른 화면으로 보내도 최종 도착 화면을 유지해요. */
+export const ImmediateRedirect: Story = {
+  render: () => (
+    <ToastProvider>
+      <Routes>
+        <Route path="/" element={<RedirectTrigger />} />
+        <Route path="/guarded" element={<Navigate to="/target" replace />} />
+        <Route path="/target" element={<p>최종 도착 화면</p>} />
+      </Routes>
+    </ToastProvider>
+  ),
+};
+
+function RedirectTrigger() {
+  const { navigateWithToast } = useToast();
+
+  return (
+    <Button
+      size="sm"
+      variant="accent"
+      onClick={() =>
+        navigateWithToast({
+          to: "/guarded",
+          toast: TOAST_MESSAGES.COPY_FAILED,
+        })
+      }
+    >
+      토스트와 함께 이동
+    </Button>
+  );
+}
 
 function ToastPlayground() {
   const { show } = useToast();
