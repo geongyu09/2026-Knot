@@ -24,9 +24,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import lombok.RequiredArgsConstructor;
 
 @Component
+@ConditionalOnProperty(name = "recording.audio-finalization.enabled", havingValue = "true")
 @RequiredArgsConstructor
 public class RecordingAudioFinalizationWorker {
     private final RecordingAudioFinalizationTransaction transaction;
@@ -108,19 +110,9 @@ public class RecordingAudioFinalizationWorker {
         };
         try {
             transaction.renew(claim);
-            Map<Integer, StoredAudioChunk> observed = new HashMap<>();
-            for (RecordingAudioChunk chunk : transaction.findChunks(claim)) {
-                checkpoint.run();
-                if (chunk.getStatus() != RecordingAudioChunkStatus.VERIFIED) {
-                    observed.put(
-                            chunk.getSequence(),
-                            chunks.findStoredObject(chunk.getStorageKey())
-                    );
-                }
-            }
-            Optional<AudioFinalizationInput> input = transaction.reconcile(
+            Optional<AudioFinalizationInput> input = resolveInput(
                     claim,
-                    observed
+                    checkpoint
             );
             if (input.isEmpty()) {
                 return;
@@ -145,7 +137,10 @@ public class RecordingAudioFinalizationWorker {
             try {
                 transaction.fail(
                         claim,
-                        failureCode(retryable),
+                        failureCode(
+                                exception,
+                                retryable
+                        ),
                         retryable
                 );
             } catch (AudioFinalizationLeaseLostException ignored) {
@@ -153,6 +148,32 @@ public class RecordingAudioFinalizationWorker {
         } finally {
             renewal.cancel(false);
         }
+    }
+
+    private Optional<AudioFinalizationInput> resolveInput(
+            AudioFinalizationClaim claim,
+            Runnable checkpoint
+    ) {
+        Optional<AudioFinalizationInput> frozen = transaction.frozenInput(claim);
+        if (frozen.isPresent()) {
+            return frozen;
+        }
+        java.time.Instant observedAt = clock.instant();
+        Map<Integer, StoredAudioChunk> observed = new HashMap<>();
+        for (RecordingAudioChunk chunk : transaction.findChunks(claim)) {
+            checkpoint.run();
+            if (chunk.getStatus() != RecordingAudioChunkStatus.VERIFIED) {
+                observed.put(
+                        chunk.getSequence(),
+                        chunks.findStoredObject(chunk.getStorageKey())
+                );
+            }
+        }
+        return transaction.reconcile(
+                claim,
+                observed,
+                observedAt
+        );
     }
 
     private StoredAudioChunk storeFinal(
@@ -196,7 +217,13 @@ public class RecordingAudioFinalizationWorker {
         }
     }
 
-    private String failureCode(boolean retryable) {
+    private String failureCode(
+            Exception exception,
+            boolean retryable
+    ) {
+        if (exception instanceof AudioStorageAccessDeniedException) {
+            return "AUDIO_STORAGE_ACCESS_DENIED";
+        }
         if (retryable) {
             return "AUDIO_STORAGE_UNAVAILABLE";
         }

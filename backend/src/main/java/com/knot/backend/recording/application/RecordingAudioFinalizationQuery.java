@@ -90,7 +90,7 @@ public class RecordingAudioFinalizationQuery {
             long recordingId
     ) {
         return jobs.findByRecordingId(recordingId)
-                .filter(job -> job.getStatus() == AudioFinalizationStatus.READY)
+                .filter(job -> job.getReadyAt() != null && job.getManifestJson() != null && job.getQuality() != null)
                 .map(
                         job -> new com.knot.backend.recording.application.dto.result.RecordingSourceAudioQuality(
                                 job.getQuality(),

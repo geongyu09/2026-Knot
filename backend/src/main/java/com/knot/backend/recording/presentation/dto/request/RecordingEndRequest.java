@@ -38,13 +38,14 @@ public record RecordingEndRequest(
     }
 
     public RecordingAudioSealCommand toSeal() {
-        return audioSeal == null
-                ? null
-                : new RecordingAudioSealCommand(
-                        audioSeal.lastSequence(),
-                        audioSeal.totalFrameCount(),
-                        audioSeal.pendingDescriptors()
-                );
+        if (audioSeal == null) {
+            return null;
+        }
+        return new RecordingAudioSealCommand(
+                audioSeal.lastSequence(),
+                audioSeal.totalFrameCount(),
+                audioSeal.pendingDescriptors()
+        );
     }
 
     @Override

@@ -45,7 +45,10 @@ public class S3RecordingAudioChunkStorage implements RecordingAudioChunkStorage 
         this.presigner = presigner;
         this.client = client;
         this.bucket = bucket;
-        this.keyPrefix = keyPrefix == null ? "" : keyPrefix;
+        this.keyPrefix = java.util.Objects.requireNonNullElse(
+                keyPrefix,
+                ""
+        );
         this.clock = clock;
     }
 
@@ -113,7 +116,10 @@ public class S3RecordingAudioChunkStorage implements RecordingAudioChunkStorage 
             );
             return new StoredAudioChunk(
                     true,
-                    response.contentLength() == null ? -1L : response.contentLength(),
+                    java.util.Objects.requireNonNullElse(
+                            response.contentLength(),
+                            -1L
+                    ),
                     response.contentType(),
                     response.checksumSHA256(),
                     response.versionId()

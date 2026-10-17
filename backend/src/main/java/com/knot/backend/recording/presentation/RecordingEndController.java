@@ -28,23 +28,33 @@ public class RecordingEndController implements RecordingEndApi {
             @Valid @RequestBody(required = false) RecordingEndRequest request,
             @AuthenticationPrincipal AuthenticatedMember authenticatedMember
     ) {
-        RecordingEndResult result;
-        if (request == null || request.audioSeal() == null) {
-            result = recordingControlService.end(
-                    workspaceId,
-                    authenticatedMember.getMemberId(),
-                    recordingId,
-                    request == null ? null : request.toCommand()
-            );
-        } else {
-            result = recordingControlService.end(
-                    workspaceId,
-                    authenticatedMember.getMemberId(),
-                    recordingId,
-                    request.toCommand(),
-                    request.toSeal()
+        if (request == null) {
+            return RecordingEndResponse.from(
+                    recordingControlService.end(
+                            workspaceId,
+                            authenticatedMember.getMemberId(),
+                            recordingId,
+                            null
+                    )
             );
         }
+        if (request.audioSeal() == null) {
+            return RecordingEndResponse.from(
+                    recordingControlService.end(
+                            workspaceId,
+                            authenticatedMember.getMemberId(),
+                            recordingId,
+                            request.toCommand()
+                    )
+            );
+        }
+        RecordingEndResult result = recordingControlService.end(
+                workspaceId,
+                authenticatedMember.getMemberId(),
+                recordingId,
+                request.toCommand(),
+                request.toSeal()
+        );
         return RecordingEndResponse.from(result);
     }
 }

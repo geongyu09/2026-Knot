@@ -14,6 +14,7 @@ import com.knot.backend.recording.domain.model.AudioManifestPart;
 import com.knot.backend.recording.domain.model.StoredAudioChunk;
 import com.knot.backend.recording.domain.model.RecordingAudioUpload;
 import com.knot.backend.recording.domain.model.RecordingAudioMode;
+import com.knot.backend.recording.domain.model.RecordingAudioSealKind;
 import com.knot.backend.recording.domain.model.RecordingStatus;
 import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
 import com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository;
@@ -107,7 +108,8 @@ public class RecordingAudioFinalizationTransaction {
     @Transactional
     public Optional<AudioFinalizationInput> reconcile(
             AudioFinalizationClaim claim,
-            Map<Integer, StoredAudioChunk> observations
+            Map<Integer, StoredAudioChunk> observations,
+            java.time.Instant observationStartedAt
     ) {
         RecordingSession session = lockSession(claim.recordingId());
         RecordingAudioStream stream = lockStream(claim.recordingId());
@@ -133,8 +135,11 @@ public class RecordingAudioFinalizationTransaction {
         }
         boolean missing = all.stream()
                 .anyMatch(chunk -> chunk.getStatus() != RecordingAudioChunkStatus.VERIFIED);
-        if (missing && clock.instant()
-                .isBefore(stream.getAcceptUntil())) {
+        if (mustWaitForObjects(
+                stream,
+                missing,
+                observationStartedAt
+        )) {
             job.waitForObjects(
                     claim.ownerToken(),
                     claim.claimEpoch(),
@@ -339,6 +344,39 @@ public class RecordingAudioFinalizationTransaction {
                         session.getWorkspaceId(),
                         session.getMemberId()
                 );
+    }
+
+    @Transactional
+    public Optional<AudioFinalizationInput> frozenInput(AudioFinalizationClaim claim) {
+        RecordingSession session = lockSession(claim.recordingId());
+        RecordingAudioStream stream = lockStream(claim.recordingId());
+        RecordingAudioFinalization job = owned(
+                claim,
+                session
+        );
+        if (job.getManifestJson() == null) {
+            return Optional.empty();
+        }
+        return Optional.of(
+                input(
+                        job,
+                        stream
+                )
+        );
+    }
+
+    private boolean mustWaitForObjects(
+            RecordingAudioStream stream,
+            boolean missing,
+            java.time.Instant observedAt
+    ) {
+        if (stream.getSealKind() != RecordingAudioSealKind.NORMAL && clock.instant()
+                .isBefore(stream.getAcceptUntil())) {
+            return true;
+        }
+        return missing && (clock.instant()
+                .isBefore(stream.getAcceptUntil()) || observedAt == null
+                || observedAt.isBefore(stream.getAcceptUntil()));
     }
 
     private void reconcileChunk(
