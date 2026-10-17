@@ -4,15 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.knot.backend.document.DocumentFixtures;
-import com.knot.backend.document.infrastructure.DocumentRepositoryAdapter;
-import com.knot.backend.document.infrastructure.DocumentConfirmationRepositoryAdapter;
-import com.knot.backend.document.infrastructure.DocumentConfirmationQueryAdapter;
-import com.knot.backend.document.infrastructure.DocumentDetailQueryAdapter;
-import com.knot.backend.document.infrastructure.DocumentGenerationJobListQueryAdapter;
-import com.knot.backend.document.infrastructure.DocumentListQueryAdapter;
-import com.knot.backend.document.infrastructure.DocumentGenerationJobRepositoryAdapter;
-import com.knot.backend.document.infrastructure.DocumentGenerationInputQueryAdapter;
-import com.knot.backend.document.infrastructure.DocumentTranscriptQueryAdapter;
 import com.knot.backend.recording.domain.TranscriptSegment;
 import com.knot.backend.recording.domain.TranscriptSegmentRepository;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
@@ -32,11 +23,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 @Tag("integration")
 @DataJpaTest
-@Import({TestcontainersConfiguration.class, DocumentRepositoryAdapter.class,
-        DocumentConfirmationRepositoryAdapter.class, DocumentConfirmationQueryAdapter.class,
-        DocumentDetailQueryAdapter.class, DocumentGenerationJobListQueryAdapter.class, DocumentListQueryAdapter.class,
-        DocumentGenerationJobRepositoryAdapter.class, DocumentGenerationInputQueryAdapter.class,
-        DocumentTranscriptQueryAdapter.class, TranscriptSegmentRepositoryAdapter.class})
+@Import({TestcontainersConfiguration.class, TranscriptSegmentRepositoryAdapter.class})
 class TranscriptSegmentRepositoryIntegrationTest {
 
     @Autowired

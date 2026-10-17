@@ -7,7 +7,6 @@ import com.knot.backend.document.domain.Document;
 import com.knot.backend.document.domain.DocumentConfirmation;
 import com.knot.backend.document.domain.DocumentConfirmationRepository;
 import com.knot.backend.document.domain.DocumentRepository;
-import com.knot.backend.recording.infrastructure.TranscriptSegmentRepositoryAdapter;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,10 +21,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 @Tag("integration")
 @DataJpaTest
 @Import({TestcontainersConfiguration.class, DocumentRepositoryAdapter.class,
-        DocumentConfirmationRepositoryAdapter.class, DocumentConfirmationQueryAdapter.class,
-        DocumentDetailQueryAdapter.class, DocumentGenerationJobListQueryAdapter.class, DocumentListQueryAdapter.class,
-        DocumentGenerationJobRepositoryAdapter.class, DocumentGenerationInputQueryAdapter.class,
-        DocumentTranscriptQueryAdapter.class, TranscriptSegmentRepositoryAdapter.class})
+        DocumentConfirmationRepositoryAdapter.class})
 class DocumentCommandRepositoryIntegrationTest {
     @Autowired
     private DocumentRepository documents;

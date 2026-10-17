@@ -10,7 +10,6 @@ import com.knot.backend.document.domain.DocumentException;
 import com.knot.backend.document.domain.DocumentGenerationJob;
 import com.knot.backend.document.domain.DocumentGenerationJobCursor;
 import com.knot.backend.document.domain.DocumentGenerationJobStatus;
-import com.knot.backend.recording.infrastructure.TranscriptSegmentRepositoryAdapter;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import jakarta.persistence.EntityManager;
 import java.sql.Timestamp;
@@ -28,11 +27,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 @Tag("integration")
 @DataJpaTest
-@Import({TestcontainersConfiguration.class, DocumentRepositoryAdapter.class,
-        DocumentConfirmationRepositoryAdapter.class, DocumentConfirmationQueryAdapter.class,
-        DocumentDetailQueryAdapter.class, DocumentGenerationJobListQueryAdapter.class, DocumentListQueryAdapter.class,
-        DocumentGenerationJobRepositoryAdapter.class, DocumentGenerationInputQueryAdapter.class,
-        DocumentTranscriptQueryAdapter.class, TranscriptSegmentRepositoryAdapter.class})
+@Import({TestcontainersConfiguration.class, DocumentConfirmationQueryAdapter.class, DocumentDetailQueryAdapter.class,
+        DocumentGenerationJobListQueryAdapter.class, DocumentListQueryAdapter.class})
 class DocumentGenerationJobListQueryIntegrationTest {
     private static final Instant NOW = DocumentFixtures.CREATED_AT.plusSeconds(8 * 24 * 60 * 60);
 
