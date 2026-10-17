@@ -44,3 +44,5 @@ GROUP BY scope;
 이 구현 단계에서 실제 사용자 객체를 삭제하지 않았다. 신규 PCM 시작은 전체 기능·FE 통합 검증 전까지 기본 비활성을 유지한다. 실제 버킷의 전용 테스트 prefix 정리 검증과 운영 환경 권한 확인은 배포 전 통합 검증에서 수행한다.
 
 실행 설정은 기존 `knot.retention.enabled`, `knot.retention.poll-interval`(기본 1분), `knot.retention.deletion-interval`(기본 5초), `knot.retention.candidate-limit`(기본 20), `knot.retention.execution-lease`(기본 2분)를 공유한다. 별도 정리 executor나 새 스토리지 서비스는 추가하지 않았다. 재시작 임시 파일 정리는 retention flag와 무관하게 ApplicationReady에서 소유권 증거가 있는 이전 프로세스 파일만 처리한다.
+
+ALL 전환에서는 완료 upload도 `revoked_at`으로 영구 철회한다. upload 행 잠금을 잡아 기존 물리 삭제 worker와 상태 갱신을 직렬화한다. `isAudioAvailable` 공통 조건이 철회된 upload를 제외하므로 탈퇴 후 재가입해도 전사 retry·외부 전사 POST 준비·늦은 AI 결과 채택이 다시 허용되지 않는다. `deleted_at`은 S3 물리 삭제 확인 전에는 변경하지 않는다. READY job의 품질 이력과 오디오 접근 권한은 별개다.
