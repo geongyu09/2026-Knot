@@ -7,7 +7,7 @@ import com.knot.backend.document.application.dto.result.DocumentTopicResult;
 import com.knot.backend.document.domain.DocumentCursor;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
-import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

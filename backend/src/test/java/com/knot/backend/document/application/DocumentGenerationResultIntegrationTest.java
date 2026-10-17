@@ -25,7 +25,7 @@ import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import com.knot.backend.workspace.application.WorkspaceInvitationService;
 import com.knot.backend.workspace.application.WorkspaceLeaveService;
-import com.knot.backend.workspace.domain.WorkspaceRepository;
+import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import java.time.Clock;

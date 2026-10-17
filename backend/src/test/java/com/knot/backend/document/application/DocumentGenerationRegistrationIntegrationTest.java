@@ -18,7 +18,7 @@ import com.knot.backend.document.domain.DocumentGenerationBatchRepository;
 import com.knot.backend.document.domain.DocumentTopicRegistrationState;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
-import com.knot.backend.workspace.domain.WorkspaceRepository;
+import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import com.knot.backend.recording.domain.RecordingException;
 import java.sql.Timestamp;

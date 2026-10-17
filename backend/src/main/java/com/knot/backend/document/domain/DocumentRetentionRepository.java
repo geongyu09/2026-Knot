@@ -3,7 +3,7 @@ package com.knot.backend.document.domain;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import com.knot.backend.recording.domain.Transcript;
+import com.knot.backend.recording.domain.model.Transcript;
 
 public interface DocumentRetentionRepository {
 

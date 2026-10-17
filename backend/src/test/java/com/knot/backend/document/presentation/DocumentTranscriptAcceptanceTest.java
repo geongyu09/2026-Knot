@@ -11,8 +11,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.auth.domain.AuthenticatedMember;
 import com.knot.backend.document.DocumentFixtures;
-import com.knot.backend.recording.domain.TranscriptSegment;
-import com.knot.backend.recording.domain.TranscriptSegmentRepository;
+import com.knot.backend.recording.domain.model.TranscriptSegment;
+import com.knot.backend.recording.domain.repository.TranscriptSegmentRepository;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import jakarta.servlet.http.Cookie;

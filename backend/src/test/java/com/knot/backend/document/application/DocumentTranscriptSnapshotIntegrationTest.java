@@ -6,8 +6,8 @@ import static org.mockito.Mockito.doCallRealMethod;
 
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.document.application.dto.result.DocumentTranscriptResult;
-import com.knot.backend.recording.domain.TranscriptSegment;
-import com.knot.backend.recording.infrastructure.TranscriptSegmentRepositoryAdapter;
+import com.knot.backend.recording.domain.model.TranscriptSegment;
+import com.knot.backend.recording.infrastructure.persistence.TranscriptSegmentRepositoryAdapter;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.util.List;

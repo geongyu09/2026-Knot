@@ -2,11 +2,11 @@ package com.knot.backend.recording.application;
 
 import com.knot.backend.global.config.TranscriptionProperties;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadCompletionResult;
-import com.knot.backend.recording.domain.RecordingAudioUpload;
-import com.knot.backend.recording.domain.RecordingAudioUploadRepository;
+import com.knot.backend.recording.domain.model.RecordingAudioUpload;
+import com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
-import com.knot.backend.recording.domain.StoredAudioObject;
+import com.knot.backend.recording.domain.model.StoredAudioObject;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;

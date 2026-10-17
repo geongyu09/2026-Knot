@@ -10,7 +10,7 @@ import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.auth.domain.AuthenticatedMember;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
-import com.knot.backend.workspace.domain.WorkspaceMemberRole;
+import com.knot.backend.workspace.domain.model.WorkspaceMemberRole;
 import jakarta.servlet.http.Cookie;
 import java.time.Instant;
 import java.util.List;

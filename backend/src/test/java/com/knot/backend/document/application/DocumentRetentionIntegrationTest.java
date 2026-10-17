@@ -34,7 +34,7 @@ import java.util.concurrent.BrokenBarrierException;
 import com.knot.backend.document.domain.DocumentGenerationFailureCause;
 import com.knot.backend.document.domain.DocumentRetentionRepository;
 import com.knot.backend.recording.application.RecordingAudioDeletionStateService;
-import com.knot.backend.recording.domain.RecordingAudioDeletionRepository;
+import com.knot.backend.recording.domain.repository.RecordingAudioDeletionRepository;
 import com.knot.backend.document.application.dto.result.DocumentGenerationResult;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;

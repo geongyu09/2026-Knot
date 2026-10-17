@@ -9,7 +9,7 @@ import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.SearchException;
 import com.knot.backend.search.domain.SearchMessage;
 import com.knot.backend.search.domain.SearchMessageRole;
-import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;

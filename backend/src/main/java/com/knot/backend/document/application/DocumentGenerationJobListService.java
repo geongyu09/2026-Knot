@@ -6,7 +6,7 @@ import com.knot.backend.document.application.dto.result.DocumentGenerationJobLis
 import com.knot.backend.document.domain.DocumentGenerationJobCursor;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
-import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import java.time.Clock;
 import java.util.List;
 import lombok.RequiredArgsConstructor;

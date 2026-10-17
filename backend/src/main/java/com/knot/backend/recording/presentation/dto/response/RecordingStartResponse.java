@@ -1,7 +1,7 @@
 package com.knot.backend.recording.presentation.dto.response;
 
 import com.knot.backend.recording.application.dto.result.RecordingStartResult;
-import com.knot.backend.recording.domain.RecordingStatus;
+import com.knot.backend.recording.domain.model.RecordingStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 

@@ -3,7 +3,7 @@ package com.knot.backend.document.infrastructure;
 import com.knot.backend.document.application.DocumentTranscriptQuery;
 import com.knot.backend.document.application.dto.result.DocumentTranscriptSnapshot;
 import com.knot.backend.recording.application.dto.result.TranscriptSegmentResult;
-import com.knot.backend.recording.domain.TranscriptSegmentRepository;
+import com.knot.backend.recording.domain.repository.TranscriptSegmentRepository;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;

@@ -11,7 +11,7 @@ import com.knot.backend.document.domain.DocumentConfirmation;
 import com.knot.backend.document.domain.DocumentGenerationJob;
 import com.knot.backend.document.domain.DocumentStatus;
 import com.knot.backend.document.domain.MyConfirmationState;
-import com.knot.backend.recording.domain.Transcript;
+import com.knot.backend.recording.domain.model.Transcript;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import jakarta.persistence.EntityManager;
 import java.sql.Timestamp;

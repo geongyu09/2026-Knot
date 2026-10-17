@@ -13,7 +13,7 @@ import com.knot.backend.search.application.dto.result.SearchConversationListResu
 import com.knot.backend.search.domain.SearchConversationCursor;
 import com.knot.backend.search.domain.SearchException;
 import com.knot.backend.workspace.domain.WorkspaceException;
-import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;

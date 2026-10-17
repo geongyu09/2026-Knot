@@ -12,7 +12,7 @@ import com.knot.backend.document.domain.DocumentGenerationJobStatus;
 import com.knot.backend.document.domain.DocumentGenerationJobRepository;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
-import com.knot.backend.workspace.domain.WorkspaceRepository;
+import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;

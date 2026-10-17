@@ -1,6 +1,6 @@
 package com.knot.backend.document.infrastructure;
 
-import com.knot.backend.recording.domain.Transcript;
+import com.knot.backend.recording.domain.model.Transcript;
 import jakarta.persistence.LockModeType;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.Lock;

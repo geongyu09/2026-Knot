@@ -12,7 +12,7 @@ import com.knot.backend.auth.domain.AuthenticatedMember;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
 import com.knot.backend.workspace.application.WorkspaceService;
 import com.knot.backend.workspace.application.dto.result.WorkspaceDetailResult;
-import com.knot.backend.workspace.domain.WorkspaceMemberRole;
+import com.knot.backend.workspace.domain.model.WorkspaceMemberRole;
 import com.knot.backend.workspace.application.dto.result.WorkspaceListItemResult;
 import com.knot.backend.workspace.application.dto.result.WorkspaceListResult;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;

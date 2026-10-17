@@ -1,9 +1,9 @@
 package com.knot.backend.recording.application;
 
 import com.knot.backend.global.config.RetentionCleanupProperties;
-import com.knot.backend.recording.domain.RecordingAudioDeletionRepository;
-import com.knot.backend.recording.domain.RecordingAudioDeletionTask;
-import com.knot.backend.recording.domain.RecordingAudioUpload;
+import com.knot.backend.recording.domain.repository.RecordingAudioDeletionRepository;
+import com.knot.backend.recording.domain.model.RecordingAudioDeletionTask;
+import com.knot.backend.recording.domain.model.RecordingAudioUpload;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;

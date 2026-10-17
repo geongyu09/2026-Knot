@@ -15,7 +15,7 @@ import com.knot.backend.recording.application.RecordingControlService;
 import com.knot.backend.recording.application.dto.result.RecordingPauseResult;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
-import com.knot.backend.recording.domain.RecordingStatus;
+import com.knot.backend.recording.domain.model.RecordingStatus;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.List;

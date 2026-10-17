@@ -19,7 +19,7 @@ import com.knot.backend.search.domain.SearchException;
 import com.knot.backend.search.domain.SearchMessage;
 import com.knot.backend.search.domain.SearchMessageRole;
 import com.knot.backend.search.domain.SearchMessageStatus;
-import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;

@@ -1,7 +1,7 @@
 package com.knot.backend.workspace.presentation.dto.response;
 
 import com.knot.backend.workspace.application.dto.result.WorkspaceDetailResult;
-import com.knot.backend.workspace.domain.WorkspaceMemberRole;
+import com.knot.backend.workspace.domain.model.WorkspaceMemberRole;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 public record WorkspaceDetailResponse(

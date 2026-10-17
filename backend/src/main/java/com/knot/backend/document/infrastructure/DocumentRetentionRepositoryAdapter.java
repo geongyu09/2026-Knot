@@ -3,7 +3,7 @@ package com.knot.backend.document.infrastructure;
 import com.knot.backend.document.domain.DocumentGenerationJob;
 import com.knot.backend.document.domain.DocumentRetentionCandidate;
 import com.knot.backend.document.domain.DocumentRetentionRepository;
-import com.knot.backend.recording.domain.Transcript;
+import com.knot.backend.recording.domain.model.Transcript;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
