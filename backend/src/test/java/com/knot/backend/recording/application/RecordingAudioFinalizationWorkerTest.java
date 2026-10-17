@@ -86,8 +86,9 @@ class RecordingAudioFinalizationWorkerTest {
         // given
         when(
                 transaction.reconcile(
-                        claim,
-                        Map.of()
+                        org.mockito.ArgumentMatchers.eq(claim),
+                        org.mockito.ArgumentMatchers.eq(Map.of()),
+                        org.mockito.ArgumentMatchers.any()
                 )
         ).thenReturn(Optional.of(input));
         StoredAudioChunk stored = new StoredAudioChunk(
@@ -137,8 +138,9 @@ class RecordingAudioFinalizationWorkerTest {
         // given
         when(
                 transaction.reconcile(
-                        claim,
-                        Map.of()
+                        org.mockito.ArgumentMatchers.eq(claim),
+                        org.mockito.ArgumentMatchers.eq(Map.of()),
+                        org.mockito.ArgumentMatchers.any()
                 )
         ).thenReturn(Optional.of(input));
         when(storage.findStoredFinal("final.wav")).thenReturn(StoredAudioChunk.missing());
@@ -187,8 +189,9 @@ class RecordingAudioFinalizationWorkerTest {
         // given
         when(
                 transaction.reconcile(
-                        claim,
-                        Map.of()
+                        org.mockito.ArgumentMatchers.eq(claim),
+                        org.mockito.ArgumentMatchers.eq(Map.of()),
+                        org.mockito.ArgumentMatchers.any()
                 )
         ).thenReturn(Optional.of(input));
         when(storage.findStoredFinal("final.wav")).thenReturn(StoredAudioChunk.missing());
@@ -238,8 +241,9 @@ class RecordingAudioFinalizationWorkerTest {
         // given
         when(
                 transaction.reconcile(
-                        claim,
-                        Map.of()
+                        org.mockito.ArgumentMatchers.eq(claim),
+                        org.mockito.ArgumentMatchers.eq(Map.of()),
+                        org.mockito.ArgumentMatchers.any()
                 )
         ).thenReturn(Optional.of(input));
         when(storage.findStoredFinal("final.wav")).thenReturn(
@@ -285,12 +289,54 @@ class RecordingAudioFinalizationWorkerTest {
     }
 
     @Test
+    void process_frozenRetrySkipsAllReservedObjectHeads() {
+        // given
+        when(transaction.frozenInput(claim)).thenReturn(Optional.of(input));
+        StoredAudioChunk stored = new StoredAudioChunk(
+                true,
+                46,
+                "audio/wav",
+                "hash",
+                "final-v1"
+        );
+        when(storage.findStoredFinal("final.wav")).thenReturn(stored);
+        when(
+                assembler.assemble(
+                        any(),
+                        org.mockito.ArgumentMatchers.eq(1L),
+                        any()
+                )
+        ).thenReturn(
+                new FinalizedAudioFile(
+                        file,
+                        46,
+                        "hash"
+                )
+        );
+
+        // when
+        worker.process(claim);
+
+        // then
+        verifyNoInteractions(chunks);
+        verify(
+                transaction,
+                never()
+        ).findChunks(any());
+        verify(transaction).adopt(
+                claim,
+                stored
+        );
+    }
+
+    @Test
     void process_doesNotAssembleBeforeCutoffOrWithoutContent() {
         // given
         when(
                 transaction.reconcile(
-                        claim,
-                        Map.of()
+                        org.mockito.ArgumentMatchers.eq(claim),
+                        org.mockito.ArgumentMatchers.eq(Map.of()),
+                        org.mockito.ArgumentMatchers.any()
                 )
         ).thenReturn(Optional.empty());
 
