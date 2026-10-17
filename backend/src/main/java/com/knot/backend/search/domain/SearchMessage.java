@@ -15,7 +15,6 @@ import lombok.Getter;
 @Entity
 @Table(name = "search_messages")
 public class SearchMessage {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

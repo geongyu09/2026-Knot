@@ -24,7 +24,6 @@ import lombok.Getter;
 @Entity
 @Table(name = "document_generation_batches")
 public class DocumentGenerationBatch {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
