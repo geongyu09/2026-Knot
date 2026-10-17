@@ -2,7 +2,6 @@ package com.knot.backend.workspace.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import java.time.Instant;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.DisplayName;
@@ -15,7 +14,7 @@ class WorkspaceMemberTest {
 
     @DisplayName("활성 OWNER가 활성 MEMBER에게 승계하면 대상은 OWNER가 되고 요청자는 탈퇴한다")
     @Test
-    void transferOwnershipTo_success() {
+    void transferOwnershipAndLeave_success() {
         // given
         WorkspaceMember owner = activeMember(
                 2L,
@@ -30,7 +29,7 @@ class WorkspaceMemberTest {
         Instant leftAt = JOINED_AT.plusSeconds(1);
 
         // when
-        owner.transferOwnershipTo(
+        owner.transferOwnershipAndLeave(
                 successor,
                 leftAt
         );
@@ -48,7 +47,7 @@ class WorkspaceMemberTest {
 
     @DisplayName("본인에게 승계하면 본인 지정 오류로 거부하고 상태를 바꾸지 않는다")
     @Test
-    void transferOwnershipTo_failure_self() {
+    void transferOwnershipAndLeave_failure_self() {
         // given
         WorkspaceMember owner = activeMember(
                 2L,
@@ -56,7 +55,7 @@ class WorkspaceMemberTest {
         );
 
         // when
-        ThrowingCallable action = () -> owner.transferOwnershipTo(
+        ThrowingCallable action = () -> owner.transferOwnershipAndLeave(
                 owner,
                 JOINED_AT.plusSeconds(1)
         );
@@ -72,7 +71,7 @@ class WorkspaceMemberTest {
     @DisplayName("활성 OWNER가 아닌 요청자는 승계할 수 없다")
     @ParameterizedTest
     @ValueSource(strings = {"member", "leftOwner"})
-    void transferOwnershipTo_failure_notActiveOwner(String actorState) {
+    void transferOwnershipAndLeave_failure_notActiveOwner(String actorState) {
         // given
         WorkspaceMember actor = actor(actorState);
         WorkspaceMember successor = activeMember(
@@ -81,7 +80,7 @@ class WorkspaceMemberTest {
         );
 
         // when
-        ThrowingCallable action = () -> actor.transferOwnershipTo(
+        ThrowingCallable action = () -> actor.transferOwnershipAndLeave(
                 successor,
                 JOINED_AT.plusSeconds(2)
         );
@@ -96,7 +95,7 @@ class WorkspaceMemberTest {
     @DisplayName("승계 대상이 같은 워크스페이스의 활성 MEMBER가 아니면 승계를 거부하고 상태를 바꾸지 않는다")
     @ParameterizedTest
     @ValueSource(strings = {"missing", "otherWorkspace", "owner", "leftMember"})
-    void transferOwnershipTo_failure_invalidSuccessor(String successorState) {
+    void transferOwnershipAndLeave_failure_invalidSuccessor(String successorState) {
         // given
         WorkspaceMember owner = activeMember(
                 2L,
@@ -106,7 +105,7 @@ class WorkspaceMemberTest {
         WorkspaceMember successor = successor(successorState);
 
         // when
-        ThrowingCallable action = () -> owner.transferOwnershipTo(
+        ThrowingCallable action = () -> owner.transferOwnershipAndLeave(
                 successor,
                 JOINED_AT.plusSeconds(2)
         );
@@ -121,7 +120,7 @@ class WorkspaceMemberTest {
 
     @DisplayName("승계 시각이 참여 시각보다 빠르면 대상 역할과 요청자 상태를 바꾸지 않는다")
     @Test
-    void transferOwnershipTo_failure_leftAtBeforeJoinedAt() {
+    void transferOwnershipAndLeave_failure_leftAtBeforeJoinedAt() {
         // given
         WorkspaceMember owner = activeMember(
                 2L,
@@ -133,7 +132,7 @@ class WorkspaceMemberTest {
         );
 
         // when
-        ThrowingCallable action = () -> owner.transferOwnershipTo(
+        ThrowingCallable action = () -> owner.transferOwnershipAndLeave(
                 successor,
                 JOINED_AT.minusSeconds(1)
         );

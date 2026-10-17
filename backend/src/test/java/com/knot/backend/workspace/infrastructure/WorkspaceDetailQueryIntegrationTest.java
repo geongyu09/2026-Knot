@@ -1,7 +1,6 @@
 package com.knot.backend.workspace.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import com.knot.backend.workspace.application.WorkspaceDetailQuery;
@@ -333,7 +332,7 @@ class WorkspaceDetailQueryIntegrationTest {
                         5,
                         TimeUnit.SECONDS
                 );
-                leaveService.transferOwnership(
+                leaveService.transferOwnershipAndLeave(
                         ownerId,
                         workspaceId,
                         successorId

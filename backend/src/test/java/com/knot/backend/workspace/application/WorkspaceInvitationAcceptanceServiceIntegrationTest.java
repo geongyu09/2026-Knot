@@ -87,7 +87,7 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
             );
 
             // then
-            assertThat(results).extracting(WorkspaceInvitationAcceptanceResult::created)
+            assertThat(results).extracting(WorkspaceInvitationAcceptanceResult::membershipCreated)
                     .containsExactlyInAnyOrder(
                             true,
                             false
@@ -146,7 +146,7 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
             );
 
             // then
-            assertThat(results).extracting(WorkspaceInvitationAcceptanceResult::created)
+            assertThat(results).extracting(WorkspaceInvitationAcceptanceResult::membershipCreated)
                     .containsOnly(true);
             assertThat(
                     countMemberships(

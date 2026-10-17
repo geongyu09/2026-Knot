@@ -24,17 +24,17 @@ public final class AiTranscriptionHttpClient implements TranscriptionClient {
     private static final long MAX_RESPONSE_BYTES = 268_435_456L;
 
     private final HttpClient httpClient;
-    private final ObjectMapper mapper;
-    private final TranscriptionProperties properties;
+    private final ObjectMapper objectMapper;
+    private final TranscriptionProperties transcriptionProperties;
 
     public AiTranscriptionHttpClient(
             HttpClient httpClient,
-            ObjectMapper mapper,
-            TranscriptionProperties properties
+            ObjectMapper objectMapper,
+            TranscriptionProperties transcriptionProperties
     ) {
         this.httpClient = httpClient;
-        this.mapper = mapper;
-        this.properties = properties;
+        this.objectMapper = objectMapper;
+        this.transcriptionProperties = transcriptionProperties;
     }
 
     @Override
@@ -42,7 +42,7 @@ public final class AiTranscriptionHttpClient implements TranscriptionClient {
             UUID attemptId,
             String downloadUrl
     ) {
-        ObjectNode body = mapper.createObjectNode();
+        ObjectNode body = objectMapper.createObjectNode();
         body.put(
                 "attemptId",
                 attemptId.toString()
@@ -57,7 +57,7 @@ public final class AiTranscriptionHttpClient implements TranscriptionClient {
         )
                 .POST(
                         HttpRequest.BodyPublishers.ofString(
-                                mapper.writeValueAsString(body),
+                                objectMapper.writeValueAsString(body),
                                 StandardCharsets.UTF_8
                         )
                 )
@@ -86,13 +86,13 @@ public final class AiTranscriptionHttpClient implements TranscriptionClient {
 
     private HttpRequest.Builder request(String path) {
         return HttpRequest.newBuilder(
-                properties.baseUrl()
+                transcriptionProperties.baseUrl()
                         .resolve(path)
         )
-                .timeout(properties.requestTimeout())
+                .timeout(transcriptionProperties.requestTimeout())
                 .header(
                         "Authorization",
-                        "Bearer " + properties.token()
+                        "Bearer " + transcriptionProperties.token()
                 )
                 .header(
                         "Accept",
@@ -113,7 +113,7 @@ public final class AiTranscriptionHttpClient implements TranscriptionClient {
         );
         try {
             HttpResponse<String> response = future.get(
-                    properties.requestTimeout()
+                    transcriptionProperties.requestTimeout()
                             .toMillis(),
                     TimeUnit.MILLISECONDS
             );
@@ -162,7 +162,7 @@ public final class AiTranscriptionHttpClient implements TranscriptionClient {
             UUID expectedId
     ) {
         try {
-            AiTranscriptionJob job = mapper.readValue(
+            AiTranscriptionJob job = objectMapper.readValue(
                     body,
                     AiTranscriptionJob.class
             );

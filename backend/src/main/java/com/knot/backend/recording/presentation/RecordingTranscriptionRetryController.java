@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/workspaces/{workspaceId}/recordings")
 @RequiredArgsConstructor
 public class RecordingTranscriptionRetryController implements RecordingTranscriptionRetryApi {
-    private final RecordingTranscriptionService transcriptionService;
+    private final RecordingTranscriptionService recordingTranscriptionService;
 
     @Override
     @PostMapping("/{recordingId}/transcription/retry")
@@ -27,7 +27,7 @@ public class RecordingTranscriptionRetryController implements RecordingTranscrip
             @AuthenticationPrincipal AuthenticatedMember authenticatedMember
     ) {
         return RecordingTranscriptionRetryResponse.from(
-                transcriptionService.retry(
+                recordingTranscriptionService.retry(
                         workspaceId,
                         authenticatedMember.getMemberId(),
                         recordingId

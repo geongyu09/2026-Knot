@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
-
 import com.knot.backend.recording.application.dto.result.RecordingDetailResult;
 import com.knot.backend.recording.application.dto.result.RecordingDetailSnapshot;
 import com.knot.backend.recording.application.dto.result.RecordingTranscriptionSnapshot;
@@ -44,8 +43,8 @@ class RecordingDetailServiceTest {
     private WorkspaceRepository workspaceRepository;
     private WorkspaceMemberRepository workspaceMemberRepository;
     private RecordingDetailQuery recordingDetailQuery;
-    private RecordingTranscriptionStateService transcriptionState;
-    private DocumentGenerationProgressService documentProgress;
+    private RecordingTranscriptionStateService recordingTranscriptionStateService;
+    private DocumentGenerationProgressService documentGenerationProgressService;
     private RecordingDetailService service;
 
     @BeforeEach
@@ -53,8 +52,8 @@ class RecordingDetailServiceTest {
         workspaceRepository = mock(WorkspaceRepository.class);
         workspaceMemberRepository = mock(WorkspaceMemberRepository.class);
         recordingDetailQuery = mock(RecordingDetailQuery.class);
-        transcriptionState = mock(RecordingTranscriptionStateService.class);
-        documentProgress = mock(DocumentGenerationProgressService.class);
+        recordingTranscriptionStateService = mock(RecordingTranscriptionStateService.class);
+        documentGenerationProgressService = mock(DocumentGenerationProgressService.class);
         service = new RecordingDetailService(
                 new RecordingAccess(
                         workspaceRepository,
@@ -63,8 +62,8 @@ class RecordingDetailServiceTest {
                         mock(RecordingControlTokenHasher.class)
                 ),
                 recordingDetailQuery,
-                transcriptionState,
-                documentProgress,
+                recordingTranscriptionStateService,
+                documentGenerationProgressService,
                 Clock.fixed(
                         NOW,
                         ZoneOffset.UTC
@@ -133,7 +132,7 @@ class RecordingDetailServiceTest {
         );
 
         UUID attemptId = UUID.randomUUID();
-        when(transcriptionState.find(RECORDING_ID)).thenReturn(
+        when(recordingTranscriptionStateService.findSnapshot(RECORDING_ID)).thenReturn(
                 new RecordingTranscriptionSnapshot(
                         attemptId,
                         TranscriptionStatus.FAILED,
@@ -261,8 +260,8 @@ class RecordingDetailServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(RecordingErrorCode.RECORDING_CONTROL_DENIED);
         verifyNoInteractions(
-                documentProgress,
-                transcriptionState
+                documentGenerationProgressService,
+                recordingTranscriptionStateService
         );
     }
 
@@ -320,8 +319,8 @@ class RecordingDetailServiceTest {
                 .isEqualTo(WorkspaceErrorCode.WORKSPACE_ACCESS_DENIED);
         verifyNoInteractions(
                 recordingDetailQuery,
-                documentProgress,
-                transcriptionState
+                documentGenerationProgressService,
+                recordingTranscriptionStateService
         );
     }
 
@@ -346,8 +345,8 @@ class RecordingDetailServiceTest {
                 .isEqualTo(RecordingErrorCode.INVALID_RECORDING_DATA);
         verifyNoInteractions(
                 recordingDetailQuery,
-                documentProgress,
-                transcriptionState
+                documentGenerationProgressService,
+                recordingTranscriptionStateService
         );
     }
 
@@ -377,7 +376,7 @@ class RecordingDetailServiceTest {
                 List.of(104L)
         );
         when(
-                documentProgress.findSummary(
+                documentGenerationProgressService.findSummary(
                         WORKSPACE_ID,
                         RECORDING_ID,
                         NOW

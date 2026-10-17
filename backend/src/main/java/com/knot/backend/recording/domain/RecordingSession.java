@@ -268,7 +268,7 @@ public class RecordingSession {
         return RecordingStatus.ACTIVE_STATUSES.contains(status);
     }
 
-    public Instant getExpiresAt() {
+    public Instant getConnectionExpiresAt() {
         if (!isActive()) {
             return null;
         }

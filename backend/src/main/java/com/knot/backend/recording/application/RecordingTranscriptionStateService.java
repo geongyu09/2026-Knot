@@ -34,36 +34,36 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class RecordingTranscriptionStateService {
     private final RecordingAccess recordingAccess;
-    private final WorkspaceRepository workspaces;
-    private final RecordingSessionRepository recordings;
-    private final RecordingAudioUploadRepository uploads;
-    private final RecordingTranscriptionRepository transcriptions;
-    private final TranscriptRepository transcripts;
-    private final TranscriptSegmentRepository segments;
-    private final DocumentGenerationIntakeService documentIntake;
+    private final WorkspaceRepository workspaceRepository;
+    private final RecordingSessionRepository recordingSessionRepository;
+    private final RecordingAudioUploadRepository recordingAudioUploadRepository;
+    private final RecordingTranscriptionRepository recordingTranscriptionRepository;
+    private final TranscriptRepository transcriptRepository;
+    private final TranscriptSegmentRepository transcriptSegmentRepository;
+    private final DocumentGenerationIntakeService documentGenerationIntakeService;
     private final Clock clock;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void registerAutomatic(long recordingId) {
-        if (transcriptions.findByRecordingSessionId(recordingId)
+        if (recordingTranscriptionRepository.findByRecordingSessionId(recordingId)
                 .isPresent()) {
             return;
         }
-        transcriptions.lockAdmission();
+        recordingTranscriptionRepository.lockAdmission();
         Instant now = now();
         RecordingTranscription transcription = RecordingTranscription.processing(
                 recordingId,
                 UUID.randomUUID(),
                 now
         );
-        if (transcriptions.findProcessing()
+        if (recordingTranscriptionRepository.findProcessing()
                 .isPresent()) {
             transcription.fail(
                     transcription.getAttemptId(),
                     "BUSY"
             );
         }
-        transcriptions.saveAndFlush(transcription);
+        recordingTranscriptionRepository.saveAndFlush(transcription);
     }
 
     @Transactional
@@ -78,14 +78,15 @@ public class RecordingTranscriptionStateService {
                 recordingId
         )
                 .validateEnded();
-        RecordingAudioUpload upload = uploads.findByRecordingId(recordingId)
+        RecordingAudioUpload upload = recordingAudioUploadRepository.findByRecordingId(recordingId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
         upload.validateAudioAvailable();
-        RecordingTranscription transcription = transcriptions.findByRecordingSessionIdForUpdate(recordingId)
+        RecordingTranscription transcription = recordingTranscriptionRepository
+                .findByRecordingSessionIdForUpdate(recordingId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED));
         transcription.validateRetryable();
-        transcriptions.lockAdmission();
-        if (transcriptions.findProcessing()
+        recordingTranscriptionRepository.lockAdmission();
+        if (recordingTranscriptionRepository.findProcessing()
                 .isPresent()) {
             throw new RecordingException(RecordingErrorCode.TRANSCRIPTION_BUSY);
         }
@@ -102,13 +103,13 @@ public class RecordingTranscriptionStateService {
 
     @Transactional(readOnly = true)
     public Optional<RecordingTranscriptionExecution> findProcessing() {
-        return transcriptions.findProcessing()
-                .map(this::execution);
+        return recordingTranscriptionRepository.findProcessing()
+                .map(this::createExecutionContext);
     }
 
     @Transactional(readOnly = true)
-    public RecordingTranscriptionSnapshot find(long recordingId) {
-        return transcriptions.findByRecordingSessionId(recordingId)
+    public RecordingTranscriptionSnapshot findSnapshot(long recordingId) {
+        return recordingTranscriptionRepository.findByRecordingSessionId(recordingId)
                 .map(
                         value -> new RecordingTranscriptionSnapshot(
                                 value.getAttemptId(),
@@ -121,61 +122,61 @@ public class RecordingTranscriptionStateService {
 
     @Transactional
     public void complete(
-            RecordingTranscriptionExecution execution,
+            RecordingTranscriptionExecution executionContext,
             AiTranscript result
     ) {
-        boolean workspaceAvailable = workspaces.findByIdForUpdate(execution.workspaceId())
+        boolean workspaceAvailable = workspaceRepository.findByIdForUpdate(executionContext.workspaceId())
                 .isPresent();
-        boolean recordingAvailable = recordings.findByIdForUpdate(execution.recordingId())
-                .filter(value -> value.isTranscribableIn(execution.workspaceId()))
+        boolean recordingAvailable = recordingSessionRepository.findByIdForUpdate(executionContext.recordingId())
+                .filter(value -> value.isTranscribableIn(executionContext.workspaceId()))
                 .isPresent();
-        Optional<RecordingTranscription> current = transcriptions
-                .findByRecordingSessionIdForUpdate(execution.recordingId())
-                .filter(value -> value.isProcessing(execution.attemptId()));
-        if (current.isEmpty()) {
+        Optional<RecordingTranscription> processingAttempt = recordingTranscriptionRepository
+                .findByRecordingSessionIdForUpdate(executionContext.recordingId())
+                .filter(value -> value.isProcessingAttempt(executionContext.attemptId()));
+        if (processingAttempt.isEmpty()) {
             return;
         }
-        RecordingTranscription transcription = current.orElseThrow();
-        if (!workspaceAvailable || !recordingAvailable || !hasAvailableUpload(execution.recordingId())) {
+        RecordingTranscription transcription = processingAttempt.orElseThrow();
+        if (!workspaceAvailable || !recordingAvailable || !hasAvailableUpload(executionContext.recordingId())) {
             transcription.fail(
-                    execution.attemptId(),
+                    executionContext.attemptId(),
                     "RECORDING_UNAVAILABLE"
             );
             return;
         }
         List<TranscriptUtterance> utterances = result.toUtterances();
-        Transcript transcript = transcripts.saveAndFlush(
+        Transcript transcript = transcriptRepository.saveAndFlush(
                 Transcript.create(
-                        execution.recordingId(),
+                        executionContext.recordingId(),
                         result.rawWhisperJson(),
                         now()
                 )
         );
-        segments.saveAll(
+        transcriptSegmentRepository.saveAll(
                 TranscriptSegment.createAll(
                         transcript.getId(),
                         utterances
                 )
         );
-        documentIntake.acceptCompletedTranscript(
-                execution.workspaceId(),
-                execution.recordingId(),
+        documentGenerationIntakeService.acceptCompletedTranscript(
+                executionContext.workspaceId(),
+                executionContext.recordingId(),
                 transcript.getId()
         );
-        transcription.succeed(execution.attemptId());
+        transcription.succeed(executionContext.attemptId());
     }
 
     @Transactional
     public void fail(
-            RecordingTranscriptionExecution execution,
+            RecordingTranscriptionExecution executionContext,
             String failureCode
     ) {
-        workspaces.findIncludingDeletedByIdForUpdate(execution.workspaceId());
-        recordings.findByIdForUpdate(execution.recordingId());
-        transcriptions.findByRecordingSessionIdForUpdate(execution.recordingId())
+        workspaceRepository.findIncludingDeletedByIdForUpdate(executionContext.workspaceId());
+        recordingSessionRepository.findByIdForUpdate(executionContext.recordingId());
+        recordingTranscriptionRepository.findByRecordingSessionIdForUpdate(executionContext.recordingId())
                 .ifPresent(
                         value -> value.fail(
-                                execution.attemptId(),
+                                executionContext.attemptId(),
                                 failureCode
                         )
                 );
@@ -183,19 +184,19 @@ public class RecordingTranscriptionStateService {
 
     @Transactional
     public void recoverProcessing() {
-        transcriptions.findProcessing()
+        recordingTranscriptionRepository.findProcessing()
                 .ifPresent(
                         value -> fail(
-                                execution(value),
+                                createExecutionContext(value),
                                 "SERVER_RESTARTED"
                         )
                 );
     }
 
-    private RecordingTranscriptionExecution execution(RecordingTranscription transcription) {
-        RecordingSession recording = recordings.findById(transcription.getRecordingSessionId())
+    private RecordingTranscriptionExecution createExecutionContext(RecordingTranscription transcription) {
+        RecordingSession recording = recordingSessionRepository.findById(transcription.getRecordingSessionId())
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND));
-        RecordingAudioUpload upload = uploads.findByRecordingId(recording.getId())
+        RecordingAudioUpload upload = recordingAudioUploadRepository.findByRecordingId(recording.getId())
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
         return new RecordingTranscriptionExecution(
                 recording.getWorkspaceId(),
@@ -210,7 +211,7 @@ public class RecordingTranscriptionStateService {
     }
 
     private boolean hasAvailableUpload(long recordingId) {
-        return uploads.findByRecordingId(recordingId)
+        return recordingAudioUploadRepository.findByRecordingId(recordingId)
                 .filter(RecordingAudioUpload::isAudioAvailable)
                 .isPresent();
     }

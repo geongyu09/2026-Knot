@@ -20,8 +20,8 @@ public class Transcript {
     @Column(name = "recording_session_id", nullable = false, updatable = false)
     private long recordingSessionId;
 
-    @Column(nullable = false, updatable = false, columnDefinition = "text")
-    private String content;
+    @Column(name = "content", nullable = false, updatable = false, columnDefinition = "text")
+    private String rawTranscriptJson;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -30,25 +30,25 @@ public class Transcript {
 
     private Transcript(
             long recordingSessionId,
-            String content,
+            String rawTranscriptJson,
             Instant createdAt
     ) {
-        if (recordingSessionId <= 0 || content == null || content.isBlank() || createdAt == null) {
+        if (recordingSessionId <= 0 || rawTranscriptJson == null || rawTranscriptJson.isBlank() || createdAt == null) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
         }
         this.recordingSessionId = recordingSessionId;
-        this.content = content;
+        this.rawTranscriptJson = rawTranscriptJson;
         this.createdAt = createdAt;
     }
 
     public static Transcript create(
             long recordingSessionId,
-            String content,
+            String rawTranscriptJson,
             Instant createdAt
     ) {
         return new Transcript(
                 recordingSessionId,
-                content,
+                rawTranscriptJson,
                 createdAt
         );
     }

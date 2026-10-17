@@ -20,7 +20,7 @@ public class RecordingAudioUploadCompletionTransaction {
     private final RecordingAccess recordingAccess;
     private final RecordingAudioUploadRepository recordingAudioUploadRepository;
     private final Clock clock;
-    private final RecordingTranscriptionStateService transcriptionState;
+    private final RecordingTranscriptionStateService recordingTranscriptionStateService;
     private final TranscriptionProperties transcriptionProperties;
 
     @Transactional
@@ -59,7 +59,7 @@ public class RecordingAudioUploadCompletionTransaction {
         );
         recordingAudioUploadRepository.save(upload);
         if (transcriptionProperties.enabled() && upload.isAudioAvailable()) {
-            transcriptionState.registerAutomatic(recordingId);
+            recordingTranscriptionStateService.registerAutomatic(recordingId);
         }
         return RecordingAudioUploadCompletionResult.from(upload);
     }

@@ -2,7 +2,6 @@ package com.knot.backend.recording.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.recording.domain.TranscriptSegment;
 import com.knot.backend.recording.domain.TranscriptSegmentRepository;
@@ -29,7 +28,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 class TranscriptSegmentRepositoryIntegrationTest {
 
     @Autowired
-    private TranscriptSegmentRepository segments;
+    private TranscriptSegmentRepository transcriptSegmentRepository;
     @Autowired
     private JdbcClient jdbc;
     @Autowired
@@ -69,13 +68,13 @@ class TranscriptSegmentRepositoryIntegrationTest {
         );
 
         // when
-        segments.saveAll(List.of(segment));
+        transcriptSegmentRepository.saveAll(List.of(segment));
 
         // then
         entityManager.flush();
         assertThat(segment.getCreatedAt()).isEqualTo(databaseNow);
         entityManager.clear();
-        assertThat(segments.findAllByTranscriptId(transcriptId)).singleElement()
+        assertThat(transcriptSegmentRepository.findAllByTranscriptId(transcriptId)).singleElement()
                 .extracting(TranscriptSegment::getCreatedAt)
                 .isEqualTo(databaseNow);
     }
@@ -101,7 +100,7 @@ class TranscriptSegmentRepositoryIntegrationTest {
                 .update();
 
         // then
-        assertThat(segments.findAllByTranscriptId(transcriptId)).singleElement()
+        assertThat(transcriptSegmentRepository.findAllByTranscriptId(transcriptId)).singleElement()
                 .extracting(TranscriptSegment::getCreatedAt)
                 .isEqualTo(databaseNow);
     }
@@ -111,7 +110,7 @@ class TranscriptSegmentRepositoryIntegrationTest {
     void findAllByTranscriptId_success_orderAndScope() {
         // given
         long otherTranscript = fixtures.saveTranscript(recordingId);
-        segments.saveAll(
+        transcriptSegmentRepository.saveAll(
                 List.of(
                         TranscriptSegment.create(
                                 transcriptId,
@@ -151,7 +150,7 @@ class TranscriptSegmentRepositoryIntegrationTest {
         entityManager.clear();
 
         // when
-        List<TranscriptSegment> result = segments.findAllByTranscriptId(transcriptId);
+        List<TranscriptSegment> result = transcriptSegmentRepository.findAllByTranscriptId(transcriptId);
 
         // then
         assertThat(result).extracting(TranscriptSegment::getText)
@@ -184,7 +183,7 @@ class TranscriptSegmentRepositoryIntegrationTest {
     @DisplayName("없는 원문의 구간 조회는 빈 목록이다")
     void findAllByTranscriptId_success_absent() {
         // when & then
-        assertThat(segments.findAllByTranscriptId(Long.MAX_VALUE)).isEmpty();
+        assertThat(transcriptSegmentRepository.findAllByTranscriptId(Long.MAX_VALUE)).isEmpty();
     }
 
     @ParameterizedTest
@@ -214,7 +213,7 @@ class TranscriptSegmentRepositoryIntegrationTest {
     @DisplayName("같은 원문의 중복 저장 순서를 DB가 거절한다")
     void saveAll_failure_duplicatePosition() {
         // given
-        segments.saveAll(
+        transcriptSegmentRepository.saveAll(
                 List.of(
                         TranscriptSegment.create(
                                 transcriptId,
@@ -248,7 +247,7 @@ class TranscriptSegmentRepositoryIntegrationTest {
     void saveAll_failure_missingTranscript() {
         // when & then
         assertThatThrownBy(
-                () -> segments.saveAll(
+                () -> transcriptSegmentRepository.saveAll(
                         List.of(
                                 TranscriptSegment.create(
                                         Long.MAX_VALUE,
@@ -267,7 +266,7 @@ class TranscriptSegmentRepositoryIntegrationTest {
     @DisplayName("구간이 남아 있는 원문의 삭제를 RESTRICT로 막는다")
     void deleteTranscript_failure_restricted() {
         // given
-        segments.saveAll(
+        transcriptSegmentRepository.saveAll(
                 List.of(
                         TranscriptSegment.create(
                                 transcriptId,

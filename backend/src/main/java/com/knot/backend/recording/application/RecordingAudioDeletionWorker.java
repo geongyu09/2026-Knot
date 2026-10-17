@@ -13,19 +13,18 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class RecordingAudioDeletionWorker {
-
-    private final RecordingAudioDeletionStateService state;
-    private final RecordingAudioStorage storage;
+    private final RecordingAudioDeletionStateService recordingAudioDeletionStateService;
+    private final RecordingAudioStorage recordingAudioStorage;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void execute(long taskId) {
-        Optional<RecordingAudioDeletionExecution> claim = state.claim(taskId);
+        Optional<RecordingAudioDeletionExecution> claim = recordingAudioDeletionStateService.claim(taskId);
         if (claim.isEmpty()) {
             return;
         }
         RecordingAudioDeletionExecution execution = claim.orElseThrow();
         try {
-            storage.deleteStoredObject(execution.storageKey());
+            recordingAudioStorage.deleteStoredObject(execution.storageKey());
         } catch (RuntimeException exception) {
             ServerErrorLogger.recordTaskFailure(
                     log,
@@ -33,13 +32,13 @@ public class RecordingAudioDeletionWorker {
                             + " phase=delete",
                     exception
             );
-            state.fail(
+            recordingAudioDeletionStateService.fail(
                     taskId,
                     execution.attemptCount()
             );
             return;
         }
-        state.succeed(
+        recordingAudioDeletionStateService.succeed(
                 taskId,
                 execution.attemptCount()
         );

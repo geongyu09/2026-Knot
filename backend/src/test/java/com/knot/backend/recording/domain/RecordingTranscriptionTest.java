@@ -2,7 +2,6 @@ package com.knot.backend.recording.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
-
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -98,7 +97,7 @@ class RecordingTranscriptionTest {
                 "LATE"
         );
         // then
-        assertThat(transcription.isProcessing(next)).isTrue();
+        assertThat(transcription.isProcessingAttempt(next)).isTrue();
     }
 
     @Test
