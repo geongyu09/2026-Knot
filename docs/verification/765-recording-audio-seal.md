@@ -36,3 +36,11 @@ V55는 seal 컬럼·정합 CHECK·sealed 후보 인덱스를 추가하고 기존
 실제 PostgreSQL 테스트는 4.9/5/5.1초 tail, 동일/변경 seal, 원자적 rollback, 0frame, PAUSED, timeout·상한, 늦은 worker, cutoff·HEAD 중 cutoff 이동, VERIFIED 재조회, reserve/end 동시 잠금을 다룬다. 기존 recording unit/integration/acceptance 회귀도 실행한다.
 
 제품 FE collector의 flush 이벤트 순서·실제 강제 탭 종료·최종 WAV/STT 연결은 후속 FE/전체 통합 검증 대상이다. 이 PR의 서버 테스트로 해당 사용자 흐름 완료를 주장하지 않는다.
+
+## 실행 결과 (2026-10-18)
+
+- `./gradlew spotlessApply test integrationTest acceptanceTest bootJar` 통과: unit 1,627개, PostgreSQL integration 717개(실제 S3 opt-in 1개 제외), HTTP acceptance 578개. 실패 0개. 실행된 2,921개 통과, opt-in 제외 1개.
+- 마지막 `./gradlew spotlessCheck bootJar`도 통과했다.
+- `python3 -m unittest discover ../.github/scripts -p 'test_*.py'`: Governance 10개 통과.
+- 컨벤션 원문 hash gate 통과. #765 변경 Java 파일의 전체 감사 진단은 0개다. 저장소 전체 감사는 기존 진단 1,281개로 실패한다. 변경 범위 기본 감사에는 기존 build 의존성 버전 2개와 기존 RecordingStartAcceptanceTest 계층 의존성 1개가 남는다. 전체 감사 통과를 주장하지 않는다.
+- `git diff --check` 통과. 실제 FE flush·강제 탭 종료와 실제 배포 전체 연결은 후속 통합 검증 대상이다.
