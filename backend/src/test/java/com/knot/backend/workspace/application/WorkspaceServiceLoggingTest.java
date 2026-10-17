@@ -26,7 +26,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class WorkspaceServiceLoggingTest {
@@ -307,9 +307,12 @@ class WorkspaceServiceLoggingTest {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {false, true})
+    @CsvSource({"false,changed", "true,replayed"})
     @DisplayName("마지막 선택 갱신과 같은 선택의 재요청을 구분한다")
-    void lastViewedDistinguishesReplay(boolean alreadyViewed) {
+    void lastViewedDistinguishesReplay(
+            boolean alreadyViewed,
+            String expectedOutcome
+    ) {
         // given
         WorkspaceMember membership = WorkspaceMember.create(
                 7L,
@@ -335,7 +338,7 @@ class WorkspaceServiceLoggingTest {
             )
                     .containsEntry(
                             "outcome",
-                            alreadyViewed ? "replayed" : "changed"
+                            expectedOutcome
                     );
             assertThat(membership.isLastViewed()).isTrue();
         }

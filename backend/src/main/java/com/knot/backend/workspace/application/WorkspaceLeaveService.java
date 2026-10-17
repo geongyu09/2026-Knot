@@ -90,10 +90,24 @@ public class WorkspaceLeaveService {
                     recordings,
                     leftAt,
                     log,
-                    workspace.isDeleted() ? "WORKSPACE_DELETED" : "WORKSPACE_MEMBER_LEFT"
+                    discardReason(workspace)
             );
-            log.outcome(workspace.isDeleted() ? "left_and_workspace_deleted" : "left");
+            log.outcome(leaveOutcome(workspace));
         });
+    }
+
+    private String discardReason(Workspace workspace) {
+        if (workspace.isDeleted()) {
+            return "WORKSPACE_DELETED";
+        }
+        return "WORKSPACE_MEMBER_LEFT";
+    }
+
+    private String leaveOutcome(Workspace workspace) {
+        if (workspace.isDeleted()) {
+            return "left_and_workspace_deleted";
+        }
+        return "left";
     }
 
     @Transactional

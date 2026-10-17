@@ -72,14 +72,16 @@ class WorkspaceDepartureLoggingAcceptanceTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"MEMBER,WORKSPACE_MEMBER_LEFT,workspace.leave",
-            "TRANSFER,WORKSPACE_OWNERSHIP_TRANSFER_AND_LEFT,workspace.ownership_transfer_and_leave",
-            "LAST,WORKSPACE_DELETED,workspace.leave"})
+    @CsvSource({"MEMBER,WORKSPACE_MEMBER_LEFT,workspace.leave,left",
+            "TRANSFER,WORKSPACE_OWNERSHIP_TRANSFER_AND_LEFT,workspace.ownership_transfer_and_leave,"
+                    + "ownership_transferred_and_left",
+            "LAST,WORKSPACE_DELETED,workspace.leave,left_and_workspace_deleted"})
     @DisplayName("녹음 ID만으로 실제 탈퇴 요청과 폐기 원인을 찾는다")
     void depart_success_httpRequestCorrelation(
             String mode,
             String reason,
-            String rootEvent
+            String rootEvent,
+            String expectedOutcome
     ) throws Exception {
         // given
         long workspaceId = saveWorkspace("비공개팀");
@@ -97,7 +99,10 @@ class WorkspaceDepartureLoggingAcceptanceTest {
                     "MEMBER"
             );
         }
-        long departingId = "MEMBER".equals(mode) ? memberId : ownerId;
+        long departingId = ownerId;
+        if ("MEMBER".equals(mode)) {
+            departingId = memberId;
+        }
         long recordingId = saveRecording(
                 workspaceId,
                 departingId,
@@ -105,11 +110,11 @@ class WorkspaceDepartureLoggingAcceptanceTest {
         );
         Cookie accessToken = accessTokenCookie(departingId);
         CsrfCredentials csrf = csrfCredentials();
-        MockHttpServletRequestBuilder request = "TRANSFER".equals(mode)
-                ? post("/api/v1/workspaces/" + workspaceId + "/ownership-transfers")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"successorMemberId\":" + memberId + "}")
-                : delete("/api/v1/workspaces/" + workspaceId + "/members/me");
+        MockHttpServletRequestBuilder request = departureRequest(
+                mode,
+                workspaceId,
+                memberId
+        );
         request.cookie(
                 accessToken,
                 csrf.cookie()
@@ -231,11 +236,7 @@ class WorkspaceDepartureLoggingAcceptanceTest {
                                 event,
                                 "outcome"
                         )
-                ).isEqualTo(
-                        "LAST".equals(mode)
-                                ? "left_and_workspace_deleted"
-                                : "TRANSFER".equals(mode) ? "ownership_transferred_and_left" : "left"
-                );
+                ).isEqualTo(expectedOutcome);
             });
             assertThat(logs.events()).allSatisfy(event -> {
                 JsonNode json = objectMapper.readTree(event.getFormattedMessage());
@@ -252,6 +253,19 @@ class WorkspaceDepartureLoggingAcceptanceTest {
                 );
             });
         }
+    }
+
+    private MockHttpServletRequestBuilder departureRequest(
+            String mode,
+            long workspaceId,
+            long successorMemberId
+    ) {
+        if ("TRANSFER".equals(mode)) {
+            return post("/api/v1/workspaces/" + workspaceId + "/ownership-transfers")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"successorMemberId\":" + successorMemberId + "}");
+        }
+        return delete("/api/v1/workspaces/" + workspaceId + "/members/me");
     }
 
     private Object field(

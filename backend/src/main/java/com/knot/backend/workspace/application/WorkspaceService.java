@@ -159,8 +159,15 @@ public class WorkspaceService {
                         workspaceMemberRepository.save(targetMembership);
                     }
             );
-            trace.outcome(replayed ? "replayed" : "changed");
+            trace.outcome(lastViewedOutcome(replayed));
         });
+    }
+
+    private String lastViewedOutcome(boolean replayed) {
+        if (replayed) {
+            return "replayed";
+        }
+        return "changed";
     }
 
     private boolean containsWorkspace(

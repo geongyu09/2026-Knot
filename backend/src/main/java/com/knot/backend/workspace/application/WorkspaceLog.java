@@ -172,13 +172,26 @@ public final class WorkspaceLog {
             failedStage = stage;
             outcome = "failed";
             errorCode = "INTERNAL_SERVER_ERROR";
-            if (exception instanceof ProjectException projectException) {
-                ErrorCode code = projectException.getErrorCode();
-                errorCode = code instanceof Enum<?> typedCode ? typedCode.name() : "UNKNOWN_FAILURE";
-                if (exception.getCause() == null && code.getCategory() != ErrorCategory.INTERNAL_SERVER_ERROR) {
-                    outcome = "rejected";
-                }
+            if (!(exception instanceof ProjectException projectException)) {
+                return;
             }
+            recordProjectFailure(projectException);
+        }
+
+        private void recordProjectFailure(ProjectException exception) {
+            ErrorCode code = exception.getErrorCode();
+            errorCode = safeErrorCode(code);
+            if (exception.getCause() != null || code.getCategory() == ErrorCategory.INTERNAL_SERVER_ERROR) {
+                return;
+            }
+            outcome = "rejected";
+        }
+
+        private String safeErrorCode(ErrorCode code) {
+            if (code instanceof Enum<?> typedCode) {
+                return typedCode.name();
+            }
+            return "UNKNOWN_FAILURE";
         }
 
         private void complete(int status) {
@@ -186,22 +199,42 @@ public final class WorkspaceLog {
                 return;
             }
             finished = true;
-            if (status == TransactionSynchronization.STATUS_UNKNOWN) {
-                outcome = "unconfirmed";
-                errorCode = "TRANSACTION_UNCONFIRMED";
-                if (failure == null) {
-                    failedStage = "transaction_completion";
-                }
-            } else if (status == TransactionSynchronization.STATUS_ROLLED_BACK && failure == null) {
-                outcome = reason == null ? "failed" : "rolled_back";
-                errorCode = "TRANSACTION_ROLLED_BACK";
-                failedStage = "transaction_completion";
-            }
+            resolveTransactionOutcome(status);
             emit(
                     "operation",
                     outcome,
                     startedAt
             );
+        }
+
+        private void resolveTransactionOutcome(int status) {
+            if (status == TransactionSynchronization.STATUS_UNKNOWN) {
+                markUnconfirmed();
+                return;
+            }
+            if (status != TransactionSynchronization.STATUS_ROLLED_BACK || failure != null) {
+                return;
+            }
+            markRolledBack();
+        }
+
+        private void markUnconfirmed() {
+            outcome = "unconfirmed";
+            errorCode = "TRANSACTION_UNCONFIRMED";
+            if (failure != null) {
+                return;
+            }
+            failedStage = "transaction_completion";
+        }
+
+        private void markRolledBack() {
+            outcome = "failed";
+            errorCode = "TRANSACTION_ROLLED_BACK";
+            failedStage = "transaction_completion";
+            if (reason == null) {
+                return;
+            }
+            outcome = "rolled_back";
         }
 
         private void emit(
@@ -247,24 +280,11 @@ public final class WorkspaceLog {
                             (System.nanoTime() - from) / 1_000_000
                     );
                 }
-                if ("operation".equals(stage) && !"started".equals(emittedOutcome)) {
-                    if (errorCode != null) {
-                        fields.put(
-                                "errorCode",
-                                errorCode
-                        );
-                        fields.put(
-                                "failedStage",
-                                failedStage
-                        );
-                    }
-                    if (failure != null && !"rejected".equals(emittedOutcome)) {
-                        fields.put(
-                                "diagnostic",
-                                SafeExceptionDiagnostics.describe(failure)
-                        );
-                    }
-                }
+                addOperationFields(
+                        fields,
+                        stage,
+                        emittedOutcome
+                );
                 LoggingEventBuilder builder = switch (emittedOutcome) {
                     case "failed" -> LOG.atError();
                     case "unconfirmed" -> LOG.atWarn();
@@ -275,6 +295,33 @@ public final class WorkspaceLog {
             } catch (RuntimeException ignored) {
                 // 관측 실패가 업무 결과나 트랜잭션 결과를 바꾸지 않도록 한다.
             }
+        }
+
+        private void addOperationFields(
+                Map<String, Object> fields,
+                String stage,
+                String emittedOutcome
+        ) {
+            if (!"operation".equals(stage) || "started".equals(emittedOutcome)) {
+                return;
+            }
+            if (errorCode != null) {
+                fields.put(
+                        "errorCode",
+                        errorCode
+                );
+                fields.put(
+                        "failedStage",
+                        failedStage
+                );
+            }
+            if (failure == null || "rejected".equals(emittedOutcome)) {
+                return;
+            }
+            fields.put(
+                    "diagnostic",
+                    SafeExceptionDiagnostics.describe(failure)
+            );
         }
     }
 }
