@@ -29,6 +29,7 @@ public class RecordingStartService {
     private final Clock clock;
     private final RecordingAudioStreamRepository recordingAudioStreamRepository;
     private final RecordingAudioChunksProperties audioChunksProperties;
+    private final com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository audioCleanup;
 
     @Transactional
     public RecordingStartResult start(
@@ -73,6 +74,7 @@ public class RecordingStartService {
         RecordingSession saved = recordingSessionRepository.save(session);
         if (saved.getAudioMode() == RecordingAudioMode.PCM16_CHUNKS_V1) {
             recordingAudioStreamRepository.save(RecordingAudioStream.create(saved.getId()));
+            audioCleanup.track(saved.getId(), now());
         }
         return RecordingStartResult.from(
                 saved,

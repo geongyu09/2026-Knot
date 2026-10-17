@@ -33,6 +33,8 @@ public class RetentionCleanupScheduler {
     private final RetentionCleanupProperties properties;
     private final ThreadPoolTaskExecutor executor;
     private final Clock clock;
+    private final com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository audioCleanup;
+    private final com.knot.backend.recording.application.RecordingAudioCleanupStateService audioCleanupState;
 
     public RetentionCleanupScheduler(
             DocumentRetentionRepository documents,
@@ -42,7 +44,9 @@ public class RetentionCleanupScheduler {
             RecordingAudioDeletionWorker worker,
             RetentionCleanupProperties properties,
             @Qualifier("retentionCleanupExecutor") ThreadPoolTaskExecutor executor,
-            Clock clock
+            Clock clock,
+            com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository audioCleanup,
+            com.knot.backend.recording.application.RecordingAudioCleanupStateService audioCleanupState
     ) {
         this.documents = documents;
         this.cleanup = cleanup;
@@ -52,6 +56,8 @@ public class RetentionCleanupScheduler {
         this.properties = properties;
         this.executor = executor;
         this.clock = clock;
+        this.audioCleanup = audioCleanup;
+        this.audioCleanupState = audioCleanupState;
     }
 
     @Scheduled(fixedDelayString = "${knot.retention.poll-interval:1m}")
@@ -85,6 +91,13 @@ public class RetentionCleanupScheduler {
                                 + candidate.getBatchId() + " phase=cleanup",
                         exception
                 );
+            }
+        }
+        for (Long recordingId : audioCleanup.findCandidates(clock.instant(), properties.getCandidateLimit())) {
+            try {
+                audioCleanupState.schedule(recordingId);
+            } catch (RuntimeException exception) {
+                ServerErrorLogger.record(log, "Audio cleanup scheduling deferred recordingId=" + recordingId, exception);
             }
         }
         for (Long uploadId : audio.findRetentionCandidates(
@@ -127,6 +140,25 @@ public class RetentionCleanupScheduler {
             } catch (TaskRejectedException exception) {
                 return;
             }
+        }
+    }
+
+    @Scheduled(fixedDelayString = "${knot.retention.deletion-interval:5s}")
+    public void dispatchAudioPrefixDeletion() {
+        try {
+            for (Long recordingId : audioCleanup.findReady(clock.instant(), properties.getCandidateLimit())) {
+                executor.execute(() -> {
+                    try {
+                        worker.executeCleanup(recordingId);
+                    } catch (RuntimeException exception) {
+                        ServerErrorLogger.record(log, "Audio cleanup deferred recordingId=" + recordingId, exception);
+                    }
+                });
+            }
+        } catch (TaskRejectedException exception) {
+            // 다음 poll에서 DB 대기 작업을 다시 조회한다.
+        } catch (RuntimeException exception) {
+            ServerErrorLogger.record(log, "Audio cleanup candidate lookup failed", exception);
         }
     }
 

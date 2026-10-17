@@ -28,6 +28,7 @@ public class WorkspaceLeaveService {
     private final RecordingSessionRepository recordingSessionRepository;
     private final DocumentArchivalService documentArchivalService;
     private final Clock clock;
+    private final com.knot.backend.recording.application.RecordingAudioCleanupStateService audioCleanup;
 
     @Transactional
     public void leave(
@@ -184,6 +185,7 @@ public class WorkspaceLeaveService {
             recordingSessionRepository.save(recording);
         }
         workspaceMemberRepository.flush();
+        audioCleanup.afterDeparture(workspaceId, memberId);
         documentArchivalService.archiveAfterMemberDeparture(
                 workspaceId,
                 memberId,
