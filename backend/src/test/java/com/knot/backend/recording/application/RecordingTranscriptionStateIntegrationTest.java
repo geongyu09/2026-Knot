@@ -53,6 +53,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Tag("integration")
 @ActiveProfiles("dev")
@@ -1137,6 +1140,55 @@ class RecordingTranscriptionStateIntegrationTest {
                         .orElseThrow()
                         .ownerToken()
         ).isEqualTo(other.ownerToken());
+    }
+
+    @Test
+    @DisplayName("업로드 채택 커밋 콜백의 전사 선점도 독립 트랜잭션에 확정되고 다른 owner를 막는다")
+    void claimNext_success_commitsFromAfterCommitCallback() {
+        // given
+        UUID owner = UUID.randomUUID();
+        AtomicReference<RecordingTranscriptionExecution> claimed = new AtomicReference<>();
+        // when
+        transactions.executeWithoutResult(status -> {
+            workspaceRepository.findByIdForUpdate(workspaceId)
+                    .orElseThrow();
+            recordingSessionRepository.findByIdForUpdate(recordingId)
+                    .orElseThrow();
+            recordingTranscriptionStateService.registerAutomatic(recordingId);
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    claimed.set(
+                            recordingTranscriptionStateService.claimNext(
+                                    owner,
+                                    java.time.Duration.ofSeconds(60)
+                            )
+                                    .orElseThrow()
+                    );
+                }
+            });
+        });
+        // then
+        assertThat(claimed.get()).isNotNull();
+        RecordingTranscriptionExecution persisted = transactions.execute(
+                status -> recordingTranscriptionStateService.findProcessing()
+                        .orElseThrow()
+        );
+        assertThat(persisted.ownerToken()).isEqualTo(owner);
+        assertThat(persisted.claimEpoch()).isEqualTo(
+                claimed.get()
+                        .claimEpoch()
+        );
+        assertThat(
+                recordingTranscriptionStateService.findSnapshot(recordingId)
+                        .status()
+        ).isEqualTo(TranscriptionStatus.PROCESSING);
+        assertThat(
+                recordingTranscriptionStateService.claimNext(
+                        UUID.randomUUID(),
+                        java.time.Duration.ofSeconds(60)
+                )
+        ).isEmpty();
     }
 
     private static Stream<AiTranscript> invalidTranscripts() {
