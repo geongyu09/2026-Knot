@@ -68,13 +68,13 @@ class TranscriptSegmentRepositoryIntegrationTest {
         );
 
         // when
-        segments.saveAll(List.of(segment));
+        transcriptSegmentRepository.saveAll(List.of(segment));
 
         // then
         entityManager.flush();
         assertThat(segment.getCreatedAt()).isEqualTo(databaseNow);
         entityManager.clear();
-        assertThat(segments.findAllByTranscriptId(transcriptId)).singleElement()
+        assertThat(transcriptSegmentRepository.findAllByTranscriptId(transcriptId)).singleElement()
                 .extracting(TranscriptSegment::getCreatedAt)
                 .isEqualTo(databaseNow);
     }
@@ -100,7 +100,7 @@ class TranscriptSegmentRepositoryIntegrationTest {
                 .update();
 
         // then
-        assertThat(segments.findAllByTranscriptId(transcriptId)).singleElement()
+        assertThat(transcriptSegmentRepository.findAllByTranscriptId(transcriptId)).singleElement()
                 .extracting(TranscriptSegment::getCreatedAt)
                 .isEqualTo(databaseNow);
     }
