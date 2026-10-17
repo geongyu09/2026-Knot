@@ -171,8 +171,9 @@ const Body = styled.div`
 /**
  * 고정된 패널이 옮겨 오는 자리. 비어 있으면 폭이 0이다.
  *
- * 패널은 포털로 들어오므로 찼는지는 `:has`로 보고,
- * 폭 전환은 패널 등장 모션(`DockablePanel`)과 같은 시간·감속으로 맞춰 함께 밀리는 것처럼 보이게 한다.
+ * 패널은 포털로 들어오므로 찼는지는 `:has`로 보고, 물러나는 중인 패널은 없는 것으로 봐 패널과 함께 좁혀진다.
+ * 폭 전환은 패널 모션(`DockablePanel`)과 같은 시간·감속으로 맞춰 함께 밀리는 것처럼 보이게 한다.
+ * 벌어질 때는 길고 부드럽게, 좁혀질 때는 짧게 움직인다.
  */
 const DockRail = styled.div`
   display: flex;
@@ -180,12 +181,15 @@ const DockRail = styled.div`
   width: 0;
   padding: 1.25rem 0 8.5rem; /* 20px 0 136px */
   transition:
-    width 0.28s cubic-bezier(0.22, 1, 0.36, 1),
-    padding-left 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    width 0.24s cubic-bezier(0.4, 0, 0.2, 1),
+    padding-left 0.24s cubic-bezier(0.4, 0, 0.2, 1);
 
-  &:has(> *) {
+  &:has(> :not([data-overlay-state="closing"])) {
     width: 20rem; /* 320px */
     padding-left: 2.5rem; /* 40px */
+    transition:
+      width 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+      padding-left 0.34s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   @media (prefers-reduced-motion: reduce) {

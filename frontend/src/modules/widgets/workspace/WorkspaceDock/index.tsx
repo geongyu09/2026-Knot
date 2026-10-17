@@ -11,16 +11,16 @@ import { useWorkspaceDock } from "./model/useWorkspaceDock";
 import DockHintTooltip from "./ui/DockHintTooltip";
 import DockRecordingChip from "./ui/DockRecordingChip";
 
-/** 폭이 벌어지는 동안 안의 내용이 뒤따라 나타나는 모션 */
+/** 폭이 벌어지는 동안 안의 내용이 살짝 흐렸다가 또렷해지며 뒤따라 나타나는 모션 */
 const fadeIn = keyframes`
   from {
     opacity: 0;
-  }
-
-  to {
-    opacity: 1;
+    filter: blur(2px);
   }
 `;
+
+/** 독이 늘고 주는 감속. 빠르게 출발해 끝에서 오래 부드럽게 멈춰요 */
+const DOCK_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
 
 /**
  * 화면 하단 가운데에 놓이는 독.
@@ -163,6 +163,9 @@ export default function WorkspaceDock() {
  * 접힘·펼침을 오가는 독 껍데기.
  *
  * 두 모양을 다른 요소로 두면 모션이 끊기므로, 한 요소의 폭만 바꿔 늘고 줄게 해요.
+ * 녹음 칩이 있으면 접힌 폭이 내용만큼(`auto`)이라, `interpolate-size`로 `auto`와 길이 사이도 이어서 움직여요.
+ * 이를 지원하지 않는 브라우저에서는 이때만 모션 없이 바로 바뀌어요.
+ * 펼칠 때는 길게(0.44초), 접을 때는 조금 짧게(0.36초) 움직이고, 안의 내용은 폭이 어느 정도 벌어진 뒤 뒤따라 나타나요.
  */
 const Bar = styled.form<{
   $isExpanded: boolean;
@@ -193,16 +196,17 @@ const Bar = styled.form<{
     $isExpanded ? "1.875rem" : "6.25rem"}; /* 30px : 100px */
   background-color: ${({ theme }) => theme.neutral[800]};
   box-shadow: ${({ theme }) => theme.shadow03};
-  transition:
-    width 0.28s cubic-bezier(0.22, 1, 0.36, 1),
-    padding 0.28s cubic-bezier(0.22, 1, 0.36, 1),
-    border-radius 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  interpolate-size: allow-keywords;
+  transition-property: width, padding, gap, border-radius;
+  transition-duration: ${({ $isExpanded }) =>
+    $isExpanded ? "0.44s" : "0.36s"};
+  transition-timing-function: ${DOCK_EASING};
 
   /* 말풍선은 제 모션이 따로 있으므로 한 줄에 놓이는 것들만 뒤따라 나타나게 해요 */
   & > div,
   & > button,
   & > span {
-    animation: ${fadeIn} 0.28s ease-out;
+    animation: ${fadeIn} 0.28s ease-out 0.06s backwards;
   }
 
   @media (prefers-reduced-motion: reduce) {

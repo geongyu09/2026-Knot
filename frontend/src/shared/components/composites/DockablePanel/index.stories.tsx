@@ -29,7 +29,8 @@ const PanelContent = styled.ul`
  * **어떻게 뜨나**
  * - 트리거 버튼에 포인터를 얹거나 포커스를 주면 패널이 본문 위에 겹쳐 떠요(드롭다운). 잠깐 내용을 훑어볼 때예요.
  * - 버튼을 누르면 겹치는 대신 `dockTargetId` 자리(예: 화면 왼쪽 레일)로 옮겨 가 실제로 폭을 차지해요. 다시 누르면 접혀요.
- * - 어느 쪽으로 뜨든 왼쪽에서 밀려 들어오는 모션으로 나와요. 동작 줄이기 설정을 켠 사용자에게는 모션 없이 바로 나와요.
+ * - 어느 쪽으로 뜨든 왼쪽에서 살며시 밀려 들어오고(0.34초), 닫힐 때는 왼쪽으로 조금 물러나며 옅어져요(0.22초).
+ *   고정을 풀면 패널과 자리가 함께 좁혀져요. 동작 줄이기 설정을 켠 사용자에게는 모션 없이 바로 나오고 사라져요.
  *
  * **동작 규칙**
  * - 포인터가 트리거에서 패널로 건너가는 동안 잠깐 둘 다 벗어나므로, 벗어나자마자 닫지 않고 잠시 기다렸다 닫아요.
@@ -179,16 +180,22 @@ const Body = styled.div`
   min-height: 0;
 `;
 
-/** 고정된 패널이 옮겨 오는 자리. 비어 있으면 폭을 차지하지 않아요 */
+/** 고정된 패널이 옮겨 오는 자리. 비어 있으면 폭을 차지하지 않아요. 벌어지고 좁혀지는 모션은 실제 화면(`WorkspaceLayout`)과 같아요 */
 const DockRail = styled.div`
   display: flex;
   flex-shrink: 0;
   width: 0;
   padding: 1.25rem 0;
+  transition:
+    width 0.24s cubic-bezier(0.4, 0, 0.2, 1),
+    padding-left 0.24s cubic-bezier(0.4, 0, 0.2, 1);
 
-  &:has(> *) {
+  &:has(> :not([data-overlay-state="closing"])) {
     width: 20rem;
     padding-left: 2.5rem;
+    transition:
+      width 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+      padding-left 0.34s cubic-bezier(0.22, 1, 0.36, 1);
   }
 `;
 

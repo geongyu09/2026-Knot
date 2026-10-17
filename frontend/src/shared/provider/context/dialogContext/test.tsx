@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useRef } from "react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DialogProvider, useDialog } from ".";
 
@@ -54,7 +54,31 @@ const renderOpenerPage = () =>
     </DialogProvider>,
   );
 
+/**
+ * jsdom은 CSS 애니메이션을 돌리지 않아서, 닫힘 애니메이션이 하나 도는 브라우저를 흉내 내요.
+ * 돌려받은 `finish`를 부르면 그 애니메이션이 끝나요.
+ */
+const mockRunningExitAnimation = () => {
+  let finish = () => {};
+  const finished = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const animation = {
+    finished,
+    effect: { getComputedTiming: () => ({ endTime: 200 }) },
+  } as unknown as Animation;
+
+  Element.prototype.getAnimations = vi.fn(() => [animation]);
+
+  return { finish };
+};
+
 describe("DialogProvider", () => {
+  afterEach(() => {
+    // @ts-expect-error jsdom에 없던 함수를 흉내 낸 뒤 원래대로 지워요
+    delete Element.prototype.getAnimations;
+  });
+
   it("모달을 연 쪽이 돌려받은 close로 그 모달을 닫는다", () => {
     renderOpenerPage();
 
@@ -85,6 +109,38 @@ describe("DialogProvider", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "첫 모달 열기" }));
     fireEvent.click(screen.getByRole("button", { name: "다음 모달로" }));
+
+    expect(screen.getByRole("dialog", { name: SECOND_LABEL })).toBeVisible();
+    expect(
+      screen.queryByRole("dialog", { name: FIRST_LABEL }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("닫힘 애니메이션이 끝날 때까지 모달을 남겨 두고, 끝나면 지운다", async () => {
+    renderOpenerPage();
+    fireEvent.click(screen.getByRole("button", { name: "첫 모달 열기" }));
+    const { finish } = mockRunningExitAnimation();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "밖에서 첫 모달 닫기" }),
+    );
+
+    expect(screen.getByRole("dialog", { name: FIRST_LABEL })).toBeVisible();
+
+    await act(async () => finish());
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("닫히는 중에 다른 모달을 열면 기다리지 않고 바로 바꾼다", () => {
+    renderOpenerPage();
+    fireEvent.click(screen.getByRole("button", { name: "첫 모달 열기" }));
+    mockRunningExitAnimation();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "밖에서 첫 모달 닫기" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "둘째 모달 열기" }));
 
     expect(screen.getByRole("dialog", { name: SECOND_LABEL })).toBeVisible();
     expect(
