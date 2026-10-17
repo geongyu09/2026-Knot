@@ -22,3 +22,8 @@ CREATE INDEX idx_audio_cleanup_due ON recording_audio_cleanup (next_attempt_at, 
 INSERT INTO recording_audio_cleanup (recording_id, storage_prefix, created_at)
 SELECT s.recording_id, 'recordings/' || s.recording_id || '/', r.started_at
 FROM recording_audio_streams s JOIN recording_sessions r ON r.id = s.recording_id;
+
+-- 접근 철회와 실제 S3 삭제 완료는 별도 상태다. 재가입으로 철회가 해제되지 않는다.
+ALTER TABLE recording_audio_uploads ADD COLUMN revoked_at TIMESTAMPTZ;
+ALTER TABLE recording_audio_uploads ADD CONSTRAINT chk_audio_upload_revocation_time
+    CHECK (revoked_at IS NULL OR revoked_at >= reserved_at);

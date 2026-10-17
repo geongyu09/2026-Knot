@@ -42,3 +42,5 @@ GROUP BY scope;
 실제 PostgreSQL 테스트는 READY 전 raw 보존, 30일 정확한 경계, 부모 삭제 뒤 tombstone 생존, 소속 상실과 freeze/job 종료, 동시 claim, scope 승격과 stale ACK, 저장소 실패 후 반복 sweep를 검증한다. S3 stub은 모든 version·marker 삭제와 prefix 격리를 검증한다. 임시 파일 테스트는 활성 PID·이전 PID·재사용 PID·소유자·권한·링크를 구분한다.
 
 이 구현 단계에서 실제 사용자 객체를 삭제하지 않았다. 신규 PCM 시작은 전체 기능·FE 통합 검증 전까지 기본 비활성을 유지한다. 실제 버킷의 전용 테스트 prefix 정리 검증과 운영 환경 권한 확인은 배포 전 통합 검증에서 수행한다.
+
+실행 설정은 기존 `knot.retention.enabled`, `knot.retention.poll-interval`(기본 1분), `knot.retention.deletion-interval`(기본 5초), `knot.retention.candidate-limit`(기본 20), `knot.retention.execution-lease`(기본 2분)를 공유한다. 별도 정리 executor나 새 스토리지 서비스는 추가하지 않았다. 재시작 임시 파일 정리는 retention flag와 무관하게 ApplicationReady에서 소유권 증거가 있는 이전 프로세스 파일만 처리한다.

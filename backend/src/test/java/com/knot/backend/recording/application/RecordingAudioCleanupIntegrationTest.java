@@ -1,6 +1,11 @@
 package com.knot.backend.recording.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
+import com.knot.backend.recording.application.dto.result.RecordingTranscriptionExecution;
+import com.knot.backend.recording.application.dto.result.AiTranscript;
+import java.util.List;
+import java.util.UUID;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -46,6 +51,8 @@ class RecordingAudioCleanupIntegrationTest {
     @Autowired
     private RecordingAudioDeletionWorker worker;
     @Autowired
+    private RecordingTranscriptionStateService transcriptionState;
+    @Autowired
     private JdbcClient jdbc;
     @Autowired
     private PlatformTransactionManager transactions;
@@ -55,6 +62,8 @@ class RecordingAudioCleanupIntegrationTest {
     private RecordingAudioStorage storage;
     @MockitoBean
     private RecordingAudioFinalizationWorker finalizer;
+    @MockitoBean
+    private RecordingTranscriptionService transcriptions;
 
     @BeforeEach
     void setUp() {
@@ -422,6 +431,154 @@ class RecordingAudioCleanupIntegrationTest {
         assertThat(scope()).isEqualTo("ALL");
     }
 
+    @Test
+    void leavingAndRejoiningCannotAdoptLateAiResult() {
+        // given
+        RecordingTranscriptionExecution execution = queuedExecution();
+        assertThat(transcriptionState.prepare(execution)).isPresent();
+        departAndRejoin();
+        AiTranscript result = new AiTranscript(
+                1,
+                "{}",
+                List.of(
+                        new AiTranscript.Utterance(
+                                0,
+                                "A",
+                                0,
+                                0.001,
+                                "발화"
+                        )
+                )
+        );
+        // when
+        transcriptionState.complete(
+                execution,
+                result
+        );
+        // then
+        assertThat(
+                jdbc.sql("SELECT count(*) FROM transcripts")
+                        .query(Integer.class)
+                        .single()
+        ).isZero();
+        assertThat(
+                jdbc.sql("SELECT count(*) FROM document_generation_batches")
+                        .query(Integer.class)
+                        .single()
+        ).isZero();
+        assertThat(
+                jdbc.sql("SELECT status FROM recording_transcriptions")
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("FAILED");
+        assertThat(
+                column(
+                        "revoked_at",
+                        Instant.class,
+                        "recording_audio_uploads"
+                )
+        ).isEqualTo(NOW);
+        assertThat(
+                column(
+                        "deleted_at",
+                        Instant.class,
+                        "recording_audio_uploads"
+                )
+        ).isNull();
+        assertThat(
+                column(
+                        "quality",
+                        String.class,
+                        "recording_audio_finalizations"
+                )
+        ).isEqualTo("PARTIAL");
+    }
+
+    @Test
+    void leavingAndRejoiningPermanentlyRejectsTranscriptionRetry() {
+        // given
+        RecordingTranscriptionExecution execution = queuedExecution();
+        transcriptionState.fail(
+                execution,
+                "INFERENCE_FAILED"
+        );
+        departAndRejoin();
+        // when
+        Throwable failure = catchThrowable(
+                () -> transcriptionState.retry(
+                        1,
+                        1,
+                        1
+                )
+        );
+        // then
+        assertThat(failure).isInstanceOf(com.knot.backend.recording.domain.RecordingException.class);
+        assertThat(
+                jdbc.sql("SELECT status FROM recording_transcriptions")
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("FAILED");
+    }
+
+    @Test
+    void leavingAndRejoiningPermanentlyRejectsPreparedRemotePost() {
+        // given
+        RecordingTranscriptionExecution execution = queuedExecution();
+        departAndRejoin();
+        // when
+        Optional<RecordingTranscriptionExecution> prepared = transcriptionState.prepare(execution);
+        // then
+        assertThat(prepared).isEmpty();
+        assertThat(
+                column(
+                        "revoked_at",
+                        Instant.class,
+                        "recording_audio_uploads"
+                )
+        ).isEqualTo(NOW);
+    }
+
+    @Test
+    void leavingAndRejoiningRejectsUncertainRetryBeforeRemoteLookup() {
+        // given
+        queuedExecution();
+        departAndRejoin();
+        // when
+        Throwable failure = catchThrowable(
+                () -> transcriptionState.findUncertainRetry(
+                        1,
+                        1,
+                        1
+                )
+        );
+        // then
+        assertThat(failure).isInstanceOf(com.knot.backend.recording.domain.RecordingException.class);
+    }
+
+    private RecordingTranscriptionExecution queuedExecution() {
+        ready();
+        completedUpload(NOW);
+        new TransactionTemplate(transactions).executeWithoutResult(status -> transcriptionState.registerAutomatic(1));
+        return transcriptionState.claimNext(
+                UUID.randomUUID(),
+                Duration.ofMinutes(1)
+        )
+                .orElseThrow();
+    }
+
+    private void departAndRejoin() {
+        jdbc.sql("UPDATE workspace_members SET left_at=now()")
+                .update();
+        new TransactionTemplate(transactions).executeWithoutResult(
+                status -> state.afterDeparture(
+                        1,
+                        1
+                )
+        );
+        jdbc.sql("UPDATE workspace_members SET left_at=NULL")
+                .update();
+    }
+
     private String scope() {
         return column(
                 "scope",
@@ -458,9 +615,9 @@ class RecordingAudioCleanupIntegrationTest {
     private void completedUpload(Instant completedAt) {
         jdbc.sql("""
                 INSERT INTO recording_audio_uploads(recording_id,storage_key,content_type,content_length,
-                    status,reserved_at,completed_at)
+                    status,reserved_at,completed_at,storage_version_id)
                 VALUES (1,'recordings/1/final/1.wav','audio/wav',46,'COMPLETED',CAST(:now AS TIMESTAMPTZ),
-                    CAST(:completed AS TIMESTAMPTZ))
+                    CAST(:completed AS TIMESTAMPTZ),'ready-v1')
                 """)
                 .param(
                         "now",

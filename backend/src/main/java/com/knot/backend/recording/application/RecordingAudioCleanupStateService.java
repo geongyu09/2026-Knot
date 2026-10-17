@@ -2,6 +2,7 @@ package com.knot.backend.recording.application;
 
 import com.knot.backend.global.config.RetentionCleanupProperties;
 import com.knot.backend.recording.domain.model.RecordingAudioCleanup;
+import com.knot.backend.recording.domain.model.RecordingAudioUpload;
 import com.knot.backend.recording.domain.model.RecordingAudioFinalization;
 import com.knot.backend.recording.domain.model.AudioFinalizationStatus;
 import com.knot.backend.recording.domain.model.RecordingAudioCleanupPolicy;
@@ -9,6 +10,7 @@ import com.knot.backend.recording.domain.model.RecordingAudioCleanupScope;
 import com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository;
 import com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository;
 import com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository;
+import com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository;
 import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.time.Clock;
@@ -24,6 +26,7 @@ import org.springframework.transaction.annotation.Propagation;
 @RequiredArgsConstructor
 public class RecordingAudioCleanupStateService {
     private final RecordingAudioCleanupRepository cleanup;
+    private final RecordingAudioUploadRepository uploads;
     private final RecordingSessionRepository sessions;
     private final WorkspaceRepository workspaces;
     private final RecordingAudioStreamRepository streams;
@@ -55,6 +58,7 @@ public class RecordingAudioCleanupStateService {
         sessions.findByIdForUpdate(recordingId);
         streams.findByRecordingIdForUpdate(recordingId);
         finalizations.findByRecordingIdForUpdate(recordingId);
+        Optional<RecordingAudioUpload> upload = uploads.findByRecordingIdForUpdate(recordingId);
         Optional<RecordingAudioCleanup> found = cleanup.findForUpdate(recordingId);
         if (found.isEmpty()) {
             return;
@@ -68,6 +72,7 @@ public class RecordingAudioCleanupStateService {
             return;
         }
         if (policy.scope() == RecordingAudioCleanupScope.ALL) {
+            upload.ifPresent(value -> value.revoke(now));
             streams.findByRecordingIdForUpdate(recordingId)
                     .ifPresent(stream -> stream.freeze());
             finalizations.findByRecordingIdForUpdate(recordingId)
