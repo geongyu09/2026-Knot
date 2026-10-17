@@ -127,35 +127,10 @@ public class RecordingAudioFinalizationWorker {
             }
             AudioFinalizationInput source = input.orElseThrow();
             checkpoint.run();
-            StoredAudioChunk stored = storage.findStoredFinal(source.storageKey());
-            if (!stored.exists()) {
-                try (FinalizedAudioFile file = assembler.assemble(
-                        source.parts(),
-                        source.totalFrames(),
-                        checkpoint
-                )) {
-                    checkpoint.run();
-                    stored = storage.uploadFinal(
-                            source.storageKey(),
-                            file.path(),
-                            file.byteLength(),
-                            file.checksumSha256()
-                    );
-                }
-            } else {
-                // 응답 유실 복구도 같은 고정 manifest에서 만든 checksum과 비교한다.
-                try (FinalizedAudioFile file = assembler.assemble(
-                        source.parts(),
-                        source.totalFrames(),
-                        checkpoint
-                )) {
-                    if (stored.byteLength() != file.byteLength() || !"audio/wav".equals(stored.contentType())
-                            || !file.checksumSha256()
-                                    .equals(stored.checksumSha256())) {
-                        throw new RecordingException(RecordingErrorCode.AUDIO_CHUNK_MISMATCH);
-                    }
-                }
-            }
+            StoredAudioChunk stored = storeFinal(
+                    source,
+                    checkpoint
+            );
             checkpoint.run();
             transaction.adopt(
                     claim,
@@ -170,7 +145,7 @@ public class RecordingAudioFinalizationWorker {
             try {
                 transaction.fail(
                         claim,
-                        retryable ? "AUDIO_STORAGE_UNAVAILABLE" : "AUDIO_CHUNK_MISMATCH",
+                        failureCode(retryable),
                         retryable
                 );
             } catch (AudioFinalizationLeaseLostException ignored) {
@@ -178,6 +153,54 @@ public class RecordingAudioFinalizationWorker {
         } finally {
             renewal.cancel(false);
         }
+    }
+
+    private StoredAudioChunk storeFinal(
+            AudioFinalizationInput source,
+            Runnable checkpoint
+    ) throws java.io.IOException {
+        StoredAudioChunk existing = storage.findStoredFinal(source.storageKey());
+        try (FinalizedAudioFile file = assembler.assemble(
+                source.parts(),
+                source.totalFrames(),
+                checkpoint
+        )) {
+            checkpoint.run();
+            if (!existing.exists()) {
+                return storage.uploadFinal(
+                        source.storageKey(),
+                        file.path(),
+                        file.byteLength(),
+                        file.checksumSha256()
+                );
+            }
+            validateExistingFinal(
+                    existing,
+                    file
+            );
+            return existing;
+        }
+    }
+
+    private void validateExistingFinal(
+            StoredAudioChunk stored,
+            FinalizedAudioFile file
+    ) {
+        if (stored.checksumSha256() == null || stored.versionId() == null) {
+            throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+        }
+        if (stored.byteLength() != file.byteLength() || !"audio/wav".equals(stored.contentType())
+                || !file.checksumSha256()
+                        .equals(stored.checksumSha256())) {
+            throw new RecordingException(RecordingErrorCode.AUDIO_CHUNK_MISMATCH);
+        }
+    }
+
+    private String failureCode(boolean retryable) {
+        if (retryable) {
+            return "AUDIO_STORAGE_UNAVAILABLE";
+        }
+        return "AUDIO_CHUNK_MISMATCH";
     }
 
     @PreDestroy

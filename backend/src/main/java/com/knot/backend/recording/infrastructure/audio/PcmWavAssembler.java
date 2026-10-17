@@ -68,10 +68,8 @@ public class PcmWavAssembler implements RecordingAudioAssembler {
         Path file = null;
         try {
             // 실행자가 만든 파일만 삭제한다. 다른 실행자의 임시 파일을 검색하거나 정리하지 않는다.
-            file = Files.createTempFile(
-                    directory,
-                    "knot-recording-wav-",
-                    ".tmp",
+            file = Files.createFile(
+                    directory.resolve(temporaryFilePrefix() + ".tmp"),
                     PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------"))
             );
             MessageDigest digest = digest();
@@ -89,14 +87,14 @@ public class PcmWavAssembler implements RecordingAudioAssembler {
                                 part.byteLength(),
                                 checkpoint
                         );
-                    } else {
-                        copyPart(
-                                part,
-                                output,
-                                buffer,
-                                checkpoint
-                        );
+                        continue;
                     }
+                    copyPart(
+                            part,
+                            output,
+                            buffer,
+                            checkpoint
+                    );
                 }
                 checkpoint.run();
             }
@@ -216,6 +214,17 @@ public class PcmWavAssembler implements RecordingAudioAssembler {
         if (offset != totalFrames) {
             throw new RecordingException(RecordingErrorCode.INVALID_AUDIO_CHUNK);
         }
+    }
+
+    private String temporaryFilePrefix() {
+        long pid = ProcessHandle.current()
+                .pid();
+        long startedAt = ProcessHandle.current()
+                .info()
+                .startInstant()
+                .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE))
+                .toEpochMilli();
+        return "knot-recording-wav-" + pid + "-" + startedAt + "-" + java.util.UUID.randomUUID();
     }
 
     private byte[] header(long dataLength) {

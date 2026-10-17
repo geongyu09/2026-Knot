@@ -267,6 +267,23 @@ public class RecordingAudioFinalization {
         releaseOwner();
     }
 
+    public String audioSaveStatus() {
+        return switch (status) {
+            case QUEUED -> queuedAudioSaveStatus();
+            case PROCESSING -> "FINALIZING";
+            case READY -> "READY";
+            case FAILED -> "FAILED";
+            case DISCARDED -> "DISCARDED";
+        };
+    }
+
+    private String queuedAudioSaveStatus() {
+        if (manifestJson == null) {
+            return "DRAINING";
+        }
+        return "FINALIZING";
+    }
+
     public boolean canRetry() {
         return status == AudioFinalizationStatus.FAILED && retryable;
     }

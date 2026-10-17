@@ -8,6 +8,7 @@ public record AudioManifestPart(
         String checksumSha256,
         String versionId
 ) {
+    @com.fasterxml.jackson.annotation.JsonIgnore
     public boolean isMissing() {
         return versionId == null;
     }
