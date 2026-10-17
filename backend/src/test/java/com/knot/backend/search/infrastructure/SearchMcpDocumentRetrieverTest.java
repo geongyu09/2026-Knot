@@ -16,6 +16,7 @@ import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.search.domain.SearchToolException;
 import com.knot.backend.search.infrastructure.mcp.SearchMcpClient;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -454,6 +455,133 @@ class SearchMcpDocumentRetrieverTest {
     }
 
     @Test
+    @DisplayName("다음 탐색 요청에는 기본 문맥과 가장 최근 도구 결과만 전달한다")
+    void retrieve_successRetainsLatestToolExchange() {
+        String searchMarker = "previous-search-result".repeat(100);
+        String listMarker = "previous-list-result".repeat(40);
+        List<List<Map<String, Object>>> requests = new ArrayList<>();
+        int[] responseIndex = {0};
+        JsonNode[] responses = {turnWithCalls(
+                List.of(
+                        toolCall(
+                                "search",
+                                "search_documents",
+                                "{\"query\":\"결정\"}"
+                        ),
+                        toolCall(
+                                "list",
+                                "list_documents",
+                                "{\"topic\":\"결정\"}"
+                        )
+                )
+        ), turn("read",
+                "read_document",
+                "{\"documentId\":1}"
+        ), mapper.readTree("{\"role\":\"assistant\",\"content\":\"탐색 완료\"}")};
+        when(history.beforeQuestion(scope)).thenReturn(
+                List.of(
+                        Map.of(
+                                "role",
+                                "user",
+                                "content",
+                                "이전 질문"
+                        ),
+                        Map.of(
+                                "role",
+                                "assistant",
+                                "content",
+                                "이전 답변"
+                        )
+                )
+        );
+        when(
+                llm.complete(
+                        eq(scope),
+                        any(),
+                        any()
+                )
+        ).thenAnswer(invocation -> {
+            List<Map<String, Object>> messages = invocation.getArgument(1);
+            requests.add(new ArrayList<>(messages));
+            return responses[responseIndex[0]++];
+        });
+        when(
+                mcp.call(
+                        eq(scope),
+                        eq("search_documents"),
+                        any()
+                )
+        ).thenReturn(
+                mapper.valueToTree(
+                        Map.of(
+                                "items",
+                                List.of(
+                                        Map.of(
+                                                "documentId",
+                                                1,
+                                                "snippet",
+                                                searchMarker
+                                        )
+                                )
+                        )
+                )
+        );
+        when(
+                mcp.call(
+                        eq(scope),
+                        eq("list_documents"),
+                        any()
+                )
+        ).thenReturn(
+                mapper.valueToTree(
+                        Map.of(
+                                "items",
+                                List.of(
+                                        Map.of(
+                                                "documentId",
+                                                2,
+                                                "snippet",
+                                                listMarker
+                                        )
+                                )
+                        )
+                )
+        );
+        when(
+                mcp.call(
+                        eq(scope),
+                        eq("read_document"),
+                        any()
+                )
+        ).thenReturn(
+                mapper.readTree(
+                        "{\"document\":{\"documentId\":1,\"title\":\"회의\",\"topic\":\"결정\",\"contentRevision\":\"r1\"},\"content\":\"최신 읽기 결과\",\"offset\":0,\"truncated\":false,\"nextCursor\":null}"
+                )
+        );
+
+        SearchRetrievalResult result = retriever.retrieve(
+                scope,
+                "현재 질문"
+        );
+
+        assertThat(requests).hasSize(3);
+        assertThat(mapper.writeValueAsString(requests.get(1))).contains(searchMarker)
+                .contains(listMarker);
+        assertThat(mapper.writeValueAsString(requests.get(2))).contains("현재 질문")
+                .contains("이전 질문")
+                .contains("이전 답변")
+                .contains("최신 읽기 결과")
+                .doesNotContain(searchMarker)
+                .doesNotContain(listMarker);
+        assertThat(result.documents()).hasSize(1);
+        assertThat(
+                result.documents()
+                        .getFirst()
+                        .content()
+        ).isEqualTo("최신 읽기 결과");
+    }
+
+    @Test
     @DisplayName("검색에 성공했지만 후보를 읽지 않으면 결과 없음으로 완료하지 않는다")
     void retrieve_failure_unreadCandidates() {
         when(
@@ -784,26 +912,44 @@ class SearchMcpDocumentRetrieverTest {
             String name,
             String arguments
     ) {
+        return turnWithCalls(
+                List.of(
+                        toolCall(
+                                id,
+                                name,
+                                arguments
+                        )
+                )
+        );
+    }
+
+    private JsonNode turnWithCalls(List<Map<String, Object>> calls) {
         return mapper.valueToTree(
                 Map.of(
                         "role",
                         "assistant",
                         "tool_calls",
-                        List.of(
-                                Map.of(
-                                        "id",
-                                        id,
-                                        "type",
-                                        "function",
-                                        "function",
-                                        Map.of(
-                                                "name",
-                                                name,
-                                                "arguments",
-                                                arguments
-                                        )
-                                )
-                        )
+                        calls
+                )
+        );
+    }
+
+    private Map<String, Object> toolCall(
+            String id,
+            String name,
+            String arguments
+    ) {
+        return Map.of(
+                "id",
+                id,
+                "type",
+                "function",
+                "function",
+                Map.of(
+                        "name",
+                        name,
+                        "arguments",
+                        arguments
                 )
         );
     }
