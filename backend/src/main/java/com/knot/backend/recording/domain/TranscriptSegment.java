@@ -48,11 +48,14 @@ public class TranscriptSegment {
             Integer speakerNumber,
             String text
     ) {
-        if (transcriptId <= 0 || position < 0 || startMillis < 0
-                || (endMillis != null && (endMillis < startMillis || endMillis > RecordingSession.MAX_RECORDING_MILLIS))
-                || (speakerNumber != null && speakerNumber < 1) || text == null || text.isBlank()) {
-            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
-        }
+        validateTranscriptId(transcriptId);
+        validatePosition(position);
+        validateTimeRange(
+                startMillis,
+                endMillis
+        );
+        validateSpeakerNumber(speakerNumber);
+        validateText(text);
         this.transcriptId = transcriptId;
         this.position = position;
         this.startMillis = startMillis;
@@ -125,4 +128,42 @@ public class TranscriptSegment {
         );
     }
 
+    private void validateTranscriptId(long transcriptId) {
+        if (transcriptId <= 0) {
+            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
+        }
+    }
+
+    private void validatePosition(int position) {
+        if (position < 0) {
+            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
+        }
+    }
+
+    private void validateTimeRange(
+            long startMillis,
+            Long endMillis
+    ) {
+        if (startMillis < 0) {
+            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
+        }
+        if (endMillis != null && endMillis < startMillis) {
+            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
+        }
+        if (endMillis != null && endMillis > RecordingSession.MAX_RECORDING_MILLIS) {
+            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
+        }
+    }
+
+    private void validateSpeakerNumber(Integer speakerNumber) {
+        if (speakerNumber != null && speakerNumber < 1) {
+            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
+        }
+    }
+
+    private void validateText(String text) {
+        if (text == null || text.isBlank()) {
+            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
+        }
+    }
 }
