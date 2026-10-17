@@ -9,11 +9,11 @@ import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationAcceptanceResult;
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationResult;
-import com.knot.backend.workspace.domain.Workspace;
-import com.knot.backend.workspace.domain.WorkspaceMember;
-import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
-import com.knot.backend.workspace.domain.WorkspaceMemberRole;
-import com.knot.backend.workspace.domain.WorkspaceRepository;
+import com.knot.backend.workspace.domain.model.Workspace;
+import com.knot.backend.workspace.domain.model.WorkspaceMember;
+import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.model.WorkspaceMemberRole;
+import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -38,7 +38,6 @@ import org.springframework.test.context.TestConstructor;
 @SpringBootTest
 @TestConstructor(autowireMode = TestConstructor.AutowireMode.ALL)
 class WorkspaceInvitationAcceptanceServiceIntegrationTest {
-    private final WorkspaceInvitationAcceptanceService acceptanceService;
     private final WorkspaceInvitationService invitationService;
     private final MemberRepository memberRepository;
     private final WorkspaceRepository workspaceRepository;
@@ -46,14 +45,12 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
     private final JdbcClient jdbcClient;
 
     WorkspaceInvitationAcceptanceServiceIntegrationTest(
-            WorkspaceInvitationAcceptanceService acceptanceService,
             WorkspaceInvitationService invitationService,
             MemberRepository memberRepository,
             WorkspaceRepository workspaceRepository,
             WorkspaceMemberRepository workspaceMemberRepository,
             JdbcClient jdbcClient
     ) {
-        this.acceptanceService = acceptanceService;
         this.invitationService = invitationService;
         this.memberRepository = memberRepository;
         this.workspaceRepository = workspaceRepository;
@@ -74,7 +71,7 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
                     5,
                     TimeUnit.SECONDS
             );
-            return acceptanceService.accept(
+            return invitationService.accept(
                     fixture.invitation()
                             .code(),
                     uniqueRemoteAddress(),
@@ -90,7 +87,7 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
             );
 
             // then
-            assertThat(results).extracting(WorkspaceInvitationAcceptanceResult::created)
+            assertThat(results).extracting(WorkspaceInvitationAcceptanceResult::membershipCreated)
                     .containsExactlyInAnyOrder(
                             true,
                             false
@@ -120,7 +117,7 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
                     5,
                     TimeUnit.SECONDS
             );
-            return acceptanceService.accept(
+            return invitationService.accept(
                     fixture.invitation()
                             .linkToken(),
                     uniqueRemoteAddress(),
@@ -132,7 +129,7 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
                     5,
                     TimeUnit.SECONDS
             );
-            return acceptanceService.accept(
+            return invitationService.accept(
                     fixture.invitation()
                             .linkToken(),
                     uniqueRemoteAddress(),
@@ -149,7 +146,7 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
             );
 
             // then
-            assertThat(results).extracting(WorkspaceInvitationAcceptanceResult::created)
+            assertThat(results).extracting(WorkspaceInvitationAcceptanceResult::membershipCreated)
                     .containsOnly(true);
             assertThat(
                     countMemberships(
@@ -180,7 +177,7 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
 
         // when
         Throwable thrown = catchThrowable(
-                () -> acceptanceService.accept(
+                () -> invitationService.accept(
                         fixture.invitation()
                                 .linkToken(),
                         uniqueRemoteAddress(),

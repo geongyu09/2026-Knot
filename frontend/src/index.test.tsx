@@ -2,8 +2,11 @@ import { useDialog } from "@provider/context/dialogContext";
 import CenteredLayout from "@pages/_layout/CenteredLayout";
 import { useToast } from "@provider/context/toastContext";
 import { act, fireEvent, screen } from "@testing-library/react";
+import posthog from "posthog-js";
 import { useNavigate } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("posthog-js", () => ({ default: { init: vi.fn() } }));
 
 const { NEXT_PATH, NEXT_TEXT } = vi.hoisted(() => ({
   NEXT_PATH: "/next",
@@ -102,5 +105,39 @@ describe("앱 진입점", () => {
     fireEvent.click(screen.getByRole("button", { name: "복사 실패 알리기" }));
 
     expect(await screen.findByText(COPY_FAILED)).toBeInTheDocument();
+  });
+
+  // 모듈을 다시 불러오면 위 테스트가 쓰는 dialogContext와 어긋나므로 이 묶음은 맨 뒤에 둬요
+  describe("PostHog 사용 기록", () => {
+    beforeEach(() => {
+      vi.resetModules();
+      // 모듈을 다시 읽은 Provider와 이전 테스트 화면의 Context가 섞이지 않게 해요.
+      vi.doMock("./App", () => ({ default: () => null }));
+      document.body.innerHTML = '<div id="root"></div>';
+    });
+
+    afterEach(() => {
+      vi.doUnmock("./App");
+      vi.unstubAllEnvs();
+      vi.mocked(posthog.init).mockClear();
+    });
+
+    it("키와 주소가 있으면 사용 기록을 켠다", async () => {
+      vi.stubEnv("POSTHOG_KEY", "phc_test");
+      vi.stubEnv("POSTHOG_HOST", "https://us.i.posthog.com");
+
+      await import("./index");
+
+      expect(posthog.init).toHaveBeenCalledWith(
+        "phc_test",
+        expect.objectContaining({ api_host: "https://us.i.posthog.com" }),
+      );
+    });
+
+    it("키가 없으면 사용 기록을 켜지 않는다", async () => {
+      await import("./index");
+
+      expect(posthog.init).not.toHaveBeenCalled();
+    });
   });
 });

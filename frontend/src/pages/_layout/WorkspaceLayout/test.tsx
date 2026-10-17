@@ -1,6 +1,14 @@
+import { GetDocumentResponseDto } from "@api/dto/document";
+import { GetSearchMessagesResponseDto } from "@api/dto/search";
 import { LAST_VIEWED_WORKSPACE_API_PATH } from "@api/fetch/api/v1/members/me/lastViewedWorkspace";
+import { documentDetailsResponse } from "@api/mock/responses/document";
 import { workspaceDetailResponse } from "@api/mock/responses/workspace";
-import { SEARCH_MESSAGES_MOCK } from "@hooks/domain/search/useSearchMessages/mock";
+import {
+  searchAnswerStreamResponse,
+  searchConversationsResponse,
+  searchMessagesResponse,
+  searchQuestionAnswerStreamResponse,
+} from "@api/mock/responses/search";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
 import CenteredLayout from "@pages/_layout/CenteredLayout";
@@ -9,9 +17,12 @@ import { useDialog } from "@provider/context/dialogContext";
 import { useToast } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
+import { useSearchAnswerStore } from "@store/searchAnswerStore";
+import { useTranscriptPanelStore } from "@store/transcriptPanelStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -20,7 +31,9 @@ import {
 } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import SearchConversation from "@widgets/search/SearchConversation";
+import type { ReactNode } from "react";
 
 import WorkspaceLayout from ".";
 import { WORKSPACE_DOCK_RAIL_ID } from "./constants/dockRail";
@@ -30,13 +43,37 @@ const HOME_PATH = getRouterPath({
   routeKey: "WORKSPACE_HOME",
   params: { workspaceId: String(WORKSPACE_ID) },
 });
+const [firstDocument, secondDocument] = documentDetailsResponse.map(
+  (response) => new GetDocumentResponseDto(response),
+);
+const DOCUMENT_PATH = getRouterPath({
+  routeKey: "DOCUMENT",
+  params: {
+    workspaceId: String(WORKSPACE_ID),
+    documentId: String(firstDocument.id),
+  },
+});
+const OTHER_DOCUMENT_PATH = getRouterPath({
+  routeKey: "DOCUMENT",
+  params: {
+    workspaceId: String(WORKSPACE_ID),
+    documentId: String(secondDocument.id),
+  },
+});
+const DOCUMENT_TEXT = "문서 본문";
+const TRANSCRIPT_PANEL_TITLE = "원문";
+/** 원문이 닫혀 있을 때의 버튼 이름 */
+const OPEN_LABEL = "원문 보기";
+/** 원문이 열려 있을 때의 버튼 이름 */
+const CLOSE_LABEL = "원문 닫기";
 const CHAT_PATH = getRouterPath({
   routeKey: "CHAT",
   params: { workspaceId: String(WORKSPACE_ID) },
 });
+const CONVERSATION_ID = "10";
 const CONVERSATION_PATH = getRouterPath({
   routeKey: "CHAT_SESSION",
-  params: { workspaceId: String(WORKSPACE_ID), sessionId: "10" },
+  params: { workspaceId: String(WORKSPACE_ID), sessionId: CONVERSATION_ID },
 });
 const TOAST_PATH = `${HOME_PATH}/toast`;
 const ELSEWHERE_PATH = "/elsewhere";
@@ -81,7 +118,13 @@ function ToastDialog() {
   );
 }
 
-const renderLayout = (initialPath = HOME_PATH) => {
+/**
+ * @param chatElement - 탐색 화면 자리에 그릴 것. 탐색 흐름을 확인할 때만 실제 대화 칸을 넘겨요
+ */
+const renderLayout = (
+  initialPath = HOME_PATH,
+  chatElement: ReactNode = <p>{CHAT_TEXT}</p>,
+) => {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -98,8 +141,9 @@ const renderLayout = (initialPath = HOME_PATH) => {
           path: `${PATH_ROUTE.WORKSPACE_HOME}/toast`,
           element: <ToastTriggerPage />,
         },
-        { path: PATH_ROUTE.CHAT, element: <p>{CHAT_TEXT}</p> },
-        { path: PATH_ROUTE.CHAT_SESSION, element: <p>{CHAT_TEXT}</p> },
+        { path: PATH_ROUTE.CHAT, element: chatElement },
+        { path: PATH_ROUTE.CHAT_SESSION, element: chatElement },
+        { path: PATH_ROUTE.DOCUMENT, element: <p>{DOCUMENT_TEXT}</p> },
       ],
     },
     {
@@ -133,10 +177,12 @@ const renderLayout = (initialPath = HOME_PATH) => {
     </ThemeProvider>,
   );
 
-  return { router };
+  return { router, queryClient };
 };
 
-const answers = SEARCH_MESSAGES_MOCK.filter(({ role }) => role === "ASSISTANT");
+const answers = new GetSearchMessagesResponseDto(
+  searchMessagesResponse,
+).items.filter(({ role }) => role === "ASSISTANT");
 const [answerWithEvidence] = answers.filter(
   ({ evidences }) => evidences.length > 0,
 );
@@ -524,5 +570,671 @@ describe("WorkspaceLayout", () => {
     await act(() => router.navigate(-1));
     expect(await screen.findByRole("button", { name: `${SAVED} 알리기` })).toBeVisible();
     expect(screen.getByTestId("toast-list")).toBeEmptyDOMElement();
+  });
+});
+
+describe("WorkspaceLayout의 원문 패널", () => {
+  /**
+   * 원문을 여닫은 적이 없는 처음 상태에서 레이아웃을 그려요.
+   * 열림 여부는 전역 저장소와 브라우저에 남아 테스트끼리 이어지므로, 그리기 전에 둘 다 되돌려요
+   */
+  const renderLayoutAsFirstVisit = (initialPath = DOCUMENT_PATH) => {
+    localStorage.clear();
+    useTranscriptPanelStore.setState({ isOpenThisVisit: null });
+
+    return renderLayout(initialPath);
+  };
+
+  /** 새로고침하고 다시 들어온 것처럼 화면과 이번 방문에서 정한 값을 지워요. 브라우저에 남긴 값은 그대로 둬요 */
+  const startNewVisit = () => {
+    cleanup();
+    useTranscriptPanelStore.setState({ isOpenThisVisit: null });
+  };
+
+  const getTranscriptPanel = () =>
+    screen.getByRole("region", { name: TRANSCRIPT_PANEL_TITLE });
+
+  const queryTranscriptPanel = () =>
+    screen.queryByRole("region", { name: TRANSCRIPT_PANEL_TITLE });
+
+  const findToggle = (name: string) =>
+    within(screen.getByRole("banner")).findByRole("button", { name });
+
+  /**
+   * 회원 정보를 받을 때까지 기다려요. GNB의 프로필에 회원의 이미지가 뜨면 받은 거예요.
+   * 회원 정보를 받기 전과 닫아 둔 회원은 화면이 같아, 원문 버튼만 봐서는 받았는지 알 수 없어요
+   */
+  const waitForMember = () =>
+    waitFor(() => {
+      expect(
+        screen.getByRole("img", { name: "내 프로필" }).querySelector("img"),
+      ).toBeInTheDocument();
+    });
+
+  it("문서를 보는 화면에서는 GNB 오른쪽에 원문 버튼을 두고, 원문을 여닫은 적이 없는 회원에게는 오른쪽 레일에 원문 패널을 열어 둔다 (DOC-R3)", async () => {
+    renderLayoutAsFirstVisit();
+
+    expect(await screen.findByText(DOCUMENT_TEXT)).toBeInTheDocument();
+    expect(await findToggle(CLOSE_LABEL)).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    const panel = getTranscriptPanel();
+    const main = screen.getByRole("main");
+    const body = getBody();
+
+    // 본문 바깥의 형제 칸에 놓여야 원문을 열었을 때 문서 폭이 줄어요
+    expect(main).not.toContainElement(panel);
+    expect(body?.children).toHaveLength(3);
+    expect(body?.lastElementChild).toContainElement(panel);
+  });
+
+  // 레일은 여닫힘을 폭으로 옮겨 가도록 문서 화면에서 늘 두므로, 닫힘은 레일이 비었는지로 봐요(폭은 jsdom이 계산하지 못해요)
+  it("원문 버튼을 누르면 원문 패널을 닫아 오른쪽 레일을 비우고, 다시 누르면 연다", async () => {
+    renderLayoutAsFirstVisit();
+    expect(await screen.findByText(DOCUMENT_TEXT)).toBeInTheDocument();
+
+    fireEvent.click(await findToggle(CLOSE_LABEL));
+
+    expect(queryTranscriptPanel()).not.toBeInTheDocument();
+    expect(getBody()?.lastElementChild).toBeEmptyDOMElement();
+
+    fireEvent.click(await findToggle(OPEN_LABEL));
+
+    expect(getBody()?.lastElementChild).toContainElement(getTranscriptPanel());
+  });
+
+  it("원문을 닫아 둔 회원이 다른 문서로 다시 들어오면 원문 패널을 닫아 둔다 (DOC-R3)", async () => {
+    renderLayoutAsFirstVisit();
+    expect(await screen.findByText(DOCUMENT_TEXT)).toBeInTheDocument();
+    fireEvent.click(await findToggle(CLOSE_LABEL));
+
+    startNewVisit();
+    renderLayout(OTHER_DOCUMENT_PATH);
+    expect(await screen.findByText(DOCUMENT_TEXT)).toBeInTheDocument();
+    await waitForMember();
+
+    expect(await findToggle(OPEN_LABEL)).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(queryTranscriptPanel()).not.toBeInTheDocument();
+  });
+
+  it("워크스페이스를 조회하는 동안에는 원문 패널을 두지 않는다", async () => {
+    holdWorkspaceResponse();
+    renderLayoutAsFirstVisit();
+
+    // 회원 정보를 받아 열림으로 정해진 뒤에도, 들어갈 수 있는 워크스페이스인지 알기 전에는 원문을 불러오지 않아요
+    expect(await findToggle(CLOSE_LABEL)).toBeInTheDocument();
+    expect(queryTranscriptPanel()).not.toBeInTheDocument();
+  });
+
+  it("홈 화면에서는 원문 버튼과 원문 패널 자리를 두지 않는다", async () => {
+    renderLayoutAsFirstVisit(HOME_PATH);
+
+    expect(await screen.findByText(HOME_TEXT)).toBeInTheDocument();
+    await waitForMember();
+
+    expect(
+      screen.queryByRole("button", { name: /^원문/ }),
+    ).not.toBeInTheDocument();
+    expect(queryTranscriptPanel()).not.toBeInTheDocument();
+    expect(getBody()?.children).toHaveLength(2);
+  });
+
+  it("탐색 화면에서는 원문 버튼을 두지 않는다", async () => {
+    renderLayoutAsFirstVisit(CONVERSATION_PATH);
+
+    expect(await screen.findByText(CHAT_TEXT)).toBeInTheDocument();
+    await waitForMember();
+
+    expect(
+      screen.queryByRole("button", { name: /^원문/ }),
+    ).not.toBeInTheDocument();
+    expect(queryTranscriptPanel()).not.toBeInTheDocument();
+  });
+});
+
+describe("WorkspaceLayout의 탐색 질문 흐름", () => {
+  const MESSAGES_PATH =
+    "*/api/v1/workspaces/:workspaceId/search/conversations/:conversationId/messages";
+  const SEARCH_CONVERSATIONS_PATH =
+    "*/api/v1/workspaces/:workspaceId/search/conversations";
+  const SEARCH_QUESTIONS_PATH =
+    "*/api/v1/workspaces/:workspaceId/search/conversations/:conversationId/questions";
+  const SEARCH_ANSWER_RETRY_PATH =
+    "*/api/v1/workspaces/:workspaceId/search/conversations/:conversationId/questions/:questionId/retry";
+  const FAILED_TEXT = "답변을 만들지 못했어요. 잠시 후 다시 시도해 주세요.";
+  const QUESTION = "DB는 뭘로 정했어?";
+  const FOLLOW_UP_QUESTION = "초기 스키마는 누가 정리했어?";
+
+  const encoder = new TextEncoder();
+
+  /** 서버가 보내는 SSE 프레임 한 개예요 */
+  const toFrame = (event: string, data: object) =>
+    `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+
+  /** 이번 테스트에서만 그 경로의 SSE 응답을 열어 두고, 테스트가 프레임을 하나씩 흘려보내게 해요 */
+  const respondWithControlledSse = (path: string) => {
+    let stream: ReadableStreamDefaultController<Uint8Array> | undefined;
+    mockServer.use(
+      http.post(
+        path,
+        () =>
+          new HttpResponse(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                stream = controller;
+              },
+            }),
+            { headers: { "Content-Type": "text/event-stream" } },
+          ),
+      ),
+    );
+
+    return {
+      waitForOpen: () => waitFor(() => expect(stream).toBeDefined()),
+      send: (event: string, data: object) =>
+        stream?.enqueue(encoder.encode(toFrame(event, data))),
+    };
+  };
+
+  /** 이번 테스트에서만 메시지 조회를 넘긴 메시지로 답하고, 조회 횟수를 세요 */
+  const respondMessages = (items: object[]) => {
+    const requests = { count: 0 };
+    mockServer.use(
+      http.get(MESSAGES_PATH, ({ params }) => {
+        requests.count += 1;
+
+        return HttpResponse.json({
+          ...searchMessagesResponse,
+          conversationId: Number(params.conversationId),
+          items,
+        });
+      }),
+    );
+
+    return requests;
+  };
+
+  /** 독에 질문을 적어 보내기를 눌러요 */
+  const sendFromDock = async (question: string) => {
+    fireEvent.change(
+      await screen.findByRole("textbox", { name: "무엇이든 요청하세요" }),
+      { target: { value: question } },
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "보내기" }));
+    });
+  };
+
+  const getConversation = () => screen.getByRole("region", { name: "대화" });
+
+  /**
+   * 대화 칸에서 글자를 기다려요. 주소가 바뀌면 대화 칸이 새로 그려지므로, 기다리는 동안 대화 칸을 매번 다시 찾아요.
+   * 한 번 찾은 대화 칸 안에서만 기다리면 주소 이동 직후 사라질 이전 칸을 붙잡고 끝까지 찾지 못해요.
+   */
+  const findInConversation = (text: string) =>
+    waitFor(() => within(getConversation()).getByText(text));
+
+  afterEach(() => {
+    // 전역 저장소라 테스트끼리 답변이 새지 않게 비워요
+    useSearchAnswerStore.getState().abort();
+  });
+
+  it("새 대화 화면에서 독으로 보낸 질문과 흘러드는 답변을 보여주고, 접수된 대화 주소로 옮겨 간다 (SEARCH-R1)", async () => {
+    const { conversationId, questionMessageId, answerMessageId, deltas, evidences } =
+      searchAnswerStreamResponse;
+    const answerText = deltas.join("");
+    const messagesRequests = respondMessages([
+      {
+        ...searchMessagesResponse.items[0],
+        id: questionMessageId,
+        content: QUESTION,
+      },
+      {
+        ...searchMessagesResponse.items[1],
+        id: answerMessageId,
+        content: answerText,
+        evidences,
+      },
+    ]);
+    const stream = respondWithControlledSse(SEARCH_CONVERSATIONS_PATH);
+    const { router, queryClient } = renderLayout(
+      CHAT_PATH,
+      <SearchConversation />,
+    );
+
+    await sendFromDock(QUESTION);
+    await stream.waitForOpen();
+
+    expect(within(getConversation()).getByText(QUESTION)).toBeInTheDocument();
+
+    stream.send("accepted", { conversationId, questionMessageId, answerMessageId });
+    await waitForPath(
+      router,
+      getRouterPath({
+        routeKey: "CHAT_SESSION",
+        params: {
+          workspaceId: String(WORKSPACE_ID),
+          sessionId: String(conversationId),
+        },
+      }),
+    );
+
+    stream.send("delta", { answerMessageId, text: deltas[0] });
+    expect(
+      await findInConversation(deltas[0].trim()),
+    ).toBeInTheDocument();
+
+    stream.send("delta", { answerMessageId, text: deltas[1] });
+    expect(
+      await findInConversation(`${deltas[0]}${deltas[1]}`.trim()),
+    ).toBeInTheDocument();
+
+    deltas
+      .slice(2)
+      .forEach((text) => stream.send("delta", { answerMessageId, text }));
+    stream.send("evidence", { answerMessageId, items: evidences });
+    stream.send("completed", { answerMessageId, status: "COMPLETED" });
+
+    expect(
+      await screen.findByRole("button", {
+        name: `기록 ${evidences.length}개에서 찾았어요`,
+      }),
+    ).toBeInTheDocument();
+    // 조회는 대화 주소로 옮겨 갈 때 한 번, 답변이 끝나 무효화한 뒤 한 번 해요
+    await waitFor(() => expect(messagesRequests.count).toBe(2));
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+    expect(
+      within(getConversation()).getAllByText(answerText),
+    ).toHaveLength(1);
+    expect(within(getConversation()).getAllByText(QUESTION)).toHaveLength(1);
+    expect(within(getConversation()).getAllByRole("article")).toHaveLength(1);
+  });
+
+  it("새 대화에서 보낸 첫 질문이 접수되면 답변이 끝나기 전에 대화 목록에 새 대화가 나타난다 (SEARCH-R1, COMMON-01)", async () => {
+    const { conversationId, questionMessageId, answerMessageId } =
+      searchAnswerStreamResponse;
+    // 서버는 첫 질문을 접수한 뒤에야 대화를 만들어 목록에 넣어요
+    const list = { isAccepted: false };
+    mockServer.use(
+      http.get(SEARCH_CONVERSATIONS_PATH, () =>
+        HttpResponse.json({
+          items: list.isAccepted
+            ? [
+                {
+                  ...searchConversationsResponse.items[0],
+                  id: conversationId,
+                  title: QUESTION,
+                },
+              ]
+            : [],
+          nextCursor: null,
+        }),
+      ),
+    );
+    const stream = respondWithControlledSse(SEARCH_CONVERSATIONS_PATH);
+    renderLayout(CHAT_PATH, <SearchConversation />);
+    fireEvent.click(await screen.findByRole("button", { name: "대화 목록" }));
+    const getChatList = () =>
+      screen.getByRole("complementary", { name: "대화 목록" });
+    expect(
+      await within(getChatList()).findByText("아직 나눈 대화가 없어요"),
+    ).toBeInTheDocument();
+
+    await sendFromDock(QUESTION);
+    await stream.waitForOpen();
+    list.isAccepted = true;
+    stream.send("accepted", { conversationId, questionMessageId, answerMessageId });
+
+    expect(
+      await waitFor(() => within(getChatList()).getByText(QUESTION)),
+    ).toBeInTheDocument();
+  });
+
+  it("후속 질문의 답변이 실패하면 그 자리에 실패 안내를 두고, 다시 시도가 접수 전에 실패해도 실패 안내를 그대로 둔다 (SEARCH-R5)", async () => {
+    const { questionMessageId, answerMessageId } =
+      searchQuestionAnswerStreamResponse;
+    const partialAnswer = "끊기기 전까지 받은 답";
+    const savedItems = searchMessagesResponse.items;
+    // 서버는 접수한 질문과 실패한 답변을 저장해요. 실패한 뒤 다시 조회하면 그 턴이 들어 있어요
+    const server = { hasFailed: false };
+    mockServer.use(
+      http.get(MESSAGES_PATH, ({ params }) =>
+        HttpResponse.json({
+          ...searchMessagesResponse,
+          conversationId: Number(params.conversationId),
+          items: server.hasFailed
+            ? [
+                ...savedItems,
+                {
+                  ...savedItems[0],
+                  id: questionMessageId,
+                  content: FOLLOW_UP_QUESTION,
+                },
+                {
+                  ...savedItems[1],
+                  id: answerMessageId,
+                  content: partialAnswer,
+                  status: "FAILED",
+                  evidences: [],
+                },
+              ]
+            : savedItems,
+        }),
+      ),
+    );
+    const stream = respondWithControlledSse(SEARCH_QUESTIONS_PATH);
+    const { queryClient } = renderLayout(
+      CONVERSATION_PATH,
+      <SearchConversation />,
+    );
+    await findInConversation(savedItems[0].content);
+
+    await sendFromDock(FOLLOW_UP_QUESTION);
+    await stream.waitForOpen();
+    stream.send("accepted", {
+      conversationId: Number(CONVERSATION_ID),
+      questionMessageId,
+      answerMessageId,
+    });
+    stream.send("delta", { answerMessageId, text: partialAnswer });
+    await findInConversation(partialAnswer);
+    server.hasFailed = true;
+    stream.send("failed", {
+      answerMessageId,
+      status: "FAILED",
+      code: "LLM_STREAM_FAILED",
+    });
+
+    const getLastTurn = () => {
+      const turns = within(getConversation()).getAllByRole("article");
+      return turns[turns.length - 1];
+    };
+    await waitFor(() =>
+      expect(within(getLastTurn()).getByText(FAILED_TEXT)).toBeInTheDocument(),
+    );
+    expect(
+      within(getConversation()).queryByText(partialAnswer),
+    ).not.toBeInTheDocument();
+
+    mockServer.use(
+      http.post(SEARCH_ANSWER_RETRY_PATH, () =>
+        HttpResponse.json(
+          { code: "ANSWER_ALREADY_IN_PROGRESS", message: "이미 답변을 만드는 중이에요" },
+          { status: 409 },
+        ),
+      ),
+    );
+    await act(async () => {
+      fireEvent.click(
+        within(getLastTurn()).getByRole("button", { name: "다시 시도" }),
+      );
+    });
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+    const savedQuestionCount = savedItems.filter(
+      ({ role }) => role === "USER",
+    ).length;
+    expect(within(getConversation()).getAllByRole("article")).toHaveLength(
+      savedQuestionCount + 1,
+    );
+    expect(within(getLastTurn()).getByText(FOLLOW_UP_QUESTION)).toBeInTheDocument();
+    expect(within(getLastTurn()).getByText(FAILED_TEXT)).toBeInTheDocument();
+    expect(
+      within(getLastTurn()).getByRole("button", { name: "다시 시도" }),
+    ).toBeInTheDocument();
+  });
+
+  it("첫 질문이 실패해 목록에 없던 대화는 다시 시도가 접수되면 답변이 끝나기 전에 대화 목록에 나타난다 (SEARCH-R5, COMMON-01)", async () => {
+    const [question, answer] = searchMessagesResponse.items;
+    respondMessages([
+      question,
+      { ...answer, content: "", status: "FAILED", evidences: [] },
+    ]);
+    // 서버는 첫 질문이 실패한 대화를 목록에서 숨기고, 다시 시도를 접수하면 목록에 다시 넣어요
+    const list = { isAccepted: false };
+    mockServer.use(
+      http.get(SEARCH_CONVERSATIONS_PATH, () =>
+        HttpResponse.json({
+          items: list.isAccepted
+            ? [
+                {
+                  ...searchConversationsResponse.items[0],
+                  id: Number(CONVERSATION_ID),
+                  title: question.content,
+                },
+              ]
+            : [],
+          nextCursor: null,
+        }),
+      ),
+    );
+    const stream = respondWithControlledSse(SEARCH_ANSWER_RETRY_PATH);
+    renderLayout(CONVERSATION_PATH, <SearchConversation />);
+    fireEvent.click(await screen.findByRole("button", { name: "대화 목록" }));
+    const getChatList = () =>
+      screen.getByRole("complementary", { name: "대화 목록" });
+    expect(
+      await within(getChatList()).findByText("아직 나눈 대화가 없어요"),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+    });
+    await stream.waitForOpen();
+    list.isAccepted = true;
+    stream.send("accepted", {
+      conversationId: Number(CONVERSATION_ID),
+      questionMessageId: question.id,
+      answerMessageId: answer.id,
+    });
+
+    expect(
+      await waitFor(() => within(getChatList()).getByText(question.content)),
+    ).toBeInTheDocument();
+  });
+
+  describe("찾은 기록 자동 열림 (SEARCH-R10)", () => {
+    const { questionMessageId, answerMessageId, deltas, evidences } =
+      searchQuestionAnswerStreamResponse;
+    const answerText = deltas.join("");
+    const savedItems = searchMessagesResponse.items;
+
+    const getEvidencePanel = () =>
+      screen.queryByRole("region", { name: "찾은 기록" });
+
+    /** 기존 대화에서 후속 질문을 보내 접수까지 받아요. 끝 이벤트는 테스트마다 보내요 */
+    const sendFollowUpUntilAccepted = async (answerEvidences: object[]) => {
+      respondMessages([
+        ...savedItems,
+        {
+          ...savedItems[0],
+          id: questionMessageId,
+          content: FOLLOW_UP_QUESTION,
+        },
+        {
+          ...savedItems[1],
+          id: answerMessageId,
+          content: answerText,
+          evidences: answerEvidences,
+        },
+      ]);
+      const stream = respondWithControlledSse(SEARCH_QUESTIONS_PATH);
+      const rendered = renderLayout(CONVERSATION_PATH, <SearchConversation />);
+      await findInConversation(savedItems[0].content);
+
+      await sendFromDock(FOLLOW_UP_QUESTION);
+      await stream.waitForOpen();
+      stream.send("accepted", {
+        conversationId: Number(CONVERSATION_ID),
+        questionMessageId,
+        answerMessageId,
+      });
+      deltas.forEach((text) => stream.send("delta", { answerMessageId, text }));
+
+      return { ...rendered, stream };
+    };
+
+    it("근거가 있는 답변이 끝나면 그 답변의 찾은 기록 패널을 저절로 연다", async () => {
+      const { router, stream } = await sendFollowUpUntilAccepted(evidences);
+      expect(getEvidencePanel()).not.toBeInTheDocument();
+
+      stream.send("evidence", { answerMessageId, items: evidences });
+      stream.send("completed", { answerMessageId, status: "COMPLETED" });
+
+      const panel = await waitFor(() => {
+        const found = getEvidencePanel();
+        expect(found).toBeInTheDocument();
+        return found;
+      });
+      expect(router.state.location.search).toBe(
+        `?messageId=${answerMessageId}`,
+      );
+      expect(getBody()?.lastElementChild).toContainElement(panel);
+      expect(within(panel!).getByText(evidences[0].title)).toBeInTheDocument();
+    });
+
+    it("다시 받은 대화에 끝난 답변이 아직 없어도 받은 근거로 찾은 기록 패널을 연다", async () => {
+      const { stream } = await sendFollowUpUntilAccepted(evidences);
+      respondMessages(savedItems);
+
+      stream.send("evidence", { answerMessageId, items: evidences });
+      stream.send("completed", { answerMessageId, status: "COMPLETED" });
+
+      const panel = await waitFor(() => {
+        const found = getEvidencePanel();
+        expect(found).toBeInTheDocument();
+        return found;
+      });
+      expect(within(panel!).getByText(evidences[0].title)).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("banner")).getByRole("button", {
+          name: "찾은 기록 닫기",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it.each([
+      {
+        name: "근거 없이 끝나면",
+        answerEvidences: [],
+        endFrames: [["completed", { answerMessageId, status: "COMPLETED" }]],
+      },
+      {
+        name: "근거를 받은 뒤 중지되면",
+        answerEvidences: evidences,
+        endFrames: [
+          ["evidence", { answerMessageId, items: evidences }],
+          ["stopped", { answerMessageId, status: "STOPPED" }],
+        ],
+      },
+      {
+        name: "근거를 받은 뒤 실패하면",
+        answerEvidences: evidences,
+        endFrames: [
+          ["evidence", { answerMessageId, items: evidences }],
+          [
+            "failed",
+            { answerMessageId, status: "FAILED", code: "LLM_STREAM_FAILED" },
+          ],
+        ],
+      },
+    ] as const)(
+      "답변이 $name 찾은 기록 패널을 열지 않는다",
+      async ({ answerEvidences, endFrames }) => {
+        const { router, queryClient, stream } = await sendFollowUpUntilAccepted(
+          [...answerEvidences],
+        );
+
+        endFrames.forEach(([event, data]) => stream.send(event, data));
+        await waitFor(() =>
+          expect(useSearchAnswerStore.getState().controller).toBeNull(),
+        );
+        await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+        expect(router.state.location.search).toBe("");
+        expect(getEvidencePanel()).not.toBeInTheDocument();
+      },
+    );
+
+    it("저절로 열린 찾은 기록을 닫으면 대화를 다시 받아도 다시 열지 않는다", async () => {
+      const { router, queryClient, stream } =
+        await sendFollowUpUntilAccepted(evidences);
+      stream.send("evidence", { answerMessageId, items: evidences });
+      stream.send("completed", { answerMessageId, status: "COMPLETED" });
+      await waitFor(() => expect(getEvidencePanel()).toBeInTheDocument());
+
+      await act(async () => {
+        fireEvent.click(
+          within(screen.getByRole("banner")).getByRole("button", {
+            name: "찾은 기록 닫기",
+          }),
+        );
+      });
+      await act(async () => {
+        await queryClient.invalidateQueries();
+      });
+
+      expect(router.state.location.search).toBe("");
+      expect(getEvidencePanel()).not.toBeInTheDocument();
+    });
+
+    it("답변이 끝나기 전에 홈으로 나가면 홈에서 찾은 기록을 열지 않는다", async () => {
+      const { router, stream } = await sendFollowUpUntilAccepted(evidences);
+
+      await act(async () => {
+        await router.navigate(HOME_PATH);
+      });
+      stream.send("evidence", { answerMessageId, items: evidences });
+      stream.send("completed", { answerMessageId, status: "COMPLETED" });
+      await waitFor(() =>
+        expect(useSearchAnswerStore.getState().status).toBe("COMPLETED"),
+      );
+
+      expect(router.state.location.pathname).toBe(HOME_PATH);
+      expect(router.state.location.search).toBe("");
+    });
+  });
+
+  it("기존 대화에서 독으로 보낸 후속 질문과 답변은 저장된 턴 뒤에 이어진다 (SEARCH-R1)", async () => {
+    const { questionMessageId, answerMessageId, deltas } =
+      searchQuestionAnswerStreamResponse;
+    const savedQuestions = searchMessagesResponse.items.filter(
+      ({ role }) => role === "USER",
+    );
+    const stream = respondWithControlledSse(SEARCH_QUESTIONS_PATH);
+    const { router } = renderLayout(CONVERSATION_PATH, <SearchConversation />);
+    expect(
+      await within(await screen.findByRole("region", { name: "대화" })).findByText(
+        savedQuestions[0].content,
+      ),
+    ).toBeInTheDocument();
+
+    await sendFromDock(FOLLOW_UP_QUESTION);
+    await stream.waitForOpen();
+    stream.send("accepted", {
+      conversationId: Number(CONVERSATION_ID),
+      questionMessageId,
+      answerMessageId,
+    });
+    deltas.forEach((text) => stream.send("delta", { answerMessageId, text }));
+    stream.send("completed", { answerMessageId, status: "COMPLETED" });
+
+    const answerText = deltas.join("");
+    expect(
+      await within(getConversation()).findByText(answerText),
+    ).toBeInTheDocument();
+
+    const turns = within(getConversation()).getAllByRole("article");
+    const lastTurn = turns[turns.length - 1];
+
+    expect(turns).toHaveLength(savedQuestions.length + 1);
+    expect(within(lastTurn).getByText(FOLLOW_UP_QUESTION)).toBeInTheDocument();
+    expect(within(lastTurn).getByText(answerText)).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(CONVERSATION_PATH);
   });
 });

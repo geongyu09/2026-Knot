@@ -1,7 +1,7 @@
 package com.knot.backend.workspace.presentation;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
-import com.knot.backend.workspace.application.WorkspaceOwnershipTransferCandidateService;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
+import com.knot.backend.workspace.application.WorkspaceLeaveService;
 import com.knot.backend.workspace.presentation.dto.response.WorkspaceOwnershipTransferCandidateResponse;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/workspaces")
 @RequiredArgsConstructor
 public class WorkspaceOwnershipTransferCandidateController implements WorkspaceOwnershipTransferCandidateApi {
-    private final WorkspaceOwnershipTransferCandidateService candidateService;
+    private final WorkspaceLeaveService workspaceLeaveService;
 
     @Override
     @GetMapping("/{workspaceId}/ownership-transfer-candidates")
@@ -23,7 +23,7 @@ public class WorkspaceOwnershipTransferCandidateController implements WorkspaceO
             @PathVariable Long workspaceId,
             @AuthenticationPrincipal AuthenticatedMember authenticatedMember
     ) {
-        return candidateService.findCandidates(
+        return workspaceLeaveService.findOwnershipTransferCandidates(
                 workspaceId,
                 authenticatedMember.getMemberId()
         )

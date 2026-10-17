@@ -43,7 +43,7 @@ const fakeCopy = () => {
  * - 코드와 링크는 이 워크스페이스의 활성 초대에서 와요. 활성 초대가 없으면 이때 새로 발급돼요. 받기 전에는 복사할 수 없어요.
  * - 초대를 받지 못하면 로그인이 풀린 경우(401)는 로그인 화면으로, 멤버가 아니거나 없는 워크스페이스(403·404)는 워크스페이스 선택 화면으로 보내요.
  *   그 밖의 실패는 그 자리에 머물고 코드 상자가 빈 채로 남아요.
- * - 「다음」은 이 워크스페이스의 노션 연동 화면(`/workspace/:workspaceId/notion-connection`)으로 이어져요. 초대 조회 결과와 상관없이 누를 수 있어요.
+ * - 「다음」은 이 워크스페이스의 홈(`/workspace/:workspaceId`)으로 이어져요. 초대 조회 결과와 상관없이 누를 수 있어요.
  * - 로고와 화면 가운데 배치는 화면 레이아웃이 맡아요. 이 카드는 카드 모양만 그려요.
  */
 const meta = {
@@ -85,8 +85,8 @@ const meta = {
         <Routes>
           <Route path={PATH_ROUTE.WORKSPACE_INVITE} element={<Story />} />
           <Route
-            path={PATH_ROUTE.WORKSPACE_NOTION_CONNECTION}
-            element={<p>노션 연동 화면으로 이동했어요.</p>}
+            path={PATH_ROUTE.WORKSPACE_HOME}
+            element={<p>워크스페이스 홈으로 이동했어요.</p>}
           />
         </Routes>
       </MemoryRouter>
@@ -104,6 +104,8 @@ export const Default: Story = {};
 /** 초대를 받아 오는 중이에요. 코드 상자와 복사 버튼에 스피너가 돌고 복사할 수 없어요. */
 export const Loading: Story = {
   parameters: {
+    // 문서 페이지에서는 스토리를 한 화면에 함께 그려 응답이 섞이므로, 이 스토리는 따로 그려요
+    docs: { story: { inline: false, iframeHeight: 520 } },
     msw: {
       handlers: {
         workspaceInvitations: http.post(WORKSPACE_INVITATIONS_URL, async () => {

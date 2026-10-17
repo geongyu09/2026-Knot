@@ -7,11 +7,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
 import com.knot.backend.recording.application.RecordingAudioUploadCompletionService;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadCompletionResult;
-import com.knot.backend.recording.domain.RecordingAudioUploadStatus;
+import com.knot.backend.recording.domain.model.RecordingAudioUploadStatus;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;

@@ -2,30 +2,36 @@ import CenteredLayout from "@pages/_layout/CenteredLayout";
 import WorkspaceLayout from "@pages/_layout/WorkspaceLayout";
 import InvitePage from "@pages/invite/[token]";
 import JoinErrorPage from "@pages/join-error";
+import LandingPage from "@pages/landing";
 import LoginPage from "@pages/login";
 import OnboardingPage from "@pages/onboarding";
 import OnboardingCompletePage from "@pages/onboarding/complete";
 import WorkspacePage from "@pages/workspace";
 import WorkspaceHomePage from "@pages/workspace/[workspaceId]";
 import ChatPage from "@pages/workspace/[workspaceId]/chat";
+import DocumentsPage from "@pages/workspace/[workspaceId]/documents";
+import DocumentPage from "@pages/workspace/[workspaceId]/documents/[documentId]";
 import WorkspaceInvitePage from "@pages/workspace/[workspaceId]/invite";
 import WorkspaceJoinPage from "@pages/workspace/[workspaceId]/join";
-import WorkspaceNotionConnectionPage from "@pages/workspace/[workspaceId]/notion-connection";
 import RecordingPage from "@pages/workspace/[workspaceId]/recording";
+import RecordingDocumentsPage from "@pages/workspace/[workspaceId]/recordings/[recordingId]";
 import WorkspaceCodePage from "@pages/workspace/code";
 import WorkspaceCreatePage from "@pages/workspace/create";
+import RecordingHeartbeat from "@widgets/recording/RecordingHeartbeat";
 import type { RouteObject } from "react-router";
 
 import AuthGuard from "./AuthGuard";
 import EntryRedirect from "./EntryRedirect";
 import GuestGuard from "./GuestGuard";
+import LandingGuard from "./LandingGuard";
 import { PATH_ROUTE } from "./PATH_ROUTE";
+import RecordingGuard from "./RecordingGuard";
 
 /**
  * 로그인 여부로 세 구역이 나뉘어요.
  *
  * - 누구나: 온보딩, 가입 완료, 초대 링크 판정, 입장 확인, 초대 오류
- * - 로그인한 사람만(`AuthGuard`): 워크스페이스 선택·생성·초대·코드·노션 연동
+ * - 로그인한 사람만(`AuthGuard`): 워크스페이스 선택·생성·초대·코드
  * - 로그인하지 않은 사람용(`GuestGuard`): 로그인 화면
  *
  * 온보딩(`/onboarding`)은 닉네임을 아직 정하지 않아 `/api/v1/auth/me`가 401인 상태에서
@@ -41,14 +47,22 @@ import { PATH_ROUTE } from "./PATH_ROUTE";
  * 화면이 비어 보이지 않기 때문이에요.
  */
 export const routes: RouteObject[] = [
+  // 홈 — 로그인하지 않은 사람은 화면 전체를 쓰는 랜딩을, 로그인한 사람은 진입 분기를 거쳐 워크스페이스로
+  {
+    path: PATH_ROUTE.HOME,
+    element: <LandingGuard landing={<LandingPage />} />,
+    children: [
+      {
+        element: <CenteredLayout />,
+        children: [{ index: true, element: <EntryRedirect /> }],
+      },
+    ],
+  },
+
   // 화면 가운데 정렬 — 워크스페이스 진입 전 플로우
   {
     element: <CenteredLayout />,
     children: [
-      {
-        path: PATH_ROUTE.HOME,
-        element: <EntryRedirect />,
-      },
       {
         element: <GuestGuard />,
         children: [
@@ -94,10 +108,6 @@ export const routes: RouteObject[] = [
             element: <WorkspaceInvitePage />,
           },
           {
-            path: PATH_ROUTE.WORKSPACE_NOTION_CONNECTION,
-            element: <WorkspaceNotionConnectionPage />,
-          },
-          {
             path: PATH_ROUTE.WORKSPACE_CODE,
             element: <WorkspaceCodePage />,
           },
@@ -109,7 +119,12 @@ export const routes: RouteObject[] = [
   // GNB — 워크스페이스 입장 후
   {
     handle: { hasDock: true },
-    element: <WorkspaceLayout />,
+    // 녹음은 레이아웃 안의 어느 화면에서나 이어지므로, 생존 신호가 끊기지 않게 레이아웃째 감싸요
+    element: (
+      <RecordingHeartbeat>
+        <WorkspaceLayout />
+      </RecordingHeartbeat>
+    ),
     children: [
       {
         path: PATH_ROUTE.WORKSPACE_HOME,
@@ -124,8 +139,25 @@ export const routes: RouteObject[] = [
         element: <ChatPage />,
       },
       {
-        path: PATH_ROUTE.RECORDING,
-        element: <RecordingPage />,
+        element: <RecordingGuard />,
+        children: [
+          {
+            path: PATH_ROUTE.RECORDING,
+            element: <RecordingPage />,
+          },
+        ],
+      },
+      {
+        path: PATH_ROUTE.RECORDING_DOCUMENTS,
+        element: <RecordingDocumentsPage />,
+      },
+      {
+        path: PATH_ROUTE.DOCUMENTS,
+        element: <DocumentsPage />,
+      },
+      {
+        path: PATH_ROUTE.DOCUMENT,
+        element: <DocumentPage />,
       },
     ],
   },

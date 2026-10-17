@@ -3,16 +3,22 @@ import { describe, expect, it } from "vitest";
 import { GetMeResponseDto, PostNicknameRequestDto } from "./auth";
 import { GetChatMessagesResponseDto } from "./chatMessage";
 import {
-  GetChatSessionsResponseDto,
-  PostChatSessionRequestDto,
-  PostChatSessionResponseDto,
-} from "./chatSession";
+  ConfirmationSummaryDto,
+  DocumentConfirmationItemDto,
+  DocumentListItemDto,
+  DocumentTopicDto,
+  DocumentTranscriptSegmentDto,
+  GetDocumentConfirmationsResponseDto,
+  GetDocumentResponseDto,
+  GetDocumentsResponseDto,
+  GetDocumentTranscriptResponseDto,
+  PutDocumentConfirmationResponseDto,
+} from "./document";
 import {
-  GetNotionConnectionResponseDto,
-  PostNotionOAuthAuthorizationResponseDto,
-} from "./notionConnection";
-import {
+  GetOwnershipTransferCandidatesResponseDto,
   GetWorkspacesResponseDto,
+  OwnershipTransferCandidateDto,
+  PostOwnershipTransferRequestDto,
   PostWorkspaceRequestDto,
   PutLastViewedWorkspaceRequestDto,
   WorkspaceListItemDto,
@@ -47,6 +53,21 @@ describe("DTO 생성자 변환", () => {
       expect(new PutLastViewedWorkspaceRequestDto({ workspaceId: 1 })).toEqual({
         workspaceId: 1,
       });
+    });
+
+    it("승계 후보 응답의 배열을 candidates 필드에 OwnershipTransferCandidateDto로 담는다", () => {
+      const dto = new GetOwnershipTransferCandidatesResponseDto([
+        { memberId: 2, nickname: "흑곰" },
+      ]);
+
+      expect(dto.candidates[0]).toBeInstanceOf(OwnershipTransferCandidateDto);
+      expect(dto.candidates).toEqual([{ memberId: 2, nickname: "흑곰" }]);
+    });
+
+    it("승계 요청 본문은 successorMemberId만 담는다", () => {
+      expect(
+        new PostOwnershipTransferRequestDto({ successorMemberId: 2 }),
+      ).toEqual({ successorMemberId: 2 });
     });
   });
 
@@ -89,27 +110,6 @@ describe("DTO 생성자 변환", () => {
   });
 
   describe("대화", () => {
-    const session = {
-      id: 100,
-      title: "DB 기술 선정 관련 문서",
-      createdAt: "2026-09-01T00:00:00.000Z",
-      lastMessageAt: "2026-09-01T01:00:00.000Z",
-    };
-
-    it("세션 목록 응답을 sessions 필드에, 생성 응답을 세션 모양으로 돌려준다", () => {
-      expect(new GetChatSessionsResponseDto([session]).sessions).toEqual([
-        session,
-      ]);
-      expect(new PostChatSessionResponseDto(session)).toEqual(session);
-    });
-
-    it("세션 생성 요청 본문은 title이 없으면 직렬화 결과에도 없다", () => {
-      expect(JSON.stringify(new PostChatSessionRequestDto({}))).toBe("{}");
-      expect(new PostChatSessionRequestDto({ title: "새 대화" })).toEqual({
-        title: "새 대화",
-      });
-    });
-
     it("메시지 목록 응답을 messages 필드에 담는다", () => {
       const message = {
         id: 1001,
@@ -124,23 +124,159 @@ describe("DTO 생성자 변환", () => {
     });
   });
 
-  describe("Notion 연결", () => {
-    it("연결 시작 응답의 authorizationUrl을 그대로 옮긴다", () => {
+  describe("문서", () => {
+    it("목록 응답의 주제를 DocumentTopicDto로, 문서를 DocumentListItemDto로, 문서의 확인 집계를 ConfirmationSummaryDto로 감싸고 나머지 필드는 그대로 옮긴다", () => {
       const raw = {
-        authorizationUrl:
-          "https://api.notion.com/v1/oauth/authorize?client_id=abc&state=xyz",
+        topics: [{ topic: "회원", documentCount: 12 }],
+        items: [
+          {
+            id: 301,
+            recordingSessionId: 42,
+            topic: "회원",
+            title: "회원 탈퇴 정책",
+            summary: null,
+            status: "DRAFT" as const,
+            createdAt: "2026-09-15T03:00:00.000Z",
+            recordingDurationSeconds: 1920,
+            myConfirmationState: "PENDING" as const,
+            confirmationSummary: {
+              confirmedCount: 1,
+              pendingCount: 2,
+              excludedCount: 0,
+            },
+          },
+        ],
+        nextCursor: "opaque-cursor-value",
       };
 
-      expect(new PostNotionOAuthAuthorizationResponseDto(raw)).toEqual(raw);
+      const dto = new GetDocumentsResponseDto(raw);
+
+      expect(dto.topics[0]).toBeInstanceOf(DocumentTopicDto);
+      expect(dto.items[0]).toBeInstanceOf(DocumentListItemDto);
+      expect(dto.items[0].confirmationSummary).toBeInstanceOf(
+        ConfirmationSummaryDto,
+      );
+      expect(dto).toEqual(raw);
     });
 
-    it("연결 상태 응답의 status를 그대로 옮긴다", () => {
-      expect(
-        new GetNotionConnectionResponseDto({ status: "CONNECTED" }),
-      ).toEqual({ status: "CONNECTED" });
-      expect(
-        new GetNotionConnectionResponseDto({ status: "REAUTH_REQUIRED" }),
-      ).toEqual({ status: "REAUTH_REQUIRED" });
+    it("상세 응답의 확인 집계를 ConfirmationSummaryDto로 감싸고 나머지 필드는 그대로 옮긴다", () => {
+      const raw = {
+        id: 101,
+        recordingSessionId: 42,
+        topic: "회원",
+        title: "회원 탈퇴 정책",
+        summary: null,
+        content: "## 결정\n탈퇴한 사용자의 게시글은 유지해요.",
+        status: "DRAFT" as const,
+        createdAt: "2026-09-15T03:00:00.000Z",
+        archivedAt: null,
+        recordingDurationSeconds: 1920,
+        sourceTranscriptId: 81,
+        myConfirmationState: "PENDING" as const,
+        confirmationSummary: {
+          confirmedCount: 2,
+          pendingCount: 2,
+          excludedCount: 0,
+        },
+      };
+
+      const dto = new GetDocumentResponseDto(raw);
+
+      expect(dto.confirmationSummary).toBeInstanceOf(ConfirmationSummaryDto);
+      expect(dto).toEqual(raw);
+    });
+
+    it("확인 대상 조회 응답의 대상을 DocumentConfirmationItemDto로 감싸고, 집계 세 값은 ConfirmationSummaryDto로 묶고, confirmedByMe는 옮기지 않는다", () => {
+      const items = [
+        {
+          memberId: 2,
+          nickname: "도넛",
+          profileImageUrl: null,
+          confirmedAt: "2026-09-15T04:00:00.000Z",
+          state: "CONFIRMED" as const,
+        },
+        {
+          memberId: 1,
+          nickname: "노티드",
+          profileImageUrl: "https://example.com/profiles/1.png",
+          confirmedAt: null,
+          state: "PENDING" as const,
+        },
+      ];
+
+      const dto = new GetDocumentConfirmationsResponseDto({
+        documentId: 101,
+        confirmedCount: 1,
+        pendingCount: 1,
+        excludedCount: 0,
+        confirmedByMe: false,
+        items,
+        nextCursor: null,
+      });
+
+      expect(dto.items[0]).toBeInstanceOf(DocumentConfirmationItemDto);
+      expect(dto.confirmationSummary).toBeInstanceOf(ConfirmationSummaryDto);
+      expect(dto).toEqual({
+        documentId: 101,
+        confirmationSummary: {
+          confirmedCount: 1,
+          pendingCount: 1,
+          excludedCount: 0,
+        },
+        items,
+        nextCursor: null,
+      });
+    });
+
+    it("내 확인 응답의 확인 집계를 ConfirmationSummaryDto로 감싸고 나머지 필드는 그대로 옮긴다", () => {
+      const raw = {
+        documentId: 101,
+        confirmedAt: "2026-09-24T09:40:00.000Z",
+        documentStatus: "DRAFT" as const,
+        archivedAt: null,
+        confirmationSummary: {
+          confirmedCount: 3,
+          pendingCount: 1,
+          excludedCount: 0,
+        },
+      };
+
+      const dto = new PutDocumentConfirmationResponseDto(raw);
+
+      expect(dto.confirmationSummary).toBeInstanceOf(ConfirmationSummaryDto);
+      expect(dto).toEqual(raw);
+    });
+
+    it("원문 응답의 구간을 DocumentTranscriptSegmentDto로 감싸고, 전체 텍스트와 isPartial은 옮기지 않는다", () => {
+      const segments = [
+        {
+          startMillis: 1200,
+          endMillis: 4600,
+          speakerNumber: 1,
+          text: "문서 보관 기준부터 정리하겠습니다.",
+        },
+        {
+          startMillis: 4800,
+          endMillis: null,
+          speakerNumber: null,
+          text: "좋습니다.",
+        },
+      ];
+
+      const dto = new GetDocumentTranscriptResponseDto({
+        transcriptId: 81,
+        isPartial: false,
+        recordingDurationSeconds: 1850,
+        transcriptText: "문서 보관 기준부터 정리하겠습니다. 좋습니다.",
+        segments,
+      });
+
+      expect(dto.segments[0]).toBeInstanceOf(DocumentTranscriptSegmentDto);
+      expect(dto).toEqual({
+        transcriptId: 81,
+        recordingDurationSeconds: 1850,
+        segments,
+      });
     });
   });
 });

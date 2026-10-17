@@ -2,17 +2,16 @@ package com.knot.backend.workspace.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
-
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationResult;
-import com.knot.backend.workspace.domain.Workspace;
+import com.knot.backend.workspace.domain.model.Workspace;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
-import com.knot.backend.workspace.domain.WorkspaceMember;
-import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
-import com.knot.backend.workspace.domain.WorkspaceMemberRole;
-import com.knot.backend.workspace.domain.WorkspaceRepository;
+import com.knot.backend.workspace.domain.model.WorkspaceMember;
+import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.model.WorkspaceMemberRole;
+import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.List;
@@ -44,11 +43,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 class WorkspaceOwnershipTransferServiceIntegrationTest {
     private static final Instant JOINED_AT = Instant.parse("2026-08-31T00:01:00Z");
 
-    private final WorkspaceOwnershipTransferService service;
     private final WorkspaceLeaveService leaveService;
-    private final WorkspaceLastViewedService lastViewedService;
+    private final WorkspaceService lastViewedService;
     private final WorkspaceInvitationService invitationService;
-    private final WorkspaceInvitationAcceptanceService acceptanceService;
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final TransactionTemplate transactionTemplate;
@@ -56,22 +53,18 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
     private final JdbcClient jdbcClient;
 
     WorkspaceOwnershipTransferServiceIntegrationTest(
-            WorkspaceOwnershipTransferService service,
             WorkspaceLeaveService leaveService,
-            WorkspaceLastViewedService lastViewedService,
+            WorkspaceService lastViewedService,
             WorkspaceInvitationService invitationService,
-            WorkspaceInvitationAcceptanceService acceptanceService,
             WorkspaceRepository workspaceRepository,
             WorkspaceMemberRepository workspaceMemberRepository,
             TransactionTemplate transactionTemplate,
             EntityManager entityManager,
             JdbcClient jdbcClient
     ) {
-        this.service = service;
         this.leaveService = leaveService;
         this.lastViewedService = lastViewedService;
         this.invitationService = invitationService;
-        this.acceptanceService = acceptanceService;
         this.workspaceRepository = workspaceRepository;
         this.workspaceMemberRepository = workspaceMemberRepository;
         this.transactionTemplate = transactionTemplate;
@@ -127,7 +120,7 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
         MembershipState targetBefore = membership(fixture.targetMembershipId());
 
         // when
-        service.transferOwnership(
+        leaveService.transferOwnershipAndLeave(
                 fixture.ownerId(),
                 fixture.workspaceId(),
                 fixture.targetId()
@@ -236,7 +229,7 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
 
         // when
         Throwable thrown = catchThrowable(() -> transactionTemplate.executeWithoutResult(status -> {
-            service.transferOwnership(
+            leaveService.transferOwnershipAndLeave(
                     fixture.ownerId(),
                     fixture.workspaceId(),
                     fixture.targetId()
@@ -268,7 +261,7 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
         try {
             // when
             Throwable thrown = catchThrowable(
-                    () -> service.transferOwnership(
+                    () -> leaveService.transferOwnershipAndLeave(
                             fixture.ownerId(),
                             fixture.workspaceId(),
                             fixture.targetId()
@@ -301,7 +294,7 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
 
         // when
         Throwable thrown = catchThrowable(
-                () -> service.transferOwnership(
+                () -> leaveService.transferOwnershipAndLeave(
                         fixture.ownerId(),
                         fixture.workspaceId(),
                         otherId
@@ -330,7 +323,7 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
         MembershipState oldParticipation = membership(fixture.ownerMembershipId());
 
         // when
-        acceptanceService.accept(
+        invitationService.accept(
                 invitation.code(),
                 "previous-owner-rejoin",
                 fixture.ownerId()
@@ -372,7 +365,7 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
         // when
         RaceResult result = race(
                 () -> transfer(fixture),
-                () -> service.transferOwnership(
+                () -> leaveService.transferOwnershipAndLeave(
                         fixture.ownerId(),
                         fixture.workspaceId(),
                         otherId
@@ -464,7 +457,7 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
         // when
         RaceResult result = race(
                 () -> transfer(fixture),
-                () -> acceptanceService.accept(
+                () -> invitationService.accept(
                         invitation.code(),
                         "accept-transfer-race",
                         joiningId
@@ -507,7 +500,7 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
         // when
         RaceResult result = race(
                 () -> transfer(fixture),
-                () -> lastViewedService.update(
+                () -> lastViewedService.updateLastViewed(
                         viewerId,
                         fixture.workspaceId()
                 )
@@ -555,7 +548,7 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
     }
 
     private void transfer(Fixture fixture) {
-        service.transferOwnership(
+        leaveService.transferOwnershipAndLeave(
                 fixture.ownerId(),
                 fixture.workspaceId(),
                 fixture.targetId()

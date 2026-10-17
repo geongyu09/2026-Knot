@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import com.knot.backend.global.exception.ErrorCode;
 import com.knot.backend.global.exception.ProjectException;
 import com.knot.backend.recording.application.dto.command.RecordingAudioUploadUrlCommand;
+import com.knot.backend.recording.application.dto.command.RecordingControlCommand;
 import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadUrlResult;
 import com.knot.backend.recording.domain.RecordingErrorCode;
@@ -43,20 +44,20 @@ class RecordingAudioUploadUrlServiceIntegrationTest {
 
     private final RecordingAudioUploadUrlService recordingAudioUploadUrlService;
     private final RecordingStartService recordingStartService;
-    private final RecordingEndService recordingEndService;
+    private final RecordingControlService recordingControlService;
     private final TransactionTemplate transactionTemplate;
     private final JdbcClient jdbcClient;
 
     RecordingAudioUploadUrlServiceIntegrationTest(
             RecordingAudioUploadUrlService recordingAudioUploadUrlService,
             RecordingStartService recordingStartService,
-            RecordingEndService recordingEndService,
+            RecordingControlService recordingControlService,
             TransactionTemplate transactionTemplate,
             JdbcClient jdbcClient
     ) {
         this.recordingAudioUploadUrlService = recordingAudioUploadUrlService;
         this.recordingStartService = recordingStartService;
-        this.recordingEndService = recordingEndService;
+        this.recordingControlService = recordingControlService;
         this.transactionTemplate = transactionTemplate;
         this.jdbcClient = jdbcClient;
     }
@@ -272,14 +273,20 @@ class RecordingAudioUploadUrlServiceIntegrationTest {
                 memberId,
                 "OWNER"
         );
+        UUID tabId = UUID.randomUUID();
         long recordingId = startRecording(
                 workspaceId,
-                memberId
+                memberId,
+                tabId
         );
-        recordingEndService.end(
+        recordingControlService.end(
                 workspaceId,
                 memberId,
-                recordingId
+                recordingId,
+                new RecordingControlCommand(
+                        tabId,
+                        CONTROL_TOKEN
+                )
         );
         return new Fixture(
                 workspaceId,
@@ -403,20 +410,21 @@ class RecordingAudioUploadUrlServiceIntegrationTest {
 
     private long startRecording(
             long workspaceId,
-            long memberId
+            long memberId,
+            UUID tabId
     ) {
         return recordingStartService.start(
                 workspaceId,
                 memberId,
-                command()
+                command(tabId)
         )
                 .recordingId();
     }
 
-    private RecordingStartCommand command() {
+    private RecordingStartCommand command(UUID tabId) {
         return new RecordingStartCommand(
                 UUID.randomUUID(),
-                UUID.randomUUID(),
+                tabId,
                 CONTROL_TOKEN
         );
     }

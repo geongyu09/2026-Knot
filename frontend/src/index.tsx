@@ -10,13 +10,24 @@ import { queryClient } from "./shared/provider/queryClient";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import AppProviders from "@provider/AppProviders";
 import { routes } from "@routes/routes";
+import posthog from "posthog-js";
+
+// 키가 없는 환경(로컬, 테스트)에서는 사용 기록을 보내지 않아요
+if (process.env.POSTHOG_KEY && process.env.POSTHOG_HOST) {
+  posthog.init(process.env.POSTHOG_KEY, {
+    api_host: process.env.POSTHOG_HOST,
+    defaults: "2026-08-30",
+  });
+}
 
 // 정적 import하면 msw가 프로덕션 번들에 들어가므로 플래그 안에서 동적 import해요
 const enableApiMocking = async () => {
   if (process.env.API_MOCKING !== "true") return;
 
-  const { mockWorker } = await import("@api/mock/browser");
+  const { mockWorker, reactivateMockWorkerOnFocus } =
+    await import("@api/mock/browser");
   await mockWorker.start();
+  reactivateMockWorkerOnFocus();
 };
 
 const renderApp = () => {

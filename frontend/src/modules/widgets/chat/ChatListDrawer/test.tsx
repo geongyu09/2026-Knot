@@ -1,5 +1,5 @@
-import { GetChatSessionsResponseDto } from "@api/dto/chatSession";
-import { chatSessionsResponse } from "@api/mock/responses/chatSession";
+import { GetSearchConversationsResponseDto } from "@api/dto/search";
+import { searchConversationsResponse } from "@api/mock/responses/search";
 import { ThemeProvider } from "@emotion/react";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
@@ -20,7 +20,9 @@ const SESSION_PATH = getRouterPath({
   params: { workspaceId: WORKSPACE_ID, sessionId: "100" },
 });
 
-const expected = new GetChatSessionsResponseDto(chatSessionsResponse);
+const expected = new GetSearchConversationsResponseDto(
+  searchConversationsResponse,
+);
 
 const renderDrawer = (initialPath = SESSION_PATH) => {
   const queryClient = new QueryClient({
@@ -57,15 +59,15 @@ describe("ChatListDrawer", () => {
     ).toBeInTheDocument();
 
     expect(
-      await screen.findByText(expected.sessions[0].title),
+      await screen.findByText(expected.items[0].title),
     ).toBeInTheDocument();
-    expect(screen.getByText(expected.sessions[1].title)).toBeInTheDocument();
+    expect(screen.getByText(expected.items[1].title)).toBeInTheDocument();
   });
 
   it("보고 있는 대화를 현재 항목으로 표시한다", async () => {
     renderDrawer();
 
-    const openedRow = await screen.findByText(expected.sessions[0].title);
+    const openedRow = await screen.findByText(expected.items[0].title);
 
     expect(openedRow.closest("button")).toHaveAttribute("aria-current", "page");
   });
@@ -73,7 +75,7 @@ describe("ChatListDrawer", () => {
   it("목록에서 대화를 고르면 그 대화로 이동한다", async () => {
     const { router } = renderDrawer(CHAT_PATH);
 
-    const row = await screen.findByText(expected.sessions[1].title);
+    const row = await screen.findByText(expected.items[1].title);
     await act(async () => {
       fireEvent.click(row);
     });
@@ -83,7 +85,7 @@ describe("ChatListDrawer", () => {
         routeKey: "CHAT_SESSION",
         params: {
           workspaceId: WORKSPACE_ID,
-          sessionId: String(expected.sessions[1].id),
+          sessionId: String(expected.items[1].id),
         },
       }),
     );

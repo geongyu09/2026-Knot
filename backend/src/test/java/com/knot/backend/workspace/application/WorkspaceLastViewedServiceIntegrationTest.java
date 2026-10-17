@@ -31,11 +31,11 @@ class WorkspaceLastViewedServiceIntegrationTest {
     private static final Instant CREATED_AT = Instant.parse("2026-08-31T00:00:00Z");
     private static final Instant JOINED_AT = Instant.parse("2026-08-31T00:01:00Z");
 
-    private final WorkspaceLastViewedService workspaceLastViewedService;
+    private final WorkspaceService workspaceLastViewedService;
     private final JdbcClient jdbcClient;
 
     WorkspaceLastViewedServiceIntegrationTest(
-            WorkspaceLastViewedService workspaceLastViewedService,
+            WorkspaceService workspaceLastViewedService,
             JdbcClient jdbcClient
     ) {
         this.workspaceLastViewedService = workspaceLastViewedService;
@@ -109,7 +109,7 @@ class WorkspaceLastViewedServiceIntegrationTest {
     ) {
         return () -> {
             barrier.await();
-            workspaceLastViewedService.update(
+            workspaceLastViewedService.updateLastViewed(
                     memberId,
                     workspaceId
             );

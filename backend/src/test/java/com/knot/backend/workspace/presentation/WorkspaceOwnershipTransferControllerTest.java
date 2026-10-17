@@ -11,9 +11,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
-import com.knot.backend.workspace.application.WorkspaceOwnershipTransferService;
+import com.knot.backend.workspace.application.WorkspaceLeaveService;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import java.sql.SQLException;
@@ -38,14 +38,13 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class WorkspaceOwnershipTransferControllerTest {
-    private WorkspaceOwnershipTransferService workspaceOwnershipTransferService;
+    private WorkspaceLeaveService workspaceLeaveService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        workspaceOwnershipTransferService = mock(WorkspaceOwnershipTransferService.class);
-        mockMvc = MockMvcBuilders
-                .standaloneSetup(new WorkspaceOwnershipTransferController(workspaceOwnershipTransferService))
+        workspaceLeaveService = mock(WorkspaceLeaveService.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(new WorkspaceOwnershipTransferController(workspaceLeaveService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                 .build();
@@ -77,12 +76,12 @@ class WorkspaceOwnershipTransferControllerTest {
         // then
         result.andExpect(status().isNoContent())
                 .andExpect(content().string(""));
-        verify(workspaceOwnershipTransferService).transferOwnership(
+        verify(workspaceLeaveService).transferOwnershipAndLeave(
                 1L,
                 7L,
                 2L
         );
-        verifyNoMoreInteractions(workspaceOwnershipTransferService);
+        verifyNoMoreInteractions(workspaceLeaveService);
     }
 
     @ParameterizedTest
@@ -110,7 +109,7 @@ class WorkspaceOwnershipTransferControllerTest {
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("successorMemberId"))
                 .andExpect(jsonPath("$.fieldErrors[0].reason").value(reason));
-        verifyNoInteractions(workspaceOwnershipTransferService);
+        verifyNoInteractions(workspaceLeaveService);
     }
 
     @Test
@@ -132,7 +131,7 @@ class WorkspaceOwnershipTransferControllerTest {
         // then
         result.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST_BODY"));
-        verifyNoInteractions(workspaceOwnershipTransferService);
+        verifyNoInteractions(workspaceLeaveService);
     }
 
     @Test
@@ -142,8 +141,8 @@ class WorkspaceOwnershipTransferControllerTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
         doThrow(new WorkspaceException(WorkspaceErrorCode.WORKSPACE_OWNERSHIP_TRANSFER_TARGET_CONFLICT))
-                .when(workspaceOwnershipTransferService)
-                .transferOwnership(
+                .when(workspaceLeaveService)
+                .transferOwnershipAndLeave(
                         1L,
                         7L,
                         2L
@@ -163,7 +162,7 @@ class WorkspaceOwnershipTransferControllerTest {
         // then
         result.andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("WORKSPACE_OWNERSHIP_TRANSFER_TARGET_CONFLICT"));
-        verify(workspaceOwnershipTransferService).transferOwnership(
+        verify(workspaceLeaveService).transferOwnershipAndLeave(
                 1L,
                 7L,
                 2L
@@ -182,8 +181,8 @@ class WorkspaceOwnershipTransferControllerTest {
                         "SELECT * FROM workspace_members WHERE member_id = 1",
                         new SQLException("database-secret")
                 )
-        ).when(workspaceOwnershipTransferService)
-                .transferOwnership(
+        ).when(workspaceLeaveService)
+                .transferOwnershipAndLeave(
                         1L,
                         7L,
                         2L
@@ -205,7 +204,7 @@ class WorkspaceOwnershipTransferControllerTest {
                 .andExpect(jsonPath("$.code").value("INTERNAL_SERVER_ERROR"))
                 .andReturn();
         assertNoTechnicalInformation(mvcResult);
-        verify(workspaceOwnershipTransferService).transferOwnership(
+        verify(workspaceLeaveService).transferOwnershipAndLeave(
                 1L,
                 7L,
                 2L

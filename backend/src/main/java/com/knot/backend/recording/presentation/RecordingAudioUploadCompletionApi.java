@@ -2,7 +2,7 @@ package com.knot.backend.recording.presentation;
 
 import static com.knot.backend.global.config.OpenApiConfig.ACCESS_TOKEN_COOKIE;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.global.config.OpenApiConfig;
 import com.knot.backend.global.response.ErrorResponse;
 import com.knot.backend.recording.presentation.dto.request.RecordingAudioUploadCompletionRequest;
@@ -27,7 +27,8 @@ public interface RecordingAudioUploadCompletionApi {
     @Operation(
             summary = "최종 오디오 업로드 완료 확인",
             description = "PUT을 마친 뒤 호출한다. 서버가 예약한 저장 위치에 같은 형식·크기의 파일이 있는지 확인하고 업로드 완료를 기록한다. "
-                    + "녹음 시작자면 어느 탭에서든 호출할 수 있다. 같은 uploadId 재호출은 같은 결과를 반환한다. 이 단계에서는 STT를 접수하지 않는다",
+                    + "녹음 시작자면 어느 탭에서든 호출할 수 있다. 전사 활성화 시 업로드 완료와 전사 시도를 함께 기록하고 비동기로 실행한다. "
+                    + "같은 uploadId 재호출은 같은 결과를 반환하며 실패한 전사를 다시 실행하지 않는다. 전사 상태는 녹음 단건 조회로 확인한다",
             parameters = @Parameter(
                     name = OpenApiConfig.CSRF_TOKEN_HEADER_NAME,
                     in = ParameterIn.HEADER,

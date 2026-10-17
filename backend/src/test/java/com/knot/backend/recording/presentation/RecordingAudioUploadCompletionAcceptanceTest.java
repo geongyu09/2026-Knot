@@ -9,17 +9,17 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 import com.knot.backend.auth.domain.AuthTokenProvider;
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.recording.application.RecordingAudioStorage;
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
-import com.knot.backend.recording.application.dto.result.StoredAudioObject;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
+import com.knot.backend.recording.domain.model.StoredAudioObject;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import jakarta.servlet.http.Cookie;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,6 +53,7 @@ class RecordingAudioUploadCompletionAcceptanceTest {
     private static final String JWT_COOKIE_NAME = "KNOT_ACCESS_TOKEN";
     private static final String CSRF_COOKIE_NAME = "XSRF-TOKEN";
     private static final String CONTROL_TOKEN = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefA";
+    private static final UUID TAB_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
     private static final Instant CREATED_AT = Instant.parse("2026-10-05T00:00:00Z");
     private static final Instant JOINED_AT = Instant.parse("2026-10-05T00:01:00Z");
     private static final String RECORDING_PATH = "/api/v1/workspaces/{workspaceId}/recordings/{recordingId}";
@@ -62,19 +63,22 @@ class RecordingAudioUploadCompletionAcceptanceTest {
     private final AuthTokenProvider authTokenProvider;
     private final ObjectMapper objectMapper;
     private final JdbcClient jdbcClient;
+    private final Clock clock;
     @MockitoBean
-    private RecordingAudioStorage audioStorage;
+    private RecordingAudioStorage recordingAudioStorage;
 
     RecordingAudioUploadCompletionAcceptanceTest(
             MockMvc mockMvc,
             AuthTokenProvider authTokenProvider,
             ObjectMapper objectMapper,
-            JdbcClient jdbcClient
+            JdbcClient jdbcClient,
+            Clock clock
     ) {
         this.mockMvc = mockMvc;
         this.authTokenProvider = authTokenProvider;
         this.objectMapper = objectMapper;
         this.jdbcClient = jdbcClient;
+        this.clock = clock;
     }
 
     @BeforeEach
@@ -90,7 +94,7 @@ class RecordingAudioUploadCompletionAcceptanceTest {
     @BeforeEach
     void stubPresign() {
         when(
-                audioStorage.presignUpload(
+                recordingAudioStorage.presignUpload(
                         anyString(),
                         anyString(),
                         anyLong()
@@ -98,7 +102,8 @@ class RecordingAudioUploadCompletionAcceptanceTest {
         ).thenReturn(
                 new PresignedAudioUpload(
                         "https://storage.example/upload",
-                        Instant.parse("2026-10-05T01:00:00Z")
+                        clock.instant()
+                                .plusSeconds(3600)
                 )
         );
     }
@@ -137,7 +142,7 @@ class RecordingAudioUploadCompletionAcceptanceTest {
     void complete_failure_notUploaded() throws Exception {
         // given
         UploadFixture fixture = reservedUpload();
-        when(audioStorage.findStoredObject(anyString())).thenReturn(StoredAudioObject.missing());
+        when(recordingAudioStorage.findStoredObject(anyString())).thenReturn(StoredAudioObject.missing());
 
         // when
         ResultActions result = complete(
@@ -217,7 +222,7 @@ class RecordingAudioUploadCompletionAcceptanceTest {
     void complete_failure_storageUnavailable() throws Exception {
         // given
         UploadFixture fixture = reservedUpload();
-        when(audioStorage.findStoredObject(anyString()))
+        when(recordingAudioStorage.findStoredObject(anyString()))
                 .thenThrow(new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE));
 
         // when
@@ -384,10 +389,11 @@ class RecordingAudioUploadCompletionAcceptanceTest {
     }
 
     private void stubStoredObject(long contentLength) {
-        when(audioStorage.findStoredObject(anyString())).thenReturn(
+        when(recordingAudioStorage.findStoredObject(anyString())).thenReturn(
                 StoredAudioObject.of(
                         contentLength,
-                        "audio/webm"
+                        "audio/webm",
+                        "version-1"
                 )
         );
     }
@@ -464,6 +470,15 @@ class RecordingAudioUploadCompletionAcceptanceTest {
                                 "X-XSRF-TOKEN",
                                 csrf.token()
                         )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                """
+                                        {"tabId":"%s","controlToken":"%s"}
+                                        """.formatted(
+                                        TAB_ID,
+                                        CONTROL_TOKEN
+                                )
+                        )
         );
     }
 
@@ -490,7 +505,7 @@ class RecordingAudioUploadCompletionAcceptanceTest {
                                         {"requestId":"%s","tabId":"%s","controlToken":"%s"}
                                         """.formatted(
                                         UUID.randomUUID(),
-                                        UUID.randomUUID(),
+                                        TAB_ID,
                                         CONTROL_TOKEN
                                 )
                         )

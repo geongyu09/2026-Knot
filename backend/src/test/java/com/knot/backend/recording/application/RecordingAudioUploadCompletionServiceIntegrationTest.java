@@ -5,20 +5,21 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
-
 import com.knot.backend.global.exception.ErrorCode;
 import com.knot.backend.global.exception.ProjectException;
 import com.knot.backend.recording.application.dto.command.RecordingAudioUploadUrlCommand;
+import com.knot.backend.recording.application.dto.command.RecordingControlCommand;
 import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadCompletionResult;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadUrlResult;
-import com.knot.backend.recording.application.dto.result.StoredAudioObject;
-import com.knot.backend.recording.domain.RecordingAudioUploadStatus;
+import com.knot.backend.recording.domain.model.RecordingAudioUploadStatus;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
+import com.knot.backend.recording.domain.model.StoredAudioObject;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -35,6 +36,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.TestConstructor;
 import org.springframework.test.context.TestConstructor.AutowireMode;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -44,6 +46,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Import(TestcontainersConfiguration.class)
 @TestApplicationProperties
 @SpringBootTest
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestConstructor(autowireMode = AutowireMode.ALL)
 class RecordingAudioUploadCompletionServiceIntegrationTest {
     private static final Instant CREATED_AT = Instant.parse("2026-10-05T00:00:00Z");
@@ -53,26 +56,29 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
     private final RecordingAudioUploadUrlService recordingAudioUploadUrlService;
     private final RecordingAudioUploadCompletionService recordingAudioUploadCompletionService;
     private final RecordingStartService recordingStartService;
-    private final RecordingEndService recordingEndService;
+    private final RecordingControlService recordingControlService;
     private final TransactionTemplate transactionTemplate;
     private final JdbcClient jdbcClient;
+    private final Clock clock;
     @MockitoBean
-    private RecordingAudioStorage audioStorage;
+    private RecordingAudioStorage recordingAudioStorage;
 
     RecordingAudioUploadCompletionServiceIntegrationTest(
             RecordingAudioUploadUrlService recordingAudioUploadUrlService,
             RecordingAudioUploadCompletionService recordingAudioUploadCompletionService,
             RecordingStartService recordingStartService,
-            RecordingEndService recordingEndService,
+            RecordingControlService recordingControlService,
             TransactionTemplate transactionTemplate,
-            JdbcClient jdbcClient
+            JdbcClient jdbcClient,
+            Clock clock
     ) {
         this.recordingAudioUploadUrlService = recordingAudioUploadUrlService;
         this.recordingAudioUploadCompletionService = recordingAudioUploadCompletionService;
         this.recordingStartService = recordingStartService;
-        this.recordingEndService = recordingEndService;
+        this.recordingControlService = recordingControlService;
         this.transactionTemplate = transactionTemplate;
         this.jdbcClient = jdbcClient;
+        this.clock = clock;
     }
 
     @BeforeEach
@@ -88,7 +94,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
     @BeforeEach
     void stubPresign() {
         when(
-                audioStorage.presignUpload(
+                recordingAudioStorage.presignUpload(
                         anyString(),
                         anyString(),
                         anyLong()
@@ -96,7 +102,8 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
         ).thenReturn(
                 new PresignedAudioUpload(
                         "https://storage.example/upload",
-                        Instant.parse("2026-10-05T01:00:00Z")
+                        clock.instant()
+                                .plusSeconds(3600)
                 )
         );
     }
@@ -136,7 +143,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
                 fixture,
                 1024L
         ).uploadId();
-        when(audioStorage.findStoredObject(anyString())).thenReturn(StoredAudioObject.missing());
+        when(recordingAudioStorage.findStoredObject(anyString())).thenReturn(StoredAudioObject.missing());
 
         // when
         Throwable thrown = catchThrowable(
@@ -162,7 +169,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
                 fixture,
                 1024L
         ).uploadId();
-        when(audioStorage.findStoredObject(anyString()))
+        when(recordingAudioStorage.findStoredObject(anyString()))
                 .thenThrow(new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE));
 
         // when
@@ -304,10 +311,11 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
             long contentLength,
             String contentType
     ) {
-        when(audioStorage.findStoredObject(anyString())).thenReturn(
+        when(recordingAudioStorage.findStoredObject(anyString())).thenReturn(
                 StoredAudioObject.of(
                         contentLength,
-                        contentType
+                        contentType,
+                        "version-1"
                 )
         );
     }
@@ -354,14 +362,20 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
                 memberId,
                 "OWNER"
         );
+        UUID tabId = UUID.randomUUID();
         long recordingId = startRecording(
                 workspaceId,
-                memberId
+                memberId,
+                tabId
         );
-        recordingEndService.end(
+        recordingControlService.end(
                 workspaceId,
                 memberId,
-                recordingId
+                recordingId,
+                new RecordingControlCommand(
+                        tabId,
+                        CONTROL_TOKEN
+                )
         );
         return new Fixture(
                 workspaceId,
@@ -452,20 +466,21 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
 
     private long startRecording(
             long workspaceId,
-            long memberId
+            long memberId,
+            UUID tabId
     ) {
         return recordingStartService.start(
                 workspaceId,
                 memberId,
-                command()
+                command(tabId)
         )
                 .recordingId();
     }
 
-    private RecordingStartCommand command() {
+    private RecordingStartCommand command(UUID tabId) {
         return new RecordingStartCommand(
                 UUID.randomUUID(),
-                UUID.randomUUID(),
+                tabId,
                 CONTROL_TOKEN
         );
     }

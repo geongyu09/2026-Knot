@@ -1,0 +1,43 @@
+name: AI Server CI
+
+on:
+  pull_request:
+    paths:
+      - 'ai-server/**'
+      - '.github/workflows/ai-server-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-ai-server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ai-server
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: ai-server/runner/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: ai-server/runner/pnpm-lock.yaml
+      - name: Install runner dependencies
+        run: pnpm --dir runner install --frozen-lockfile
+      - name: Check runner types
+        run: pnpm --dir runner typecheck
+      - name: Verify runner and supervisor
+        run: pnpm --dir runner test
+      - name: Verify and build AI server
+        run: ./gradlew check bootJar

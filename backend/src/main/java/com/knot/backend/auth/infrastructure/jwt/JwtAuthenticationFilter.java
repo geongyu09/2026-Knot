@@ -1,9 +1,10 @@
 package com.knot.backend.auth.infrastructure.jwt;
 
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.auth.domain.AuthErrorCode;
 import com.knot.backend.auth.domain.AuthException;
 import com.knot.backend.auth.domain.AuthTokenProvider;
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.global.config.JwtProperties;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -22,6 +23,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 @Component
 @RequiredArgsConstructor
+@lombok.extern.slf4j.Slf4j
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final AuthTokenProvider authTokenProvider;
     private final JwtProperties jwtProperties;
@@ -45,7 +47,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext()
                         .setAuthentication(authentication);
             }
-        } catch (AuthException ignored) {
+        } catch (AuthException exception) {
+            if (ServerErrorLogger.isInternalFailure(exception)) {
+                ServerErrorLogger.record(
+                        log,
+                        "JWT authentication internal failure",
+                        exception
+                );
+            }
         }
 
         filterChain.doFilter(

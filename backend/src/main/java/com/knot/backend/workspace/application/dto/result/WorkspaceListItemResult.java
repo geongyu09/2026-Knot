@@ -1,6 +1,6 @@
 package com.knot.backend.workspace.application.dto.result;
 
-import com.knot.backend.workspace.domain.Workspace;
+import com.knot.backend.workspace.domain.model.Workspace;
 
 public record WorkspaceListItemResult(
         long id,

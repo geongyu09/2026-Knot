@@ -1,15 +1,16 @@
 package com.knot.backend.auth.application;
 
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.auth.application.dto.result.AuthRefreshResult;
 import com.knot.backend.auth.domain.AuthErrorCode;
 import com.knot.backend.auth.domain.AuthException;
-import com.knot.backend.auth.domain.AuthSession;
-import com.knot.backend.auth.domain.AuthSessionRepository;
+import com.knot.backend.auth.domain.model.AuthSession;
+import com.knot.backend.auth.domain.repository.AuthSessionRepository;
 import com.knot.backend.auth.domain.AuthTokenProvider;
-import com.knot.backend.auth.domain.AuthenticatedMember;
-import com.knot.backend.auth.domain.RefreshToken;
-import com.knot.backend.auth.domain.ConsumedRefreshToken;
-import com.knot.backend.auth.domain.ConsumedRefreshTokenRepository;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.RefreshToken;
+import com.knot.backend.auth.domain.model.ConsumedRefreshToken;
+import com.knot.backend.auth.domain.repository.ConsumedRefreshTokenRepository;
 import com.knot.backend.auth.domain.RefreshTokenProvider;
 import com.knot.backend.member.application.MemberService;
 import com.knot.backend.member.domain.Member;
@@ -22,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@lombok.extern.slf4j.Slf4j
 public class AuthSessionRefreshService {
     private final AuthSessionRepository authSessionRepository;
     private final ConsumedRefreshTokenRepository consumedRefreshTokenRepository;
@@ -83,6 +85,7 @@ public class AuthSessionRefreshService {
                     currentToken,
                     now
             )) {
+                logConsumedValidationFailure(exception);
                 return true;
             }
             throw exception;
@@ -101,6 +104,17 @@ public class AuthSessionRefreshService {
                         )
                 )
                 .orElse(false);
+    }
+
+    private void logConsumedValidationFailure(AuthException exception) {
+        if (!ServerErrorLogger.isInternalFailure(exception)) {
+            return;
+        }
+        ServerErrorLogger.record(
+                log,
+                "Refresh validation failure consumed during replay",
+                exception
+        );
     }
 
     private boolean revokeSessionForReplay(

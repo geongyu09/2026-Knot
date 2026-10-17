@@ -1,12 +1,12 @@
 import { GetMeResponseDto } from "@api/dto/auth";
+import { GetDocumentsResponseDto } from "@api/dto/document";
 import {
   GetWorkspaceResponseDto,
   GetWorkspacesResponseDto,
 } from "@api/dto/workspace";
-import { GetNotionImportStatusResponseDto } from "@api/dto/notionImport";
 import { PostWorkspaceInvitationResponseDto } from "@api/dto/workspaceInvitation";
 import { meResponse } from "@api/mock/responses/auth";
-import { notionImportStatusResponse } from "@api/mock/responses/notionImport";
+import { documentsResponse } from "@api/mock/responses/document";
 import {
   workspaceDetailResponse,
   workspacesResponse,
@@ -17,16 +17,22 @@ import { expect, test, type Page } from "@playwright/test";
 /**
  * 워크스페이스 홈 화면(`/workspace/:workspaceId`) E2E.
  *
- * 홈 진입, 사이드바 열고 닫기, 폴더 트리 펼침·접힘, 초대 링크·코드 복사, Notion 동기화,
+ * 홈 진입, 사이드바 열고 닫기, 문서 목록의 폴더 펼침·접힘과 문서 이동, 초대 링크·코드 복사,
  * 하단 Dock으로 탐색 이동까지 홈 화면 위에서 사용자가 밟는 플로우를 페이지 단위로 확인해요.
- * 회원·워크스페이스·초대·노션 연결 상태·동기화는 dev 서버의 msw mock 응답(`API_MOCKING`)에서 오므로
- * 기대값도 같은 응답을 DTO로 변환해 가져와요. 사이드바 트리는 API가 아직 없어 위젯의 임시 상수예요.
+ * 회원·워크스페이스·초대·최근 문서·사이드바 문서 목록은 dev 서버의 msw mock 응답(`API_MOCKING`)에서 오므로
+ * 기대값도 같은 응답을 DTO로 변환해 가져와요.
  */
 
 const expectedMe = new GetMeResponseDto(meResponse);
 const expectedWorkspace = new GetWorkspaceResponseDto(workspaceDetailResponse);
 const expectedInvitation = new PostWorkspaceInvitationResponseDto(
   workspaceInvitationResponse,
+);
+const expectedDocuments = new GetDocumentsResponseDto(documentsResponse);
+// 사이드바 문서 목록에서 펼쳐 볼 폴더와 그 폴더의 문서(최근 회의순. 기본 응답은 서버가 준 순서와 같아요)
+const [{ topic: FOLDER_NAME }] = expectedDocuments.topics;
+const FOLDER_DOCUMENTS = expectedDocuments.items.filter(
+  ({ topic }) => topic === FOLDER_NAME,
 );
 
 // mock 워크스페이스 조회는 id와 무관하게 같은 응답이라 목록 첫 워크스페이스의 id로 들어가요
@@ -36,14 +42,14 @@ const HOME_PATH = `/workspace/${WORKSPACE_ID}`;
 const CHAT_PATH = `${HOME_PATH}/chat`;
 
 const GREETING = `반가워요, ${expectedMe.nickname} 님`;
+// 최근 추가된 문서 카드는 최신순 문서 가운데 앞의 세 개를 보여 줘요
+const RECENT_DOCUMENT_TITLES = new GetDocumentsResponseDto(
+  documentsResponse,
+).items
+  .slice(0, 3)
+  .map(({ title }) => title);
 const INVITE_CODE = expectedInvitation.code;
 const DISPLAY_INVITE_LINK = `/invite/${expectedInvitation.linkToken}`;
-
-// 연결 상태별 문구는 NotionSyncCard 위젯의 상수예요. mock 기본 응답이 CONNECTED라 연결됨 문구를 기대해요
-const NOTION_CONNECTED_LABEL = "노션이 연결되어 있어요";
-const SYNCED_DOCUMENT_COUNT = new GetNotionImportStatusResponseDto(
-  notionImportStatusResponse,
-).processedPageCount;
 
 const getSidebarToggle = (page: Page) =>
   page.getByRole("button", { name: "사이드바" });
@@ -56,9 +62,19 @@ interface GetFolderRowParams {
   name: string;
 }
 
-/** 폴더 행의 접근성 이름은 `이름 + 문서 수`라 앞부분만 맞춰요. */
+/** 사이드바의 문서 목록. 폴더 행과 문서 행은 이 안에서 찾아요. */
+const getDocumentTree = (page: Page) =>
+  getSidebar(page).getByRole("navigation", { name: "문서" });
+
+/** 정규식에서 뜻이 있는 글자를 글자 그대로 맞추게 바꿔요. 폴더 이름은 AI가 분류한 자유로운 글이에요. */
+const escapeRegExp = (text: string) =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** 폴더 행의 접근성 이름은 `이름 + 문서 수`라, 이름 뒤에 숫자만 오는 행을 찾아요. */
 const getFolderRow = ({ page, name }: GetFolderRowParams) =>
-  getSidebar(page).getByRole("button", { name: new RegExp(`^${name}`) });
+  getDocumentTree(page).getByRole("button", {
+    name: new RegExp(`^${escapeRegExp(name)}\\s*\\d+$`),
+  });
 
 const getDock = (page: Page) =>
   page.getByRole("navigation", { name: "주요 화면 이동" });
@@ -85,16 +101,26 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe("홈 진입", () => {
-  test("인사말, 카드 2개, 하단 Dock을 보여주고 사이드바는 닫혀 있다", async ({
+  test("인사말, 카드 세 개, 하단 Dock을 보여주고 사이드바는 닫혀 있다", async ({
     page,
   }) => {
     await expect(page.getByRole("heading", { name: GREETING })).toBeVisible();
 
-    const notionCard = getCard({ page, title: "Notion 동기화" });
-    await expect(notionCard.getByText(NOTION_CONNECTED_LABEL)).toBeVisible();
     await expect(
-      notionCard.getByRole("button", { name: "지금 동기화" }),
-    ).toBeEnabled();
+      page.getByRole("heading", { name: "Notion 동기화" }),
+    ).toBeHidden();
+
+    const recentDocumentsCard = getCard({ page, title: "최근 추가된 문서" });
+    await expect(
+      recentDocumentsCard.getByRole("link", { name: "전체 보기" }),
+    ).toBeVisible();
+    await expect(
+      recentDocumentsCard.getByRole("list").getByRole("link"),
+    ).toHaveText(
+      RECENT_DOCUMENT_TITLES.map((title) => new RegExp(`^${title}`)),
+    );
+
+    await expect(getCard({ page, title: "진행 중인 녹음" })).toBeVisible();
 
     const inviteCard = getCard({ page, title: "팀원 초대" });
     await expect(
@@ -132,7 +158,7 @@ test.describe("홈 진입", () => {
 });
 
 test.describe("사이드바", () => {
-  test("GNB 버튼으로 열면 워크스페이스 정보와 임시 트리를 보여주고, 다시 누르면 닫힌다", async ({
+  test("GNB 버튼으로 열면 워크스페이스 이름과 문서 목록의 폴더를 보여주고, 다시 누르면 닫힌다", async ({
     page,
   }) => {
     const toggle = getSidebarToggle(page);
@@ -143,15 +169,13 @@ test.describe("사이드바", () => {
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await expect(sidebar).toBeVisible();
     await expect(sidebar.getByText(expectedWorkspace.name)).toBeVisible();
-    await expect(sidebar.getByText("폴더", { exact: true })).toBeVisible();
+    await expect(getDocumentTree(page)).toBeVisible();
 
-    await expect(getFolderRow({ page, name: "제품" })).toContainText("24");
-    await expect(getFolderRow({ page, name: "로드맵" })).toContainText("7");
-    await expect(sidebar.getByText("2026 H2 로드맵")).toBeVisible();
-    await expect(getFolderRow({ page, name: "스펙" })).toContainText("5");
-    await expect(getFolderRow({ page, name: "리서치" })).toContainText("18");
-    await expect(getFolderRow({ page, name: "회의록" })).toContainText("41");
-    await expect(getFolderRow({ page, name: "초안" })).toContainText("6");
+    for (const { topic, documentCount } of expectedDocuments.topics) {
+      await expect(getFolderRow({ page, name: topic })).toContainText(
+        String(documentCount),
+      );
+    }
 
     await toggle.click();
 
@@ -159,70 +183,71 @@ test.describe("사이드바", () => {
     await expect(sidebar).toBeHidden();
   });
 
-  test("처음에는 제품과 로드맵만 펼쳐져 있고, 폴더를 누르면 접히고 다시 누르면 펼쳐진다", async ({
+  test("홈에서는 폴더가 모두 접혀 있고, 폴더를 누르면 그 폴더의 문서를 보여주고 다시 누르면 접힌다", async ({
     page,
   }) => {
     await getSidebarToggle(page).click();
 
-    const productRow = getFolderRow({ page, name: "제품" });
-    const roadmapRow = getFolderRow({ page, name: "로드맵" });
-    const roadmapFile = getSidebar(page).getByText("2026 H2 로드맵");
+    const folderRow = getFolderRow({ page, name: FOLDER_NAME });
+    const documentRows = getDocumentTree(page).getByRole("link");
 
-    await expect(productRow).toHaveAttribute("aria-expanded", "true");
-    await expect(roadmapRow).toHaveAttribute("aria-expanded", "true");
-    await expect(getFolderRow({ page, name: "스펙" })).toHaveAttribute(
-      "aria-expanded",
-      "false",
+    for (const { topic } of expectedDocuments.topics) {
+      await expect(getFolderRow({ page, name: topic })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+    }
+    await expect(documentRows).toHaveCount(0);
+
+    await folderRow.click();
+
+    await expect(folderRow).toHaveAttribute("aria-expanded", "true");
+    await expect(documentRows).toHaveText(
+      FOLDER_DOCUMENTS.map(({ title }) => title),
     );
-    await expect(getFolderRow({ page, name: "리서치" })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
 
-    await productRow.click();
+    await folderRow.click();
 
-    await expect(productRow).toHaveAttribute("aria-expanded", "false");
-    await expect(roadmapRow).toBeHidden();
-    await expect(roadmapFile).toBeHidden();
-    await expect(getFolderRow({ page, name: "스펙" })).toBeHidden();
-    await expect(getFolderRow({ page, name: "리서치" })).toBeVisible();
-
-    await productRow.click();
-
-    await expect(productRow).toHaveAttribute("aria-expanded", "true");
-    await expect(roadmapRow).toBeVisible();
-    await expect(roadmapFile).toBeVisible();
+    await expect(folderRow).toHaveAttribute("aria-expanded", "false");
+    await expect(documentRows).toHaveCount(0);
   });
 
-  test("중간 폴더를 접어도 형제 폴더는 그대로 보인다", async ({ page }) => {
+  test("문서 행을 누르면 그 문서 보기로 이동하고, 사이드바에 그 문서가 지금 보는 문서로 표시된다", async ({
+    page,
+  }) => {
+    const [targetDocument] = FOLDER_DOCUMENTS;
+    const targetRow = getDocumentTree(page).getByRole("link", {
+      name: targetDocument.title,
+    });
+
     await getSidebarToggle(page).click();
+    await getFolderRow({ page, name: FOLDER_NAME }).click();
+    await targetRow.click();
 
-    const roadmapRow = getFolderRow({ page, name: "로드맵" });
-
-    await roadmapRow.click();
-
-    await expect(roadmapRow).toHaveAttribute("aria-expanded", "false");
-    await expect(getSidebar(page).getByText("2026 H2 로드맵")).toBeHidden();
-    await expect(getFolderRow({ page, name: "스펙" })).toBeVisible();
+    await expect(page).toHaveURL(`${HOME_PATH}/documents/${targetDocument.id}`);
+    await expect(targetRow).toHaveAttribute("aria-current", "page");
+    await expect(getFolderRow({ page, name: FOLDER_NAME })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
   });
 
-  test("사이드바를 닫았다 다시 열어도 접어 둔 폴더는 접힌 채로 남는다", async ({
+  test("사이드바를 닫았다 다시 열면 펼쳐 둔 폴더는 다시 접혀 있다", async ({
     page,
   }) => {
     const toggle = getSidebarToggle(page);
+    const folderRow = getFolderRow({ page, name: FOLDER_NAME });
 
     await toggle.click();
-    await getFolderRow({ page, name: "제품" }).click();
+    await folderRow.click();
+    await expect(folderRow).toHaveAttribute("aria-expanded", "true");
+
     await toggle.click();
     await expect(getSidebar(page)).toBeHidden();
 
     await toggle.click();
 
-    await expect(getFolderRow({ page, name: "제품" })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-    await expect(getFolderRow({ page, name: "로드맵" })).toBeHidden();
+    await expect(folderRow).toHaveAttribute("aria-expanded", "false");
   });
 });
 
@@ -273,32 +298,6 @@ test.describe("팀원 초대 카드", () => {
 
     // 2초 뒤 원래 `초대 코드 복사`로 돌아와요
     await expect(copyCodeButton).toBeVisible();
-  });
-});
-
-test.describe("Notion 동기화 카드", () => {
-  test("지금 동기화를 누르면 새로 들어온 문서 수와 비활성 완료 버튼이 보였다가 2초 뒤 기본 상태로 돌아온다", async ({
-    page,
-  }) => {
-    const notionCard = getCard({ page, title: "Notion 동기화" });
-    const syncButton = notionCard.getByRole("button", { name: "지금 동기화" });
-
-    await syncButton.click();
-
-    // mock 응답이 즉시 완료라 로딩은 순간이에요. 로딩 잠금은 위젯 통합 테스트가 확인해요
-    await expect(
-      notionCard.getByText(`문서 ${SYNCED_DOCUMENT_COUNT}개가 새로 들어왔어요`),
-    ).toBeVisible();
-    await expect(
-      notionCard.getByRole("button", { name: "완료" }),
-    ).toBeDisabled();
-    await expect(syncButton).toBeHidden();
-    await expect(notionCard.getByText(NOTION_CONNECTED_LABEL)).toBeHidden();
-
-    // 2초 뒤 원래 `지금 동기화`와 연결 상태 안내로 돌아와요
-    await expect(syncButton).toBeVisible();
-    await expect(syncButton).toBeEnabled();
-    await expect(notionCard.getByText(NOTION_CONNECTED_LABEL)).toBeVisible();
   });
 });
 

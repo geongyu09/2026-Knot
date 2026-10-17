@@ -6,7 +6,7 @@ import com.knot.backend.recording.application.dto.command.RecordingControlComman
 import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.recording.application.dto.result.RecordingCurrentResult;
 import com.knot.backend.recording.application.dto.result.RecordingPauseResult;
-import com.knot.backend.recording.domain.RecordingStatus;
+import com.knot.backend.recording.domain.model.RecordingStatus;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.time.Instant;
@@ -34,18 +34,18 @@ class RecordingCurrentServiceIntegrationTest {
     private static final String CONTROL_TOKEN = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefA";
 
     private final RecordingCurrentService recordingCurrentService;
-    private final RecordingPauseService recordingPauseService;
+    private final RecordingControlService recordingControlService;
     private final RecordingStartService recordingStartService;
     private final JdbcClient jdbcClient;
 
     RecordingCurrentServiceIntegrationTest(
             RecordingCurrentService recordingCurrentService,
-            RecordingPauseService recordingPauseService,
+            RecordingControlService recordingControlService,
             RecordingStartService recordingStartService,
             JdbcClient jdbcClient
     ) {
         this.recordingCurrentService = recordingCurrentService;
-        this.recordingPauseService = recordingPauseService;
+        this.recordingControlService = recordingControlService;
         this.recordingStartService = recordingStartService;
         this.jdbcClient = jdbcClient;
     }
@@ -105,7 +105,7 @@ class RecordingCurrentServiceIntegrationTest {
                 workspaceId,
                 memberId
         );
-        RecordingPauseResult paused = recordingPauseService.pause(
+        RecordingPauseResult paused = recordingControlService.pause(
                 workspaceId,
                 memberId,
                 recording.id(),

@@ -8,7 +8,7 @@ const CONVERSATION_PATH = getRouterPath({
   routeKey: "CHAT_SESSION",
   params: { workspaceId: "1", sessionId: "10" },
 });
-/** 예시 대화에서 근거가 3개인 둘째 답변의 ID */
+/** mock 대화에서 근거가 3개인 둘째 답변의 ID */
 const ANSWER_WITH_THREE_EVIDENCES_ID = 4;
 
 /**
@@ -19,7 +19,8 @@ const ANSWER_WITH_THREE_EVIDENCES_ID = 4;
  * - 답변 아래 「기록 N개에서 찾았어요」나 GNB 오른쪽 찾은 기록 버튼으로 열고 닫아요. 그래서 패널 안에는 닫기 버튼이 없어요.
  * - 펼친 답변이 없거나 그 답변에 근거가 없으면 패널을 띄우지 않아요.
  * - 카드를 누르면 그 문서 보기 화면으로 가요. 링크라 새 탭으로도 열 수 있어요.
- * - 아직 메시지 조회 API를 연결하지 않아 예시 대화의 답변을 그려요.
+ * - 출처는 모두 「문서」로 보여 주고, 문서 날짜는 서버가 아직 주지 않아 보여 주지 않아요.
+ * - 메시지 조회 mock 응답의 답변을 그려요.
  */
 const meta = {
   title: "Search/SearchEvidenceList",

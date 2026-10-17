@@ -1,15 +1,59 @@
 /**
  * 녹음 DTO
  *
+ * - GET  /api/v1/workspaces/{workspaceId}/recordings/current
  * - POST /api/v1/workspaces/{workspaceId}/recordings
+ * - GET /api/v1/workspaces/{workspaceId}/recordings/{recordingId}
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/pause
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/resume
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/end
+ * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/heartbeat
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-upload-url
+ * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-upload-complete
  */
 
-/** 녹음 세션 상태. 시작·일시정지·재개·종료 응답이 공유하는 서버 값 */
-export type RecordingSessionStatus = "RECORDING" | "PAUSED" | "ENDED";
+/** 녹음 세션 상태. 시작·일시정지·재개·종료 응답과 녹음 상세 조회가 공유하는 서버 값. `DISCARDED`는 서버가 버린 녹음이에요 */
+export type RecordingSessionStatus =
+  "RECORDING" | "PAUSED" | "ENDED" | "DISCARDED";
+
+// GET /api/v1/workspaces/{workspaceId}/recordings/current
+
+/**
+ * 현재 녹음의 화면용 종합 상태. `ENDED`는 종료 후 최종 오디오 업로드 확인 전,
+ * `PROCESSING`은 전사·문서 작업 중, `FAILED`는 처리 실패예요
+ */
+export type CurrentRecordingStatus =
+  "RECORDING" | "PAUSED" | "ENDED" | "PROCESSING" | "FAILED";
+
+/**
+ * 내 현재 녹음 조회의 서버 응답 모양.
+ * 명세의 종료 시각·실패 원인·단계별 처리 상태 필드는 화면에서 쓰지 않아 담지 않아요
+ */
+export interface GetCurrentRecordingResponseRaw {
+  recordingId: number;
+  status: CurrentRecordingStatus;
+  startedAt: string;
+  elapsedMillis: number;
+}
+
+/** 내 현재 녹음 조회 응답. 표시할 녹음이 없으면 서버가 본문 없이 204로 답하고 요청 함수가 `null`을 돌려줘요 */
+export class GetCurrentRecordingResponseDto {
+  /** 녹음 세션 ID */
+  recordingId: number;
+  /** 화면용 종합 상태. 녹음 중·일시정지인 녹음이 먼저 오고, 없으면 가장 최근의 종료·처리 중·실패 녹음이 와요 */
+  status: CurrentRecordingStatus;
+  /** 녹음 시작 시각(ISO 8601) */
+  startedAt: string;
+  /** 조회 시점까지 누적 녹음 시간(ms). 일시정지 구간은 빠져요 */
+  elapsedMillis: number;
+
+  constructor(raw: GetCurrentRecordingResponseRaw) {
+    this.recordingId = raw.recordingId;
+    this.status = raw.status;
+    this.startedAt = raw.startedAt;
+    this.elapsedMillis = raw.elapsedMillis;
+  }
+}
 
 // POST /api/v1/workspaces/{workspaceId}/recordings
 
@@ -51,11 +95,117 @@ export class PostRecordingResponseDto {
   status: RecordingSessionStatus;
   /** 서버가 확정한 녹음 시작 시각(ISO 8601) */
   startedAt: string;
+  /** 이 요청으로 새로 만든 녹음이면 `true`. 본문에는 없어 HTTP 상태(201)에서 읽어요 */
+  isCreated: boolean;
 
-  constructor(raw: PostRecordingResponseRaw) {
+  constructor(raw: PostRecordingResponseRaw, httpStatus: number) {
     this.recordingId = raw.recordingId;
     this.status = raw.status;
     this.startedAt = raw.startedAt;
+    this.isCreated = httpStatus === 201;
+  }
+}
+
+// GET /api/v1/workspaces/{workspaceId}/recordings/{recordingId}
+
+/** 전사 상태. 전사 시도가 접수된 뒤의 값이에요 */
+export type RecordingTranscriptionStatus =
+  "PROCESSING" | "SUCCEEDED" | "FAILED";
+
+/**
+ * 주제 분류와 주제별 문서 생성을 합친 상태.
+ *
+ * - `QUEUED` · `RUNNING`: 대기하거나 진행 중인 작업이 있음. 문서가 일부 만들어졌어도 남은 작업이 있으면 이 값이에요
+ * - `SUCCEEDED`: 모든 주제의 문서가 만들어짐
+ * - `NO_CONTENT`: 전사 결과에 문서로 정리할 내용이 없음
+ * - `FAILED`: 진행 중인 작업 없이 실패가 남음
+ */
+export type RecordingDocumentGenerationStatus =
+  "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "NO_CONTENT";
+
+/** 녹음 상세 조회가 주는 문서 생성 결과의 서버 응답 모양 */
+export interface RecordingDocumentGenerationRaw {
+  status: RecordingDocumentGenerationStatus;
+  succeededCount: number;
+  failedJobIds: number[];
+}
+
+/** 녹음 하나의 문서 생성 결과. 녹음 상세 조회 응답 안에 들어 있어요 */
+export class RecordingDocumentGenerationDto {
+  /** 주제 분류와 주제별 문서 생성을 합친 상태 */
+  status: RecordingDocumentGenerationStatus;
+  /** 생성에 성공한 문서 수. `FAILED`일 때 0이면 전체 실패, 1 이상이면 일부만 만들어진 실패예요 */
+  succeededCount: number;
+  /**
+   * 보존 기한 안에 남아 있는 실패 작업의 ID. 문서 만들기 재시도에 넘겨요.
+   * 주제 분류 단계에서 실패한 작업과 다시 시도 횟수를 다 쓴 작업도 들어 있어요.
+   * 다시 시도 횟수를 다 쓴 작업은 재시도를 보내면 서버가 409로 거절해요.
+   * 실패 작업이 없거나 보존 기한이 지나 지워졌으면 빈 배열이에요
+   */
+  failedJobIds: number[];
+
+  constructor(raw: RecordingDocumentGenerationRaw) {
+    this.status = raw.status;
+    this.succeededCount = raw.succeededCount;
+    this.failedJobIds = raw.failedJobIds;
+  }
+}
+
+/**
+ * 녹음 상세 조회의 서버 응답 모양.
+ *
+ * 전사와 문서 생성 필드는 서버에 나중에 더해진 값이라, 그 전의 서버는 필드 자체를 주지 않아요.
+ */
+export interface GetRecordingResponseRaw {
+  /** 녹음 세션 상태. 전사·문서 생성 상태가 아니에요 */
+  status: RecordingSessionStatus;
+  elapsedMillis: number;
+  endedAt: string | null;
+  endReason: RecordingEndReason | null;
+  audioUploadStatus: RecordingAudioUploadStatus | null;
+  transcriptionAttemptId?: string | null;
+  transcriptionStatus?: RecordingTranscriptionStatus | null;
+  transcriptionFailureCode?: string | null;
+  documentGeneration?: RecordingDocumentGenerationRaw | null;
+}
+
+/** 녹음 상세 조회 응답. 녹음을 끝낸 뒤 이 응답을 다시 조회해 문서 정리가 어디까지 됐는지 확인해요 */
+export class GetRecordingResponseDto {
+  /** 녹음 세션 상태. 서버 필드 `status`를 전사·문서 생성 상태와 구별되게 이름을 바꿨어요. 전사·문서 생성이 실패해도 `ENDED`로 남아요 */
+  sessionStatus: RecordingSessionStatus;
+  /** 일시정지를 뺀 서버 기준 녹음 시간(ms). 진행 중이면 조회 시점까지 센 값이에요 */
+  elapsedMillis: number;
+  /** 녹음 종료 시각(ISO 8601). 끝나기 전이면 null */
+  endedAt: string | null;
+  /** 녹음이 끝난 사유. 끝나기 전이면 null */
+  endReason: RecordingEndReason | null;
+  /** 최종 오디오 업로드 상태. 업로드를 예약하기 전이면 null, 예약하면 `RESERVED`, 서버가 저장을 확인하면 `COMPLETED` */
+  audioUploadStatus: RecordingAudioUploadStatus | null;
+  /** 지금 전사 시도의 UUID. 전사를 시도하기 전이면 null. 서버가 주지 않으면 null */
+  transcriptionAttemptId: string | null;
+  /** 전사 상태. 전사를 시도하기 전이면 null. 서버가 주지 않으면 null */
+  transcriptionStatus: RecordingTranscriptionStatus | null;
+  /** 전사 실패 이유 코드(예: `AI_TIMEOUT`). 실패가 아니면 null. 서버가 주지 않으면 null */
+  transcriptionFailureCode: string | null;
+  /** 문서 생성 결과. 문서 생성이 접수되기 전이면 null. 서버가 주지 않으면 null */
+  documentGeneration: RecordingDocumentGenerationDto | null;
+
+  constructor(raw: GetRecordingResponseRaw) {
+    this.sessionStatus = raw.status;
+    this.elapsedMillis = raw.elapsedMillis;
+    this.endedAt = raw.endedAt;
+    this.endReason = raw.endReason;
+    this.audioUploadStatus = raw.audioUploadStatus;
+    this.transcriptionAttemptId = raw.transcriptionAttemptId ?? null;
+    this.transcriptionStatus = raw.transcriptionStatus ?? null;
+    this.transcriptionFailureCode = raw.transcriptionFailureCode ?? null;
+    // 전사·문서 생성 필드를 주지 않는 서버의 응답(undefined)도 값이 없는 것(null)으로 맞춰요
+    const documentGeneration = raw.documentGeneration ?? null;
+
+    this.documentGeneration =
+      documentGeneration === null
+        ? null
+        : new RecordingDocumentGenerationDto(documentGeneration);
   }
 }
 
@@ -157,6 +307,25 @@ export class PostRecordingResumeResponseDto {
 
 // POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/end
 
+/** 녹음 종료 시 앱이 넘기는 값. 시작 때 보낸 증명 그대로 */
+export interface PostRecordingEndRequestInput {
+  tabId: string;
+  controlToken: string;
+}
+
+/** 녹음 종료 요청 본문. 최초 녹음 탭임을 증명해요 */
+export class PostRecordingEndRequestDto {
+  /** 녹음을 시작한 최초 탭의 UUID */
+  tabId: string;
+  /** 녹음 시작 때 보낸 제어 증명(43자 Base64URL) */
+  controlToken: string;
+
+  constructor({ tabId, controlToken }: PostRecordingEndRequestInput) {
+    this.tabId = tabId;
+    this.controlToken = controlToken;
+  }
+}
+
 /** 녹음 종료의 서버 응답 모양 */
 export interface PostRecordingEndResponseRaw {
   recordingId: number;
@@ -164,7 +333,7 @@ export interface PostRecordingEndResponseRaw {
   endedAt: string;
 }
 
-/** 녹음 종료 응답. 요청 본문은 없고, 이미 종료된 녹음이면 처음 확정한 결과를 그대로 돌려줘요 */
+/** 녹음 종료 응답. 이미 종료된 녹음이면 처음 확정한 결과를 그대로 돌려줘요 */
 export class PostRecordingEndResponseDto {
   /** 녹음 세션 ID */
   recordingId: number;
@@ -177,6 +346,77 @@ export class PostRecordingEndResponseDto {
     this.recordingId = raw.recordingId;
     this.status = raw.status;
     this.endedAt = raw.endedAt;
+  }
+}
+
+// POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/heartbeat
+
+/**
+ * 녹음이 끝난 사유. `USER_ENDED`는 사용자가 직접 끝냄, `CONNECTION_EXPIRED`는 생존 신호가 30초 동안 없어 서버가 끝냄,
+ * `MAX_DURATION`은 누적 녹음 시간이 2시간에 닿아 서버가 끝냄
+ */
+export type RecordingEndReason =
+  "USER_ENDED" | "CONNECTION_EXPIRED" | "MAX_DURATION";
+
+/** 녹음 생존 신호를 보낼 때 앱이 넘기는 값. 시작 때 보낸 증명 그대로 */
+export interface PostRecordingHeartbeatRequestInput {
+  tabId: string;
+  controlToken: string;
+}
+
+/** 녹음 생존 신호 요청 본문. 최초 녹음 탭임을 증명해요 */
+export class PostRecordingHeartbeatRequestDto {
+  /** 녹음을 시작한 최초 탭의 UUID */
+  tabId: string;
+  /** 녹음 시작 때 보낸 제어 증명(43자 Base64URL) */
+  controlToken: string;
+
+  constructor({ tabId, controlToken }: PostRecordingHeartbeatRequestInput) {
+    this.tabId = tabId;
+    this.controlToken = controlToken;
+  }
+}
+
+/** 녹음 생존 신호의 서버 응답 모양 */
+export interface PostRecordingHeartbeatResponseRaw {
+  recordingId: number;
+  status: RecordingSessionStatus;
+  elapsedMillis: number;
+  lastSeenAt: string;
+  expiresAt: string | null;
+  endedAt: string | null;
+  endReason: RecordingEndReason | null;
+  serverNow: string;
+}
+
+/** 녹음 생존 신호 응답. 이미 끝난 녹음에 보내도 오류가 아니라 200으로 끝난 상태를 그대로 돌려줘요 */
+export class PostRecordingHeartbeatResponseDto {
+  /** 녹음 세션 ID */
+  recordingId: number;
+  /** 지금의 녹음 세션 상태. `ENDED`나 `DISCARDED`면 서버가 이미 끝냈거나 버린 녹음이에요 */
+  status: RecordingSessionStatus;
+  /** 서버 기준 누적 녹음 시간(ms). 일시정지 구간은 빠지고 최대 2시간(7200000)이에요 */
+  elapsedMillis: number;
+  /** 서버가 받은 마지막 유효 신호 시각(ISO 8601). 끝난 녹음에 보낸 신호로는 바뀌지 않아요 */
+  lastSeenAt: string;
+  /** 이 시각(ISO 8601)까지 다음 신호가 없으면 서버가 녹음을 끝내요. 끝난 녹음이면 null */
+  expiresAt: string | null;
+  /** 녹음 종료 시각(ISO 8601). 진행 중이면 null */
+  endedAt: string | null;
+  /** 종료 사유. 진행 중이거나 이 값을 기록하기 전에 끝난 녹음이면 null */
+  endReason: RecordingEndReason | null;
+  /** 응답을 만든 서버 시각(ISO 8601) */
+  serverNow: string;
+
+  constructor(raw: PostRecordingHeartbeatResponseRaw) {
+    this.recordingId = raw.recordingId;
+    this.status = raw.status;
+    this.elapsedMillis = raw.elapsedMillis;
+    this.lastSeenAt = raw.lastSeenAt;
+    this.expiresAt = raw.expiresAt;
+    this.endedAt = raw.endedAt;
+    this.endReason = raw.endReason;
+    this.serverNow = raw.serverNow;
   }
 }
 
@@ -224,5 +464,52 @@ export class PostRecordingAudioUploadUrlResponseDto {
     this.uploadId = raw.uploadId;
     this.uploadUrl = raw.uploadUrl;
     this.expiresAt = raw.expiresAt;
+  }
+}
+
+// POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-upload-complete
+
+/** 최종 오디오 업로드 처리 상태. 완료 확인 응답은 항상 `COMPLETED`예요 */
+export type RecordingAudioUploadStatus = "RESERVED" | "COMPLETED";
+
+/** 최종 오디오 업로드 완료 확인 시 앱이 넘기는 값 */
+export interface PostRecordingAudioUploadCompleteRequestInput {
+  uploadId: number;
+}
+
+/** 최종 오디오 업로드 완료 확인 요청 본문 */
+export class PostRecordingAudioUploadCompleteRequestDto {
+  /** 업로드 URL 발급 응답의 업로드 예약 ID */
+  uploadId: number;
+
+  constructor({ uploadId }: PostRecordingAudioUploadCompleteRequestInput) {
+    this.uploadId = uploadId;
+  }
+}
+
+/** 최종 오디오 업로드 완료 확인의 서버 응답 모양 */
+export interface PostRecordingAudioUploadCompleteResponseRaw {
+  recordingId: number;
+  uploadId: number;
+  uploadStatus: RecordingAudioUploadStatus;
+  completedAt: string;
+}
+
+/** 최종 오디오 업로드 완료 확인 응답. 같은 uploadId로 다시 불러도 처음 확정한 결과를 그대로 돌려줘요 */
+export class PostRecordingAudioUploadCompleteResponseDto {
+  /** 녹음 세션 ID */
+  recordingId: number;
+  /** 업로드 예약 ID */
+  uploadId: number;
+  /** 항상 `COMPLETED`. 전사 처리 상태와는 별개예요 */
+  uploadStatus: RecordingAudioUploadStatus;
+  /** 서버가 업로드 완료를 확정한 시각(ISO 8601). 다시 불러도 바뀌지 않아요 */
+  completedAt: string;
+
+  constructor(raw: PostRecordingAudioUploadCompleteResponseRaw) {
+    this.recordingId = raw.recordingId;
+    this.uploadId = raw.uploadId;
+    this.uploadStatus = raw.uploadStatus;
+    this.completedAt = raw.completedAt;
   }
 }

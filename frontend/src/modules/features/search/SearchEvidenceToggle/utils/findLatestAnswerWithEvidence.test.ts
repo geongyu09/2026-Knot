@@ -1,23 +1,20 @@
+import type { SearchEvidenceDto, SearchMessageDto } from "@api/dto/search";
 import { describe, expect, it } from "vitest";
-
-import type { SearchEvidence, SearchMessage } from "@/shared/types/search";
 
 import { findLatestAnswerWithEvidence } from "./findLatestAnswerWithEvidence";
 
-const evidence: SearchEvidence = {
+const evidence: SearchEvidenceDto = {
   documentId: 1,
   title: "회원 탈퇴 정책",
   topic: "회원",
-  sourceType: "문서",
-  createdAt: "2026-10-01T00:00:00Z",
   rank: 1,
 };
 
 const message = (
   id: number,
-  role: SearchMessage["role"],
-  evidences: SearchEvidence[] = [],
-): SearchMessage => ({
+  role: SearchMessageDto["role"],
+  evidences: SearchEvidenceDto[] = [],
+): SearchMessageDto => ({
   id,
   role,
   sequence: id,

@@ -8,7 +8,7 @@ const CONVERSATION_PATH = getRouterPath({
   routeKey: "CHAT_SESSION",
   params: { workspaceId: "1", sessionId: "10" },
 });
-/** 예시 대화에서 근거가 2개인 첫 답변의 ID */
+/** mock 대화에서 근거가 2개인 첫 답변의 ID */
 const FIRST_ANSWER_ID = 2;
 
 /**

@@ -1,31 +1,26 @@
-import { GetNotionPageTreeResponseDto } from "@api/dto/notionPage";
+import { GetDocumentsResponseDto } from "@api/dto/document";
 import { GetWorkspaceResponseDto } from "@api/dto/workspace";
-import { notionPageTreeResponse } from "@api/mock/responses/notionPage";
+import { documentsResponse } from "@api/mock/responses/document";
 import { workspaceDetailResponse } from "@api/mock/responses/workspace";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
+import { DialogProvider } from "@provider/context/dialogContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import WorkspaceSidebar from ".";
 
-const NOTION_PAGE_TREE_PATH =
-  "*/api/v1/workspaces/:workspaceId/notion-pages/tree";
+// 경로 파라미터 자리에 무엇이 와도 잡도록 fetch 상수 대신 패턴을 적어요
+const DOCUMENTS_REQUEST = "*/api/v1/workspaces/:workspaceId/documents";
+const LOAD_FAILED_NOTICE = "목록을 불러오지 못했어요";
 
 const expectedWorkspace = new GetWorkspaceResponseDto(workspaceDetailResponse);
-const { pages: expectedPages } = new GetNotionPageTreeResponseDto(
-  notionPageTreeResponse,
-);
-
-const [product, roadmap, roadmap2026, spec, , research] = expectedPages;
-
-/** 제품 아래에 딸린 문서 수(로드맵·2026 H2 로드맵·스펙·탐색 스펙) */
-const PRODUCT_DOCUMENT_COUNT = "4";
+const expectedDocuments = new GetDocumentsResponseDto(documentsResponse);
 
 const WORKSPACE_ID = 1;
 const HOME_PATH = getRouterPath({
@@ -45,7 +40,9 @@ const renderSidebar = () => {
   render(
     <ThemeProvider theme={theme}>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <DialogProvider>
+          <RouterProvider router={router} />
+        </DialogProvider>
       </QueryClientProvider>
     </ThemeProvider>,
   );
@@ -53,97 +50,49 @@ const renderSidebar = () => {
   return screen.getByRole("complementary", { name: "워크스페이스 사이드바" });
 };
 
-const findFolderRow = (name: string) =>
-  screen.findByRole("button", { name: new RegExp(`^${name}`) });
-
-const getFolderRow = (name: string) =>
-  screen.getByRole("button", { name: new RegExp(`^${name}`) });
-
 describe("WorkspaceSidebar", () => {
-  it("조회한 워크스페이스 이름과 페이지 트리를 보여준다", async () => {
+  it("워크스페이스 이름이 적힌 메뉴 버튼과 문서 목록을 보여 준다", async () => {
     const sidebar = renderSidebar();
 
     expect(
       await within(sidebar).findByText(expectedWorkspace.name),
     ).toBeInTheDocument();
-    expect(within(sidebar).getByText("폴더")).toBeInTheDocument();
-
-    // 하위 페이지가 있으면 문서 수를 단 폴더 행이에요
     expect(
-      within(await findFolderRow(product.title)).getByText(
-        PRODUCT_DOCUMENT_COUNT,
+      within(sidebar).getByRole("button", { name: "워크스페이스 메뉴" }),
+    ).toBeInTheDocument();
+
+    // 폴더 행의 이름은 폴더 이름과 문서 수를 이은 글이라, 폴더 이름 뒤에 문서 수만 오는 행을 찾아요
+    for (const { topic } of expectedDocuments.topics) {
+      expect(
+        await within(sidebar).findByRole("button", {
+          name: (name) =>
+            name.startsWith(topic) && /^\s*\d+$/.test(name.slice(topic.length)),
+        }),
+      ).toBeInTheDocument();
+    }
+    // 불러오는 동안의 문서 목록도 이름이 같아, 폴더 행이 나온 뒤에 찾아요
+    expect(
+      within(sidebar).getByRole("navigation", { name: "문서" }),
+    ).toBeInTheDocument();
+  });
+
+  it("문서 목록을 불러오지 못해도 워크스페이스 이름은 그대로 보여 준다", async () => {
+    mockServer.use(
+      http.get(
+        DOCUMENTS_REQUEST,
+        () => new HttpResponse(null, { status: 500 }),
+      ),
+    );
+
+    const sidebar = renderSidebar();
+
+    expect(
+      within(await within(sidebar).findByRole("alert")).getByText(
+        LOAD_FAILED_NOTICE,
       ),
     ).toBeInTheDocument();
-    expect(await findFolderRow(research.title)).toBeInTheDocument();
-  });
-
-  it("처음에는 모든 폴더가 접혀 있다", async () => {
-    renderSidebar();
-
-    expect(await findFolderRow(product.title)).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-    expect(screen.queryByText(roadmap.title)).not.toBeInTheDocument();
-  });
-
-  it("폴더를 누르면 하위 항목을 펼치고, 다시 누르면 접는다", async () => {
-    renderSidebar();
-
-    fireEvent.click(await findFolderRow(product.title));
-
-    expect(getFolderRow(product.title)).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
-    expect(getFolderRow(roadmap.title)).toBeInTheDocument();
-    expect(getFolderRow(spec.title)).toBeInTheDocument();
-
-    fireEvent.click(getFolderRow(product.title));
-
-    expect(getFolderRow(product.title)).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-    expect(screen.queryByText(roadmap.title)).not.toBeInTheDocument();
-  });
-
-  it("하위 페이지가 없는 페이지는 펼칠 수 없는 문서 행으로 보여준다", async () => {
-    renderSidebar();
-
-    fireEvent.click(await findFolderRow(product.title));
-    fireEvent.click(getFolderRow(roadmap.title));
-
-    expect(screen.getByText(roadmap2026.title)).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", {
-        name: new RegExp(`^${roadmap2026.title}`),
-      }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("중간 폴더를 접어도 형제 폴더는 그대로 보인다", async () => {
-    renderSidebar();
-
-    fireEvent.click(await findFolderRow(product.title));
-    fireEvent.click(getFolderRow(roadmap.title));
-    fireEvent.click(getFolderRow(roadmap.title));
-
-    expect(screen.queryByText(roadmap2026.title)).not.toBeInTheDocument();
-    expect(getFolderRow(spec.title)).toBeInTheDocument();
-  });
-
-  it("발행된 페이지가 없으면 폴더 라벨만 남긴다", async () => {
-    mockServer.use(
-      http.get(NOTION_PAGE_TREE_PATH, () => HttpResponse.json([])),
-    );
-
-    const sidebar = renderSidebar();
-
     expect(
       await within(sidebar).findByText(expectedWorkspace.name),
     ).toBeInTheDocument();
-    expect(within(sidebar).getByText("폴더")).toBeInTheDocument();
-    expect(within(sidebar).queryByRole("button")).not.toBeInTheDocument();
   });
 });

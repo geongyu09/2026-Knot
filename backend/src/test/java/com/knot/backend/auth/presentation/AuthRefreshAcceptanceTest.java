@@ -9,10 +9,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.knot.backend.auth.application.AuthRefreshService;
 import com.knot.backend.auth.domain.AuthErrorCode;
 import com.knot.backend.auth.domain.AuthException;
-import com.knot.backend.auth.domain.AuthSession;
-import com.knot.backend.auth.domain.AuthSessionRepository;
-import com.knot.backend.auth.domain.AuthenticatedMember;
-import com.knot.backend.auth.domain.RefreshToken;
+import com.knot.backend.auth.domain.model.AuthSession;
+import com.knot.backend.auth.domain.repository.AuthSessionRepository;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.RefreshToken;
 import com.knot.backend.auth.domain.RefreshTokenProvider;
 import com.knot.backend.auth.infrastructure.jwt.JwtProvider;
 import com.knot.backend.global.config.JwtProperties;
@@ -322,18 +322,21 @@ class AuthRefreshAcceptanceTest {
     }
 
     private String randomNickname() {
-        String candidates = (UUID.randomUUID()
+        String random = UUID.randomUUID()
                 .toString()
-                + UUID.randomUUID()
-                        .toString())
-                .replaceAll(
-                        "[^A-Za-z]",
+                .replace(
+                        "-",
                         ""
                 );
-        return "refresh" + candidates.substring(
-                0,
-                12
-        );
+        StringBuilder nickname = new StringBuilder("refresh");
+        for (int index = 0; index < 12; index++) {
+            int value = Character.digit(
+                    random.charAt(index),
+                    16
+            );
+            nickname.append((char) ('a' + value));
+        }
+        return nickname.toString();
     }
 
     private String expiredAccessToken() {

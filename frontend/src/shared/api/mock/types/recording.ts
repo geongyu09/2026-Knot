@@ -1,11 +1,67 @@
 /** 녹음 세션 상태 */
 export type RecordingSessionStatus = "RECORDING" | "PAUSED" | "ENDED";
 
+/** 현재 녹음의 화면용 종합 상태 */
+export type CurrentRecordingStatus =
+  "RECORDING" | "PAUSED" | "ENDED" | "PROCESSING" | "FAILED";
+
+export interface CurrentRecordingResponse {
+  recordingId: number;
+  status: CurrentRecordingStatus;
+  /** ISO 8601 */
+  startedAt: string;
+  /** 조회 시점까지 누적 녹음 시간(ms) */
+  elapsedMillis: number;
+}
+
 export interface RecordingStartResponse {
   recordingId: number;
   status: RecordingSessionStatus;
   /** ISO 8601 */
   startedAt: string;
+}
+
+/** 전사 상태 */
+export type RecordingTranscriptionStatus =
+  "PROCESSING" | "SUCCEEDED" | "FAILED";
+
+/** 주제 분류와 주제별 문서 생성을 합친 상태 */
+export type RecordingDocumentGenerationStatus =
+  "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "NO_CONTENT";
+
+export interface RecordingDocumentGenerationResponse {
+  status: RecordingDocumentGenerationStatus;
+  /** 생성에 성공한 문서 수 */
+  succeededCount: number;
+  /** 보존 기한 안의 실패 작업 ID. 없으면 빈 배열 */
+  failedJobIds: number[];
+}
+
+export interface RecordingDetailResponse {
+  /** 세션 상태. `DISCARDED`는 서버가 버린 녹음 */
+  status: RecordingSessionStatus | "DISCARDED";
+  /** 일시정지를 뺀 서버 기준 녹음 시간(ms) */
+  elapsedMillis: number;
+  /** ISO 8601. 진행 중이면 null */
+  endedAt: string | null;
+  /** 진행 중이면 null */
+  endReason: "USER_ENDED" | "CONNECTION_EXPIRED" | "MAX_DURATION" | null;
+  /** 업로드를 예약하기 전이면 null */
+  audioUploadStatus: RecordingAudioUploadStatus | null;
+  /** 전사를 시도하기 전이면 null */
+  transcriptionAttemptId: string | null;
+  /** 전사를 시도하기 전이면 null */
+  transcriptionStatus: RecordingTranscriptionStatus | null;
+  /** 전사가 실패하지 않았으면 null */
+  transcriptionFailureCode: string | null;
+  /** 문서 생성이 접수되기 전이면 null */
+  documentGeneration: RecordingDocumentGenerationResponse | null;
+}
+
+/** 녹음 상세 mock 하나. 서버 응답에는 녹음 ID가 없어서, 어느 녹음의 응답인지 함께 적어요 */
+export interface RecordingDetailEntry {
+  recordingId: number;
+  detail: RecordingDetailResponse;
 }
 
 export interface RecordingPauseResponse {
@@ -33,10 +89,39 @@ export interface RecordingEndResponse {
   endedAt: string;
 }
 
+export interface RecordingHeartbeatResponse {
+  recordingId: number;
+  /** `DISCARDED`는 서버가 버린 녹음 */
+  status: RecordingSessionStatus | "DISCARDED";
+  /** 일시정지를 뺀 서버 기준 누적 녹음 시간(ms) */
+  elapsedMillis: number;
+  /** ISO 8601 */
+  lastSeenAt: string;
+  /** ISO 8601. 끝난 녹음이면 null */
+  expiresAt: string | null;
+  /** ISO 8601. 진행 중이면 null */
+  endedAt: string | null;
+  /** 진행 중이면 null */
+  endReason: "USER_ENDED" | "CONNECTION_EXPIRED" | "MAX_DURATION" | null;
+  /** ISO 8601 */
+  serverNow: string;
+}
+
 export interface RecordingAudioUploadUrlResponse {
   uploadId: number;
   /** 객체 저장소에 직접 PUT할 절대 URL */
   uploadUrl: string;
   /** ISO 8601 */
   expiresAt: string;
+}
+
+/** 최종 오디오 업로드 처리 상태 */
+export type RecordingAudioUploadStatus = "RESERVED" | "COMPLETED";
+
+export interface RecordingAudioUploadCompleteResponse {
+  recordingId: number;
+  uploadId: number;
+  uploadStatus: RecordingAudioUploadStatus;
+  /** ISO 8601 */
+  completedAt: string;
 }

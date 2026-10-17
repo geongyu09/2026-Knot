@@ -1,7 +1,11 @@
 import DockablePanel from "@composites/DockablePanel";
 import styled from "@emotion/styled";
+import TranscriptToggle from "@features/document/TranscriptToggle";
 import SearchEvidenceToggle from "@features/search/SearchEvidenceToggle";
+import useTranscriptPanel from "@hooks/domain/document/useTranscriptPanel";
 import useRecordingLeaveWarning from "@hooks/domain/recording/useRecordingLeaveWarning";
+import useAbortSearchAnswerOnLeave from "@hooks/domain/search/useAbortSearchAnswerOnLeave";
+import useOpenEvidenceOnAnswerComplete from "@hooks/domain/search/useOpenEvidenceOnAnswerComplete";
 import useWorkspaceEntry from "@hooks/domain/workspace/useWorkspaceEntry";
 import useWorkspaceNav from "@hooks/domain/workspace/useWorkspaceNav";
 import DockColumn, {
@@ -11,6 +15,7 @@ import DockColumn, {
 import LoadingIndicator from "@primitives/ui/LoadingIndicator";
 import { ToastViewport } from "@provider/context/toastContext";
 import ChatListDrawer from "@widgets/chat/ChatListDrawer";
+import TranscriptPanel from "@widgets/document/TranscriptPanel";
 import SearchEvidenceList from "@widgets/search/SearchEvidenceList";
 import WorkspaceDock from "@widgets/workspace/WorkspaceDock";
 import WorkspaceGnb from "@widgets/workspace/WorkspaceGnb";
@@ -37,24 +42,33 @@ import type { DockedPanelName } from "./types/dockedPanel";
  * 독과 탐색 대화 열은 둘 다 본문 영역 안의 `DockColumn`에 놓여, 패널을 고정하면 함께 밀린다(SEARCH-R11).
  *
  * 탐색 화면에서는 찾은 기록 패널이 본문 오른쪽 레일을 차지해, 열리면 본문 영역이 줄어 같은 규칙을 따른다.
- * 찾은 기록은 GNB 오른쪽 버튼과 답변 아래 버튼이 주소(`?messageId=`)로 여닫는다.
+ * 찾은 기록은 GNB 오른쪽 버튼과 답변 아래 버튼이 주소(`?messageId=`)로 여닫고, 근거가 있는 답변이 끝나면 저절로 열린다(SEARCH-R10).
+ *
+ * 문서 하나를 보는 화면에서는 원문 패널이 같은 오른쪽 자리를 쓴다. GNB 오른쪽의 원문 버튼으로 여닫고,
+ * 회원이 마지막에 둔 상태를 다음 문서에도 그대로 적용한다(DOC-R3 · DOC-R4).
  *
  * 들어갈 수 있는 워크스페이스인지도 이 레이아웃 범위에서 한 번만 판정한다(`useWorkspaceEntry`).
  * 조회에 성공하기 전에는 본문 대신 스피너를 두고, 401은 로그인으로, 403·404는 선택 화면으로 보낸다.
  *
  * 녹음은 레이아웃 안의 어느 화면에서나 이어지므로, 녹음 중 새로고침·탭 닫기 경고도 이 범위에서 건다.
  *
+ * 탐색 답변도 독에서 보내 대화 화면에 그리므로 이 범위에서 이어지고, 다른 대화로 옮기거나 레이아웃을 나가면 끊는다.
+ *
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1364-6863 GNB/Floating
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=526-772 탐색 결과/채팅 세션 목록
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2106-28974 탐색/대화 목록 고정 + 찾은 기록 열림
+ * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-36104 문서/원문 열림
  */
 export default function WorkspaceLayout() {
-  const { workspaceId } = useParams();
+  const { workspaceId, documentId } = useParams();
   const { isReady } = useWorkspaceEntry({ workspaceId: Number(workspaceId) });
   const { isChatActive } = useWorkspaceNav();
+  const { isTranscriptPanelOpen } = useTranscriptPanel();
   const [pickedPanel, setPickedPanel] = useState<DockedPanelName>(null);
 
   useRecordingLeaveWarning();
+  useAbortSearchAnswerOnLeave();
+  useOpenEvidenceOnAnswerComplete();
 
   // 대화 목록 버튼은 탐색 화면에만 있으므로, 홈으로 나가면 고른 적 없던 것으로 봐요
   const dockedPanel =
@@ -63,6 +77,9 @@ export default function WorkspaceLayout() {
   const pickPanel =
     (panel: Exclude<DockedPanelName, null>) => (isDocked: boolean) =>
       setPickedPanel(isDocked ? panel : null);
+
+  // 원문 패널은 주소의 documentId로 원문을 불러오므로, documentId가 있는 화면(문서 하나를 보는 화면)에만 버튼과 자리를 둬요
+  const isDocumentActive = documentId !== undefined;
 
   return (
     <Container>
@@ -93,7 +110,12 @@ export default function WorkspaceLayout() {
               )}
             </>
           }
-          right={isChatActive && <SearchEvidenceToggle />}
+          right={
+            <>
+              {isChatActive && <SearchEvidenceToggle />}
+              {isDocumentActive && <TranscriptToggle />}
+            </>
+          }
         />
       </GnbSlot>
 
@@ -122,6 +144,13 @@ export default function WorkspaceLayout() {
             <SearchEvidenceList />
           </EvidenceRail>
         )}
+
+        {isDocumentActive && (
+          <TranscriptRail>
+            {/* 본문처럼, 들어갈 수 있는 워크스페이스인지 알기 전에는 원문을 불러오지 않아요 */}
+            {isReady && isTranscriptPanelOpen && <TranscriptPanel />}
+          </TranscriptRail>
+        )}
       </Body>
     </Container>
   );
@@ -149,8 +178,9 @@ const Body = styled.div`
 /**
  * 고정된 패널이 옮겨 오는 자리. 비어 있으면 폭이 0이다.
  *
- * 패널은 포털로 들어오므로 찼는지는 `:has`로 보고,
- * 폭 전환은 패널 등장 모션(`DockablePanel`)과 같은 시간·감속으로 맞춰 함께 밀리는 것처럼 보이게 한다.
+ * 패널은 포털로 들어오므로 찼는지는 `:has`로 보고, 물러나는 중인 패널은 없는 것으로 봐 패널과 함께 좁혀진다.
+ * 폭 전환은 패널 모션(`DockablePanel`)과 같은 시간·감속으로 맞춰 함께 밀리는 것처럼 보이게 한다.
+ * 벌어질 때는 길고 부드럽게, 좁혀질 때는 짧게 움직인다.
  */
 const DockRail = styled.div`
   display: flex;
@@ -158,12 +188,15 @@ const DockRail = styled.div`
   width: 0;
   padding: 1.25rem 0 8.5rem; /* 20px 0 136px */
   transition:
-    width 0.28s cubic-bezier(0.22, 1, 0.36, 1),
-    padding-left 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    width 0.24s cubic-bezier(0.4, 0, 0.2, 1),
+    padding-left 0.24s cubic-bezier(0.4, 0, 0.2, 1);
 
-  &:has(> *) {
+  &:has(> :not([data-overlay-state="closing"])) {
     width: 20rem; /* 320px */
     padding-left: 2.5rem; /* 40px */
+    transition:
+      width 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+      padding-left 0.34s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -210,6 +243,16 @@ const EvidenceRail = styled.div`
   @media (prefers-reduced-motion: reduce) {
     transition: none;
   }
+`;
+
+/**
+ * 원문 패널이 놓이는 오른쪽 레일. 찾은 기록 레일과 같은 자리(GNB 아래 40px, 화면 오른쪽 40px, 폭 400px)를 써요(DOC-R4).
+ *
+ * 원문이 길면 패널이 레일 높이까지만 커지고 패널 안의 발화 목록이 스크롤돼요.
+ * 아래 여백은 왼쪽 레일(`DockRail`)과 같게 둬서, 패널이 가장 길 때 왼쪽 사이드바와 같은 높이에서 끝나요.
+ */
+const TranscriptRail = styled(EvidenceRail)`
+  padding-bottom: 8.5rem; /* 136px */
 `;
 
 const Main = styled.main`

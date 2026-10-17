@@ -1,8 +1,8 @@
 package com.knot.backend.recording.application;
 
 import com.knot.backend.recording.application.dto.result.RecordingCurrentResult;
-import com.knot.backend.recording.domain.RecordingSession;
-import com.knot.backend.recording.domain.RecordingSessionRepository;
+import com.knot.backend.recording.domain.model.RecordingSession;
+import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class RecordingCurrentService {
-    private final RecordingWorkspaceAccessValidator workspaceAccessValidator;
+    private final RecordingAccess recordingAccess;
     private final RecordingSessionRepository recordingSessionRepository;
     private final Clock clock;
 
@@ -22,7 +22,7 @@ public class RecordingCurrentService {
             long workspaceId,
             long memberId
     ) {
-        workspaceAccessValidator.validate(
+        recordingAccess.validateMember(
                 workspaceId,
                 memberId
         );
@@ -30,7 +30,6 @@ public class RecordingCurrentService {
                 workspaceId,
                 memberId
         );
-        // 조회 전에 시각을 잡으면 그 사이 커밋된 재개·시작의 구간 시작 시각보다 앞설 수 있다.
         Instant now = clock.instant();
         return activeSession.map(
                 session -> RecordingCurrentResult.of(

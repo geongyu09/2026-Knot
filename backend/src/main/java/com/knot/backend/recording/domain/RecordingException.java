@@ -7,4 +7,14 @@ public final class RecordingException extends ProjectException {
     public RecordingException(RecordingErrorCode errorCode) {
         super(errorCode);
     }
+
+    public RecordingException(
+            RecordingErrorCode errorCode,
+            Throwable cause
+    ) {
+        super(
+                errorCode,
+                cause
+        );
+    }
 }

@@ -12,28 +12,30 @@ import { useWorkspaceDock } from "./model/useWorkspaceDock";
 import DockHintTooltip from "./ui/DockHintTooltip";
 import DockRecordingChip from "./ui/DockRecordingChip";
 
-/** 폭이 벌어지는 동안 안의 내용이 뒤따라 나타나는 모션 */
+/** 폭이 벌어지는 동안 안의 내용이 살짝 흐렸다가 또렷해지며 뒤따라 나타나는 모션 */
 const fadeIn = keyframes`
   from {
     opacity: 0;
-  }
-
-  to {
-    opacity: 1;
+    filter: blur(2px);
   }
 `;
+
+/** 독이 늘고 주는 감속. 빠르게 출발해 끝에서 오래 부드럽게 멈춰요 */
+const DOCK_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
 
 /**
  * 화면 하단 가운데에 놓이는 독.
  *
  * 접혀 있을 때는 동그란 버튼 하나이고, 누르면 질문 입력창으로 폭이 벌어지며 펼쳐져요.
  * 화면 아무 데서나 글자를 쳐도 같은 자리로 이어지고, 그 방법은 처음 몇 번 말풍선으로 알려줘요.
+ * 접혀 있어도 입력창은 보이지 않게 남겨 두고, 글자가 들어오면 같은 입력창 그대로 펼쳐요. 입력창이 바뀌면 조립 중인 한글이 끊기기 때문이에요.
  * 펼친 뒤 독 바깥을 누르면 다시 접혀요.
  * 채팅이 곧 화면인 탐색에서는 접지 않고 늘 펼쳐 둬요.
  *
- * 질문을 보내면 어느 화면에 있었든 그 질문을 들고 탐색 화면으로 옮겨 가요.
+ * 질문은 어느 화면에서든 이 독이 바로 보내요. 새 대화는 서버가 접수하면 그 대화 화면으로 옮겨 가요.
  * 접혀 있든 펼쳐 있든 회의 녹음(마이크) 슬롯을 두고, 누르면 마이크 권한을 받아 녹음을 시작해요.
  * 녹음 화면이 아닌 곳에서 녹음이 이어지고 있으면 마이크 자리에 녹음 칩을 둬요. 접힌 독에는 중지 버튼도 함께 둬요.
+ * 다른 탭의 녹음이면 칩은 점과 시간만 보여 주고 누를 수 없으며 중지 버튼도 두지 않아요.
  * 녹음 화면에서는 마이크를 숨겨요. Figma에서 숨겨져 있는 글 작성 슬롯은 만들지 않아요.
  *
  * 놓일 자리와 펼친 폭은 이 독을 쓰는 레이아웃이 정해요.
@@ -54,6 +56,7 @@ export default function WorkspaceDock() {
   const {
     isMicVisible,
     isRecordingChipVisible,
+    isOtherTabRecording,
     isRecordingPaused,
     elapsedTime,
     handleMicClick,
@@ -71,22 +74,24 @@ export default function WorkspaceDock() {
     >
       {isHintVisible && <DockHintTooltip />}
 
+      <InputContainer $isHidden={!isExpanded}>
+        <GhostIcon size={24} />
+
+        <MessageField
+          ref={textareaRef}
+          rows={1}
+          aria-label="무엇이든 요청하세요"
+          placeholder="무엇이든 요청하세요"
+          // 접힌 독에서는 보이지 않으므로 Tab으로 들르지 않아요
+          tabIndex={isExpanded ? undefined : -1}
+          value={message}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+        />
+      </InputContainer>
+
       {isExpanded ? (
         <>
-          <InputContainer>
-            <GhostIcon size={24} />
-
-            <MessageField
-              ref={textareaRef}
-              rows={1}
-              aria-label="무엇이든 요청하세요"
-              placeholder="무엇이든 요청하세요"
-              value={message}
-              onChange={handleChange}
-              onKeyDown={handleKeyDown}
-            />
-          </InputContainer>
-
           <Controls>
             {isMicVisible && (
               <>
@@ -105,7 +110,7 @@ export default function WorkspaceDock() {
               <DockRecordingChip
                 elapsedTime={elapsedTime}
                 isPaused={isRecordingPaused}
-                onOpen={handleOpenRecording}
+                onOpen={isOtherTabRecording ? undefined : handleOpenRecording}
               />
             )}
 
@@ -144,8 +149,8 @@ export default function WorkspaceDock() {
               <DockRecordingChip
                 elapsedTime={elapsedTime}
                 isPaused={isRecordingPaused}
-                onOpen={handleOpenRecording}
-                onStop={handleStopRecording}
+                onOpen={isOtherTabRecording ? undefined : handleOpenRecording}
+                onStop={isOtherTabRecording ? undefined : handleStopRecording}
               />
             </>
           )}
@@ -159,6 +164,9 @@ export default function WorkspaceDock() {
  * 접힘·펼침을 오가는 독 껍데기.
  *
  * 두 모양을 다른 요소로 두면 모션이 끊기므로, 한 요소의 폭만 바꿔 늘고 줄게 해요.
+ * 녹음 칩이 있으면 접힌 폭이 내용만큼(`auto`)이라, `interpolate-size`로 `auto`와 길이 사이도 이어서 움직여요.
+ * 이를 지원하지 않는 브라우저에서는 이때만 모션 없이 바로 바뀌어요.
+ * 펼칠 때는 길게(0.44초), 접을 때는 조금 짧게(0.36초) 움직이고, 안의 내용은 폭이 어느 정도 벌어진 뒤 뒤따라 나타나요.
  */
 const Bar = styled.form<{
   $isExpanded: boolean;
@@ -189,16 +197,17 @@ const Bar = styled.form<{
     $isExpanded ? "1.875rem" : "6.25rem"}; /* 30px : 100px */
   background-color: ${({ theme }) => theme.neutral[800]};
   box-shadow: ${({ theme }) => theme.shadow03};
-  transition:
-    width 0.28s cubic-bezier(0.22, 1, 0.36, 1),
-    padding 0.28s cubic-bezier(0.22, 1, 0.36, 1),
-    border-radius 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  interpolate-size: allow-keywords;
+  transition-property: width, padding, gap, border-radius;
+  transition-duration: ${({ $isExpanded }) =>
+    $isExpanded ? "0.44s" : "0.36s"};
+  transition-timing-function: ${DOCK_EASING};
 
   /* 말풍선은 제 모션이 따로 있으므로 한 줄에 놓이는 것들만 뒤따라 나타나게 해요 */
   & > div,
   & > button,
   & > span {
-    animation: ${fadeIn} 0.28s ease-out;
+    animation: ${fadeIn} 0.28s ease-out 0.06s backwards;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -235,8 +244,13 @@ const MicButton = styled(SlotButton)`
   color: ${({ theme }) => theme.neutral[500]};
 `;
 
-/** 고스트 아이콘과 입력창을 묶는 자리. 여러 줄로 자라면 아이콘은 첫 줄에 붙어요. */
-const InputContainer = styled.div`
+/**
+ * 고스트 아이콘과 입력창을 묶는 자리. 여러 줄로 자라면 아이콘은 첫 줄에 붙어요.
+ *
+ * 접힌 독에서는 커서를 받을 수 있게 남겨 두되 자리를 차지하지 않게 감춰요.
+ * `display: none`이나 `visibility: hidden`은 커서를 받지 못해 쓰지 않아요.
+ */
+const InputContainer = styled.div<{ $isHidden: boolean }>`
   display: flex;
   flex: 1;
   align-self: center;
@@ -248,6 +262,22 @@ const InputContainer = styled.div`
     flex-shrink: 0;
     color: ${({ theme }) => theme.neutral[300]};
   }
+
+  ${({ $isHidden }) =>
+    $isHidden &&
+    `
+    && {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      opacity: 0;
+      pointer-events: none;
+      /* 펼칠 때 독 안의 다른 것들처럼 뒤따라 나타나도록, 감춰 둔 동안은 모션을 꺼 둬요 */
+      animation: none;
+    }
+  `}
 `;
 
 const MessageField = styled(Textarea)`

@@ -1,5 +1,7 @@
 import styled from "@emotion/styled";
-import type { ReactNode } from "react";
+import useExitAnimation from "@hooks/common/useExitAnimation";
+import Unfold from "@primitives/animation/Unfold";
+import { useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import usePopover from "./model/usePopover";
@@ -37,8 +39,9 @@ interface PopoverProps {
  * 부모에 가려 잘리지 않도록 내용은 `body`에 그리고, 트리거 8px 아래에 띄우되
  * 아래 공간이 모자라고 위쪽이 더 넓으면 위로 뒤집고, 가로는 화면 가장자리에서 16px 안쪽에 머물러요.
  * 포인터로만 열려요. 키보드로 여는 동작은 아직 없어요.
- *
- * @see {@link https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1909-5316 Popover/PeopleList}
+ * 열릴 때는 위쪽 끝에서 세로로 펼쳐지며 나타나고, 닫힐 때는 다시 접히며 사라져요.
+ * 닫혀도 접히는 애니메이션이 끝날 때까지는 그려 두고, 그동안 트리거에 다시 올리면 바로 다시 펼쳐져요.
+ * 움직임 줄이기 설정에서는 애니메이션 없이 바로 나타나고 사라져요.
  */
 export default function Popover({
   content,
@@ -48,16 +51,26 @@ export default function Popover({
   const { isOpen, position, triggerProps, contentProps } = usePopover({
     placement,
   });
+  const { renderedValue: isRendered, isExiting } = useExitAnimation({
+    value: isOpen || null,
+    ref: contentProps.ref,
+  });
 
   return (
     <>
       {/* 트리거 — 쓰는 쪽이 그리고, 팝오버는 triggerProps만 넘겨요 */}
       {children(triggerProps)}
 
-      {isOpen &&
+      {isRendered &&
         createPortal(
           // 좌표는 열 때마다 달라져서 style로 넘겨요. Emotion prop으로 넘기면 좌표마다 CSS 클래스가 새로 쌓여요
-          <ContentWrapper {...contentProps} style={position}>
+          <ContentWrapper
+            {...contentProps}
+            style={position}
+            data-overlay-state={isExiting ? "closing" : "open"}
+            // 접히는 동안 포인터가 내용에 닿아 다시 열리지 않게 막아요. 다시 열려면 트리거에 올려요
+            inert={isExiting}
+          >
             {content}
           </ContentWrapper>,
           document.body,
@@ -67,7 +80,7 @@ export default function Popover({
 }
 
 // 트리거와 달리 내용은 body에 fixed로 떠서, 감싸도 화면의 다른 요소 배치가 바뀌지 않아요
-const ContentWrapper = styled.div`
+const ContentWrapper = styled(Unfold)`
   position: fixed;
   z-index: 30; /* 화면 위에 떠 있는 패널(20)보다 위에 떠요 */
   width: max-content; /* 직전에 열린 가로 위치와 관계없이 내용 폭 그대로 재서 위치를 정해요 */
