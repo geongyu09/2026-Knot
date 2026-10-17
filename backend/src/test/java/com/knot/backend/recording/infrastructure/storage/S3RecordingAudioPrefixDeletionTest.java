@@ -144,32 +144,62 @@ class S3RecordingAudioPrefixDeletionTest {
     @Test
     void nextSweepDiscoversVersionCreatedAfterPreviouslyEmptyPrefix() {
         // given
-        when(client.listObjectVersions(any(ListObjectVersionsRequest.class)))
-                .thenReturn(ListObjectVersionsResponse.builder().build());
+        when(client.listObjectVersions(any(ListObjectVersionsRequest.class))).thenReturn(
+                ListObjectVersionsResponse.builder()
+                        .build()
+        );
         storage.deleteRecordingPrefix("recordings/1/");
-        when(client.listObjectVersions(any(ListObjectVersionsRequest.class)))
-                .thenReturn(ListObjectVersionsResponse.builder().versions(
-                        ObjectVersion.builder().key("dev/recordings/1/final/late.wav").versionId("late-version").build()).build(),
-                        ListObjectVersionsResponse.builder().build());
+        when(client.listObjectVersions(any(ListObjectVersionsRequest.class))).thenReturn(
+                ListObjectVersionsResponse.builder()
+                        .versions(
+                                ObjectVersion.builder()
+                                        .key("dev/recordings/1/final/late.wav")
+                                        .versionId("late-version")
+                                        .build()
+                        )
+                        .build(),
+                ListObjectVersionsResponse.builder()
+                        .build()
+        );
         // when
         storage.deleteRecordingPrefix("recordings/1/");
         // then
-        verify(client).deleteObject(argThat((DeleteObjectRequest request) ->
-                request.key().equals("dev/recordings/1/final/late.wav") && request.versionId().equals("late-version")));
+        verify(client).deleteObject(
+                argThat(
+                        (DeleteObjectRequest request) -> request.key()
+                                .equals("dev/recordings/1/final/late.wav")
+                                && request.versionId()
+                                        .equals("late-version")
+                )
+        );
     }
 
     @Test
     void failedVersionDeletionIsNeverReportedAsSuccessfulSweep() {
         // given
         when(client.listObjectVersions(any(ListObjectVersionsRequest.class))).thenReturn(
-                ListObjectVersionsResponse.builder().versions(
-                        ObjectVersion.builder().key("dev/recordings/1/chunks/1").versionId("version").build()).build());
-        when(client.deleteObject(any(DeleteObjectRequest.class)))
-                .thenThrow(S3Exception.builder().statusCode(503).build());
+                ListObjectVersionsResponse.builder()
+                        .versions(
+                                ObjectVersion.builder()
+                                        .key("dev/recordings/1/chunks/1")
+                                        .versionId("version")
+                                        .build()
+                        )
+                        .build()
+        );
+        when(client.deleteObject(any(DeleteObjectRequest.class))).thenThrow(
+                S3Exception.builder()
+                        .statusCode(503)
+                        .build()
+        );
         // when
-        org.assertj.core.api.ThrowableAssert.ThrowingCallable action = () -> storage.deleteRecordingPrefix("recordings/1/");
+        org.assertj.core.api.ThrowableAssert.ThrowingCallable action = () -> storage
+                .deleteRecordingPrefix("recordings/1/");
         // then
         assertThatThrownBy(action).isInstanceOf(com.knot.backend.recording.domain.RecordingException.class);
-        verify(client, times(1)).listObjectVersions(any(ListObjectVersionsRequest.class));
+        verify(
+                client,
+                times(1)
+        ).listObjectVersions(any(ListObjectVersionsRequest.class));
     }
 }

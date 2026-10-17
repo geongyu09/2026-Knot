@@ -13,7 +13,6 @@ import org.junit.jupiter.api.io.TempDir;
 class RecordingTemporaryAudioCleanupTest {
     @TempDir
     Path directory;
-
     private final RecordingTemporaryAudioCleanup cleanup = new RecordingTemporaryAudioCleanup();
 
     @Test

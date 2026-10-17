@@ -22,7 +22,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class RecordingTemporaryAudioCleanup {
     private static final Pattern OWNED_NAME = Pattern.compile(
-            "^knot-recording-wav-([1-9][0-9]*)-([0-9]+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.tmp$"
+            "^knot-recording-wav-([1-9][0-9]*)-([0-9]+)-[0-9a-f]{8}-[0-9a-f]{4}"
+                    + "-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.tmp$"
     );
     private static final Set<PosixFilePermission> OWNER_ONLY = Set.of(
             PosixFilePermission.OWNER_READ,
@@ -95,18 +96,24 @@ public class RecordingTemporaryAudioCleanup {
             Path file,
             UserPrincipal owner
     ) throws IOException {
-        return Files.isRegularFile(
+        if (!Files.isRegularFile(
                 file,
                 LinkOption.NOFOLLOW_LINKS
-        ) && Files.getOwner(file,
+        )) {
+            return false;
+        }
+        UserPrincipal actualOwner = Files.getOwner(
+                file,
+                LinkOption.NOFOLLOW_LINKS
+        );
+        if (!actualOwner.equals(owner)) {
+            return false;
+        }
+        return Files.getPosixFilePermissions(
+                file,
                 LinkOption.NOFOLLOW_LINKS
         )
-                .equals(owner)
-                && Files.getPosixFilePermissions(
-                        file,
-                        LinkOption.NOFOLLOW_LINKS
-                )
-                        .equals(OWNER_ONLY);
+                .equals(OWNER_ONLY);
     }
 
     private boolean isPreviousProcess(String name) {

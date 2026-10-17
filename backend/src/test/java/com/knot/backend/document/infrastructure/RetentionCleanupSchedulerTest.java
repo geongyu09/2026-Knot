@@ -199,8 +199,19 @@ class RetentionCleanupSchedulerTest {
     @Test
     void cleanupPrefixSchedulingFailureContinuesNextCandidate() {
         // given
-        when(audioCleanup.findCandidates(NOW, 20)).thenReturn(List.of(1L, 2L));
-        doThrow(new IllegalStateException("정리 상태 저장 실패")).when(audioCleanupState).schedule(1);
+        when(
+                audioCleanup.findCandidates(
+                        NOW,
+                        20
+                )
+        ).thenReturn(
+                List.of(
+                        1L,
+                        2L
+                )
+        );
+        doThrow(new IllegalStateException("정리 상태 저장 실패")).when(audioCleanupState)
+                .schedule(1);
         // when
         scheduler.cleanupExpiredData();
         // then
@@ -210,22 +221,34 @@ class RetentionCleanupSchedulerTest {
     @Test
     void dispatchPrefixDeletionSubmitsBeforeWorkerClaim() {
         // given
-        when(audioCleanup.findReady(NOW, 20)).thenReturn(List.of(1L));
+        when(
+                audioCleanup.findReady(
+                        NOW,
+                        20
+                )
+        ).thenReturn(List.of(1L));
         // when
         scheduler.dispatchAudioPrefixDeletion();
         // then
         ArgumentCaptor<Runnable> task = ArgumentCaptor.forClass(Runnable.class);
         verify(executor).execute(task.capture());
         verifyNoInteractions(worker);
-        task.getValue().run();
+        task.getValue()
+                .run();
         verify(worker).executeCleanup(1);
     }
 
     @Test
     void rejectedPrefixDeletionSubmissionLeavesClaimInDatabase() {
         // given
-        when(audioCleanup.findReady(NOW, 20)).thenReturn(List.of(1L));
-        doThrow(new TaskRejectedException("실행 슬롯 없음")).when(executor).execute(any(Runnable.class));
+        when(
+                audioCleanup.findReady(
+                        NOW,
+                        20
+                )
+        ).thenReturn(List.of(1L));
+        doThrow(new TaskRejectedException("실행 슬롯 없음")).when(executor)
+                .execute(any(Runnable.class));
         // when
         scheduler.dispatchAudioPrefixDeletion();
         // then
