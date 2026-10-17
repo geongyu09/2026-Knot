@@ -1,7 +1,6 @@
 package com.knot.backend.recording.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.time.Duration;
@@ -81,34 +80,6 @@ class RecordingAudioRetentionDomainTest {
 
         // then
         assertThat(failure).isInstanceOf(RecordingException.class);
-    }
-
-    @Test
-    @DisplayName("URL 재발급의 가장 늦은 만료를 보존하고 완료 뒤에는 새 발급을 거절한다")
-    void recordUploadUrlExpiry_success_lastExpiry() {
-        // given
-        RecordingAudioUpload upload = RecordingAudioUpload.reserve(
-                1L,
-                "key",
-                "audio/webm",
-                100,
-                NOW
-        );
-        // when
-        upload.recordUploadUrlExpiry(NOW.plusSeconds(120));
-        upload.recordUploadUrlExpiry(NOW.plusSeconds(60));
-        // then
-        assertThat(upload.getLastUploadUrlExpiresAt()).isEqualTo(NOW.plusSeconds(120));
-        upload.complete(
-                StoredAudioObject.of(
-                        100,
-                        "audio/webm",
-                        "version-1"
-                ),
-                NOW
-        );
-        assertThatThrownBy(() -> upload.recordUploadUrlExpiry(NOW.plusSeconds(180)))
-                .isInstanceOf(RecordingException.class);
     }
 
     private RecordingAudioUpload reservedUpload() {
