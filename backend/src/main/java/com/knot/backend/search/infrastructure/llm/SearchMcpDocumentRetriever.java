@@ -219,7 +219,11 @@ public class SearchMcpDocumentRetriever implements SearchDocumentRetriever {
         );
         String signature = name + mapper.writeValueAsString(new TreeMap<>(values));
         if (!repeated.add(signature)) {
-            throw new SearchToolException("REPEATED_TOOL_CALL");
+            appendRepeatedCallNotice(
+                    messages,
+                    id
+            );
+            return;
         }
         access.validate(scope);
         JsonNode result = mcp.call(
@@ -239,6 +243,29 @@ public class SearchMcpDocumentRetriever implements SearchDocumentRetriever {
                         id,
                         "content",
                         mapper.writeValueAsString(result)
+                )
+        );
+    }
+
+    private void appendRepeatedCallNotice(
+            List<Map<String, Object>> messages,
+            String id
+    ) {
+        messages.add(
+                Map.of(
+                        "role",
+                        "tool",
+                        "tool_call_id",
+                        id,
+                        "content",
+                        mapper.writeValueAsString(
+                                Map.of(
+                                        "error",
+                                        "REPEATED_TOOL_CALL",
+                                        "message",
+                                        "This exact tool request has already been executed. Change its input or finish the exploration."
+                                )
+                        )
                 )
         );
     }
