@@ -18,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class RecordingStartService {
-    private final RecordingWorkspaceAccessValidator workspaceAccessValidator;
+    private final RecordingAccess recordingAccess;
     private final MemberRepository memberRepository;
     private final RecordingSessionRepository recordingSessionRepository;
     private final RecordingControlTokenHasher controlTokenHasher;
@@ -30,7 +30,7 @@ public class RecordingStartService {
             long memberId,
             RecordingStartCommand command
     ) {
-        workspaceAccessValidator.validateAndLock(
+        recordingAccess.lockMember(
                 workspaceId,
                 memberId
         );
@@ -50,7 +50,7 @@ public class RecordingStartService {
                     controlTokenHash
             );
         }
-        reclaimDisconnectedOrRejectActive(memberId);
+        releaseActiveRecordings(memberId);
 
         RecordingSession session = RecordingSession.start(
                 workspaceId,
@@ -72,13 +72,11 @@ public class RecordingStartService {
             RecordingStartCommand command,
             String controlTokenHash
     ) {
-        if (!session.matchesStart(
+        session.validateStartRetry(
                 workspaceId,
                 command.tabId(),
                 controlTokenHash
-        )) {
-            throw new RecordingException(RecordingErrorCode.RECORDING_START_REQUEST_CONFLICT);
-        }
+        );
         if (session.expireIfDue(now())) {
             recordingSessionRepository.save(session);
         }
@@ -88,12 +86,10 @@ public class RecordingStartService {
         );
     }
 
-    private void reclaimDisconnectedOrRejectActive(long memberId) {
+    private void releaseActiveRecordings(long memberId) {
         Instant now = now();
         for (RecordingSession active : recordingSessionRepository.findAllActiveByMemberIdForUpdate(memberId)) {
-            if (!active.expireIfDue(now)) {
-                throw new RecordingException(RecordingErrorCode.ACTIVE_RECORDING_ALREADY_EXISTS);
-            }
+            active.releaseForNewRecording(now);
             recordingSessionRepository.save(active);
         }
     }

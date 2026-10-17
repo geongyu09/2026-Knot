@@ -68,11 +68,12 @@ class RecordingAudioUploadUrlServiceTest {
                 )
         );
         service = new RecordingAudioUploadUrlService(
-                new RecordingWorkspaceAccessValidator(
+                new RecordingAccess(
                         workspaceRepository,
-                        workspaceMemberRepository
+                        workspaceMemberRepository,
+                        recordingSessionRepository,
+                        mock(RecordingControlTokenHasher.class)
                 ),
-                recordingSessionRepository,
                 recordingAudioUploadRepository,
                 storage,
                 Clock.fixed(

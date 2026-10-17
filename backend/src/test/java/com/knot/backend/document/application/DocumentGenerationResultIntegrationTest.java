@@ -24,7 +24,6 @@ import com.knot.backend.document.domain.MyConfirmationState;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import com.knot.backend.workspace.application.WorkspaceInvitationService;
-import com.knot.backend.workspace.application.WorkspaceInvitationAcceptanceService;
 import com.knot.backend.workspace.application.WorkspaceLeaveService;
 import com.knot.backend.workspace.domain.WorkspaceRepository;
 import com.knot.backend.workspace.domain.WorkspaceException;
@@ -86,8 +85,6 @@ class DocumentGenerationResultIntegrationTest {
     private DocumentConfirmationCommandService confirmationCommands;
     @Autowired
     private WorkspaceInvitationService invitations;
-    @Autowired
-    private WorkspaceInvitationAcceptanceService acceptance;
     @Autowired
     private WorkspaceLeaveService departures;
     @Autowired
@@ -902,7 +899,7 @@ class DocumentGenerationResultIntegrationTest {
                     memberId
             )
                     .code();
-            return () -> acceptance.accept(
+            return () -> invitations.accept(
                     code,
                     "127.0.0.1",
                     teammate

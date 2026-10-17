@@ -57,9 +57,11 @@ class RecordingStartServiceTest {
         recordingSessionRepository = mock(RecordingSessionRepository.class);
         hasher = mock(RecordingControlTokenHasher.class);
         service = new RecordingStartService(
-                new RecordingWorkspaceAccessValidator(
+                new RecordingAccess(
                         workspaceRepository,
-                        workspaceMemberRepository
+                        workspaceMemberRepository,
+                        recordingSessionRepository,
+                        hasher
                 ),
                 memberRepository,
                 recordingSessionRepository,
@@ -108,13 +110,15 @@ class RecordingStartServiceTest {
                         .getMemberId()
         ).isEqualTo(MEMBER_ID);
         assertThat(
-                created.getValue()
-                        .matchesStart(
-                                WORKSPACE_ID,
-                                command.tabId(),
-                                HASH
-                        )
-        ).isTrue();
+                catchThrowable(
+                        () -> created.getValue()
+                                .validateStartRetry(
+                                        WORKSPACE_ID,
+                                        command.tabId(),
+                                        HASH
+                                )
+                )
+        ).isNull();
         org.mockito.InOrder order = org.mockito.Mockito.inOrder(
                 workspaceRepository,
                 workspaceMemberRepository,
@@ -224,13 +228,6 @@ class RecordingStartServiceTest {
         // given
         prepareAccess();
         RecordingSession existing = mock(RecordingSession.class);
-        when(
-                existing.matchesStart(
-                        WORKSPACE_ID,
-                        command.tabId(),
-                        HASH
-                )
-        ).thenReturn(true);
         when(existing.getId()).thenReturn(7L);
         when(existing.getStatus()).thenReturn(RecordingStatus.ENDED);
         when(existing.getStartedAt()).thenReturn(NOW);
@@ -272,7 +269,7 @@ class RecordingStartServiceTest {
                                 UUID.randomUUID(),
                                 UUID.randomUUID(),
                                 HASH,
-                                NOW.minusSeconds(119)
+                                NOW.minusSeconds(29)
                         )
                 )
         );
@@ -306,7 +303,7 @@ class RecordingStartServiceTest {
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 HASH,
-                NOW.minusSeconds(120)
+                NOW.minusSeconds(30)
         );
         when(recordingSessionRepository.findAllActiveByMemberIdForUpdate(MEMBER_ID)).thenReturn(List.of(disconnected));
         when(recordingSessionRepository.save(any(RecordingSession.class))).thenAnswer(
@@ -365,7 +362,7 @@ class RecordingStartServiceTest {
         // then
         assertThat(result.created()).isFalse();
         assertThat(result.status()).isEqualTo(RecordingStatus.ENDED);
-        assertThat(existing.getEndedAt()).isEqualTo(NOW.minusSeconds(180));
+        assertThat(existing.getEndedAt()).isEqualTo(NOW.minusSeconds(270));
         assertThat(existing.getLastSeenAt()).isEqualTo(NOW.minusSeconds(300));
         verify(recordingSessionRepository).save(existing);
     }

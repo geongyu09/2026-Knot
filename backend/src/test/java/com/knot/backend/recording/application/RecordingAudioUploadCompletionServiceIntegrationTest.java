@@ -14,10 +14,10 @@ import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadCompletionResult;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadUrlResult;
-import com.knot.backend.recording.application.dto.result.StoredAudioObject;
 import com.knot.backend.recording.domain.RecordingAudioUploadStatus;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
+import com.knot.backend.recording.domain.StoredAudioObject;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.time.Clock;
@@ -57,11 +57,10 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
     private final RecordingAudioUploadUrlService recordingAudioUploadUrlService;
     private final RecordingAudioUploadCompletionService recordingAudioUploadCompletionService;
     private final RecordingStartService recordingStartService;
-    private final RecordingEndService recordingEndService;
+    private final RecordingControlService recordingControlService;
     private final TransactionTemplate transactionTemplate;
     private final JdbcClient jdbcClient;
     private final Clock clock;
-
     @MockitoBean
     private RecordingAudioStorage audioStorage;
 
@@ -69,7 +68,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
             RecordingAudioUploadUrlService recordingAudioUploadUrlService,
             RecordingAudioUploadCompletionService recordingAudioUploadCompletionService,
             RecordingStartService recordingStartService,
-            RecordingEndService recordingEndService,
+            RecordingControlService recordingControlService,
             TransactionTemplate transactionTemplate,
             JdbcClient jdbcClient,
             Clock clock
@@ -77,7 +76,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
         this.recordingAudioUploadUrlService = recordingAudioUploadUrlService;
         this.recordingAudioUploadCompletionService = recordingAudioUploadCompletionService;
         this.recordingStartService = recordingStartService;
-        this.recordingEndService = recordingEndService;
+        this.recordingControlService = recordingControlService;
         this.transactionTemplate = transactionTemplate;
         this.jdbcClient = jdbcClient;
         this.clock = clock;
@@ -370,7 +369,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
                 memberId,
                 tabId
         );
-        recordingEndService.end(
+        recordingControlService.end(
                 workspaceId,
                 memberId,
                 recordingId,

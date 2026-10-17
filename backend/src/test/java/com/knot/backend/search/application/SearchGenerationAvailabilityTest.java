@@ -18,6 +18,31 @@ class SearchGenerationAvailabilityTest {
     private ObjectProvider<SearchDocumentRetriever> retrieverProvider;
     @org.mockito.Mock
     private ObjectProvider<SearchAnswerGenerator> generatorProvider;
+    @org.mockito.Mock
+    private ObjectProvider<SearchIntentClassifier> classifierProvider;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        org.mockito.Mockito.lenient()
+                .when(classifierProvider.getIfAvailable())
+                .thenReturn(mock(SearchIntentClassifier.class));
+    }
+
+    @Test
+    @DisplayName("분류 adapter가 없으면 접수 전 unavailable이다")
+    void requireAvailable_failure_missingClassifier() {
+        SearchWorkerProperties properties = new SearchWorkerProperties();
+        properties.setEnabled(true);
+        when(classifierProvider.getIfAvailable()).thenReturn(null);
+        assertThatExceptionOfType(SearchException.class).isThrownBy(
+                () -> new SearchGenerationAvailability(
+                        properties,
+                        retrieverProvider,
+                        generatorProvider,
+                        classifierProvider
+                ).requireAvailable()
+        );
+    }
 
     @Test
     @DisplayName("worker 활성화와 실제 검색·생성 adapter 두 개가 있어야 접수할 수 있다")
@@ -32,7 +57,8 @@ class SearchGenerationAvailabilityTest {
                 () -> new SearchGenerationAvailability(
                         properties,
                         retrievers,
-                        generators
+                        generators,
+                        classifierProvider
                 ).requireAvailable()
         );
     }
@@ -45,7 +71,8 @@ class SearchGenerationAvailabilityTest {
                 () -> new SearchGenerationAvailability(
                         properties,
                         retrieverProvider,
-                        generatorProvider
+                        generatorProvider,
+                        classifierProvider
                 ).requireAvailable()
         );
     }
@@ -59,7 +86,8 @@ class SearchGenerationAvailabilityTest {
                 () -> new SearchGenerationAvailability(
                         properties,
                         retrieverProvider,
-                        generatorProvider
+                        generatorProvider,
+                        classifierProvider
                 ).requireAvailable()
         );
     }
@@ -74,7 +102,8 @@ class SearchGenerationAvailabilityTest {
                 () -> new SearchGenerationAvailability(
                         properties,
                         retrieverProvider,
-                        generatorProvider
+                        generatorProvider,
+                        classifierProvider
                 ).requireAvailable()
         );
     }

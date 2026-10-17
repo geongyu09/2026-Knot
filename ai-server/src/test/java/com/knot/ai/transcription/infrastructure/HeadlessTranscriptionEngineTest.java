@@ -1,6 +1,7 @@
 package com.knot.ai.transcription.infrastructure;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -27,6 +28,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import tools.jackson.databind.json.JsonMapper;
@@ -231,7 +234,7 @@ class HeadlessTranscriptionEngineTest {
     }
 
     @Test
-    @DisplayName("실제 PCM이 2시간을 넘으면 추론 전에 거부한다")
+    @DisplayName("변환기가 출력 상한을 지키지 않아 PCM이 2시간을 넘으면 추론 전에 거부한다")
     void transcribe_failure_decodedDurationExceeded() throws Exception {
         // given
         Path decoder = directory.resolve("ffmpeg");
@@ -251,6 +254,70 @@ class HeadlessTranscriptionEngineTest {
         assertEquals(
                 "AUDIO_DURATION_EXCEEDED",
                 exception.getCode()
+        );
+        engine.cleanup(command.attemptId());
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {16000, 115199999, 115200000, 115200001, 115216000})
+    @DisplayName("짧은 오디오는 길이를 유지하고 2시간 초과 오디오는 앞 2시간만 runner에 전달한다")
+    void transcribe_success_boundedAudioInput(long inputSamples) throws Exception {
+        // given
+        long expectedSamples = Math.min(
+                inputSamples,
+                115200000
+        );
+        Files.writeString(
+                ffmpeg,
+                """
+                        #!/usr/bin/env python3
+                        import sys, struct
+                        duration_index = sys.argv.index('-t')
+                        assert duration_index > sys.argv.index('-i') + 1
+                        assert duration_index < len(sys.argv) - 2
+                        samples = min(%d, int(sys.argv[duration_index + 1]) * 16000)
+                        size = samples * 2
+                        with open(sys.argv[-1], 'wb') as output:
+                            output.write(struct.pack('<4sI4s4sIHHIIHH4sI', b'RIFF', size+36,
+                                b'WAVE', b'fmt ', 16, 1, 1, 16000, 32000, 2, 16, b'data', size))
+                            output.seek(size + 43)
+                            output.write(bytes(1))
+                        """.formatted(inputSamples)
+        );
+        Files.writeString(
+                pnpm,
+                """
+                        #!/usr/bin/env python3
+                        import sys, json, pathlib, wave
+                        manifest = json.loads(pathlib.Path(sys.argv[-1]).read_text())
+                        with wave.open(manifest['audioPath']) as audio:
+                            assert audio.getparams()[:4] == (1, 2, 16000, %d)
+                        result = {'schemaVersion': 1,
+                            'rawWhisperJson': json.dumps({'transcription': []}), 'utterances': [
+                            {'ord': 0, 'speakerLabel': '화자 1', 'startSec': 0, 'endSec': 1, 'text': '안녕'}]}
+                        pathlib.Path(manifest['outputDirectory'], 'result.json').write_text(json.dumps(result))
+                        """.formatted(expectedSamples)
+        );
+        CreateTranscriptionCommand command = command();
+        // when
+        TranscriptResult result = engine.transcribe(command);
+        // then
+        assertEquals(
+                "안녕",
+                result.utterances()
+                        .getFirst()
+                        .text()
+        );
+        assertArrayEquals(
+                new byte[]{1, 2, 3},
+                Files.readAllBytes(
+                        directory.resolve("jobs")
+                                .resolve(
+                                        command.attemptId()
+                                                .toString()
+                                )
+                                .resolve("input.webm")
+                )
         );
         engine.cleanup(command.attemptId());
     }

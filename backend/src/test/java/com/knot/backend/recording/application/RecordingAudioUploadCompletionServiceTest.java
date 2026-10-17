@@ -8,11 +8,11 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.knot.backend.recording.application.dto.result.PendingAudioUpload;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadCompletionResult;
-import com.knot.backend.recording.application.dto.result.StoredAudioObject;
 import com.knot.backend.recording.domain.RecordingAudioUploadStatus;
+import com.knot.backend.recording.domain.StoredAudioObject;
 import java.time.Instant;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -51,12 +51,7 @@ class RecordingAudioUploadCompletionServiceTest {
                 "audio/webm",
                 "version-1"
         );
-        when(prepare()).thenReturn(
-                new PendingAudioUpload(
-                        STORAGE_KEY,
-                        false
-                )
-        );
+        when(findStorageKeyToConfirm()).thenReturn(Optional.of(STORAGE_KEY));
         when(audioStorage.findStoredObject(STORAGE_KEY)).thenReturn(storedObject);
         when(complete(storedObject)).thenReturn(completedResult());
 
@@ -76,7 +71,7 @@ class RecordingAudioUploadCompletionServiceTest {
                 transcriptionService
         );
         inOrder.verify(completionTransaction)
-                .prepare(
+                .findStorageKeyToConfirm(
                         WORKSPACE_ID,
                         MEMBER_ID,
                         RECORDING_ID,
@@ -100,12 +95,7 @@ class RecordingAudioUploadCompletionServiceTest {
     @DisplayName("이미 완료된 예약은 저장소를 다시 확인하지 않고 기존 결과를 반환한다")
     void complete_success_alreadyCompletedSkipsStorage() {
         // given
-        when(prepare()).thenReturn(
-                new PendingAudioUpload(
-                        STORAGE_KEY,
-                        true
-                )
-        );
+        when(findStorageKeyToConfirm()).thenReturn(Optional.empty());
         when(complete(StoredAudioObject.missing())).thenReturn(completedResult());
 
         // when
@@ -124,8 +114,8 @@ class RecordingAudioUploadCompletionServiceTest {
         ).findStoredObject(anyString());
     }
 
-    private PendingAudioUpload prepare() {
-        return completionTransaction.prepare(
+    private Optional<String> findStorageKeyToConfirm() {
+        return completionTransaction.findStorageKeyToConfirm(
                 WORKSPACE_ID,
                 MEMBER_ID,
                 RECORDING_ID,

@@ -1,10 +1,8 @@
 package com.knot.backend.recording.application;
 
-import com.knot.backend.global.config.RetentionCleanupProperties;
 import com.knot.backend.recording.domain.RecordingAudioDeletionRepository;
 import com.knot.backend.recording.domain.RecordingAudioDeletionTask;
 import com.knot.backend.recording.domain.RecordingAudioUpload;
-import com.knot.backend.recording.domain.RecordingAudioUploadStatus;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -18,9 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class RecordingAudioRetentionService {
-
     private final RecordingAudioDeletionRepository deletions;
-    private final RetentionCleanupProperties properties;
     private final Clock clock;
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -57,37 +53,16 @@ public class RecordingAudioRetentionService {
             RecordingAudioUpload upload,
             Instant now
     ) {
-        if (upload.getStatus() != RecordingAudioUploadStatus.COMPLETED || upload.getDeletedAt() != null
-                || deletions.hasTaskForUpload(upload.getId())) {
+        if (!upload.isAudioAvailable() || deletions.hasTaskForUpload(upload.getId())) {
             return;
         }
         deletions.saveAndFlush(
                 RecordingAudioDeletionTask.request(
                         upload.getId(),
                         upload.getStorageKey(),
-                        now,
-                        confirmationAfter(
-                                upload,
-                                now
-                        )
+                        now
                 )
         );
-    }
-
-    private Instant confirmationAfter(
-            RecordingAudioUpload upload,
-            Instant now
-    ) {
-        Instant expiry = upload.getLastUploadUrlExpiresAt();
-        if (expiry == null) {
-            expiry = upload.getCompletedAt()
-                    .plus(properties.getLegacyUrlValidity());
-        }
-        Instant confirmation = expiry.plus(properties.getUploadQuiescence());
-        if (confirmation.isBefore(now)) {
-            return now;
-        }
-        return confirmation;
     }
 
     private Instant now() {

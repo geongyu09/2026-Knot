@@ -26,6 +26,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 class TranscriptionMigrationHistoryIntegrationTest {
     private static final String CURRENT_LOCATION = "classpath:db/migration";
     private static final String QUEUE_LOCATION = "classpath:db/transcription-queue-history";
+    private static final String TRANSCRIPTION_HISTORY_VERSION = "51";
 
     @Container
     private static final PostgreSQLContainer POSTGRESQL = new PostgreSQLContainer("pgvector/pgvector:pg18")
@@ -280,7 +281,7 @@ class TranscriptionMigrationHistoryIntegrationTest {
     private Flyway currentFlyway() {
         FluentConfiguration configuration = configuration(
                 CURRENT_LOCATION,
-                "latest"
+                TRANSCRIPTION_HISTORY_VERSION
         );
         return configuration.load();
     }

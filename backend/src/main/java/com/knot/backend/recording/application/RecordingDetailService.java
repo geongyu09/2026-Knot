@@ -16,7 +16,7 @@ import org.springframework.transaction.annotation.Isolation;
 @Service
 @RequiredArgsConstructor
 public class RecordingDetailService {
-    private final RecordingWorkspaceAccessValidator workspaceAccessValidator;
+    private final RecordingAccess recordingAccess;
     private final RecordingDetailQuery recordingDetailQuery;
     private final RecordingTranscriptionStateService transcriptionState;
     private final DocumentGenerationProgressService documentProgress;
@@ -28,7 +28,7 @@ public class RecordingDetailService {
             long memberId,
             long recordingId
     ) {
-        workspaceAccessValidator.validate(
+        recordingAccess.validateMember(
                 workspaceId,
                 memberId
         );

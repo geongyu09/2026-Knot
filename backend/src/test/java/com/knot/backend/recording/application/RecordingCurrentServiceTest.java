@@ -50,9 +50,11 @@ class RecordingCurrentServiceTest {
         workspaceMemberRepository = mock(WorkspaceMemberRepository.class);
         recordingSessionRepository = mock(RecordingSessionRepository.class);
         service = new RecordingCurrentService(
-                new RecordingWorkspaceAccessValidator(
+                new RecordingAccess(
                         workspaceRepository,
-                        workspaceMemberRepository
+                        workspaceMemberRepository,
+                        recordingSessionRepository,
+                        mock(RecordingControlTokenHasher.class)
                 ),
                 recordingSessionRepository,
                 Clock.fixed(
@@ -98,7 +100,7 @@ class RecordingCurrentServiceTest {
         // given
         prepareAccess();
         RecordingSession session = recordingSession();
-        session.pause(STARTED_AT.plusSeconds(60));
+        session.pause(STARTED_AT.plusSeconds(20));
         when(
                 recordingSessionRepository.findActiveByWorkspaceIdAndMemberId(
                         WORKSPACE_ID,
@@ -115,7 +117,7 @@ class RecordingCurrentServiceTest {
         // then
         assertThat(result).hasValueSatisfying(current -> {
             assertThat(current.status()).isEqualTo(RecordingStatus.PAUSED);
-            assertThat(current.elapsedMillis()).isEqualTo(60_000L);
+            assertThat(current.elapsedMillis()).isEqualTo(20_000L);
         });
     }
 
@@ -129,7 +131,7 @@ class RecordingCurrentServiceTest {
         when(clock.instant()).thenAnswer(invocation -> currentTime.get());
         Instant resumedAt = NOW.plusMillis(2);
         RecordingSession session = recordingSession();
-        session.pause(STARTED_AT.plusSeconds(60));
+        session.pause(STARTED_AT.plusSeconds(20));
         keepAlive(
                 session,
                 NOW
@@ -145,9 +147,11 @@ class RecordingCurrentServiceTest {
             return Optional.of(session);
         });
         RecordingCurrentService racingService = new RecordingCurrentService(
-                new RecordingWorkspaceAccessValidator(
+                new RecordingAccess(
                         workspaceRepository,
-                        workspaceMemberRepository
+                        workspaceMemberRepository,
+                        recordingSessionRepository,
+                        mock(RecordingControlTokenHasher.class)
                 ),
                 recordingSessionRepository,
                 clock
@@ -162,7 +166,7 @@ class RecordingCurrentServiceTest {
         // then
         assertThat(result).hasValueSatisfying(current -> {
             assertThat(current.status()).isEqualTo(RecordingStatus.RECORDING);
-            assertThat(current.elapsedMillis()).isEqualTo(60_001L);
+            assertThat(current.elapsedMillis()).isEqualTo(20_001L);
         });
     }
 
@@ -333,7 +337,7 @@ class RecordingCurrentServiceTest {
             Instant until
     ) {
         for (Instant at = session.getLastSeenAt()
-                .plusSeconds(60); at.isBefore(until); at = at.plusSeconds(60)) {
+                .plusSeconds(10); at.isBefore(until); at = at.plusSeconds(10)) {
             session.recordHeartbeat(at);
         }
     }

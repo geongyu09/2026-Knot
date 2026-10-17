@@ -1,5 +1,6 @@
 package com.knot.backend.search.application;
 
+import com.knot.backend.search.infrastructure.SearchQwenIntentClassifier;
 import com.knot.backend.search.infrastructure.SearchTransportCancellation;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -7,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 import com.knot.backend.document.DocumentFixtures;
+import com.knot.backend.document.domain.DocumentStatus;
 import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.search.SearchMessageFixtures;
 import com.knot.backend.search.application.dto.command.SearchQuestionCommand;
@@ -124,8 +126,8 @@ class SearchDocumentToolServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("현재 Workspace의 보관 문서만 페이지를 이어서 열거한다")
-    void list_success_archivedScopedPages() {
+    @DisplayName("현재 Workspace의 생성 완료 DRAFT와 ARCHIVED를 페이지로 열거한다")
+    void list_success_generatedScopedPages() {
         long first = saveDocument(
                 workspaceId,
                 "ARCHIVED",
@@ -134,14 +136,8 @@ class SearchDocumentToolServiceIntegrationTest {
         );
         long second = saveDocument(
                 workspaceId,
-                "ARCHIVED",
-                "두 번째 회의",
-                "내용"
-        );
-        saveDocument(
-                workspaceId,
                 "DRAFT",
-                "준비 문서",
+                "두 번째 회의",
                 "내용"
         );
         saveDocument(
@@ -160,6 +156,11 @@ class SearchDocumentToolServiceIntegrationTest {
         );
         assertThat(page.items()).extracting(SearchDocumentCard::documentId)
                 .containsExactly(second);
+        assertThat(
+                page.items()
+                        .getFirst()
+                        .archivedAt()
+        ).isNull();
         assertThat(page.nextCursor()).isNotNull();
         SearchDocumentPage previous = service.list(
                 scope,
@@ -288,14 +289,14 @@ class SearchDocumentToolServiceIntegrationTest {
         );
         long title = saveDocument(
                 workspaceId,
-                "ARCHIVED",
+                "DRAFT",
                 "결제 장애",
                 "복구 완료"
         );
         saveDocument(
                 workspaceId,
                 "DRAFT",
-                "결제 장애",
+                "다른 안건",
                 "미보관"
         );
         saveDocument(
@@ -525,20 +526,446 @@ class SearchDocumentToolServiceIntegrationTest {
     }
 
     @Test
-    void read_failure_draft() {
+    @DisplayName("미확인 DRAFT도 본문을 읽고 보관 시각은 null로 반환한다")
+    void read_success_draft() {
         long document = saveDocument(
                 workspaceId,
                 "DRAFT",
                 "초안",
                 "비공개"
         );
+        SearchDocumentSlice result = service.read(
+                scope,
+                document,
+                null
+        );
+        assertThat(result.content()).isEqualTo("비공개");
+        assertThat(
+                result.document()
+                        .archivedAt()
+        ).isNull();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"DRAFT", "ARCHIVED"})
+    @DisplayName("생성 시각 경계까지 검색하고 이후 문서는 목록·검색·읽기에서 제외한다")
+    void tools_success_creationCutoff(String status) {
+        // given
+        long before = saveDocument(
+                workspaceId,
+                status,
+                "결정 이전",
+                "본문"
+        );
+        long boundary = saveDocument(
+                workspaceId,
+                status,
+                "결정 경계",
+                "본문"
+        );
+        long after = saveDocument(
+                workspaceId,
+                status,
+                "결정 이후",
+                "본문"
+        );
+        setCreatedAt(
+                before,
+                NOW.minusSeconds(1)
+        );
+        setCreatedAt(
+                boundary,
+                NOW
+        );
+        setCreatedAt(
+                after,
+                NOW.plusSeconds(1)
+        );
+        // when
+        SearchDocumentPage listed = service.list(
+                scope,
+                parameters(
+                        null,
+                        null,
+                        20
+                )
+        );
+        SearchDocumentPage searched = service.search(
+                scope,
+                parameters(
+                        "결정",
+                        null,
+                        20
+                )
+        );
+        // then
+        assertThat(listed.items()).extracting(SearchDocumentCard::documentId)
+                .containsExactly(
+                        boundary,
+                        before
+                );
+        assertThat(searched.items()).extracting(SearchDocumentCard::documentId)
+                .containsExactly(
+                        boundary,
+                        before
+                );
+        assertThat(
+                service.read(
+                        scope,
+                        boundary,
+                        null
+                )
+                        .content()
+        ).isEqualTo("본문");
         assertThatThrownBy(
                 () -> service.read(
                         scope,
-                        document,
+                        after,
                         null
                 )
         ).hasMessage("DOCUMENT_NOT_FOUND");
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("페이지 사이 보관 전환에도 기존 커서로 다음 문서를 읽는다")
+    void page_success_archiveTransition(boolean search) {
+        // given
+        long older = saveDocument(
+                workspaceId,
+                "DRAFT",
+                "결정 이전",
+                "본문"
+        );
+        long newer = saveDocument(
+                workspaceId,
+                "DRAFT",
+                "결정 최근",
+                "본문"
+        );
+        SearchDocumentPage first = documentPage(
+                search,
+                null
+        );
+        assertThat(first.items()).extracting(SearchDocumentCard::documentId)
+                .containsExactly(newer);
+        archiveDocument(older);
+        archiveDocument(newer);
+        // when
+        SearchDocumentPage next = documentPage(
+                search,
+                first.nextCursor()
+        );
+        // then
+        assertThat(next.items()).extracting(SearchDocumentCard::documentId)
+                .containsExactly(older);
+        assertThat(
+                next.items()
+                        .getFirst()
+                        .status()
+        ).isEqualTo(DocumentStatus.ARCHIVED);
+        assertThat(next.nextCursor()).isNull();
+        assertThat(
+                service.read(
+                        scope,
+                        older,
+                        null
+                )
+                        .content()
+        ).isEqualTo("본문");
+    }
+
+    @Test
+    @DisplayName("DRAFT 본문을 이어 읽는 동안 보관돼도 같은 revision으로 이어 읽는다")
+    void read_success_archiveTransition() {
+        // given
+        properties.setReadCodePoints(3);
+        long document = saveDocument(
+                workspaceId,
+                "DRAFT",
+                "결정",
+                "가🙂나다😃라"
+        );
+        SearchDocumentSlice first = service.read(
+                scope,
+                document,
+                null
+        );
+        archiveDocument(document);
+        // when
+        SearchDocumentSlice next = service.read(
+                scope,
+                document,
+                first.nextCursor()
+        );
+        // then
+        assertThat(first.content() + next.content()).isEqualTo("가🙂나다😃라");
+        assertThat(
+                next.document()
+                        .contentRevision()
+        ).isEqualTo(
+                first.document()
+                        .contentRevision()
+        );
+        assertThat(
+                next.document()
+                        .status()
+        ).isEqualTo(DocumentStatus.ARCHIVED);
+        assertThat(
+                next.document()
+                        .archivedAt()
+        ).isEqualTo(NOW.plusSeconds(1));
+        assertThat(next.nextCursor()).isNull();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PENDING", "CONFIRMED", "NOT_REQUIRED"})
+    @DisplayName("다른 멤버의 DRAFT를 개인 확인 의무와 무관하게 탐색하고 확인 데이터를 변경하지 않는다")
+    void tools_success_confirmationIndependent(String confirmation) {
+        // given
+        long creator = fixtures.saveMember("다른 작성자");
+        fixtures.join(
+                workspaceId,
+                creator
+        );
+        long document = messages.saveDocument(
+                workspaceId,
+                creator
+        );
+        if (!"NOT_REQUIRED".equals(confirmation)) {
+            jdbc.sql(
+                    "INSERT INTO document_confirmations (document_id, member_id, confirmed_at) "
+                            + "VALUES (:d, :m, CASE WHEN :confirmed THEN CAST(:time AS timestamptz) END)"
+            )
+                    .param(
+                            "d",
+                            document
+                    )
+                    .param(
+                            "m",
+                            memberId
+                    )
+                    .param(
+                            "confirmed",
+                            "CONFIRMED".equals(confirmation)
+                    )
+                    .param(
+                            "time",
+                            java.sql.Timestamp.from(NOW)
+                    )
+                    .update();
+        }
+        Map<String, Object> documentBefore = jdbc.sql("SELECT * FROM documents WHERE id = :d")
+                .param(
+                        "d",
+                        document
+                )
+                .query()
+                .singleRow();
+        List<Map<String, Object>> confirmationsBefore = jdbc.sql("SELECT * FROM document_confirmations")
+                .query()
+                .listOfRows();
+        // when
+        SearchDocumentPage listed = service.list(
+                scope,
+                parameters(
+                        null,
+                        null,
+                        20
+                )
+        );
+        SearchDocumentPage searched = service.search(
+                scope,
+                parameters(
+                        "문서",
+                        null,
+                        20
+                )
+        );
+        SearchDocumentSlice read = service.read(
+                scope,
+                document,
+                null
+        );
+        // then
+        assertThat(listed.items()).extracting(SearchDocumentCard::documentId)
+                .containsExactly(document);
+        assertThat(searched.items()).extracting(SearchDocumentCard::documentId)
+                .containsExactly(document);
+        assertThat(
+                read.document()
+                        .status()
+        ).isEqualTo(DocumentStatus.DRAFT);
+        assertThat(
+                jdbc.sql("SELECT * FROM documents WHERE id = :d")
+                        .param(
+                                "d",
+                                document
+                        )
+                        .query()
+                        .singleRow()
+        ).isEqualTo(documentBefore);
+        assertThat(
+                jdbc.sql("SELECT * FROM document_confirmations")
+                        .query()
+                        .listOfRows()
+        ).isEqualTo(confirmationsBefore);
+    }
+
+    @Test
+    @DisplayName("실제 MCP의 세 문서 도구는 DRAFT 상태와 null 보관 시각을 전달한다")
+    void mcp_success_draftMetadata() throws Exception {
+        // given
+        long document = saveDocument(
+                workspaceId,
+                "DRAFT",
+                "결정",
+                "내용"
+        );
+        String bearer = new SearchToolTokenCodec(
+                mapper,
+                properties,
+                clock
+        ).encode(
+                "knot-search-mcp",
+                scope
+        );
+        // when
+        JsonNode definitions = mapper.readTree(
+                rpc(
+                        bearer,
+                        "tools/list",
+                        "{}"
+                ).body()
+        )
+                .path("result");
+        JsonNode listed = mcpResult(
+                bearer,
+                "list_documents",
+                "{}"
+        );
+        JsonNode searched = mcpResult(
+                bearer,
+                "search_documents",
+                "{\"query\":\"결정\"}"
+        );
+        JsonNode read = mcpResult(
+                bearer,
+                "read_document",
+                "{\"documentId\":" + document + "}"
+        );
+        // then
+        for (JsonNode tool : definitions.path("tools")) {
+            assertThat(
+                    tool.path("description")
+                            .asString()
+            ).contains(
+                    "DRAFT",
+                    "ARCHIVED"
+            );
+        }
+        assertThat(
+                listed.path("items")
+                        .get(0)
+                        .path("status")
+                        .asString()
+        ).isEqualTo("DRAFT");
+        assertThat(
+                searched.path("items")
+                        .get(0)
+                        .path("status")
+                        .asString()
+        ).isEqualTo("DRAFT");
+        assertThat(
+                read.path("document")
+                        .path("status")
+                        .asString()
+        ).isEqualTo("DRAFT");
+        assertThat(
+                read.path("document")
+                        .path("archivedAt")
+                        .isNull()
+        ).isTrue();
+        assertThat(
+                read.path("content")
+                        .asString()
+        ).isEqualTo("내용");
+    }
+
+    private JsonNode mcpResult(
+            String bearer,
+            String name,
+            String arguments
+    ) throws Exception {
+        JsonNode result = mapper.readTree(
+                rpc(
+                        bearer,
+                        "tools/call",
+                        "{\"name\":\"" + name + "\",\"arguments\":" + arguments + "}"
+                ).body()
+        )
+                .path("result");
+        assertThat(
+                result.path("isError")
+                        .asBoolean()
+        ).isFalse();
+        return result.path("structuredContent");
+    }
+
+    private SearchDocumentPage documentPage(
+            boolean search,
+            String cursor
+    ) {
+        if (search) {
+            return service.search(
+                    scope,
+                    parameters(
+                            "결정",
+                            cursor,
+                            1
+                    )
+            );
+        }
+        return service.list(
+                scope,
+                parameters(
+                        null,
+                        cursor,
+                        1
+                )
+        );
+    }
+
+    private void setCreatedAt(
+            long document,
+            Instant time
+    ) {
+        jdbc.sql(
+                "UPDATE documents SET created_at = :time, "
+                        + "archived_at = CASE WHEN status = 'ARCHIVED' THEN CAST(:time AS timestamptz) END WHERE id = :id"
+        )
+                .param(
+                        "time",
+                        java.sql.Timestamp.from(time)
+                )
+                .param(
+                        "id",
+                        document
+                )
+                .update();
+    }
+
+    private void archiveDocument(long document) {
+        jdbc.sql("UPDATE documents SET status = 'ARCHIVED', archived_at = :time WHERE id = :id")
+                .param(
+                        "time",
+                        java.sql.Timestamp.from(NOW.plusSeconds(1))
+                )
+                .param(
+                        "id",
+                        document
+                )
+                .update();
     }
 
     @Test
@@ -627,7 +1054,7 @@ class SearchDocumentToolServiceIntegrationTest {
     void execute_success_actualMcpAndLlmHttp(boolean followup) throws Exception {
         long document = saveDocument(
                 workspaceId,
-                "ARCHIVED",
+                "DRAFT",
                 "결제 결정",
                 "결제 장애는 김개발이 복구하기로 결정했다."
         );
@@ -648,11 +1075,14 @@ class SearchDocumentToolServiceIntegrationTest {
             List<JsonNode> captured = new ArrayList<>();
             server.respond(exchange -> {
                 captured.add(mapper.readTree(server.requestBody()));
-                int turn = turns.incrementAndGet();
-                String body = response(
-                        turn,
-                        document
-                );
+                String body = "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"intent\\\":\\\"MEETING_SEARCH\\\"}\"}}]}";
+                if (!mapper.readTree(server.requestBody())
+                        .has("response_format")) {
+                    body = response(
+                            turns.incrementAndGet(),
+                            document
+                    );
+                }
                 byte[] bytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
                 exchange.sendResponseHeaders(
                         200,
@@ -701,12 +1131,23 @@ class SearchDocumentToolServiceIntegrationTest {
                             mapper
                     )
             );
+            adapters.addBean(
+                    "classifier",
+                    new SearchQwenIntentClassifier(
+                            llm,
+                            history,
+                            access,
+                            properties,
+                            mapper
+                    )
+            );
             SearchAnswerWorker worker = new SearchAnswerWorker(
                     executions,
                     adapters.getBeanProvider(SearchDocumentRetriever.class),
                     adapters.getBeanProvider(SearchAnswerGenerator.class),
                     clock,
-                    properties
+                    properties,
+                    adapters.getBeanProvider(SearchIntentClassifier.class)
             );
             SearchQuestionAcceptedResult accepted = intake.acceptFirst(
                     workspaceId,

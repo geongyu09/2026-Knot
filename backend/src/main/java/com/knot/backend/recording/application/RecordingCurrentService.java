@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class RecordingCurrentService {
-    private final RecordingWorkspaceAccessValidator workspaceAccessValidator;
+    private final RecordingAccess recordingAccess;
     private final RecordingSessionRepository recordingSessionRepository;
     private final Clock clock;
 
@@ -22,7 +22,7 @@ public class RecordingCurrentService {
             long workspaceId,
             long memberId
     ) {
-        workspaceAccessValidator.validate(
+        recordingAccess.validateMember(
                 workspaceId,
                 memberId
         );

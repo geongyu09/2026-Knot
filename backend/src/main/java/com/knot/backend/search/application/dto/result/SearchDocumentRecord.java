@@ -1,5 +1,6 @@
 package com.knot.backend.search.application.dto.result;
 
+import com.knot.backend.document.domain.DocumentStatus;
 import java.time.Instant;
 
 public record SearchDocumentRecord(
@@ -7,6 +8,7 @@ public record SearchDocumentRecord(
         String title,
         String topic,
         String content,
+        DocumentStatus status,
         Instant recordingStartedAt,
         Instant createdAt,
         Instant archivedAt,

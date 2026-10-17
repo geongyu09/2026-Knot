@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import com.knot.backend.workspace.application.WorkspaceDetailQuery;
-import com.knot.backend.workspace.application.WorkspaceOwnershipTransferService;
-import com.knot.backend.workspace.application.dto.result.WorkspaceDetailSnapshot;
+import com.knot.backend.workspace.application.WorkspaceLeaveService;
+import com.knot.backend.workspace.application.dto.result.WorkspaceDetailResult;
 import com.knot.backend.workspace.domain.WorkspaceMemberRole;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -40,16 +40,16 @@ class WorkspaceDetailQueryIntegrationTest {
     private static final int READ_COUNT_DURING_TRANSFER = 50;
 
     private final WorkspaceDetailQuery workspaceDetailQuery;
-    private final WorkspaceOwnershipTransferService ownershipTransferService;
+    private final WorkspaceLeaveService leaveService;
     private final JdbcClient jdbcClient;
 
     WorkspaceDetailQueryIntegrationTest(
             WorkspaceDetailQuery workspaceDetailQuery,
-            WorkspaceOwnershipTransferService ownershipTransferService,
+            WorkspaceLeaveService leaveService,
             JdbcClient jdbcClient
     ) {
         this.workspaceDetailQuery = workspaceDetailQuery;
-        this.ownershipTransferService = ownershipTransferService;
+        this.leaveService = leaveService;
         this.jdbcClient = jdbcClient;
     }
 
@@ -76,14 +76,14 @@ class WorkspaceDetailQueryIntegrationTest {
         );
 
         // when
-        Optional<WorkspaceDetailSnapshot> snapshot = workspaceDetailQuery.find(
+        Optional<WorkspaceDetailResult> snapshot = workspaceDetailQuery.find(
                 workspaceId,
                 ownerId
         );
 
         // then
         assertThat(snapshot).contains(
-                new WorkspaceDetailSnapshot(
+                new WorkspaceDetailResult(
                         "혼자 팀",
                         WorkspaceMemberRole.OWNER,
                         1L
@@ -112,7 +112,7 @@ class WorkspaceDetailQueryIntegrationTest {
         );
 
         // when
-        List<Optional<WorkspaceDetailSnapshot>> snapshots = List.of(
+        List<Optional<WorkspaceDetailResult>> snapshots = List.of(
                 workspaceDetailQuery.find(
                         workspaceId,
                         ownerId
@@ -126,14 +126,14 @@ class WorkspaceDetailQueryIntegrationTest {
         // then
         assertThat(snapshots).containsExactly(
                 Optional.of(
-                        new WorkspaceDetailSnapshot(
+                        new WorkspaceDetailResult(
                                 "두 명 팀",
                                 WorkspaceMemberRole.OWNER,
                                 2L
                         )
                 ),
                 Optional.of(
-                        new WorkspaceDetailSnapshot(
+                        new WorkspaceDetailResult(
                                 "두 명 팀",
                                 WorkspaceMemberRole.MEMBER,
                                 2L
@@ -184,14 +184,14 @@ class WorkspaceDetailQueryIntegrationTest {
         );
 
         // when
-        Optional<WorkspaceDetailSnapshot> snapshot = workspaceDetailQuery.find(
+        Optional<WorkspaceDetailResult> snapshot = workspaceDetailQuery.find(
                 workspaceId,
                 rejoinedMemberId
         );
 
         // then
         assertThat(snapshot).contains(
-                new WorkspaceDetailSnapshot(
+                new WorkspaceDetailResult(
                         "이력 팀",
                         WorkspaceMemberRole.MEMBER,
                         2L
@@ -224,14 +224,14 @@ class WorkspaceDetailQueryIntegrationTest {
         );
 
         // when
-        Optional<WorkspaceDetailSnapshot> snapshot = workspaceDetailQuery.find(
+        Optional<WorkspaceDetailResult> snapshot = workspaceDetailQuery.find(
                 workspaceId,
                 leftMemberId
         );
 
         // then
         assertThat(snapshot).contains(
-                new WorkspaceDetailSnapshot(
+                new WorkspaceDetailResult(
                         "탈퇴 팀",
                         null,
                         1L
@@ -258,7 +258,7 @@ class WorkspaceDetailQueryIntegrationTest {
         markWorkspaceDeleted(workspaceId);
 
         // when
-        Optional<WorkspaceDetailSnapshot> snapshot = workspaceDetailQuery.find(
+        Optional<WorkspaceDetailResult> snapshot = workspaceDetailQuery.find(
                 workspaceId,
                 ownerId
         );
@@ -286,19 +286,19 @@ class WorkspaceDetailQueryIntegrationTest {
                 WorkspaceMemberRole.MEMBER,
                 JOINED_AT
         );
-        WorkspaceDetailSnapshot beforeTransfer = new WorkspaceDetailSnapshot(
+        WorkspaceDetailResult beforeTransfer = new WorkspaceDetailResult(
                 "승계 팀",
                 WorkspaceMemberRole.MEMBER,
                 2L
         );
-        WorkspaceDetailSnapshot afterTransfer = new WorkspaceDetailSnapshot(
+        WorkspaceDetailResult afterTransfer = new WorkspaceDetailResult(
                 "승계 팀",
                 WorkspaceMemberRole.OWNER,
                 1L
         );
 
         // when
-        List<WorkspaceDetailSnapshot> snapshots = readDuringTransfer(
+        List<WorkspaceDetailResult> snapshots = readDuringTransfer(
                 workspaceId,
                 ownerId,
                 successorId
@@ -320,7 +320,7 @@ class WorkspaceDetailQueryIntegrationTest {
         ).contains(afterTransfer);
     }
 
-    private List<WorkspaceDetailSnapshot> readDuringTransfer(
+    private List<WorkspaceDetailResult> readDuringTransfer(
             long workspaceId,
             long ownerId,
             long successorId
@@ -333,19 +333,19 @@ class WorkspaceDetailQueryIntegrationTest {
                         5,
                         TimeUnit.SECONDS
                 );
-                ownershipTransferService.transferOwnership(
+                leaveService.transferOwnership(
                         ownerId,
                         workspaceId,
                         successorId
                 );
                 return null;
             });
-            Future<List<WorkspaceDetailSnapshot>> reads = executorService.submit(() -> {
+            Future<List<WorkspaceDetailResult>> reads = executorService.submit(() -> {
                 barrier.await(
                         5,
                         TimeUnit.SECONDS
                 );
-                List<WorkspaceDetailSnapshot> snapshots = new ArrayList<>();
+                List<WorkspaceDetailResult> snapshots = new ArrayList<>();
                 for (int i = 0; i < READ_COUNT_DURING_TRANSFER; i++) {
                     snapshots.add(
                             workspaceDetailQuery.find(

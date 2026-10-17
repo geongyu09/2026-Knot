@@ -8,6 +8,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.Duration;
 import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -18,6 +19,9 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class RecordingAudioDeletionTask {
+    private static final long FIRST_RETRY_SECONDS = 60L;
+    private static final long MAX_RETRY_SECONDS = 3600L;
+    private static final int MAX_BACKOFF_SHIFT = 6;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -35,9 +39,6 @@ public class RecordingAudioDeletionTask {
 
     @Column(name = "requested_at", nullable = false)
     private Instant requestedAt;
-
-    @Column(name = "confirmation_after", nullable = false)
-    private Instant confirmationAfter;
 
     @Column(name = "attempt_count", nullable = false)
     private int attemptCount;
@@ -57,19 +58,14 @@ public class RecordingAudioDeletionTask {
     private RecordingAudioDeletionTask(
             long uploadId,
             String storageKey,
-            Instant now,
-            Instant confirmationAfter
+            Instant now
     ) {
         validateUploadId(uploadId);
         validateStorageKey(storageKey);
-        validateConfirmationTime(
-                now,
-                confirmationAfter
-        );
+        validateRequestTime(now);
         this.uploadId = uploadId;
         this.storageKey = storageKey;
         this.requestedAt = now;
-        this.confirmationAfter = confirmationAfter;
         this.status = RecordingAudioDeletionStatus.PENDING;
         this.nextAttemptAt = now;
     }
@@ -77,14 +73,12 @@ public class RecordingAudioDeletionTask {
     public static RecordingAudioDeletionTask request(
             long uploadId,
             String storageKey,
-            Instant now,
-            Instant confirmationAfter
+            Instant now
     ) {
         return new RecordingAudioDeletionTask(
                 uploadId,
                 storageKey,
-                now,
-                confirmationAfter
+                now
         );
     }
 
@@ -127,22 +121,15 @@ public class RecordingAudioDeletionTask {
         )) {
             return;
         }
+        status = RecordingAudioDeletionStatus.SUCCEEDED;
         executionDeadlineAt = null;
         lastFailureCode = null;
-        if (now.isBefore(confirmationAfter)) {
-            status = RecordingAudioDeletionStatus.PENDING;
-            nextAttemptAt = confirmationAfter;
-            return;
-        }
-        status = RecordingAudioDeletionStatus.SUCCEEDED;
         completedAt = now;
     }
 
-    public void recordFailure(
+    public void recordStorageFailure(
             int attempt,
-            Instant now,
-            Instant nextAttempt,
-            String failureCode
+            Instant now
     ) {
         validateTime(now);
         if (!isCurrentAttempt(
@@ -151,16 +138,14 @@ public class RecordingAudioDeletionTask {
         )) {
             return;
         }
-        if (nextAttempt == null || !nextAttempt.isAfter(now)) {
-            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_TIME);
-        }
-        if (failureCode == null || failureCode.isBlank() || failureCode.length() > 50) {
-            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
-        }
         status = RecordingAudioDeletionStatus.PENDING;
-        nextAttemptAt = nextAttempt;
+        nextAttemptAt = now.plus(retryBackoff(attempt));
         executionDeadlineAt = null;
-        lastFailureCode = failureCode;
+        lastFailureCode = RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE.getCode();
+    }
+
+    public boolean isSucceeded() {
+        return status == RecordingAudioDeletionStatus.SUCCEEDED;
     }
 
     private boolean isCurrentAttempt(
@@ -169,6 +154,22 @@ public class RecordingAudioDeletionTask {
     ) {
         return status == RecordingAudioDeletionStatus.RUNNING && attemptCount == attempt
                 && now.isBefore(executionDeadlineAt);
+    }
+
+    private Duration retryBackoff(int attempt) {
+        int shift = Math.min(
+                Math.max(
+                        attempt - 1,
+                        0
+                ),
+                MAX_BACKOFF_SHIFT
+        );
+        return Duration.ofSeconds(
+                Math.min(
+                        MAX_RETRY_SECONDS,
+                        FIRST_RETRY_SECONDS << shift
+                )
+        );
     }
 
     private void validateTime(Instant now) {
@@ -189,11 +190,8 @@ public class RecordingAudioDeletionTask {
         }
     }
 
-    private void validateConfirmationTime(
-            Instant now,
-            Instant confirmationAfter
-    ) {
-        if (now == null || confirmationAfter == null || confirmationAfter.isBefore(now)) {
+    private void validateRequestTime(Instant now) {
+        if (now == null) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_TIME);
         }
     }

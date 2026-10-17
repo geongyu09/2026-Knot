@@ -2,9 +2,9 @@ package com.knot.backend.recording.infrastructure.storage;
 
 import com.knot.backend.recording.application.RecordingAudioStorage;
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
-import com.knot.backend.recording.application.dto.result.StoredAudioObject;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
+import com.knot.backend.recording.domain.StoredAudioObject;
 import java.time.Duration;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -65,7 +65,6 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
             String contentType,
             long contentLength
     ) {
-        // null 버전은 같은 key의 PUT으로 교체될 수 있으므로 불변 입력으로 취급하지 않는다.
         if (versionId == null || versionId.isBlank() || "null".equals(versionId)) {
             throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
         }
@@ -104,7 +103,6 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
         }
     }
 
-    // Content-Type과 Content-Length를 서명에 넣어 예약한 파일과 다른 형식·크기의 PUT을 저장소가 거절하게 한다.
     @Override
     public PresignedAudioUpload presignUpload(
             String storageKey,

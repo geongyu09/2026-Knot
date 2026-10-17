@@ -62,7 +62,7 @@
 | progress | stage | String | No | 생성 진행 상태 | SEARCHING / GENERATING |
 | delta | answerMessageId, text | Long, String | No | 이 시도의 답변 본문 추가분 | 22, 답변 내용 |
 | evidence | answerMessageId, items | Long, Array | No | 실제 사용 근거 중 관련도 순 표시 카드 최대 3개. 없으면 빈 배열 | 22, [] |
-| excluded_documents | count | Integer | No | ARCHIVED 직접 검색 기준 0. DRAFT·생성 Job은 포함하지 않음 | 0 |
+| excluded_documents | count | Integer | No | 생성 완료 DRAFT·ARCHIVED 직접 검색 기준 0. 생성 Job 수를 세지 않음 | 0 |
 | completed | answerMessageId, status | Long, String | No | 정상 종료 | 22, COMPLETED |
 | failed | answerMessageId, status, code | Long, String, String | No | 접수 후 생성 실패. 저장된 부분 본문 유지 | 22, FAILED, ANSWER_GENERATION_FAILED |
 | stopped | answerMessageId, status | Long, String | No | 사용자 명시 중지 | 22, STOPPED |
@@ -111,6 +111,8 @@ data:{"answerMessageId":22,"status":"COMPLETED"}
 오류는 `code`, `message`를 가진 JSON이며 비어 있는 `fieldErrors`는 생략한다.
 
 ## 접수·복구 규칙
+
+- 2026-10-14 #670: 재시도는 새 실행 시작 시각까지 생성된 현재 Workspace의 DRAFT·ARCHIVED를 개인 확인 여부와 무관하게 다시 탐색한다. 확인·보관 상태를 변경하지 않는다.
 
 1. 현재 멤버십·소유권은 매 요청에서 검증한다. 동일 요청 복구도 접근 검사를 건너뛰지 않는다.
 2. 새 requestId는 기존 FAILED 답변의 content·오류·근거와 생성 진행 정보를 원자적으로 초기화한다. 질문·답변 ID, sequence, createdAt은 유지한다.

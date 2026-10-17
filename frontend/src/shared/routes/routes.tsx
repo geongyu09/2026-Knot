@@ -2,6 +2,7 @@ import CenteredLayout from "@pages/_layout/CenteredLayout";
 import WorkspaceLayout from "@pages/_layout/WorkspaceLayout";
 import InvitePage from "@pages/invite/[token]";
 import JoinErrorPage from "@pages/join-error";
+import LandingPage from "@pages/landing";
 import LoginPage from "@pages/login";
 import OnboardingPage from "@pages/onboarding";
 import OnboardingCompletePage from "@pages/onboarding/complete";
@@ -22,6 +23,7 @@ import type { RouteObject } from "react-router";
 import AuthGuard from "./AuthGuard";
 import EntryRedirect from "./EntryRedirect";
 import GuestGuard from "./GuestGuard";
+import LandingGuard from "./LandingGuard";
 import { PATH_ROUTE } from "./PATH_ROUTE";
 import RecordingGuard from "./RecordingGuard";
 
@@ -45,14 +47,22 @@ import RecordingGuard from "./RecordingGuard";
  * 화면이 비어 보이지 않기 때문이에요.
  */
 export const routes: RouteObject[] = [
+  // 홈 — 로그인하지 않은 사람은 화면 전체를 쓰는 랜딩을, 로그인한 사람은 진입 분기를 거쳐 워크스페이스로
+  {
+    path: PATH_ROUTE.HOME,
+    element: <LandingGuard landing={<LandingPage />} />,
+    children: [
+      {
+        element: <CenteredLayout />,
+        children: [{ index: true, element: <EntryRedirect /> }],
+      },
+    ],
+  },
+
   // 화면 가운데 정렬 — 워크스페이스 진입 전 플로우
   {
     element: <CenteredLayout />,
     children: [
-      {
-        path: PATH_ROUTE.HOME,
-        element: <EntryRedirect />,
-      },
       {
         element: <GuestGuard />,
         children: [

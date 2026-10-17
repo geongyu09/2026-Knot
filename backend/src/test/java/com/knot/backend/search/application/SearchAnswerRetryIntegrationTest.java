@@ -1,5 +1,7 @@
 package com.knot.backend.search.application;
 
+import static org.mockito.Mockito.when;
+import com.knot.backend.search.domain.SearchIntent;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -73,6 +75,8 @@ class SearchAnswerRetryIntegrationTest {
     @MockitoBean
     private SearchDocumentRetriever retriever;
     @MockitoBean
+    private SearchIntentClassifier classifier;
+    @MockitoBean
     private SearchAnswerGenerator generator;
     private DocumentFixtures fixtures;
     private long workspace;
@@ -133,6 +137,12 @@ class SearchAnswerRetryIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        when(
+                classifier.classify(
+                        any(),
+                        any()
+                )
+        ).thenReturn(SearchIntent.MEETING_SEARCH);
         jdbc.sql("TRUNCATE TABLE members, workspaces RESTART IDENTITY CASCADE")
                 .update();
         fixtures = new DocumentFixtures(jdbc);

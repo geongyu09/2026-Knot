@@ -1,7 +1,7 @@
 package com.knot.backend.recording.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -12,73 +12,101 @@ class RecordingAudioRetentionDomainTest {
     private static final Instant NOW = Instant.parse("2026-10-09T00:00:00Z");
 
     @Test
-    @DisplayName("오디오 보존은 최초 업로드 완료 확인부터 정확히 30일이다")
-    void isRetentionExpired_success_completionBoundary() {
+    @DisplayName("오디오 보존 만료는 최초 업로드 완료 확인부터 30일이 되기 직전까지 오지 않는다")
+    void isRetentionExpired_success_falseJustBeforeBoundary() {
         // given
-        RecordingAudioUpload upload = RecordingAudioUpload.reserve(
-                1L,
-                "key",
-                "audio/webm",
-                100,
-                NOW
-        );
-        upload.complete(
-                100,
-                "audio/webm",
-                "version-1",
-                NOW.plusSeconds(60)
-        );
-        Instant expires = NOW.plusSeconds(60)
-                .plus(Duration.ofDays(30));
-        // when & then
-        assertThat(upload.isRetentionExpired(expires.minusNanos(1000))).isFalse();
-        assertThat(upload.isRetentionExpired(expires)).isTrue();
+        RecordingAudioUpload upload = completedUpload();
+        Instant expires = retentionBoundary();
+
+        // when
+        boolean expired = upload.isRetentionExpired(expires.minusNanos(1000));
+
+        // then
+        assertThat(expired).isFalse();
+    }
+
+    @Test
+    @DisplayName("오디오 보존은 최초 업로드 완료 확인부터 정확히 30일에 만료된다")
+    void isRetentionExpired_success_trueAtBoundary() {
+        // given
+        RecordingAudioUpload upload = completedUpload();
+        Instant expires = retentionBoundary();
+
+        // when
+        boolean expired = upload.isRetentionExpired(expires);
+
+        // then
+        assertThat(expired).isTrue();
+    }
+
+    @Test
+    @DisplayName("보존 삭제를 다시 기록해도 처음 삭제 시각과 완료 정보를 유지한다")
+    void recordDeleted_success_keepsFirstDeletedAt() {
+        // given
+        RecordingAudioUpload upload = completedUpload();
+        Instant expires = retentionBoundary();
         upload.recordDeleted(expires);
+
+        // when
         upload.recordDeleted(expires.plusSeconds(1));
+
+        // then
         assertThat(upload.getDeletedAt()).isEqualTo(expires);
         assertThat(upload.isCompleted()).isTrue();
         assertThat(upload.getCompletedAt()).isEqualTo(NOW.plusSeconds(60));
     }
 
     @Test
-    @DisplayName("예약만 된 오디오는 30일 보존 정리나 완료 기록으로 처리하지 않는다")
-    void recordDeleted_failure_uncompletedUpload() {
+    @DisplayName("예약만 된 오디오는 30일이 지나도 보존 만료로 보지 않는다")
+    void isRetentionExpired_success_falseWhenReserved() {
         // given
-        RecordingAudioUpload upload = RecordingAudioUpload.reserve(
-                1L,
-                "key",
-                "audio/webm",
-                100,
-                NOW
-        );
-        // when & then
-        assertThat(upload.isRetentionExpired(NOW.plus(Duration.ofDays(31)))).isFalse();
-        assertThatThrownBy(() -> upload.recordDeleted(NOW)).isInstanceOf(RecordingException.class);
+        RecordingAudioUpload upload = reservedUpload();
+
+        // when
+        boolean expired = upload.isRetentionExpired(NOW.plus(Duration.ofDays(31)));
+
+        // then
+        assertThat(expired).isFalse();
     }
 
     @Test
-    @DisplayName("URL 재발급의 가장 늦은 만료를 보존하고 완료 뒤에는 새 발급을 거절한다")
-    void recordUploadUrlExpiry_success_lastExpiry() {
+    @DisplayName("예약만 된 오디오는 보존 삭제로 기록하지 않는다")
+    void recordDeleted_failure_uncompletedUpload() {
         // given
-        RecordingAudioUpload upload = RecordingAudioUpload.reserve(
+        RecordingAudioUpload upload = reservedUpload();
+
+        // when
+        Throwable failure = catchThrowable(() -> upload.recordDeleted(NOW));
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class);
+    }
+
+    private RecordingAudioUpload reservedUpload() {
+        return RecordingAudioUpload.reserve(
                 1L,
                 "key",
                 "audio/webm",
                 100,
                 NOW
         );
-        // when
-        upload.recordUploadUrlExpiry(NOW.plusSeconds(120));
-        upload.recordUploadUrlExpiry(NOW.plusSeconds(60));
-        // then
-        assertThat(upload.getLastUploadUrlExpiresAt()).isEqualTo(NOW.plusSeconds(120));
+    }
+
+    private RecordingAudioUpload completedUpload() {
+        RecordingAudioUpload upload = reservedUpload();
         upload.complete(
-                100,
-                "audio/webm",
-                "version-1",
-                NOW
+                StoredAudioObject.of(
+                        100,
+                        "audio/webm",
+                        "version-1"
+                ),
+                NOW.plusSeconds(60)
         );
-        assertThatThrownBy(() -> upload.recordUploadUrlExpiry(NOW.plusSeconds(180)))
-                .isInstanceOf(RecordingException.class);
+        return upload;
+    }
+
+    private Instant retentionBoundary() {
+        return NOW.plusSeconds(60)
+                .plus(Duration.ofDays(30));
     }
 }

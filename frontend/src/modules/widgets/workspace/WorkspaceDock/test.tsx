@@ -1,4 +1,7 @@
+import { GetCurrentRecordingResponseDto } from "@api/dto/recording";
+import { CURRENT_RECORDING_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/current";
 import {
+  currentRecordingResponse,
   recordingEndResponse,
   recordingStartResponse,
 } from "@api/mock/responses/recording";
@@ -8,7 +11,11 @@ import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  focusManager,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import {
   act,
   fireEvent,
@@ -21,6 +28,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { useRecordingStore } from "@store/recordingStore";
 import { useSearchAnswerStore } from "@store/searchAnswerStore";
+import { formatRecordingTime } from "@utils/formatRecordingTime";
 import { getRecordingStartProof } from "@utils/recordingControlProof";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -61,6 +69,28 @@ const ACCEPTED_CONVERSATION_PATH = getRouterPath({
 const QUESTION = "지난주 회의에서 정해진 것만 뽑아 줘";
 const SEARCH_CONVERSATIONS_PATH =
   "*/api/v1/workspaces/:workspaceId/search/conversations";
+const CURRENT_RECORDING_URL = `*${CURRENT_RECORDING_API_PATH(Number(WORKSPACE_ID))}`;
+/** 다른 탭 녹음 칩에 보이는 시간. 응답을 받은 직후라 누적 시간 그대로예요 */
+const OTHER_TAB_ELAPSED_TIME = formatRecordingTime(
+  new GetCurrentRecordingResponseDto(currentRecordingResponse).elapsedMillis /
+    1000,
+);
+
+const respondNoCurrentRecording = () =>
+  mockServer.use(
+    http.get(
+      CURRENT_RECORDING_URL,
+      () => new HttpResponse(null, { status: 204 }),
+    ),
+  );
+
+/** 현재 녹음 조회가 다른 탭의 녹음을 이 상태로 답하게 해요 */
+const respondCurrentRecordingStatus = (status: "RECORDING" | "PAUSED") =>
+  mockServer.use(
+    http.get(CURRENT_RECORDING_URL, () =>
+      HttpResponse.json({ ...currentRecordingResponse, status }),
+    ),
+  );
 
 /** 탐색 질문 요청(첫 질문·후속 질문)의 경로를 모아요 */
 const collectSearchQuestionPaths = () => {
@@ -123,6 +153,10 @@ const renderDock = (initialPath = HOME_PATH) => {
   return { router, unmount };
 };
 
+/** 펼친 독에만 보내기 버튼이 있어요. 접힌 독에도 입력창은 보이지 않게 남아 있어 입력창으로는 가를 수 없어요 */
+const isDockExpanded = () =>
+  screen.queryByRole("button", { name: "보내기" }) !== null;
+
 const expandDock = () => {
   fireEvent.click(screen.getByRole("button", { name: "무엇이든 요청하기" }));
 
@@ -134,6 +168,8 @@ describe("WorkspaceDock", () => {
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
+    // 기본 mock은 다른 탭이 녹음 중이라고 답해 마이크가 칩으로 바뀌므로, 다른 탭 녹음이 없는 상태를 기본으로 둬요
+    respondNoCurrentRecording();
   });
 
   afterEach(() => {
@@ -153,13 +189,13 @@ describe("WorkspaceDock", () => {
     });
   };
 
-  it("처음에는 접혀 있어 입력창 대신 버튼만 보여준다", () => {
+  it("처음에는 접혀 있어 버튼만 보여준다", () => {
     renderDock();
 
     expect(
       screen.getByRole("button", { name: "무엇이든 요청하기" }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(isDockExpanded()).toBe(false);
   });
 
   it("누르면 질문 입력창으로 펼쳐진다", () => {
@@ -302,38 +338,59 @@ describe("WorkspaceDock", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("글자 키를 누르면 입력창이 열리면서 그 글자부터 담긴다", () => {
+  /** 글자 키를 누르고, 그 키가 처리되는 동안 커서가 어디 있었는지와 기본 동작이 살아 있는지 돌려줘요 */
+  const pressKeyOutsideField = (key: string) => {
+    let focusedWhilePressing: Element | null = null;
+    // document보다 늦게 받는 window에서 봐야 독이 키를 다 처리한 뒤의 자리를 볼 수 있어요
+    const recordFocus = () => (focusedWhilePressing = document.activeElement);
+    window.addEventListener("keydown", recordFocus);
+
+    const isDefaultKept = fireEvent.keyDown(document.body, { key });
+
+    window.removeEventListener("keydown", recordFocus);
+
+    return { focusedWhilePressing, isDefaultKept };
+  };
+
+  it("커서가 입력창 밖에 있을 때 글자 키를 누르면, 그 키가 입력창에 들어가도록 누르는 사이에 커서를 옮긴다", () => {
     renderDock();
+    screen.getByRole("textbox", { name: "무엇이든 요청하세요" }).blur();
 
-    fireEvent.keyDown(document.body, { key: "회" });
+    const { focusedWhilePressing, isDefaultKept } = pressKeyOutsideField("a");
 
-    expect(
-      screen.getByRole("textbox", { name: "무엇이든 요청하세요" }),
-    ).toHaveValue("회");
+    const field = screen.getByRole("textbox", { name: "무엇이든 요청하세요" });
+    expect(focusedWhilePressing).toBe(field);
+    expect(isDefaultKept).toBe(true);
   });
 
-  it("가로챈 글자 뒤에 이어 적도록 커서를 맨 끝에 둔다", () => {
+  it("적던 글이 있으면 이어 적도록 커서를 맨 끝에 둔다", () => {
     renderDock();
+    const field = expandDock();
+    fireEvent.change(field, { target: { value: QUESTION } });
+    fireEvent.pointerDown(document.body);
+    field.blur();
 
-    fireEvent.keyDown(document.body, { key: "ㅇ" });
+    pressKeyOutsideField("a");
 
-    const field = screen.getByRole("textbox", {
+    const reopenedField = screen.getByRole("textbox", {
       name: "무엇이든 요청하세요",
     }) as HTMLTextAreaElement;
-
-    // 커서가 앞에 남아 있으면 이어 친 글자가 "ㅇ" 앞에 끼어들어요
-    expect(field.selectionStart).toBe(field.value.length);
-    expect(field.selectionEnd).toBe(field.value.length);
+    expect(reopenedField.selectionStart).toBe(QUESTION.length);
+    expect(reopenedField.selectionEnd).toBe(QUESTION.length);
   });
 
   it("단축키 조합이나 글자가 아닌 키는 가로채지 않는다", () => {
     renderDock();
+    const slotButton = screen.getByRole("button", {
+      name: "무엇이든 요청하기",
+    });
+    slotButton.focus();
 
-    fireEvent.keyDown(document.body, { key: "k", metaKey: true });
-    fireEvent.keyDown(document.body, { key: "Tab" });
-    fireEvent.keyDown(document.body, { key: "ArrowDown" });
+    fireEvent.keyDown(slotButton, { key: "k", metaKey: true });
+    fireEvent.keyDown(slotButton, { key: "Tab" });
+    fireEvent.keyDown(slotButton, { key: "ArrowDown" });
 
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(slotButton).toHaveFocus();
   });
 
   it("이미 입력창에 적고 있을 때는 가로채지 않는다", () => {
@@ -387,6 +444,80 @@ describe("WorkspaceDock", () => {
     expect(screen.queryByText(DOCK_HINT_TEXT)).not.toBeInTheDocument();
   });
 
+  describe("접힌 독에서 바로 치기", () => {
+    // 접힌 독에도 입력창을 보이지 않게 남겨 두고 커서를 둬야, 한글 첫 글자부터 입력기가 조립해요
+
+    it("커서가 아무 데도 없으면 접힌 채로 커서를 입력창에 둔다 (근거 없음)", () => {
+      renderDock();
+
+      expect(
+        screen.getByRole("textbox", { name: "무엇이든 요청하세요" }),
+      ).toHaveFocus();
+      expect(isDockExpanded()).toBe(false);
+    });
+
+    it("빈 곳을 눌러도 펼치지 않고 커서만 입력창에 둔다 (근거 없음)", () => {
+      renderDock();
+      const field = screen.getByRole("textbox", {
+        name: "무엇이든 요청하세요",
+      });
+
+      field.blur();
+      fireEvent.click(document.body);
+
+      expect(field).toHaveFocus();
+      expect(isDockExpanded()).toBe(false);
+    });
+
+    it("글을 드래그해 고른 뒤에는 복사할 수 있게 커서를 옮기지 않는다 (근거 없음)", () => {
+      renderDock();
+      const field = screen.getByRole("textbox", {
+        name: "무엇이든 요청하세요",
+      });
+      const text = document.createElement("p");
+      text.textContent = "답변 내용";
+      document.body.append(text);
+
+      field.blur();
+      window.getSelection()?.selectAllChildren(text);
+      fireEvent.click(text);
+
+      expect(field).not.toHaveFocus();
+      text.remove();
+    });
+
+    it("글자가 들어오면 같은 입력창 그대로 펼친다 (근거 없음)", () => {
+      renderDock();
+      const field = screen.getByRole("textbox", {
+        name: "무엇이든 요청하세요",
+      });
+
+      // 입력기가 조립 중인 "ㅇ"도 입력으로 들어와요
+      fireEvent.change(field, { target: { value: "ㅇ" } });
+
+      expect(isDockExpanded()).toBe(true);
+      // 입력창이 바뀌면 조립 중이던 글자가 끊겨요
+      expect(screen.getByRole("textbox", { name: "무엇이든 요청하세요" })).toBe(
+        field,
+      );
+      expect(field).toHaveFocus();
+      expect(field).toHaveValue("ㅇ");
+    });
+
+    it("접힌 채로 Enter를 눌러도 남겨 둔 글을 보내지 않는다 (근거 없음)", async () => {
+      renderDock();
+      const field = expandDock();
+      fireEvent.change(field, { target: { value: QUESTION } });
+      fireEvent.pointerDown(document.body);
+
+      await act(async () => {
+        fireEvent.keyDown(field, { key: "Enter" });
+      });
+
+      expect(field).toHaveValue(QUESTION);
+    });
+  });
+
   it("이미 열려 있는 탐색 화면에서는 안내를 보여주지 않는다", () => {
     renderDock(CHAT_PATH);
 
@@ -400,7 +531,7 @@ describe("WorkspaceDock", () => {
     fireEvent.change(field, { target: { value: QUESTION } });
     fireEvent.pointerDown(document.body);
 
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(isDockExpanded()).toBe(false);
 
     expect(expandDock()).toHaveValue(QUESTION);
   });
@@ -845,6 +976,115 @@ describe("WorkspaceDock", () => {
         expect(
           screen.queryByRole("button", { name: "녹음 끝내기" }),
         ).not.toBeInTheDocument();
+      });
+
+      it("녹음을 끝내면 현재 녹음을 다시 조회해, 끝내기 전에 받은 녹음 중 응답을 다른 탭 녹음 칩으로 남기지 않는다 (근거 없음)", async () => {
+        let currentRequestCount = 0;
+        mockServer.events.on("request:start", ({ request }) => {
+          if (request.url.endsWith("/recordings/current")) {
+            currentRequestCount += 1;
+          }
+        });
+        // 녹음하는 동안 받은 현재 녹음 조회는 이 탭의 녹음을 녹음 중으로 답해요
+        respondCurrentRecordingStatus("RECORDING");
+        renderDock();
+        await waitFor(() => expect(currentRequestCount).toBe(1));
+
+        respondNoCurrentRecording();
+        await stopRecording();
+
+        await waitFor(() => expect(currentRequestCount).toBe(2));
+        expect(
+          screen.getByRole("button", { name: "회의 녹음 시작" }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole("img", { name: "녹음 중" }),
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    describe("다른 탭에서 녹음 중이면", () => {
+      it("접힌 독과 펼친 독 모두 마이크 대신 빨간 점과 녹음한 시간을 보여준다 (STT-R28)", async () => {
+        respondCurrentRecordingStatus("RECORDING");
+        renderDock();
+
+        expect(
+          await screen.findByRole("img", { name: "녹음 중" }),
+        ).toBeInTheDocument();
+        expect(screen.getByText(OTHER_TAB_ELAPSED_TIME)).toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: "회의 녹음 시작" }),
+        ).not.toBeInTheDocument();
+
+        expandDock();
+
+        expect(screen.getByRole("img", { name: "녹음 중" })).toBeInTheDocument();
+        expect(screen.getByText(OTHER_TAB_ELAPSED_TIME)).toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: "회의 녹음 시작" }),
+        ).not.toBeInTheDocument();
+      });
+
+      it("칩을 눌러 녹음 화면으로 가거나 녹음을 끝낼 수 없다 (STT-20)", async () => {
+        respondCurrentRecordingStatus("RECORDING");
+        renderDock();
+
+        expect(
+          await screen.findByRole("img", { name: "녹음 중" }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: "녹음 화면으로 이동" }),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: "녹음 끝내기" }),
+        ).not.toBeInTheDocument();
+      });
+
+      it("일시정지면 회색 점과 멈춘 시간을 보여준다 (STT-R28)", async () => {
+        respondCurrentRecordingStatus("PAUSED");
+        renderDock();
+
+        expect(
+          await screen.findByRole("img", { name: "일시정지" }),
+        ).toBeInTheDocument();
+        expect(screen.getByText(OTHER_TAB_ELAPSED_TIME)).toBeInTheDocument();
+      });
+
+      it("다른 탭 녹음이 끝난 뒤 창으로 돌아오면 다시 조회해 마이크로 돌아간다 (근거 없음)", async () => {
+        respondCurrentRecordingStatus("RECORDING");
+        renderDock();
+        expect(
+          await screen.findByRole("img", { name: "녹음 중" }),
+        ).toBeInTheDocument();
+
+        respondNoCurrentRecording();
+        act(() => {
+          focusManager.setFocused(false);
+          focusManager.setFocused(true);
+        });
+
+        expect(
+          await screen.findByRole("button", { name: "회의 녹음 시작" }),
+        ).toBeInTheDocument();
+        focusManager.setFocused(undefined);
+      });
+
+      it("현재 녹음 조회가 실패하면 마이크를 보여준다 (근거 없음)", async () => {
+        const consoleError = vi
+          .spyOn(console, "error")
+          .mockImplementation(() => {});
+        mockServer.use(
+          http.get(CURRENT_RECORDING_URL, () =>
+            HttpResponse.json(null, { status: 500 }),
+          ),
+        );
+        renderDock();
+
+        await waitFor(() => expect(consoleError).toHaveBeenCalled());
+        expect(
+          screen.getByRole("button", { name: "회의 녹음 시작" }),
+        ).toBeInTheDocument();
+        consoleError.mockRestore();
       });
     });
 

@@ -1,8 +1,11 @@
+import { GetMeResponseDto } from "@api/dto/auth";
 import {
   GetDocumentConfirmationsResponseDto,
   GetDocumentResponseDto,
   GetDocumentsResponseDto,
 } from "@api/dto/document";
+import { AUTH_ME_API_PATH } from "@api/fetch/api/v1/auth/me";
+import { meResponse } from "@api/mock/responses/auth";
 import {
   documentConfirmationsResponse,
   documentDetailsResponse,
@@ -47,6 +50,7 @@ const MY_CONFIRMATION_REQUEST = `${CONFIRMATIONS_REQUEST}/me`;
 const expectedConfirmations = new GetDocumentConfirmationsResponseDto(
   documentConfirmationsResponse[0],
 );
+const expectedMe = new GetMeResponseDto(meResponse);
 
 // 서버 정렬을 믿지 않는지 보려고 순서를 섞고, 확인하지 않고 나간 사람(EXCLUDED)을 끼워 넣은 응답이에요
 const [confirmedItem, , pendingItem] = documentConfirmationsResponse[0].items;
@@ -68,6 +72,7 @@ const [pendingMember, excludedMember, confirmedMember] =
   new GetDocumentConfirmationsResponseDto(shuffledConfirmationsResponse).items;
 
 const LOAD_FAILED_NOTICE = "목록을 불러오지 못했어요";
+const MY_LABEL = "(나)";
 const COPIED_DURATION_MS = 3000;
 const CONFIRM_BUTTON_NAME = "문서를 확인했어요";
 const CONFIRMED_BUTTON_NAME = "확인했어요";
@@ -161,6 +166,19 @@ const findMemberRows = async () => {
   });
 
   return within(memberList).getAllByRole("listitem");
+};
+
+/** 팝오버 줄 가운데 내 이름이 있는 줄 */
+const getMyRow = (rows: HTMLElement[]) => {
+  const myRow = rows.find(
+    (row) => within(row).queryByText(expectedMe.nickname) !== null,
+  );
+
+  if (myRow === undefined) {
+    throw new Error("확인 대상 mock에 내 항목이 없어요");
+  }
+
+  return myRow;
 };
 
 const queryConfirmButton = () =>
@@ -375,6 +393,61 @@ describe("DocumentViewer", () => {
     expect(await findMemberRows()).toHaveLength(
       expectedConfirmations.items.length,
     );
+  });
+
+  it("팝오버에서 아직 확인하지 않은 내 이름 옆에 「(나)」를 붙이고, 다른 사람에게는 붙이지 않는다", async () => {
+    renderViewer(String(expected.id));
+
+    await hoverConfirmCount();
+
+    const rows = await findMemberRows();
+    const myRow = getMyRow(rows);
+
+    expect(await within(myRow).findByText(MY_LABEL)).toBeInTheDocument();
+    rows
+      .filter((row) => row !== myRow)
+      .forEach((row) => {
+        expect(within(row).queryByText(MY_LABEL)).not.toBeInTheDocument();
+      });
+  });
+
+  it("내가 확인했으면 확인한 사람 줄의 내 이름 옆에 「(나)」를 붙인다", async () => {
+    const [, myConfirmedResponse] = documentConfirmationsResponse;
+    const confirmedCount = new GetDocumentConfirmationsResponseDto(
+      myConfirmedResponse,
+    ).items.filter(({ state }) => state === "CONFIRMED").length;
+    mockServer.use(
+      http.get(CONFIRMATIONS_REQUEST, () =>
+        HttpResponse.json(myConfirmedResponse),
+      ),
+    );
+    renderViewer(String(expected.id));
+
+    await hoverConfirmCount();
+
+    const rows = await findMemberRows();
+    const myRow = getMyRow(rows);
+
+    expect(await within(myRow).findByText(MY_LABEL)).toBeInTheDocument();
+    // 확인한 사람은 위에 모아 그리므로, 내 줄이 그 안에 있어야 해요
+    expect(rows.indexOf(myRow)).toBeLessThan(confirmedCount);
+  });
+
+  it("내 회원 정보를 받지 못해도 「(나)」 없이 확인 대상을 모두 보여준다", async () => {
+    mockServer.use(
+      http.get(
+        `*${AUTH_ME_API_PATH}`,
+        () => new HttpResponse(null, { status: 500 }),
+      ),
+    );
+    renderViewer(String(expected.id));
+
+    await hoverConfirmCount();
+
+    expect(await findMemberRows()).toHaveLength(
+      expectedConfirmations.items.length,
+    );
+    expect(screen.queryByText(MY_LABEL)).not.toBeInTheDocument();
   });
 
   it("복사를 누르면 제목과 본문을 마크다운으로 복사하고, 3초 동안 복사됨을 보여준다", async () => {

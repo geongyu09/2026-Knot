@@ -17,6 +17,7 @@ public class Workspace {
     public static final int MAX_NAME_LENGTH = 20;
     public static final String NAME_PATTERN_REGEX = "^(?=.*[가-힣A-Za-z])[가-힣A-Za-z ]+$";
     private static final Pattern NAME_PATTERN = Pattern.compile(NAME_PATTERN_REGEX);
+    private static final long LAST_ACTIVE_MEMBER_COUNT = 1L;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -52,6 +53,32 @@ public class Workspace {
                 name,
                 createdAt
         );
+    }
+
+    public WorkspaceMember createOwnerMembership(long memberId) {
+        return WorkspaceMember.create(
+                id,
+                memberId,
+                WorkspaceMemberRole.OWNER,
+                createdAt
+        );
+    }
+
+    public void removeMember(
+            WorkspaceMember member,
+            long activeMemberCount,
+            Instant leftAt
+    ) {
+        if (!member.isActive()) {
+            return;
+        }
+        member.leave(
+                leftAt,
+                activeMemberCount
+        );
+        if (activeMemberCount == LAST_ACTIVE_MEMBER_COUNT) {
+            delete(leftAt);
+        }
     }
 
     public void delete(Instant deletedAt) {

@@ -9,20 +9,69 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 
+import ch.qos.logback.classic.Level;
 import com.knot.backend.global.config.SearchWorkerConfig;
 import com.knot.backend.global.config.SearchWorkerProperties;
 import com.knot.backend.search.application.SearchAnswerSnapshotService;
+import com.knot.backend.search.application.dto.result.SearchQuestionAcceptedResult;
 import com.knot.backend.search.domain.SearchException;
+import com.knot.backend.testsupport.LogCapture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.slf4j.MDC;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 class SearchAnswerStreamTest {
+
+    @Test
+    @DisplayName("접수 로그는 HTTP 요청 ID와 answer ID를 연결하고 질문 본문을 남기지 않는다")
+    void open_success_logsAcceptedCorrelationWithoutContent() {
+        ThreadPoolTaskExecutor executor = mock(ThreadPoolTaskExecutor.class);
+        SearchAnswerStream streams = streams(executor);
+        SearchStreamReservation reservation = streams.reserve();
+        SearchQuestionAcceptedResult accepted = new SearchQuestionAcceptedResult(
+                3,
+                4,
+                5
+        );
+        MDC.put(
+                "requestId",
+                "0123456789abcdef0123456789abcdef"
+        );
+        try (LogCapture logs = new LogCapture(SearchAnswerStream.class)) {
+            try {
+                streams.open(
+                        1,
+                        2,
+                        accepted,
+                        reservation
+                );
+                assertThat(logs.events()).singleElement()
+                        .satisfies(event -> {
+                            assertThat(event.getLevel()).isEqualTo(Level.INFO);
+                            assertThat(event.getFormattedMessage()).contains(
+                                    "phase=accepted",
+                                    "workspaceId=1",
+                                    "answerId=5",
+                                    "conversationId=3",
+                                    "questionId=4"
+                            );
+                            assertThat(event.getMDCPropertyMap()).containsEntry(
+                                    "requestId",
+                                    "0123456789abcdef0123456789abcdef"
+                            );
+                        });
+            } finally {
+                reservation.close();
+                MDC.remove("requestId");
+            }
+        }
+    }
 
     @Test
     @DisplayName("연결 종료 콜백 뒤에도 전송 작업이 끝나기 전까지 용량을 반환하지 않는다")

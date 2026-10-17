@@ -7,6 +7,7 @@ import { devAuthHandlers, MOCK_AUTH_COOKIE_NAME, MOCK_AUTH_STATUS } from ".";
 // 절대 URL이어야 Node fetch가 보낼 수 있어요. 핸들러는 오리진 와일드카드라 아무 오리진이나 맞아요
 const ME_URL = "http://localhost:3000/api/v1/auth/me";
 const NICKNAME_URL = "http://localhost:3000/api/v1/auth/nickname";
+const REFRESH_URL = "http://localhost:3000/api/v1/auth/refresh";
 
 // axios(jsdom XHR)는 jar의 쿠키를 요청에 싣지 않아, fetch로 쿠키 헤더를 직접 실어 보내요
 const requestMe = (cookie?: string) =>
@@ -20,6 +21,12 @@ const requestNickname = (cookie?: string) =>
       ...(cookie === undefined ? {} : { cookie }),
     },
     body: JSON.stringify({ nickname: "노티드" }),
+  });
+
+const requestRefresh = (cookie?: string) =>
+  fetch(REFRESH_URL, {
+    method: "POST",
+    headers: cookie === undefined ? {} : { cookie },
   });
 
 const memberCookie = `${MOCK_AUTH_COOKIE_NAME}=${MOCK_AUTH_STATUS.MEMBER}`;
@@ -68,6 +75,26 @@ describe("개발 브라우저 전용 인증 핸들러", () => {
 
       expect(response.status).toBe(200);
       expect(document.cookie).toContain(memberCookie);
+    });
+  });
+
+  describe("POST /api/v1/auth/refresh", () => {
+    it("로그인 쿠키가 없으면 재발급할 수 없어 401을 돌려준다", async () => {
+      const response = await requestRefresh();
+
+      expect(response.status).toBe(401);
+    });
+
+    it("온보딩 쿠키만 있으면 아직 회원이 아니므로 401을 돌려준다", async () => {
+      const response = await requestRefresh(onboardingCookie);
+
+      expect(response.status).toBe(401);
+    });
+
+    it("member 쿠키가 있으면 재발급에 성공해 204를 돌려준다", async () => {
+      const response = await requestRefresh(memberCookie);
+
+      expect(response.status).toBe(204);
     });
   });
 });

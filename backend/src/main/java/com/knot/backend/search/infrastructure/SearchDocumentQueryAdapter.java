@@ -1,6 +1,7 @@
 package com.knot.backend.search.infrastructure;
 
 import com.knot.backend.search.application.SearchToolScope;
+import com.knot.backend.document.domain.DocumentStatus;
 import com.knot.backend.search.application.SearchDocumentQuery;
 import com.knot.backend.search.application.dto.result.SearchDocumentRecord;
 import com.knot.backend.search.application.dto.query.SearchDocumentCursor;
@@ -18,10 +19,10 @@ import org.springframework.stereotype.Repository;
 @RequiredArgsConstructor
 public class SearchDocumentQueryAdapter implements SearchDocumentQuery {
     private static final String SELECT = """
-            SELECT d.id, d.title, d.topic, d.content, d.created_at, d.archived_at, r.started_at, 0 AS score
+            SELECT d.id, d.title, d.topic, d.content, d.status, d.created_at, d.archived_at, r.started_at, 0 AS score
             FROM documents d JOIN recording_sessions r ON r.id = d.recording_session_id
             WHERE d.workspace_id = :workspace AND r.workspace_id = :workspace
-              AND d.status = 'ARCHIVED' AND d.archived_at <= :cutoff
+              AND d.status IN ('DRAFT', 'ARCHIVED') AND d.created_at <= :cutoff
               AND (CAST(:topic AS text) IS NULL OR d.topic = :topic)
               AND (CAST(:from AS timestamptz) IS NULL OR r.started_at >= :from)
               AND (CAST(:before AS timestamptz) IS NULL OR r.started_at < :before)
@@ -34,10 +35,10 @@ public class SearchDocumentQueryAdapter implements SearchDocumentQuery {
             long documentId
     ) {
         String sql = """
-                SELECT d.id, d.title, d.topic, d.content, d.created_at, d.archived_at, r.started_at, 0 AS score
+                SELECT d.id, d.title, d.topic, d.content, d.status, d.created_at, d.archived_at, r.started_at, 0 AS score
                 FROM documents d JOIN recording_sessions r ON r.id = d.recording_session_id
                 WHERE d.id = :id AND d.workspace_id = :workspace AND r.workspace_id = :workspace
-                  AND d.status = 'ARCHIVED' AND d.archived_at <= :cutoff
+                  AND d.status IN ('DRAFT', 'ARCHIVED') AND d.created_at <= :cutoff
                 """;
         return jdbc.sql(sql)
                 .param(
@@ -214,13 +215,21 @@ public class SearchDocumentQueryAdapter implements SearchDocumentQuery {
                 row.getString("title"),
                 row.getString("topic"),
                 row.getString("content"),
+                DocumentStatus.valueOf(row.getString("status")),
                 row.getTimestamp("started_at")
                         .toInstant(),
                 row.getTimestamp("created_at")
                         .toInstant(),
-                row.getTimestamp("archived_at")
-                        .toInstant(),
+                archivedAt(row),
                 row.getInt("score")
         );
+    }
+
+    private Instant archivedAt(ResultSet row) throws SQLException {
+        Timestamp value = row.getTimestamp("archived_at");
+        if (value == null) {
+            return null;
+        }
+        return value.toInstant();
     }
 }

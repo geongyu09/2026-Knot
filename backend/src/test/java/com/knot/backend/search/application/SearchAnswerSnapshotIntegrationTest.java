@@ -14,6 +14,7 @@ import com.knot.backend.search.application.dto.result.SearchQuestionAcceptedResu
 import com.knot.backend.search.infrastructure.SearchMessageListQueryAdapter;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -88,6 +89,13 @@ class SearchAnswerSnapshotIntegrationTest {
                 work.token(),
                 "처음"
         );
+        Instant firstPersistedAt = jdbc.sql("SELECT updated_at FROM search_conversations WHERE id=:id")
+                .param(
+                        "id",
+                        accepted.conversationId()
+                )
+                .query(Instant.class)
+                .single();
         CountDownLatch readBody = new CountDownLatch(1);
         CountDownLatch resume = new CountDownLatch(1);
         doAnswer(call -> {
@@ -145,6 +153,7 @@ class SearchAnswerSnapshotIntegrationTest {
                     TimeUnit.SECONDS
             );
             assertThat(before.content()).isEqualTo("처음");
+            assertThat(before.contentUpdatedAt()).isEqualTo(firstPersistedAt);
             assertThat(
                     before.status()
                             .name()

@@ -1,6 +1,7 @@
 import { authCsrfHandlers } from "./api/v1/auth/csrf";
 import { authMeHandlers } from "./api/v1/auth/me";
 import { authNicknameHandlers } from "./api/v1/auth/nickname";
+import { authRefreshHandlers } from "./api/v1/auth/refresh";
 import { chatMessagesHandlers } from "./api/v1/conversations/[sessionId]";
 import { invitationPreviewHandlers } from "./api/v1/invitations/[tokenOrCode]";
 import { invitationAcceptHandlers } from "./api/v1/invitations/accept";
@@ -38,6 +39,7 @@ export const handlers = [
   ...authMeHandlers,
   ...authCsrfHandlers,
   ...authNicknameHandlers,
+  ...authRefreshHandlers,
   ...lastViewedWorkspaceHandlers,
   ...workspacesHandlers,
   ...workspaceHandlers,

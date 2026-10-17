@@ -1,7 +1,7 @@
 package com.knot.backend.workspace.presentation;
 
 import com.knot.backend.auth.domain.AuthenticatedMember;
-import com.knot.backend.workspace.application.WorkspaceLastViewedService;
+import com.knot.backend.workspace.application.WorkspaceService;
 import com.knot.backend.workspace.presentation.dto.request.WorkspaceLastViewedUpdateRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/members/me/last-viewed-workspace")
 @RequiredArgsConstructor
 public class WorkspaceLastViewedController implements WorkspaceLastViewedApi {
-    private final WorkspaceLastViewedService workspaceLastViewedService;
+    private final WorkspaceService workspaceService;
 
     @Override
     @PutMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -27,7 +27,7 @@ public class WorkspaceLastViewedController implements WorkspaceLastViewedApi {
             @Valid @RequestBody WorkspaceLastViewedUpdateRequest request,
             @AuthenticationPrincipal AuthenticatedMember authenticatedMember
     ) {
-        workspaceLastViewedService.update(
+        workspaceService.updateLastViewed(
                 authenticatedMember.getMemberId(),
                 request.workspaceId()
         );

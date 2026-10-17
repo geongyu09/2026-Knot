@@ -6,7 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.knot.backend.auth.domain.AuthenticatedMember;
-import com.knot.backend.workspace.application.WorkspaceInvitationAcceptanceService;
+import com.knot.backend.workspace.application.WorkspaceInvitationService;
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationAcceptanceResult;
 import com.knot.backend.workspace.presentation.dto.request.WorkspaceInvitationAcceptanceRequest;
 import com.knot.backend.workspace.presentation.dto.response.WorkspaceInvitationAcceptanceResponse;
@@ -22,7 +22,7 @@ class WorkspaceInvitationAcceptanceControllerTest {
     private static final String REMOTE_ADDRESS = "203.0.113.10";
     private static final long MEMBER_ID = 2L;
 
-    private final WorkspaceInvitationAcceptanceService service = mock(WorkspaceInvitationAcceptanceService.class);
+    private final WorkspaceInvitationService service = mock(WorkspaceInvitationService.class);
     private final HttpServletRequest httpServletRequest = mock(HttpServletRequest.class);
     private final WorkspaceInvitationAcceptanceController controller = new WorkspaceInvitationAcceptanceController(
             service

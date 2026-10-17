@@ -14,9 +14,9 @@ import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.auth.domain.AuthenticatedMember;
 import com.knot.backend.recording.application.RecordingAudioStorage;
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
-import com.knot.backend.recording.application.dto.result.StoredAudioObject;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
+import com.knot.backend.recording.domain.StoredAudioObject;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import jakarta.servlet.http.Cookie;
@@ -65,7 +65,6 @@ class RecordingAudioUploadCompletionAcceptanceTest {
     private final ObjectMapper objectMapper;
     private final JdbcClient jdbcClient;
     private final Clock clock;
-
     @MockitoBean
     private RecordingAudioStorage audioStorage;
 

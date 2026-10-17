@@ -185,4 +185,69 @@ class RecordingTranscriptionTest {
         // then
         assertThat(failure).isInstanceOf(RecordingException.class);
     }
+
+    @Test
+    @DisplayName("실패한 작업은 재시도할 수 있다")
+    void validateRetryable_success_failed() {
+        // given
+        RecordingTranscription transcription = failedTranscription();
+
+        // when
+        Throwable failure = catchThrowable(transcription::validateRetryable);
+
+        // then
+        assertThat(failure).isNull();
+    }
+
+    @Test
+    @DisplayName("실행 중인 작업은 재시도 불가 오류로 거절한다")
+    void validateRetryable_failure_processing() {
+        // given
+        RecordingTranscription transcription = RecordingTranscription.processing(
+                1,
+                ATTEMPT,
+                START
+        );
+
+        // when
+        Throwable failure = catchThrowable(transcription::validateRetryable);
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED);
+    }
+
+    @Test
+    @DisplayName("성공한 작업은 재시도 불가 오류로 거절한다")
+    void validateRetryable_failure_succeeded() {
+        // given
+        RecordingTranscription transcription = RecordingTranscription.processing(
+                1,
+                ATTEMPT,
+                START
+        );
+        transcription.succeed(ATTEMPT);
+
+        // when
+        Throwable failure = catchThrowable(transcription::validateRetryable);
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class)
+                .extracting("errorCode")
+                .isEqualTo(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED);
+    }
+
+    private RecordingTranscription failedTranscription() {
+        RecordingTranscription transcription = RecordingTranscription.processing(
+                1,
+                ATTEMPT,
+                START
+        );
+        transcription.fail(
+                ATTEMPT,
+                "BUSY"
+        );
+        return transcription;
+    }
 }

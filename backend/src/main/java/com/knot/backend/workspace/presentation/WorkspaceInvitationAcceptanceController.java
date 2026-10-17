@@ -3,7 +3,7 @@ package com.knot.backend.workspace.presentation;
 import com.knot.backend.auth.domain.AuthenticatedMember;
 import com.knot.backend.global.config.OpenApiConfig;
 import com.knot.backend.global.response.ErrorResponse;
-import com.knot.backend.workspace.application.WorkspaceInvitationAcceptanceService;
+import com.knot.backend.workspace.application.WorkspaceInvitationService;
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationAcceptanceResult;
 import com.knot.backend.workspace.presentation.dto.request.WorkspaceInvitationAcceptanceRequest;
 import com.knot.backend.workspace.presentation.dto.response.WorkspaceInvitationAcceptanceResponse;
@@ -33,12 +33,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/invitations")
 public class WorkspaceInvitationAcceptanceController {
-    private final WorkspaceInvitationAcceptanceService workspaceInvitationAcceptanceService;
+    private final WorkspaceInvitationService workspaceInvitationService;
 
-    public WorkspaceInvitationAcceptanceController(
-            WorkspaceInvitationAcceptanceService workspaceInvitationAcceptanceService
-    ) {
-        this.workspaceInvitationAcceptanceService = workspaceInvitationAcceptanceService;
+    public WorkspaceInvitationAcceptanceController(WorkspaceInvitationService workspaceInvitationService) {
+        this.workspaceInvitationService = workspaceInvitationService;
     }
 
     // @formatter:off
@@ -121,7 +119,7 @@ public class WorkspaceInvitationAcceptanceController {
             HttpServletRequest httpServletRequest,
             @AuthenticationPrincipal AuthenticatedMember authenticatedMember
     ) {
-        WorkspaceInvitationAcceptanceResult result = workspaceInvitationAcceptanceService.accept(
+        WorkspaceInvitationAcceptanceResult result = workspaceInvitationService.accept(
                 request.credential(),
                 httpServletRequest.getRemoteAddr(),
                 authenticatedMember.getMemberId()

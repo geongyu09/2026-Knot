@@ -22,6 +22,7 @@ import com.knot.backend.recording.domain.RecordingSession;
 import com.knot.backend.recording.domain.RecordingSessionRepository;
 import com.knot.backend.recording.domain.RecordingTranscription;
 import com.knot.backend.recording.domain.RecordingTranscriptionRepository;
+import com.knot.backend.recording.domain.StoredAudioObject;
 import com.knot.backend.recording.domain.TranscriptionStatus;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
@@ -801,11 +802,12 @@ class RecordingTranscriptionStateIntegrationTest {
                     100,
                     NOW.minusSeconds(10)
             );
-            upload.recordUploadUrlExpiry(NOW.plusSeconds(60));
             upload.complete(
-                    100,
-                    "audio/webm",
-                    "version-1",
+                    StoredAudioObject.of(
+                            100,
+                            "audio/webm",
+                            "version-1"
+                    ),
                     NOW.minusSeconds(5)
             );
             uploads.save(upload);

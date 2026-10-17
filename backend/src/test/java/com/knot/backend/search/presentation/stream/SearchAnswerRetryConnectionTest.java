@@ -7,11 +7,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Level;
 import com.knot.backend.global.config.SearchWorkerProperties;
 import com.knot.backend.search.application.SearchAnswerSnapshotService;
 import com.knot.backend.search.application.dto.result.SearchAnswerSnapshotResult;
 import com.knot.backend.search.domain.SearchMessageStatus;
+import com.knot.backend.testsupport.LogCapture;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -27,6 +30,68 @@ class SearchAnswerRetryConnectionTest {
     private final SearchStreamReservation reservation = mock(SearchStreamReservation.class);
     private final SearchAnswerSnapshotService snapshots = mock(SearchAnswerSnapshotService.class);
     private final List<String> events = new ArrayList<>();
+
+    @Test
+    @DisplayName("첫 SSE delta 기록은 저장 시각과 전송 결과를 남기고 답변 본문을 남기지 않는다")
+    void run_success_logsFirstDeltaWithoutContent() {
+        when(
+                snapshots.read(
+                        1,
+                        2,
+                        50
+                )
+        ).thenReturn(
+                snapshot(
+                        1,
+                        "",
+                        SearchMessageStatus.STREAMING,
+                        null
+                ),
+                new SearchAnswerSnapshotResult(
+                        50,
+                        "private-answer",
+                        SearchMessageStatus.COMPLETED,
+                        null,
+                        UUID.randomUUID(),
+                        null,
+                        0,
+                        List.of(),
+                        1,
+                        Instant.now()
+                                .minusSeconds(1)
+                )
+        );
+        try (LogCapture logs = new LogCapture(SearchAnswerSseConnection.class)) {
+            new SearchAnswerSseConnection(
+                    emitter,
+                    reservation,
+                    snapshots,
+                    1,
+                    2,
+                    50,
+                    Duration.ofMillis(1),
+                    1
+            ).run();
+            assertThat(logs.events()).singleElement()
+                    .satisfies(event -> {
+                        assertThat(event.getLevel()).isEqualTo(Level.INFO);
+                        assertThat(event.getFormattedMessage()).contains(
+                                "phase=sse_first_delta",
+                                "answerId=50",
+                                "contentPersistedAtToSseSendMs=",
+                                "outcome=success"
+                        )
+                                .doesNotContain("private-answer");
+                    });
+        }
+        assertThat(
+                String.join(
+                        "",
+                        events
+                )
+        ).contains("private-answer")
+                .doesNotContain("contentUpdatedAt");
+    }
 
     @BeforeEach
     void setUp() throws Exception {

@@ -10,7 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.knot.backend.auth.domain.AuthenticatedMember;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
-import com.knot.backend.workspace.application.WorkspaceQueryService;
+import com.knot.backend.workspace.application.WorkspaceService;
 import com.knot.backend.workspace.application.dto.result.WorkspaceDetailResult;
 import com.knot.backend.workspace.domain.WorkspaceMemberRole;
 import com.knot.backend.workspace.application.dto.result.WorkspaceListItemResult;
@@ -31,13 +31,13 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class WorkspaceQueryControllerTest {
-    private WorkspaceQueryService workspaceQueryService;
+    private WorkspaceService workspaceService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        workspaceQueryService = mock(WorkspaceQueryService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new WorkspaceQueryController(workspaceQueryService))
+        workspaceService = mock(WorkspaceService.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(new WorkspaceQueryController(workspaceService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                 .build();
@@ -55,7 +55,7 @@ class WorkspaceQueryControllerTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
         when(
-                workspaceQueryService.findDetail(
+                workspaceService.findDetail(
                         1L,
                         10L
                 )
@@ -80,7 +80,7 @@ class WorkspaceQueryControllerTest {
                 .andExpect(jsonPath("$.name").value("Knot 팀"))
                 .andExpect(jsonPath("$.myRole").value("OWNER"))
                 .andExpect(jsonPath("$.activeMemberCount").value(2));
-        verify(workspaceQueryService).findDetail(
+        verify(workspaceService).findDetail(
                 1L,
                 10L
         );
@@ -100,7 +100,7 @@ class WorkspaceQueryControllerTest {
         result.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_PARAMETER"))
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("workspaceId"));
-        verifyNoInteractions(workspaceQueryService);
+        verifyNoInteractions(workspaceService);
     }
 
     @Test
@@ -110,7 +110,7 @@ class WorkspaceQueryControllerTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
         when(
-                workspaceQueryService.findDetail(
+                workspaceService.findDetail(
                         1L,
                         10L
                 )
@@ -136,7 +136,7 @@ class WorkspaceQueryControllerTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
         when(
-                workspaceQueryService.findDetail(
+                workspaceService.findDetail(
                         1L,
                         10L
                 )
@@ -161,7 +161,7 @@ class WorkspaceQueryControllerTest {
         // given
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
-        when(workspaceQueryService.findAllByMemberId(10L)).thenReturn(
+        when(workspaceService.findAllByMemberId(10L)).thenReturn(
                 new WorkspaceListResult(
                         2L,
                         List.of(
@@ -192,7 +192,7 @@ class WorkspaceQueryControllerTest {
                 .andExpect(jsonPath("$.workspaces[0].createdAt").doesNotExist())
                 .andExpect(jsonPath("$.workspaces[1].id").value(1L))
                 .andExpect(jsonPath("$.workspaces[1].name").value("이전 팀"));
-        verify(workspaceQueryService).findAllByMemberId(10L);
+        verify(workspaceService).findAllByMemberId(10L);
     }
 
     private UsernamePasswordAuthenticationToken memberAuthentication() {

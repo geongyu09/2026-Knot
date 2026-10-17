@@ -9,11 +9,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Level;
 import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.search.application.SearchToolScope;
 import com.knot.backend.search.domain.SearchToolException;
 import com.knot.backend.search.infrastructure.SearchAgentHttp;
 import com.knot.backend.testsupport.LlmHttpServer;
+import com.knot.backend.testsupport.LogCapture;
 import java.net.http.HttpClient;
 import java.time.Clock;
 import java.time.Instant;
@@ -96,7 +98,18 @@ class SearchMcpClientTest {
                         )
                 )
         );
-        assertThat(client.definitions(scope)).hasSize(3);
+        try (LogCapture logs = new LogCapture(SearchMcpClient.class)) {
+            assertThat(client.definitions(scope)).hasSize(3);
+            assertThat(logs.events()).filteredOn(
+                    event -> event.getFormattedMessage()
+                            .contains("phase=mcp_handshake")
+            )
+                    .hasSize(3)
+                    .extracting(event -> event.getFormattedMessage())
+                    .anySatisfy(message -> assertThat(message).contains("operation=initialize"))
+                    .anySatisfy(message -> assertThat(message).contains("operation=notifications_initialized"))
+                    .anySatisfy(message -> assertThat(message).contains("operation=tools/list"));
+        }
         verify(http).notification(
                 any(),
                 anyString(),
@@ -147,6 +160,57 @@ class SearchMcpClientTest {
                         .path("content")
                         .asString()
         ).isEqualTo("회의 결정");
+    }
+
+    @Test
+    void call_success_logsSafeToolTimingWithoutArgumentsOrResult() {
+        when(
+                http.json(
+                        any(),
+                        anyString(),
+                        any(),
+                        any(),
+                        anyMap()
+                )
+        ).thenReturn(
+                response(
+                        1,
+                        Map.of(
+                                "structuredContent",
+                                Map.of(
+                                        "content",
+                                        "private-document-body"
+                                )
+                        )
+                )
+        );
+        try (LogCapture logs = new LogCapture(SearchMcpClient.class)) {
+            client.call(
+                    scope,
+                    "read_document",
+                    Map.of(
+                            "documentId",
+                            7,
+                            "cursor",
+                            "private-cursor"
+                    )
+            );
+            assertThat(logs.events()).singleElement()
+                    .satisfies(event -> {
+                        assertThat(event.getLevel()).isEqualTo(Level.INFO);
+                        assertThat(event.getFormattedMessage()).contains(
+                                "phase=mcp_call",
+                                "toolName=read_document",
+                                "workspaceId=1",
+                                "answerId=5",
+                                "outcome=success"
+                        )
+                                .doesNotContain(
+                                        "private-document-body",
+                                        "private-cursor"
+                                );
+                    });
+        }
     }
 
     @ParameterizedTest

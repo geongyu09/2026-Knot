@@ -16,6 +16,7 @@ import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.search.domain.SearchToolException;
 import com.knot.backend.search.infrastructure.mcp.SearchMcpClient;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -65,8 +66,8 @@ class SearchMcpDocumentRetrieverTest {
     }
 
     @Test
-    @DisplayName("문서 검색이 필요 없는 인사는 문서 도구를 실행하지 않고 응답한다")
-    void retrieve_success_directGreeting() {
+    @DisplayName("검색 실행기는 자유 답변 도구를 노출하거나 실행하지 않는다")
+    void retrieve_failure_directToolForbidden() {
         when(
                 llm.complete(
                         eq(scope),
@@ -75,20 +76,27 @@ class SearchMcpDocumentRetrieverTest {
                 )
         ).thenReturn(
                 turn(
-                        "greeting",
+                        "direct",
                         "answer_without_search",
-                        "{\"answer\":\"안녕하세요! 반갑습니다.\"}"
+                        "{\"answer\":\"케이크 레시피\"}"
                 )
         );
-
-        SearchRetrievalResult result = retriever.retrieve(
-                scope,
-                "반갑다"
+        assertThatThrownBy(
+                () -> retriever.retrieve(
+                        scope,
+                        "회의 결정"
+                )
+        ).hasMessage("INVALID_MODEL_TOOL_CALL");
+        org.mockito.ArgumentCaptor<List<Map<String, Object>>> tools = org.mockito.ArgumentCaptor.captor();
+        verify(llm).complete(
+                eq(scope),
+                any(),
+                tools.capture()
         );
-
-        assertThat(result.documents()).isEmpty();
-        assertThat(result.excludedCount()).isZero();
-        assertThat(result.directAnswer()).isEqualTo("안녕하세요! 반갑습니다.");
+        assertThat(
+                tools.getValue()
+                        .toString()
+        ).doesNotContain("answer_without_search");
         verify(
                 mcp,
                 never()
@@ -100,43 +108,31 @@ class SearchMcpDocumentRetrieverTest {
     }
 
     @Test
-    @DisplayName("도구 없이 자유 문장을 반환하면 한 번 경로를 재선택하여 인사를 완료한다")
-    void retrieve_success_retryUnroutedGreeting() {
+    @DisplayName("첫 탐색에서 도구 없는 자유 문장은 재시도 없이 실패한다")
+    void retrieve_failure_noToolCallsOnce() {
         when(
                 llm.complete(
                         eq(scope),
                         any(),
                         any()
                 )
-        ).thenReturn(
-                mapper.readTree("{\"role\":\"assistant\",\"content\":\"안녕하세요!\",\"tool_calls\":[]}"),
-                turn(
-                        "greeting",
-                        "answer_without_search",
-                        "{\"answer\":\"안녕하세요! 반갑습니다.\"}"
+        ).thenReturn(mapper.readTree("{\"role\":\"assistant\",\"content\":\"케이크 레시피\"}"));
+        assertThatThrownBy(
+                () -> retriever.retrieve(
+                        scope,
+                        "회의 결정"
                 )
+        ).hasMessage("INCOMPLETE_DOCUMENT_EXPLORATION");
+        verify(llm).complete(
+                eq(scope),
+                any(),
+                any()
         );
-
-        SearchRetrievalResult result = retriever.retrieve(
-                scope,
-                "반갑다"
-        );
-
-        assertThat(result.documents()).isEmpty();
-        assertThat(result.directAnswer()).isEqualTo("안녕하세요! 반갑습니다.");
         verify(
                 mcp,
                 never()
         ).call(
                 any(),
-                any(),
-                any()
-        );
-        verify(
-                llm,
-                times(2)
-        ).complete(
-                eq(scope),
                 any(),
                 any()
         );
@@ -176,7 +172,7 @@ class SearchMcpDocumentRetrieverTest {
                         scope,
                         "회의 결정"
                 )
-        ).hasMessage("INVALID_DIRECT_ANSWER");
+        ).hasMessage("INVALID_MODEL_TOOL_CALL");
         verify(
                 mcp,
                 never()
@@ -209,7 +205,7 @@ class SearchMcpDocumentRetrieverTest {
                         scope,
                         "반갑다"
                 )
-        ).hasMessage("INVALID_DIRECT_ANSWER");
+        ).hasMessage("INVALID_MODEL_TOOL_CALL");
         verify(
                 mcp,
                 never()
@@ -243,7 +239,7 @@ class SearchMcpDocumentRetrieverTest {
                         scope,
                         "반갑다"
                 )
-        ).hasMessage("INVALID_DIRECT_ANSWER");
+        ).hasMessage("INVALID_MODEL_TOOL_CALL");
         verify(
                 mcp,
                 never()
@@ -255,16 +251,15 @@ class SearchMcpDocumentRetrieverTest {
     }
 
     @Test
-    @DisplayName("인사 경로 재선택 중 모델 호출 오류가 발생하면 임의 응답으로 완료하지 않는다")
-    void retrieve_failure_modelErrorDuringRoutingRetry() {
+    @DisplayName("첫 모델 호출 오류를 임의 응답으로 완료하지 않는다")
+    void retrieve_failure_modelTransportError() {
         when(
                 llm.complete(
                         eq(scope),
                         any(),
                         any()
                 )
-        ).thenReturn(mapper.readTree("{\"role\":\"assistant\",\"content\":\"안녕하세요\"}"))
-                .thenThrow(new SearchToolException("MODEL_TRANSPORT_FAILED"));
+        ).thenThrow(new SearchToolException("MODEL_TRANSPORT_FAILED"));
 
         assertThatThrownBy(
                 () -> retriever.retrieve(
@@ -283,8 +278,8 @@ class SearchMcpDocumentRetrieverTest {
     }
 
     @Test
-    @DisplayName("응답 경로 재선택에서 검색 도구를 고르면 기존 검색 결과 없음 판정을 적용한다")
-    void retrieve_success_documentSearchAfterRoutingRetry() {
+    @DisplayName("검색 도구 결과가 비어 있으면 기존 결과 없음 판정을 적용한다")
+    void retrieve_success_emptyDocumentSearch() {
         when(
                 llm.complete(
                         eq(scope),
@@ -292,7 +287,6 @@ class SearchMcpDocumentRetrieverTest {
                         any()
                 )
         ).thenReturn(
-                mapper.readTree("{\"role\":\"assistant\",\"content\":\"검색하겠습니다\"}"),
                 turn(
                         "search",
                         "search_documents",
@@ -314,10 +308,9 @@ class SearchMcpDocumentRetrieverTest {
         );
 
         assertThat(result.documents()).isEmpty();
-        assertThat(result.directAnswer()).isNull();
         verify(
                 llm,
-                times(3)
+                times(2)
         ).complete(
                 eq(scope),
                 any(),
@@ -344,7 +337,7 @@ class SearchMcpDocumentRetrieverTest {
         ).hasMessage("INCOMPLETE_DOCUMENT_EXPLORATION");
         verify(
                 llm,
-                times(2)
+                times(1)
         ).complete(
                 eq(scope),
                 any(),
@@ -397,7 +390,7 @@ class SearchMcpDocumentRetrieverTest {
                         scope,
                         "안녕, 회의 결정 알려줘"
                 )
-        ).hasMessage("INVALID_DIRECT_ANSWER");
+        ).hasMessage("INVALID_MODEL_TOOL_CALL");
         verify(
                 mcp,
                 never()
@@ -459,6 +452,133 @@ class SearchMcpDocumentRetrieverTest {
                         .content()
         ).isEqualTo("실제 읽은 본문");
         assertThat(result.excludedCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("다음 탐색 요청에는 기본 문맥과 가장 최근 도구 결과만 전달한다")
+    void retrieve_successRetainsLatestToolExchange() {
+        String searchMarker = "previous-search-result".repeat(100);
+        String listMarker = "previous-list-result".repeat(40);
+        List<List<Map<String, Object>>> requests = new ArrayList<>();
+        int[] responseIndex = {0};
+        JsonNode[] responses = {turnWithCalls(
+                List.of(
+                        toolCall(
+                                "search",
+                                "search_documents",
+                                "{\"query\":\"결정\"}"
+                        ),
+                        toolCall(
+                                "list",
+                                "list_documents",
+                                "{\"topic\":\"결정\"}"
+                        )
+                )
+        ), turn("read",
+                "read_document",
+                "{\"documentId\":1}"
+        ), mapper.readTree("{\"role\":\"assistant\",\"content\":\"탐색 완료\"}")};
+        when(history.beforeQuestion(scope)).thenReturn(
+                List.of(
+                        Map.of(
+                                "role",
+                                "user",
+                                "content",
+                                "이전 질문"
+                        ),
+                        Map.of(
+                                "role",
+                                "assistant",
+                                "content",
+                                "이전 답변"
+                        )
+                )
+        );
+        when(
+                llm.complete(
+                        eq(scope),
+                        any(),
+                        any()
+                )
+        ).thenAnswer(invocation -> {
+            List<Map<String, Object>> messages = invocation.getArgument(1);
+            requests.add(new ArrayList<>(messages));
+            return responses[responseIndex[0]++];
+        });
+        when(
+                mcp.call(
+                        eq(scope),
+                        eq("search_documents"),
+                        any()
+                )
+        ).thenReturn(
+                mapper.valueToTree(
+                        Map.of(
+                                "items",
+                                List.of(
+                                        Map.of(
+                                                "documentId",
+                                                1,
+                                                "snippet",
+                                                searchMarker
+                                        )
+                                )
+                        )
+                )
+        );
+        when(
+                mcp.call(
+                        eq(scope),
+                        eq("list_documents"),
+                        any()
+                )
+        ).thenReturn(
+                mapper.valueToTree(
+                        Map.of(
+                                "items",
+                                List.of(
+                                        Map.of(
+                                                "documentId",
+                                                2,
+                                                "snippet",
+                                                listMarker
+                                        )
+                                )
+                        )
+                )
+        );
+        when(
+                mcp.call(
+                        eq(scope),
+                        eq("read_document"),
+                        any()
+                )
+        ).thenReturn(
+                mapper.readTree(
+                        "{\"document\":{\"documentId\":1,\"title\":\"회의\",\"topic\":\"결정\",\"contentRevision\":\"r1\"},\"content\":\"최신 읽기 결과\",\"offset\":0,\"truncated\":false,\"nextCursor\":null}"
+                )
+        );
+
+        SearchRetrievalResult result = retriever.retrieve(
+                scope,
+                "현재 질문"
+        );
+
+        assertThat(requests).hasSize(3);
+        assertThat(mapper.writeValueAsString(requests.get(1))).contains(searchMarker)
+                .contains(listMarker);
+        assertThat(mapper.writeValueAsString(requests.get(2))).contains("현재 질문")
+                .contains("이전 질문")
+                .contains("이전 답변")
+                .contains("최신 읽기 결과")
+                .doesNotContain(searchMarker)
+                .doesNotContain(listMarker);
+        assertThat(result.documents()).hasSize(1);
+        assertThat(
+                result.documents()
+                        .getFirst()
+                        .content()
+        ).isEqualTo("최신 읽기 결과");
     }
 
     @Test
@@ -792,26 +912,44 @@ class SearchMcpDocumentRetrieverTest {
             String name,
             String arguments
     ) {
+        return turnWithCalls(
+                List.of(
+                        toolCall(
+                                id,
+                                name,
+                                arguments
+                        )
+                )
+        );
+    }
+
+    private JsonNode turnWithCalls(List<Map<String, Object>> calls) {
         return mapper.valueToTree(
                 Map.of(
                         "role",
                         "assistant",
                         "tool_calls",
-                        List.of(
-                                Map.of(
-                                        "id",
-                                        id,
-                                        "type",
-                                        "function",
-                                        "function",
-                                        Map.of(
-                                                "name",
-                                                name,
-                                                "arguments",
-                                                arguments
-                                        )
-                                )
-                        )
+                        calls
+                )
+        );
+    }
+
+    private Map<String, Object> toolCall(
+            String id,
+            String name,
+            String arguments
+    ) {
+        return Map.of(
+                "id",
+                id,
+                "type",
+                "function",
+                "function",
+                Map.of(
+                        "name",
+                        name,
+                        "arguments",
+                        arguments
                 )
         );
     }
