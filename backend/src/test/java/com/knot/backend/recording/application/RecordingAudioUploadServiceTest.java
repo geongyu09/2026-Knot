@@ -16,15 +16,15 @@ import com.knot.backend.global.config.TranscriptionProperties;
 import com.knot.backend.recording.application.dto.command.RecordingAudioUploadUrlCommand;
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadUrlResult;
-import com.knot.backend.recording.domain.RecordingAudioUpload;
-import com.knot.backend.recording.domain.RecordingAudioUploadRepository;
+import com.knot.backend.recording.domain.model.RecordingAudioUpload;
+import com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
-import com.knot.backend.recording.domain.RecordingSession;
-import com.knot.backend.recording.domain.RecordingSessionRepository;
-import com.knot.backend.workspace.domain.Workspace;
-import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
-import com.knot.backend.workspace.domain.WorkspaceRepository;
+import com.knot.backend.recording.domain.model.RecordingSession;
+import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
+import com.knot.backend.workspace.domain.model.Workspace;
+import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -55,9 +55,9 @@ class RecordingAudioUploadServiceTest {
         workspaceMemberRepository = mock(WorkspaceMemberRepository.class);
         recordingSessionRepository = mock(RecordingSessionRepository.class);
         recordingAudioUploadRepository = mock(RecordingAudioUploadRepository.class);
-        RecordingAudioStorage storage = mock(RecordingAudioStorage.class);
+        RecordingAudioStorage recordingAudioStorage = mock(RecordingAudioStorage.class);
         when(
-                storage.presignUpload(
+                recordingAudioStorage.presignUpload(
                         anyString(),
                         anyString(),
                         anyLong()
@@ -76,7 +76,7 @@ class RecordingAudioUploadServiceTest {
                         mock(RecordingControlTokenHasher.class)
                 ),
                 recordingAudioUploadRepository,
-                storage,
+                recordingAudioStorage,
                 Clock.fixed(
                         NOW,
                         ZoneOffset.UTC

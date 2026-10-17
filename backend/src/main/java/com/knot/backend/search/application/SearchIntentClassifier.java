@@ -1,6 +1,6 @@
 package com.knot.backend.search.application;
 
-import com.knot.backend.search.domain.SearchIntent;
+import com.knot.backend.search.domain.model.SearchIntent;
 
 public interface SearchIntentClassifier {
 

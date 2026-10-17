@@ -7,7 +7,7 @@ import java.util.Locale;
 public record WorkspaceInvitationCredential(
         WorkspaceInvitationSecretKind kind,
         String secret,
-        boolean rateLimited
+        boolean requiresRateLimiting
 ) {
     static final int CODE_LENGTH = 6;
     private static final String CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ23456789";

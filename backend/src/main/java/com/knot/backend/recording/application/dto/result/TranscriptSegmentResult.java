@@ -1,6 +1,6 @@
 package com.knot.backend.recording.application.dto.result;
 
-import com.knot.backend.recording.domain.TranscriptSegment;
+import com.knot.backend.recording.domain.model.TranscriptSegment;
 
 public record TranscriptSegmentResult(
         long startMillis,

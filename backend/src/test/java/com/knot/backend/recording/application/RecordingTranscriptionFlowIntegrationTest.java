@@ -5,16 +5,15 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadCompletionResult;
 import com.knot.backend.recording.application.dto.result.RecordingDetailResult;
 import com.knot.backend.recording.application.dto.result.RecordingTranscriptionRetryResult;
-import com.knot.backend.recording.domain.RecordingAudioUpload;
-import com.knot.backend.recording.domain.RecordingAudioUploadRepository;
-import com.knot.backend.recording.domain.RecordingAudioUploadStatus;
-import com.knot.backend.recording.domain.StoredAudioObject;
-import com.knot.backend.recording.domain.TranscriptionStatus;
+import com.knot.backend.recording.domain.model.RecordingAudioUpload;
+import com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository;
+import com.knot.backend.recording.domain.model.RecordingAudioUploadStatus;
+import com.knot.backend.recording.domain.model.StoredAudioObject;
+import com.knot.backend.recording.domain.model.TranscriptionStatus;
 import com.knot.backend.testsupport.LlmHttpServer;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
@@ -70,17 +69,17 @@ class RecordingTranscriptionFlowIntegrationTest {
     @Autowired
     private RecordingTranscriptionService worker;
     @Autowired
-    private RecordingTranscriptionStateService state;
+    private RecordingTranscriptionStateService recordingTranscriptionStateService;
     @Autowired
     private RecordingDetailService details;
     @Autowired
-    private RecordingAudioUploadRepository uploads;
+    private RecordingAudioUploadRepository recordingAudioUploadRepository;
     @Autowired
     private TransactionTemplate transactions;
     @Autowired
     private JdbcClient jdbc;
     @MockitoBean
-    private RecordingAudioStorage storage;
+    private RecordingAudioStorage recordingAudioStorage;
     @MockitoBean
     private Clock clock;
     private DocumentFixtures fixtures;
@@ -115,7 +114,7 @@ class RecordingTranscriptionFlowIntegrationTest {
     @BeforeEach
     void setUp() {
         when(clock.instant()).thenReturn(NOW);
-        when(storage.findStoredObject(any())).thenReturn(
+        when(recordingAudioStorage.findStoredObject(any())).thenReturn(
                 StoredAudioObject.of(
                         1024,
                         "audio/webm",
@@ -123,7 +122,7 @@ class RecordingTranscriptionFlowIntegrationTest {
                 )
         );
         when(
-                storage.presignDownload(
+                recordingAudioStorage.presignDownload(
                         any(),
                         any(),
                         any(),
@@ -171,7 +170,7 @@ class RecordingTranscriptionFlowIntegrationTest {
                 first.recordingId(),
                 TranscriptionStatus.SUCCEEDED
         );
-        UUID firstAttempt = state.find(first.recordingId())
+        UUID firstAttempt = recordingTranscriptionStateService.findSnapshot(first.recordingId())
                 .attemptId();
         completion.complete(
                 workspaceId,
@@ -199,7 +198,7 @@ class RecordingTranscriptionFlowIntegrationTest {
         assertThat(VALID_AUTHORIZATION).isTrue();
         assertThat(SUBMITTED).containsExactly(
                 firstAttempt,
-                state.find(second.recordingId())
+                recordingTranscriptionStateService.findSnapshot(second.recordingId())
                         .attemptId()
         );
         assertThat(
@@ -266,7 +265,7 @@ class RecordingTranscriptionFlowIntegrationTest {
                 upload.recordingId(),
                 TranscriptionStatus.FAILED
         );
-        UUID previousAttempt = state.find(upload.recordingId())
+        UUID previousAttempt = recordingTranscriptionStateService.findSnapshot(upload.recordingId())
                 .attemptId();
         assertThat(
                 details.find(
@@ -338,7 +337,7 @@ class RecordingTranscriptionFlowIntegrationTest {
                         .query(String.class)
                         .single()
         ).isEqualTo("version-1");
-        verify(storage).presignDownload(
+        verify(recordingAudioStorage).presignDownload(
                 "recordings/" + upload.recordingId() + "/audio.webm",
                 "version-1",
                 "audio/webm",
@@ -352,7 +351,7 @@ class RecordingTranscriptionFlowIntegrationTest {
         // given
         Upload upload = reserveUpload();
         transactions.executeWithoutResult(status -> {
-            RecordingAudioUpload audio = uploads.findById(upload.uploadId())
+            RecordingAudioUpload audio = recordingAudioUploadRepository.findById(upload.uploadId())
                     .orElseThrow();
             audio.complete(
                     StoredAudioObject.of(
@@ -375,7 +374,7 @@ class RecordingTranscriptionFlowIntegrationTest {
 
         // then
         assertThat(result.uploadStatus()).isEqualTo(RecordingAudioUploadStatus.COMPLETED);
-        assertThat(state.find(upload.recordingId())).isNull();
+        assertThat(recordingTranscriptionStateService.findSnapshot(upload.recordingId())).isNull();
         assertThat(SUBMITTED).isEmpty();
     }
 
@@ -386,7 +385,7 @@ class RecordingTranscriptionFlowIntegrationTest {
                 30_000
         );
         long upload = transactions.execute(
-                status -> uploads.save(
+                status -> recordingAudioUploadRepository.save(
                         RecordingAudioUpload.reserve(
                                 recording,
                                 "recordings/" + recording + "/audio.webm",
@@ -409,14 +408,15 @@ class RecordingTranscriptionFlowIntegrationTest {
     ) throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
         while (System.nanoTime() < deadline) {
-            if (state.find(recordingId) != null && state.find(recordingId)
-                    .status() == status) {
+            if (recordingTranscriptionStateService.findSnapshot(recordingId) != null
+                    && recordingTranscriptionStateService.findSnapshot(recordingId)
+                            .status() == status) {
                 return;
             }
             Thread.sleep(10);
         }
         assertThat(
-                state.find(recordingId)
+                recordingTranscriptionStateService.findSnapshot(recordingId)
                         .status()
         ).isEqualTo(status);
     }

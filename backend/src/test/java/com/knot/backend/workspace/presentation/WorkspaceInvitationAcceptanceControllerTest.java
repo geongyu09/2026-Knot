@@ -5,7 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.workspace.application.WorkspaceInvitationService;
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationAcceptanceResult;
 import com.knot.backend.workspace.presentation.dto.request.WorkspaceInvitationAcceptanceRequest;

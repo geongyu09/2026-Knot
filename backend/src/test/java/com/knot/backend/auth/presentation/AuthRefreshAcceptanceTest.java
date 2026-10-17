@@ -9,10 +9,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.knot.backend.auth.application.AuthRefreshService;
 import com.knot.backend.auth.domain.AuthErrorCode;
 import com.knot.backend.auth.domain.AuthException;
-import com.knot.backend.auth.domain.AuthSession;
-import com.knot.backend.auth.domain.AuthSessionRepository;
-import com.knot.backend.auth.domain.AuthenticatedMember;
-import com.knot.backend.auth.domain.RefreshToken;
+import com.knot.backend.auth.domain.model.AuthSession;
+import com.knot.backend.auth.domain.repository.AuthSessionRepository;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.RefreshToken;
 import com.knot.backend.auth.domain.RefreshTokenProvider;
 import com.knot.backend.auth.infrastructure.jwt.JwtProvider;
 import com.knot.backend.global.config.JwtProperties;

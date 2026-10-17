@@ -3,8 +3,8 @@ package com.knot.backend.document.presentation.dto.response;
 import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.REQUIRED;
 
 import com.knot.backend.document.application.dto.result.DocumentDetailResult;
-import com.knot.backend.document.domain.DocumentStatus;
-import com.knot.backend.document.domain.MyConfirmationState;
+import com.knot.backend.document.domain.model.DocumentStatus;
+import com.knot.backend.document.domain.model.MyConfirmationState;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 

@@ -1,8 +1,8 @@
 package com.knot.backend.recording.application;
 
 import com.knot.backend.recording.application.dto.result.RecordingCurrentResult;
-import com.knot.backend.recording.domain.RecordingSession;
-import com.knot.backend.recording.domain.RecordingSessionRepository;
+import com.knot.backend.recording.domain.model.RecordingSession;
+import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;

@@ -4,7 +4,7 @@ import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
-import com.knot.backend.search.domain.SearchIntent;
+import com.knot.backend.search.domain.model.SearchIntent;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;

@@ -3,10 +3,10 @@ package com.knot.backend.global.exception;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
-import com.knot.backend.document.domain.DocumentConfirmationCursor;
-import com.knot.backend.document.domain.DocumentCursor;
-import com.knot.backend.document.domain.DocumentGenerationJobCursor;
-import com.knot.backend.search.domain.SearchConversationCursor;
+import com.knot.backend.document.domain.model.DocumentConfirmationCursor;
+import com.knot.backend.document.domain.model.DocumentCursor;
+import com.knot.backend.document.domain.model.DocumentGenerationJobCursor;
+import com.knot.backend.search.domain.model.SearchConversationCursor;
 import com.knot.backend.testsupport.LogCapture;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.params.ParameterizedTest;

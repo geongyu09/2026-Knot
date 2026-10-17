@@ -3,7 +3,7 @@ package com.knot.backend.document.presentation.dto.response;
 import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.REQUIRED;
 
 import com.knot.backend.document.application.dto.result.DocumentGenerationJobItemResult;
-import com.knot.backend.document.domain.DocumentGenerationJobStatus;
+import com.knot.backend.document.domain.model.DocumentGenerationJobStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 

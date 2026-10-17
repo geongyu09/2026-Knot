@@ -1,7 +1,7 @@
 package com.knot.backend.recording.application;
 
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadCompletionResult;
-import com.knot.backend.recording.domain.StoredAudioObject;
+import com.knot.backend.recording.domain.model.StoredAudioObject;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -9,8 +9,8 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class RecordingAudioUploadCompletionService {
     private final RecordingAudioUploadService recordingAudioUploadService;
-    private final RecordingAudioStorage audioStorage;
-    private final RecordingTranscriptionService transcriptionService;
+    private final RecordingAudioStorage recordingAudioStorage;
+    private final RecordingTranscriptionService recordingTranscriptionService;
 
     public RecordingAudioUploadCompletionResult complete(
             long workspaceId,
@@ -24,7 +24,7 @@ public class RecordingAudioUploadCompletionService {
                 recordingId,
                 uploadId
         )
-                .map(audioStorage::findStoredObject)
+                .map(recordingAudioStorage::findStoredObject)
                 .orElseGet(StoredAudioObject::missing);
         RecordingAudioUploadCompletionResult result = recordingAudioUploadService.complete(
                 workspaceId,
@@ -33,7 +33,7 @@ public class RecordingAudioUploadCompletionService {
                 uploadId,
                 storedObject
         );
-        transcriptionService.dispatch();
+        recordingTranscriptionService.dispatch();
         return result;
     }
 }

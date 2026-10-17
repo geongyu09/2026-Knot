@@ -3,12 +3,12 @@ package com.knot.backend.recording.application;
 import com.knot.backend.recording.application.dto.command.RecordingControlCommand;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
-import com.knot.backend.recording.domain.RecordingSession;
-import com.knot.backend.recording.domain.RecordingSessionRepository;
+import com.knot.backend.recording.domain.model.RecordingSession;
+import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
-import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
-import com.knot.backend.workspace.domain.WorkspaceRepository;
+import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -18,7 +18,7 @@ public class RecordingAccess {
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final RecordingSessionRepository recordingSessionRepository;
-    private final RecordingControlTokenHasher controlTokenHasher;
+    private final RecordingControlTokenHasher recordingControlTokenHasher;
 
     public void validateMember(
             long workspaceId,
@@ -80,7 +80,7 @@ public class RecordingAccess {
         );
         session.validateControlProof(
                 command.tabId(),
-                controlTokenHasher.hash(command.controlToken())
+                recordingControlTokenHasher.hash(command.controlToken())
         );
         return session;
     }

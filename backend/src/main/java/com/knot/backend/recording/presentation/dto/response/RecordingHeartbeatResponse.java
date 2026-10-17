@@ -1,8 +1,8 @@
 package com.knot.backend.recording.presentation.dto.response;
 
 import com.knot.backend.recording.application.dto.result.RecordingHeartbeatResult;
-import com.knot.backend.recording.domain.RecordingEndReason;
-import com.knot.backend.recording.domain.RecordingStatus;
+import com.knot.backend.recording.domain.model.RecordingEndReason;
+import com.knot.backend.recording.domain.model.RecordingStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 

@@ -12,9 +12,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.knot.backend.auth.domain.AuthTokenProvider;
-import com.knot.backend.auth.domain.AuthenticatedMember;
-import com.knot.backend.auth.domain.OAuthProvider;
-import com.knot.backend.auth.domain.OAuthUser;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.OAuthProvider;
+import com.knot.backend.auth.domain.model.OAuthUser;
 import com.knot.backend.auth.infrastructure.jwt.JwtProvider;
 import com.knot.backend.global.config.JwtProperties;
 import com.knot.backend.testsupport.TestApplicationProperties;

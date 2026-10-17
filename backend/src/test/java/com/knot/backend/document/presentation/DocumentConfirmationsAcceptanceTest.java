@@ -8,10 +8,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.knot.backend.auth.domain.AuthTokenProvider;
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.document.DocumentFixtures;
-import com.knot.backend.document.domain.DocumentConfirmationCursor;
-import com.knot.backend.document.domain.DocumentConfirmationState;
+import com.knot.backend.document.domain.model.DocumentConfirmationCursor;
+import com.knot.backend.document.domain.model.DocumentConfirmationState;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import jakarta.servlet.http.Cookie;

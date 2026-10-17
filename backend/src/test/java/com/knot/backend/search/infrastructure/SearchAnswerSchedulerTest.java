@@ -16,7 +16,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import com.knot.backend.global.config.SearchWorkerProperties;
 import com.knot.backend.search.application.SearchAnswerExecutionService;
 import com.knot.backend.search.application.SearchAnswerWorker;
-import com.knot.backend.search.domain.SearchRepository;
+import com.knot.backend.search.domain.repository.SearchRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;

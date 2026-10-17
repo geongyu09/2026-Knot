@@ -1,10 +1,10 @@
 package com.knot.backend.recording.application.dto.result;
 
-import com.knot.backend.recording.domain.RecordingAudioUploadStatus;
-import com.knot.backend.recording.domain.RecordingEndReason;
-import com.knot.backend.recording.domain.RecordingSession;
-import com.knot.backend.recording.domain.RecordingStatus;
-import com.knot.backend.recording.domain.TranscriptionStatus;
+import com.knot.backend.recording.domain.model.RecordingAudioUploadStatus;
+import com.knot.backend.recording.domain.model.RecordingEndReason;
+import com.knot.backend.recording.domain.model.RecordingSession;
+import com.knot.backend.recording.domain.model.RecordingStatus;
+import com.knot.backend.recording.domain.model.TranscriptionStatus;
 import com.knot.backend.document.application.dto.result.DocumentGenerationSummaryResult;
 import java.util.UUID;
 import java.time.Duration;

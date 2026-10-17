@@ -1,6 +1,6 @@
 package com.knot.backend.workspace.application.dto.result;
 
-import com.knot.backend.workspace.domain.WorkspaceMemberRole;
+import com.knot.backend.workspace.domain.model.WorkspaceMemberRole;
 
 public record WorkspaceDetailResult(
         String name,

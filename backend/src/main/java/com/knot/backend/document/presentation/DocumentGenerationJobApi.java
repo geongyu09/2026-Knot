@@ -3,7 +3,7 @@ package com.knot.backend.document.presentation;
 import static com.knot.backend.global.config.OpenApiConfig.ACCESS_TOKEN_COOKIE;
 import static com.knot.backend.global.config.OpenApiConfig.CSRF_TOKEN_HEADER_NAME;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.document.presentation.dto.response.DocumentGenerationJobListResponse;
 import com.knot.backend.document.presentation.dto.response.DocumentGenerationJobRetryResponse;
 import com.knot.backend.global.response.ErrorResponse;

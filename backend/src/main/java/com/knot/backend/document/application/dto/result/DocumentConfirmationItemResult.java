@@ -1,6 +1,6 @@
 package com.knot.backend.document.application.dto.result;
 
-import com.knot.backend.document.domain.DocumentConfirmationState;
+import com.knot.backend.document.domain.model.DocumentConfirmationState;
 import java.time.Instant;
 
 public record DocumentConfirmationItemResult(

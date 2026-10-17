@@ -13,10 +13,10 @@ import com.knot.backend.document.application.dto.query.DocumentGenerationJobList
 import com.knot.backend.document.application.dto.result.DocumentGenerationJobItemResult;
 import com.knot.backend.document.application.dto.result.DocumentGenerationJobListResult;
 import com.knot.backend.document.domain.DocumentException;
-import com.knot.backend.document.domain.DocumentGenerationJobCursor;
-import com.knot.backend.document.domain.DocumentGenerationJobStatus;
+import com.knot.backend.document.domain.model.DocumentGenerationJobCursor;
+import com.knot.backend.document.domain.model.DocumentGenerationJobStatus;
 import com.knot.backend.workspace.domain.WorkspaceException;
-import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;

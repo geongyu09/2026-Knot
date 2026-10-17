@@ -9,11 +9,11 @@ import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationAcceptanceResult;
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationResult;
-import com.knot.backend.workspace.domain.Workspace;
-import com.knot.backend.workspace.domain.WorkspaceMember;
-import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
-import com.knot.backend.workspace.domain.WorkspaceMemberRole;
-import com.knot.backend.workspace.domain.WorkspaceRepository;
+import com.knot.backend.workspace.domain.model.Workspace;
+import com.knot.backend.workspace.domain.model.WorkspaceMember;
+import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.model.WorkspaceMemberRole;
+import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -87,7 +87,7 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
             );
 
             // then
-            assertThat(results).extracting(WorkspaceInvitationAcceptanceResult::created)
+            assertThat(results).extracting(WorkspaceInvitationAcceptanceResult::membershipCreated)
                     .containsExactlyInAnyOrder(
                             true,
                             false
@@ -146,7 +146,7 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
             );
 
             // then
-            assertThat(results).extracting(WorkspaceInvitationAcceptanceResult::created)
+            assertThat(results).extracting(WorkspaceInvitationAcceptanceResult::membershipCreated)
                     .containsOnly(true);
             assertThat(
                     countMemberships(

@@ -1,6 +1,6 @@
 package com.knot.backend.recording.presentation;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.recording.application.RecordingDetailService;
 import com.knot.backend.recording.application.dto.result.RecordingDetailResult;
 import com.knot.backend.recording.presentation.dto.response.RecordingDetailResponse;

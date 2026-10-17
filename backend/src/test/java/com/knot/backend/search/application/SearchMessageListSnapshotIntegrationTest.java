@@ -12,8 +12,8 @@ import com.knot.backend.search.application.dto.query.SearchMessageListParameters
 import com.knot.backend.search.application.dto.result.SearchEvidenceItemResult;
 import com.knot.backend.search.application.dto.result.SearchMessageListItemResult;
 import com.knot.backend.search.application.dto.result.SearchMessageListResult;
-import com.knot.backend.search.domain.SearchMessageStatus;
-import com.knot.backend.search.infrastructure.SearchMessageListQueryAdapter;
+import com.knot.backend.search.domain.model.SearchMessageStatus;
+import com.knot.backend.search.infrastructure.persistence.SearchMessageListQueryAdapter;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.util.concurrent.ExecutorService;

@@ -5,8 +5,8 @@ import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.recording.application.dto.result.RecordingStartResult;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
-import com.knot.backend.recording.domain.RecordingSession;
-import com.knot.backend.recording.domain.RecordingSessionRepository;
+import com.knot.backend.recording.domain.model.RecordingSession;
+import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -21,7 +21,7 @@ public class RecordingStartService {
     private final RecordingAccess recordingAccess;
     private final MemberRepository memberRepository;
     private final RecordingSessionRepository recordingSessionRepository;
-    private final RecordingControlTokenHasher controlTokenHasher;
+    private final RecordingControlTokenHasher recordingControlTokenHasher;
     private final Clock clock;
 
     @Transactional
@@ -37,7 +37,7 @@ public class RecordingStartService {
         memberRepository.findByIdForUpdate(memberId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_MEMBER_NOT_FOUND));
 
-        String controlTokenHash = controlTokenHasher.hash(command.controlToken());
+        String controlTokenHash = recordingControlTokenHasher.hash(command.controlToken());
         Optional<RecordingSession> existing = recordingSessionRepository.findByMemberIdAndRequestIdForUpdate(
                 memberId,
                 command.requestId()

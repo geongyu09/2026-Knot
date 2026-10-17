@@ -1,6 +1,6 @@
 package com.knot.backend.workspace.presentation;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.global.config.OpenApiConfig;
 import com.knot.backend.global.response.ErrorResponse;
 import com.knot.backend.workspace.application.WorkspaceInvitationService;
@@ -125,7 +125,7 @@ public class WorkspaceInvitationAcceptanceController {
                 authenticatedMember.getMemberId()
         );
         WorkspaceInvitationAcceptanceResponse response = WorkspaceInvitationAcceptanceResponse.from(result);
-        if (result.created()) {
+        if (result.membershipCreated()) {
             return ResponseEntity.status(201)
                     .body(response);
         }
