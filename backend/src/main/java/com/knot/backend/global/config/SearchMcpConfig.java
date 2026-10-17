@@ -3,7 +3,7 @@ package com.knot.backend.global.config;
 import com.knot.backend.search.application.SearchDocumentToolService;
 import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.SearchToolScope;
-import com.knot.backend.search.infrastructure.SearchDocumentQueryAdapter;
+import com.knot.backend.search.infrastructure.persistence.SearchDocumentQueryAdapter;
 import com.knot.backend.search.infrastructure.mcp.SearchMcpAuthenticationFilter;
 import com.knot.backend.search.infrastructure.mcp.SearchMcpTools;
 import com.knot.backend.search.infrastructure.mcp.SearchToolTokenCodec;

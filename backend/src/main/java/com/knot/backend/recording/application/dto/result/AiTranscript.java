@@ -2,7 +2,7 @@ package com.knot.backend.recording.application.dto.result;
 
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
-import com.knot.backend.recording.domain.TranscriptUtterance;
+import com.knot.backend.recording.domain.model.TranscriptUtterance;
 import java.util.ArrayList;
 import java.util.List;
 

@@ -8,8 +8,8 @@ import static org.mockito.Mockito.verify;
 
 import ch.qos.logback.classic.Level;
 import com.knot.backend.document.application.dto.result.DocumentGenerationExecution;
-import com.knot.backend.document.domain.DocumentGenerationFailureCause;
-import com.knot.backend.document.domain.DocumentGenerationJobStage;
+import com.knot.backend.document.domain.model.DocumentGenerationFailureCause;
+import com.knot.backend.document.domain.model.DocumentGenerationJobStage;
 import com.knot.backend.global.exception.LlmErrorCode;
 import com.knot.backend.global.exception.LlmException;
 import com.knot.backend.testsupport.LogCapture;

@@ -1,0 +1,25 @@
+package com.knot.backend.document.domain.repository;
+
+import com.knot.backend.document.domain.model.Document;
+
+import java.util.List;
+import java.util.Optional;
+
+public interface DocumentRepository {
+
+    Document save(Document document);
+
+    Optional<Document> findByGenerationJobId(long jobId);
+
+    Optional<Document> findByWorkspaceIdAndIdForUpdate(
+            long workspaceId,
+            long documentId
+    );
+
+    List<Document> findAffectedDraftsForUpdate(
+            long workspaceId,
+            long memberId
+    );
+
+    void flush();
+}

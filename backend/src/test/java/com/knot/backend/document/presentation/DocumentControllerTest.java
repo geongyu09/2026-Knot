@@ -7,7 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.document.application.DocumentConfirmationService;
 import com.knot.backend.document.application.DocumentConfirmationCommandService;
 import com.knot.backend.document.application.DocumentDetailService;
@@ -17,8 +17,8 @@ import com.knot.backend.document.application.dto.result.DocumentConfirmationSumm
 import com.knot.backend.document.application.dto.result.DocumentDetailResult;
 import com.knot.backend.document.domain.DocumentErrorCode;
 import com.knot.backend.document.domain.DocumentException;
-import com.knot.backend.document.domain.DocumentStatus;
-import com.knot.backend.document.domain.MyConfirmationState;
+import com.knot.backend.document.domain.model.DocumentStatus;
+import com.knot.backend.document.domain.model.MyConfirmationState;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
 import java.time.Instant;
 import java.util.List;

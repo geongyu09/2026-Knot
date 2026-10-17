@@ -1,6 +1,6 @@
 package com.knot.backend.recording.presentation;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.recording.application.RecordingTranscriptionService;
 import com.knot.backend.recording.presentation.dto.response.RecordingTranscriptionRetryResponse;
 import lombok.RequiredArgsConstructor;

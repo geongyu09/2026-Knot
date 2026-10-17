@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
-import com.knot.backend.auth.domain.OAuthUser;
-import com.knot.backend.auth.domain.OAuthProvider;
+import com.knot.backend.auth.domain.model.OAuthUser;
+import com.knot.backend.auth.domain.model.OAuthProvider;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;

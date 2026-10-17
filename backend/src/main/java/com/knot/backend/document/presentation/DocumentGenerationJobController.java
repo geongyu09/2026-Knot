@@ -1,6 +1,6 @@
 package com.knot.backend.document.presentation;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.document.application.DocumentGenerationJobListService;
 import com.knot.backend.document.application.DocumentGenerationJobRetryService;
 import com.knot.backend.document.application.dto.query.DocumentGenerationJobListParameters;

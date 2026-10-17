@@ -8,7 +8,7 @@ import static org.mockito.Mockito.doAnswer;
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.search.SearchFixtures;
 import com.knot.backend.search.application.dto.query.SearchConversationListParameters;
-import com.knot.backend.search.infrastructure.SearchConversationListQueryAdapter;
+import com.knot.backend.search.infrastructure.persistence.SearchConversationListQueryAdapter;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.util.concurrent.Executors;

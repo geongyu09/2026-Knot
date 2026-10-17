@@ -2,7 +2,7 @@ package com.knot.backend.recording.presentation;
 
 import static com.knot.backend.global.config.OpenApiConfig.ACCESS_TOKEN_COOKIE;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.global.config.OpenApiConfig;
 import com.knot.backend.global.response.ErrorResponse;
 import com.knot.backend.recording.presentation.dto.request.RecordingControlRequest;

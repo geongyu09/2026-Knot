@@ -1,8 +1,8 @@
 package com.knot.backend.recording.application.dto.result;
 
-import com.knot.backend.recording.domain.RecordingEndReason;
-import com.knot.backend.recording.domain.RecordingSession;
-import com.knot.backend.recording.domain.RecordingStatus;
+import com.knot.backend.recording.domain.model.RecordingEndReason;
+import com.knot.backend.recording.domain.model.RecordingSession;
+import com.knot.backend.recording.domain.model.RecordingStatus;
 import java.time.Instant;
 
 public record RecordingHeartbeatResult(

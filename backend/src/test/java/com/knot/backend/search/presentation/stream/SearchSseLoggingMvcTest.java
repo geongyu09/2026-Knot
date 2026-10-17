@@ -11,7 +11,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 
 import ch.qos.logback.classic.Level;
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.global.config.SearchWorkerProperties;
 import com.knot.backend.global.config.SearchWorkerConfig;
 import com.knot.backend.global.logging.RequestIdFilter;
@@ -23,7 +23,7 @@ import com.knot.backend.search.application.SearchQuestionIntakeService;
 import com.knot.backend.search.application.SearchAnswerRetryService;
 import com.knot.backend.search.application.dto.result.SearchQuestionAcceptedResult;
 import com.knot.backend.search.application.dto.result.SearchAnswerSnapshotResult;
-import com.knot.backend.search.domain.SearchMessageStatus;
+import com.knot.backend.search.domain.model.SearchMessageStatus;
 import com.knot.backend.search.presentation.SearchQuestionController;
 import com.knot.backend.search.presentation.SearchAnswerEventsController;
 import com.knot.backend.testsupport.LogCapture;

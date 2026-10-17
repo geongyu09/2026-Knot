@@ -14,8 +14,8 @@ import static org.mockito.Mockito.never;
 
 import com.knot.backend.document.application.DocumentGenerationWorker;
 import com.knot.backend.document.application.DocumentGenerationRecoveryService;
-import com.knot.backend.document.domain.DocumentGenerationCandidate;
-import com.knot.backend.document.domain.DocumentGenerationJobRepository;
+import com.knot.backend.document.domain.model.DocumentGenerationCandidate;
+import com.knot.backend.document.domain.repository.DocumentGenerationJobRepository;
 import com.knot.backend.global.config.DocumentGenerationWorkerProperties;
 import java.time.Clock;
 import java.time.Instant;

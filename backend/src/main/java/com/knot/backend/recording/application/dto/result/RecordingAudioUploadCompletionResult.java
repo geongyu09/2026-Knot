@@ -1,7 +1,7 @@
 package com.knot.backend.recording.application.dto.result;
 
-import com.knot.backend.recording.domain.RecordingAudioUpload;
-import com.knot.backend.recording.domain.RecordingAudioUploadStatus;
+import com.knot.backend.recording.domain.model.RecordingAudioUpload;
+import com.knot.backend.recording.domain.model.RecordingAudioUploadStatus;
 import java.time.Instant;
 
 public record RecordingAudioUploadCompletionResult(

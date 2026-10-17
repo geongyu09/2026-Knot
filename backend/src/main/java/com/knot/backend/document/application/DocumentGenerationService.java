@@ -1,6 +1,6 @@
 package com.knot.backend.document.application;
 
-import com.knot.backend.document.domain.DocumentGenerationInput;
+import com.knot.backend.document.domain.model.DocumentGenerationInput;
 import com.knot.backend.document.application.dto.result.DocumentGenerationResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

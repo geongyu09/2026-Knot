@@ -6,7 +6,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import com.knot.backend.auth.domain.AuthenticatedMember;
+
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.member.domain.Member;
 import com.knot.backend.member.domain.MemberRepository;
@@ -14,12 +15,12 @@ import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import com.knot.backend.workspace.application.WorkspaceInvitationSecretHasher;
 import com.knot.backend.workspace.application.WorkspaceInvitationService;
-import com.knot.backend.workspace.domain.Workspace;
-import com.knot.backend.workspace.domain.WorkspaceInvitation;
-import com.knot.backend.workspace.domain.WorkspaceMember;
-import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
-import com.knot.backend.workspace.domain.WorkspaceMemberRole;
-import com.knot.backend.workspace.domain.WorkspaceRepository;
+import com.knot.backend.workspace.domain.model.Workspace;
+import com.knot.backend.workspace.domain.model.WorkspaceInvitation;
+import com.knot.backend.workspace.domain.model.WorkspaceMember;
+import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.model.WorkspaceMemberRole;
+import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;

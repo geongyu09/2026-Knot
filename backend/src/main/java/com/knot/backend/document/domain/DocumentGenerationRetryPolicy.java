@@ -1,5 +1,7 @@
 package com.knot.backend.document.domain;
 
+import com.knot.backend.document.domain.model.DocumentGenerationFailureCause;
+
 import java.time.Duration;
 import java.time.Instant;
 

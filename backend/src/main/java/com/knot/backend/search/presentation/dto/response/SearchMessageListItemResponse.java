@@ -3,8 +3,8 @@ package com.knot.backend.search.presentation.dto.response;
 import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.REQUIRED;
 
 import com.knot.backend.search.application.dto.result.SearchMessageListItemResult;
-import com.knot.backend.search.domain.SearchMessageRole;
-import com.knot.backend.search.domain.SearchMessageStatus;
+import com.knot.backend.search.domain.model.SearchMessageRole;
+import com.knot.backend.search.domain.model.SearchMessageStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.util.List;
