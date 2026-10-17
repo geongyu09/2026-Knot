@@ -75,8 +75,8 @@ import tools.jackson.databind.json.JsonMapper;
 @Tag("acceptance")
 @ActiveProfiles("dev")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "knot.search.worker.stream-timeout=1s",
-        "knot.search.worker.stream-heartbeat-interval=50ms", "knot.search.worker.stream-concurrency=2"})
+        "knot.search.worker.stream-timeout=1s", "knot.search.worker.stream-heartbeat-interval=50ms",
+        "knot.search.worker.stream-concurrency=2"})
 @Import({TestcontainersConfiguration.class, SearchAnswerEventsAcceptanceTest.RequestObserverConfiguration.class})
 @TestApplicationProperties
 @Timeout(30)
@@ -500,7 +500,10 @@ class SearchAnswerEventsAcceptanceTest {
             TimeUnit.MILLISECONDS.sleep(STREAM_EXECUTOR_POLL_INTERVAL.toMillis());
         }
         assertThat(streamExecutor.getActiveCount()).isZero();
-        assertThat(streamExecutor.getThreadPoolExecutor().getQueue()).isEmpty();
+        assertThat(
+                streamExecutor.getThreadPoolExecutor()
+                        .getQueue()
+        ).isEmpty();
     }
 
     private boolean isStreamExecutorIdle() {
