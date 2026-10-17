@@ -707,8 +707,9 @@ class SearchMcpDocumentRetrieverTest {
     }
 
     @Test
-    @DisplayName("같은 도구 입력을 반복하면 실패한다")
-    void retrieve_failure_repeatedToolCall() {
+    @DisplayName("같은 도구 입력을 반복하면 모델에 입력 변경 또는 탐색 종료를 안내한다")
+    void retrieve_success_repeatedToolCallReturnsGuidance() {
+        org.mockito.ArgumentCaptor<List<Map<String, Object>>> messages = org.mockito.ArgumentCaptor.captor();
         when(
                 llm.complete(
                         eq(scope),
@@ -725,6 +726,86 @@ class SearchMcpDocumentRetrieverTest {
                         "t2",
                         "list_documents",
                         "{}"
+                ),
+                mapper.readTree("{\"role\":\"assistant\",\"content\":\"탐색 완료\"}")
+        );
+        when(
+                mcp.call(
+                        eq(scope),
+                        eq("list_documents"),
+                        any()
+                )
+        ).thenReturn(mapper.readTree("{\"items\":[]}"));
+
+        SearchRetrievalResult result = retriever.retrieve(
+                scope,
+                "질문"
+        );
+
+        assertThat(result.documents()).isEmpty();
+        verify(
+                llm,
+                times(3)
+        ).complete(
+                eq(scope),
+                messages.capture(),
+                any()
+        );
+        assertThat(
+                messages.getAllValues()
+                        .get(2)
+        ).anySatisfy(message -> {
+            assertThat(message).containsEntry(
+                    "role",
+                    "tool"
+            )
+                    .containsEntry(
+                            "tool_call_id",
+                            "t2"
+                    );
+            assertThat(
+                    message.get("content")
+                            .toString()
+            ).contains("REPEATED_TOOL_CALL")
+                    .contains("already been executed")
+                    .contains("Change its input or finish");
+        });
+        verify(
+                mcp,
+                times(1)
+        ).call(
+                eq(scope),
+                eq("list_documents"),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("반복 도구 호출도 전체 도구 호출 한도에 포함한다")
+    void retrieve_failure_repeatedToolCallCountsTowardLimit() {
+        properties.setToolCallLimit(2);
+        org.mockito.ArgumentCaptor<List<Map<String, Object>>> messages = org.mockito.ArgumentCaptor.captor();
+        when(
+                llm.complete(
+                        eq(scope),
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                turn(
+                        "t1",
+                        "list_documents",
+                        "{}"
+                ),
+                turn(
+                        "t2",
+                        "list_documents",
+                        "{}"
+                ),
+                turn(
+                        "t3",
+                        "list_documents",
+                        "{}"
                 )
         );
         when(
@@ -734,12 +815,47 @@ class SearchMcpDocumentRetrieverTest {
                         any()
                 )
         ).thenReturn(mapper.readTree("{\"items\":[]}"));
+
         assertThatThrownBy(
                 () -> retriever.retrieve(
                         scope,
                         "질문"
                 )
-        ).hasMessage("REPEATED_TOOL_CALL");
+        ).hasMessage("SEARCH_TOOL_LIMIT_EXCEEDED");
+
+        verify(
+                llm,
+                times(3)
+        ).complete(
+                eq(scope),
+                messages.capture(),
+                any()
+        );
+        assertThat(
+                messages.getAllValues()
+                        .get(2)
+        ).anySatisfy(message -> {
+            assertThat(message).containsEntry(
+                    "role",
+                    "tool"
+            )
+                    .containsEntry(
+                            "tool_call_id",
+                            "t2"
+                    );
+            assertThat(
+                    message.get("content")
+                            .toString()
+            ).contains("REPEATED_TOOL_CALL");
+        });
+        verify(
+                mcp,
+                times(1)
+        ).call(
+                eq(scope),
+                eq("list_documents"),
+                any()
+        );
     }
 
     @Test
