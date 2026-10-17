@@ -1,4 +1,5 @@
 import styled from "@emotion/styled";
+import Pop from "@primitives/animation/Pop";
 import Button from "@primitives/ui/Button";
 import type { HTMLAttributes, ReactNode } from "react";
 
@@ -58,7 +59,7 @@ export default function ConfirmDialog({
   );
 }
 
-const Container = styled.div`
+const Container = styled(Pop)`
   display: flex;
   flex-direction: column;
   gap: 2rem; /* 32px */
