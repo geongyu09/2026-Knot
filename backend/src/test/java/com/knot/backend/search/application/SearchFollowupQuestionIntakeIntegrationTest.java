@@ -1,7 +1,7 @@
 package com.knot.backend.search.application;
 
 import static org.mockito.Mockito.when;
-import com.knot.backend.search.domain.SearchIntent;
+import com.knot.backend.search.domain.model.SearchIntent;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -11,12 +11,12 @@ import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.search.SearchFixtures;
 import com.knot.backend.search.application.dto.command.SearchQuestionCommand;
 import com.knot.backend.search.application.dto.result.SearchQuestionAcceptedResult;
-import com.knot.backend.search.domain.SearchAnswerExecution;
+import com.knot.backend.search.domain.model.SearchAnswerExecution;
 import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.SearchException;
-import com.knot.backend.search.domain.SearchRepository;
-import com.knot.backend.search.domain.SearchRequestOperation;
-import com.knot.backend.search.domain.SearchRequestReceipt;
+import com.knot.backend.search.domain.repository.SearchRepository;
+import com.knot.backend.search.domain.model.SearchRequestOperation;
+import com.knot.backend.search.domain.model.SearchRequestReceipt;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.time.Instant;
@@ -73,10 +73,10 @@ class SearchFollowupQuestionIntakeIntegrationTest {
     @ValueSource(strings = {"EMPTY", "USER", "SEQUENCE"})
     @DisplayName("손상된 대화의 후속 접수는 커스텀 오류로 거절하고 추가 저장하지 않는다")
     void acceptNext_failure_invalidStoredConversation(String scenario) {
-        java.util.Optional<com.knot.backend.search.domain.SearchMessage> last = java.util.Optional.empty();
+        java.util.Optional<com.knot.backend.search.domain.model.SearchMessage> last = java.util.Optional.empty();
         if ("USER".equals(scenario)) {
             last = java.util.Optional.of(
-                    com.knot.backend.search.domain.SearchMessage.receiveQuestion(
+                    com.knot.backend.search.domain.model.SearchMessage.receiveQuestion(
                             first.conversationId(),
                             1,
                             "질문",
@@ -86,7 +86,7 @@ class SearchFollowupQuestionIntakeIntegrationTest {
         }
         if ("SEQUENCE".equals(scenario)) {
             last = java.util.Optional.of(
-                    com.knot.backend.search.domain.SearchMessage.startAnswer(
+                    com.knot.backend.search.domain.model.SearchMessage.startAnswer(
                             first.conversationId(),
                             Integer.MAX_VALUE,
                             Instant.now()

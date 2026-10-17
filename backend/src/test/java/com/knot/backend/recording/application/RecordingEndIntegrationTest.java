@@ -2,7 +2,6 @@ package com.knot.backend.recording.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
-
 import com.knot.backend.global.exception.ErrorCode;
 import com.knot.backend.global.exception.ProjectException;
 import com.knot.backend.recording.application.dto.command.RecordingControlCommand;
@@ -10,7 +9,7 @@ import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.recording.application.dto.result.RecordingEndResult;
 import com.knot.backend.recording.application.dto.result.RecordingStartResult;
 import com.knot.backend.recording.domain.RecordingErrorCode;
-import com.knot.backend.recording.domain.RecordingStatus;
+import com.knot.backend.recording.domain.model.RecordingStatus;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import com.knot.backend.workspace.application.WorkspaceLeaveService;
@@ -48,20 +47,20 @@ class RecordingEndIntegrationTest {
 
     private final RecordingService recordingService;
     private final WorkspaceLeaveService workspaceLeaveService;
-    private final RecordingControlTokenHasher controlTokenHasher;
+    private final RecordingControlTokenHasher recordingControlTokenHasher;
     private final TransactionTemplate transactionTemplate;
     private final JdbcClient jdbcClient;
 
     RecordingEndIntegrationTest(
             RecordingService recordingService,
             WorkspaceLeaveService workspaceLeaveService,
-            RecordingControlTokenHasher controlTokenHasher,
+            RecordingControlTokenHasher recordingControlTokenHasher,
             TransactionTemplate transactionTemplate,
             JdbcClient jdbcClient
     ) {
         this.recordingService = recordingService;
         this.workspaceLeaveService = workspaceLeaveService;
-        this.controlTokenHasher = controlTokenHasher;
+        this.recordingControlTokenHasher = recordingControlTokenHasher;
         this.transactionTemplate = transactionTemplate;
         this.jdbcClient = jdbcClient;
     }
@@ -551,7 +550,7 @@ class RecordingEndIntegrationTest {
                 )
                 .param(
                         "controlTokenHash",
-                        controlTokenHasher.hash(control.controlToken())
+                        recordingControlTokenHasher.hash(control.controlToken())
                 )
                 .param(
                         "startedAt",

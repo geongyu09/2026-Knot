@@ -3,7 +3,7 @@ package com.knot.backend.document.presentation.dto.response;
 import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.REQUIRED;
 
 import com.knot.backend.document.application.dto.result.DocumentConfirmationItemResult;
-import com.knot.backend.document.domain.DocumentConfirmationState;
+import com.knot.backend.document.domain.model.DocumentConfirmationState;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 

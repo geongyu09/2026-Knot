@@ -1,5 +1,11 @@
 package com.knot.backend.search.domain;
 
+import com.knot.backend.search.domain.model.SearchAnswerExecution;
+import com.knot.backend.search.domain.model.SearchEvidence;
+import com.knot.backend.search.domain.model.SearchEvidenceId;
+import com.knot.backend.search.domain.model.SearchMessage;
+import com.knot.backend.search.domain.model.SearchRequestReceipt;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 

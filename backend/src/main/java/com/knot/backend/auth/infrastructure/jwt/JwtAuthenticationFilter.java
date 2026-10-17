@@ -4,7 +4,7 @@ import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.auth.domain.AuthErrorCode;
 import com.knot.backend.auth.domain.AuthException;
 import com.knot.backend.auth.domain.AuthTokenProvider;
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.global.config.JwtProperties;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;

@@ -3,7 +3,7 @@ package com.knot.backend.search.infrastructure.mcp;
 import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.search.application.SearchToolScope;
 import com.knot.backend.search.domain.SearchToolException;
-import com.knot.backend.search.infrastructure.SearchAgentHttp;
+import com.knot.backend.search.infrastructure.llm.SearchAgentHttp;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;

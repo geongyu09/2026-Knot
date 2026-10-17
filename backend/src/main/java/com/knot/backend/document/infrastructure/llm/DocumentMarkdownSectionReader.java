@@ -1,6 +1,6 @@
 package com.knot.backend.document.infrastructure.llm;
 
-import com.knot.backend.document.domain.DocumentText;
+import com.knot.backend.document.domain.model.DocumentText;
 import com.knot.backend.document.domain.DocumentErrorCode;
 import com.knot.backend.document.domain.DocumentException;
 import java.util.LinkedHashMap;

@@ -2,7 +2,7 @@ package com.knot.backend.search.application.dto.command;
 
 import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.SearchException;
-import com.knot.backend.search.domain.SearchQuestionText;
+import com.knot.backend.search.domain.model.SearchQuestionText;
 import java.util.UUID;
 import java.util.regex.Pattern;
 

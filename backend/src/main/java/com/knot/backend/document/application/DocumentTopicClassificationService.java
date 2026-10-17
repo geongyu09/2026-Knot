@@ -1,7 +1,7 @@
 package com.knot.backend.document.application;
 
-import com.knot.backend.document.domain.DocumentTopic;
-import com.knot.backend.document.domain.DocumentText;
+import com.knot.backend.document.domain.model.DocumentTopic;
+import com.knot.backend.document.domain.model.DocumentText;
 import com.knot.backend.document.application.dto.result.DocumentTopicClassificationResult;
 import com.knot.backend.document.domain.DocumentErrorCode;
 import com.knot.backend.document.domain.DocumentException;

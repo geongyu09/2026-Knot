@@ -1,6 +1,6 @@
 package com.knot.backend.search.presentation;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.search.application.SearchAnswerExecutionService;
 import com.knot.backend.search.presentation.dto.response.SearchAnswerStopResponse;
 import lombok.RequiredArgsConstructor;

@@ -1,5 +1,7 @@
 package com.knot.backend.auth.domain;
 
+import com.knot.backend.auth.domain.model.RefreshToken;
+
 import java.time.Instant;
 
 public interface RefreshTokenProvider {

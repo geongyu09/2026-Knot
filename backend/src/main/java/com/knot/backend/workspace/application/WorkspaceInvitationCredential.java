@@ -34,7 +34,7 @@ public record WorkspaceInvitationCredential(
         );
     }
 
-    public boolean isRateLimited() {
+    public boolean requiresRateLimiting() {
         return kind == WorkspaceInvitationSecretKind.INVITE_CODE;
     }
 

@@ -1,7 +1,7 @@
 package com.knot.backend.search.application;
 
 import static org.mockito.Mockito.when;
-import com.knot.backend.search.domain.SearchIntent;
+import com.knot.backend.search.domain.model.SearchIntent;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -12,14 +12,14 @@ import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.search.application.dto.command.SearchQuestionCommand;
 import com.knot.backend.search.application.dto.query.SearchConversationListParameters;
 import com.knot.backend.search.application.dto.result.SearchAnswerStopResult;
-import com.knot.backend.search.domain.SearchMessageStatus;
+import com.knot.backend.search.domain.model.SearchMessageStatus;
 import com.knot.backend.search.application.dto.result.SearchQuestionAcceptedResult;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
-import com.knot.backend.search.domain.SearchRepository;
-import com.knot.backend.search.domain.SearchRequestReceipt;
+import com.knot.backend.search.domain.repository.SearchRepository;
+import com.knot.backend.search.domain.model.SearchRequestReceipt;
 import com.knot.backend.search.domain.SearchException;
 import com.knot.backend.search.domain.SearchErrorCode;
-import com.knot.backend.search.infrastructure.SearchHistoryQuery;
+import com.knot.backend.search.infrastructure.persistence.SearchHistoryQuery;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.util.UUID;

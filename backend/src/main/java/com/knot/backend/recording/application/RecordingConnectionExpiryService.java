@@ -1,7 +1,7 @@
 package com.knot.backend.recording.application;
 
 import com.knot.backend.global.logging.ServerErrorLogger;
-import com.knot.backend.recording.domain.RecordingSessionRepository;
+import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -16,7 +16,7 @@ public class RecordingConnectionExpiryService {
     private static final Logger log = LoggerFactory.getLogger(RecordingConnectionExpiryService.class);
 
     private final RecordingSessionRepository recordingSessionRepository;
-    private final RecordingConnectionExpiryTransaction expiryTransaction;
+    private final RecordingConnectionExpiryTransaction recordingConnectionExpiryTransaction;
     private final Clock clock;
 
     public int expireDue(int batchSize) {
@@ -36,7 +36,7 @@ public class RecordingConnectionExpiryService {
 
     private boolean expireIsolated(long recordingId) {
         try {
-            return expiryTransaction.expire(recordingId);
+            return recordingConnectionExpiryTransaction.expire(recordingId);
         } catch (RuntimeException exception) {
             ServerErrorLogger.record(
                     log,

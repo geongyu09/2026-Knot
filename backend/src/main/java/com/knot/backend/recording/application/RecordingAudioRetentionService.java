@@ -1,9 +1,8 @@
 package com.knot.backend.recording.application;
 
-import com.knot.backend.global.config.RetentionCleanupProperties;
-import com.knot.backend.recording.domain.RecordingAudioDeletionRepository;
-import com.knot.backend.recording.domain.RecordingAudioDeletionTask;
-import com.knot.backend.recording.domain.RecordingAudioUpload;
+import com.knot.backend.recording.domain.repository.RecordingAudioDeletionRepository;
+import com.knot.backend.recording.domain.model.RecordingAudioDeletionTask;
+import com.knot.backend.recording.domain.model.RecordingAudioUpload;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -17,21 +16,21 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class RecordingAudioRetentionService {
-    private final RecordingAudioDeletionRepository deletions;
-    private final RetentionCleanupProperties properties;
+    private final RecordingAudioDeletionRepository recordingAudioDeletionRepository;
     private final Clock clock;
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public void schedule(long uploadId) {
-        Optional<RecordingAudioUpload> upload = deletions.findUploadForUpdate(uploadId);
+        Optional<RecordingAudioUpload> upload = recordingAudioDeletionRepository.findUploadForUpdate(uploadId);
         if (upload.isEmpty()) {
             return;
         }
-        RecordingAudioUpload stored = upload.orElseThrow();
+        RecordingAudioUpload audioUpload = upload.orElseThrow();
         Instant now = now();
-        if (stored.isRetentionExpired(now) || deletions.hasNoContentResult(stored.getRecordingId())) {
+        if (audioUpload.isRetentionExpired(now)
+                || recordingAudioDeletionRepository.hasNoContentResult(audioUpload.getRecordingId())) {
             scheduleLocked(
-                    stored,
+                    audioUpload,
                     now
             );
         }
@@ -39,10 +38,10 @@ public class RecordingAudioRetentionService {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void scheduleNoContent(long recordingId) {
-        if (!deletions.hasNoContentResult(recordingId)) {
+        if (!recordingAudioDeletionRepository.hasNoContentResult(recordingId)) {
             return;
         }
-        deletions.findUploadByRecordingForUpdate(recordingId)
+        recordingAudioDeletionRepository.findUploadByRecordingForUpdate(recordingId)
                 .ifPresent(
                         upload -> scheduleLocked(
                                 upload,
@@ -55,19 +54,14 @@ public class RecordingAudioRetentionService {
             RecordingAudioUpload upload,
             Instant now
     ) {
-        if (!upload.isAudioAvailable() || deletions.hasTaskForUpload(upload.getId())) {
+        if (!upload.isAudioAvailable() || recordingAudioDeletionRepository.hasTaskForUpload(upload.getId())) {
             return;
         }
-        deletions.saveAndFlush(
+        recordingAudioDeletionRepository.saveAndFlush(
                 RecordingAudioDeletionTask.request(
                         upload.getId(),
                         upload.getStorageKey(),
-                        now,
-                        upload.deletionConfirmationAfter(
-                                properties.getLegacyUrlValidity(),
-                                properties.getUploadQuiescence(),
-                                now
-                        )
+                        now
                 )
         );
     }

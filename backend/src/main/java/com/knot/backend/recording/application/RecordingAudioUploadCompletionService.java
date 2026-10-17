@@ -1,16 +1,16 @@
 package com.knot.backend.recording.application;
 
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadCompletionResult;
-import com.knot.backend.recording.domain.StoredAudioObject;
+import com.knot.backend.recording.domain.model.StoredAudioObject;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
 public class RecordingAudioUploadCompletionService {
-    private final RecordingAudioUploadCompletionTransaction completionTransaction;
-    private final RecordingAudioStorage audioStorage;
-    private final RecordingTranscriptionService transcriptionService;
+    private final RecordingAudioUploadCompletionTransaction recordingAudioUploadCompletionTransaction;
+    private final RecordingAudioStorage recordingAudioStorage;
+    private final RecordingTranscriptionService recordingTranscriptionService;
 
     public RecordingAudioUploadCompletionResult complete(
             long workspaceId,
@@ -18,22 +18,22 @@ public class RecordingAudioUploadCompletionService {
             long recordingId,
             long uploadId
     ) {
-        StoredAudioObject storedObject = completionTransaction.findStorageKeyToConfirm(
+        StoredAudioObject storedObject = recordingAudioUploadCompletionTransaction.findStorageKeyToConfirm(
                 workspaceId,
                 memberId,
                 recordingId,
                 uploadId
         )
-                .map(audioStorage::findStoredObject)
+                .map(recordingAudioStorage::findStoredObject)
                 .orElseGet(StoredAudioObject::missing);
-        RecordingAudioUploadCompletionResult result = completionTransaction.complete(
+        RecordingAudioUploadCompletionResult result = recordingAudioUploadCompletionTransaction.complete(
                 workspaceId,
                 memberId,
                 recordingId,
                 uploadId,
                 storedObject
         );
-        transcriptionService.dispatch();
+        recordingTranscriptionService.dispatch();
         return result;
     }
 }

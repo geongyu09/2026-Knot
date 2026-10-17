@@ -1,7 +1,7 @@
 package com.knot.backend.document.application.dto.result;
 
-import com.knot.backend.document.domain.DocumentStatus;
-import com.knot.backend.document.domain.MyConfirmationState;
+import com.knot.backend.document.domain.model.DocumentStatus;
+import com.knot.backend.document.domain.model.MyConfirmationState;
 import java.time.Instant;
 
 public record DocumentCardResult(

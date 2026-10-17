@@ -1,6 +1,6 @@
 package com.knot.backend.search.presentation;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.search.application.SearchQuestionIntakeService;
 import com.knot.backend.search.application.SearchAnswerRetryService;
 import com.knot.backend.search.presentation.dto.request.SearchAnswerRetryRequest;

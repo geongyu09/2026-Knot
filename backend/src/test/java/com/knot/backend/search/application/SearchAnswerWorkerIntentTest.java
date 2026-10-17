@@ -13,7 +13,7 @@ import static org.mockito.Mockito.when;
 import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
-import com.knot.backend.search.domain.SearchIntent;
+import com.knot.backend.search.domain.model.SearchIntent;
 import com.knot.backend.search.domain.SearchToolException;
 import java.time.Clock;
 import java.util.List;

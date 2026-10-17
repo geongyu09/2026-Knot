@@ -1,7 +1,7 @@
 package com.knot.backend.recording.presentation.dto.response;
 
 import com.knot.backend.recording.application.dto.result.RecordingTranscriptionRetryResult;
-import com.knot.backend.recording.domain.TranscriptionStatus;
+import com.knot.backend.recording.domain.model.TranscriptionStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.UUID;
 

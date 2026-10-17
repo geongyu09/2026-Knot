@@ -1,6 +1,6 @@
 package com.knot.backend.workspace.presentation;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.workspace.application.WorkspaceLeaveService;
 import com.knot.backend.workspace.application.WorkspaceService;
 import com.knot.backend.workspace.presentation.dto.request.WorkspaceCreateRequest;

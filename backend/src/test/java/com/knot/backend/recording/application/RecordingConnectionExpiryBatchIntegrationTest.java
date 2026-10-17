@@ -1,12 +1,11 @@
 package com.knot.backend.recording.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
 import com.knot.backend.global.exception.ProjectException;
 import com.knot.backend.recording.application.dto.command.RecordingControlCommand;
 import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.recording.application.dto.result.RecordingHeartbeatResult;
-import com.knot.backend.recording.domain.RecordingStatus;
+import com.knot.backend.recording.domain.model.RecordingStatus;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import com.knot.backend.workspace.application.WorkspaceLeaveService;
@@ -42,18 +41,18 @@ class RecordingConnectionExpiryBatchIntegrationTest {
     private static final String CONTROL_TOKEN = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefA";
     private static final int BATCH_SIZE = 100;
 
-    private final RecordingConnectionExpiryService expiryService;
+    private final RecordingConnectionExpiryService recordingConnectionExpiryService;
     private final RecordingService recordingService;
     private final WorkspaceLeaveService workspaceLeaveService;
     private final JdbcClient jdbcClient;
 
     RecordingConnectionExpiryBatchIntegrationTest(
-            RecordingConnectionExpiryService expiryService,
+            RecordingConnectionExpiryService recordingConnectionExpiryService,
             RecordingService recordingService,
             WorkspaceLeaveService workspaceLeaveService,
             JdbcClient jdbcClient
     ) {
-        this.expiryService = expiryService;
+        this.recordingConnectionExpiryService = recordingConnectionExpiryService;
         this.recordingService = recordingService;
         this.workspaceLeaveService = workspaceLeaveService;
         this.jdbcClient = jdbcClient;
@@ -81,7 +80,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
         Instant lastSeenAt = recordingRow(recording.id()).lastSeenAt();
 
         // when
-        int expiredCount = expiryService.expireDue(BATCH_SIZE);
+        int expiredCount = recordingConnectionExpiryService.expireDue(BATCH_SIZE);
 
         // then
         RecordingRow row = recordingRow(recording.id());
@@ -105,7 +104,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
         RecordingRow before = recordingRow(recording.id());
 
         // when
-        int expiredCount = expiryService.expireDue(BATCH_SIZE);
+        int expiredCount = recordingConnectionExpiryService.expireDue(BATCH_SIZE);
 
         // then
         RecordingRow row = recordingRow(recording.id());
@@ -139,7 +138,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
         Instant reachedIntervalStartedAt = recordingRow(reached.id()).currentIntervalStartedAt();
 
         // when
-        int expiredCount = expiryService.expireDue(BATCH_SIZE);
+        int expiredCount = recordingConnectionExpiryService.expireDue(BATCH_SIZE);
 
         // then
         assertThat(expiredCount).isEqualTo(1);
@@ -180,7 +179,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
         );
 
         // when
-        int expiredCount = expiryService.expireDue(BATCH_SIZE);
+        int expiredCount = recordingConnectionExpiryService.expireDue(BATCH_SIZE);
 
         // then
         assertThat(expiredCount).isZero();
@@ -202,11 +201,11 @@ class RecordingConnectionExpiryBatchIntegrationTest {
                 recording.id(),
                 600
         );
-        expiryService.expireDue(BATCH_SIZE);
+        recordingConnectionExpiryService.expireDue(BATCH_SIZE);
         RecordingRow first = recordingRow(recording.id());
 
         // when
-        int expiredCount = expiryService.expireDue(BATCH_SIZE);
+        int expiredCount = recordingConnectionExpiryService.expireDue(BATCH_SIZE);
 
         // then
         assertThat(expiredCount).isZero();
@@ -229,8 +228,8 @@ class RecordingConnectionExpiryBatchIntegrationTest {
 
         // when
         List<Integer> expiredCounts = List.of(
-                expiryService.expireDue(2),
-                expiryService.expireDue(2)
+                recordingConnectionExpiryService.expireDue(2),
+                recordingConnectionExpiryService.expireDue(2)
         );
 
         // then
@@ -262,7 +261,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
                 late.id(),
                 600
         );
-        expiryService.expireDue(BATCH_SIZE);
+        recordingConnectionExpiryService.expireDue(BATCH_SIZE);
         RecordingRow reclaimed = recordingRow(late.id());
 
         // when
@@ -293,7 +292,7 @@ class RecordingConnectionExpiryBatchIntegrationTest {
         // when
         List<Outcome> outcomes = runTogether(
                 List.of(
-                        () -> expiryService.expireDue(BATCH_SIZE),
+                        () -> recordingConnectionExpiryService.expireDue(BATCH_SIZE),
                         () -> heartbeat(
                                 fixture,
                                 recording

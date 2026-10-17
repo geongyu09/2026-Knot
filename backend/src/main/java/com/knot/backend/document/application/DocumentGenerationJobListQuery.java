@@ -1,7 +1,7 @@
 package com.knot.backend.document.application;
 
 import com.knot.backend.document.application.dto.result.DocumentGenerationJobItemResult;
-import com.knot.backend.document.domain.DocumentGenerationJobCursor;
+import com.knot.backend.document.domain.model.DocumentGenerationJobCursor;
 import java.time.Instant;
 import java.util.List;
 

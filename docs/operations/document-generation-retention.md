@@ -31,17 +31,16 @@ RUNNING에서 중단된 작업은 lease 만료 후 새 attempt로 회수한다. 
 한 저장소 호출의 기존 timeout은 5초, 버전 삭제 루프는 전체 60초·최대 100페이지로 제한한다.
 완료 전에 시간이 초과되면 Task를 재처리하며, 기본 lease 120초보다 짧게 끝내도록 한다. lease 설정은 75초~1시간이다.
 
-## 버전과 업로드 재확인
+## 버전과 삭제 확정
 
 S3 Adapter는 GetBucketVersioning으로 상태를 확인한다. 활성·중단 버킷이면 해당 key의 모든 객체 버전과 삭제 마커를 versionId로 삭제한다.
 Prefix로 목록을 읽어도 key가 완전히 일치하는 항목만 삭제하고 다음 페이지를 이어 읽는다.
 버전 ID 누락·알 수 없는 버전 상태·조회/삭제 권한 오류는 성공 처리하지 않는다.
 
-URL 자체는 DB에 저장하지 않고 `last_upload_url_expires_at`만 기록한다.
-NO_CONTENT의 첫 삭제가 성공해도 마지막 URL 만료 + 업로드 종료 대기 시간 이전에는 PENDING을 유지한다.
-그 시각에 다시 삭제하고 성공했을 때만 Upload.deletedAt을 기록한다.
-기존 만료 기록 없는 Upload는 completedAt + legacy-url-validity + upload-quiescence를 재확인 기준으로 사용한다.
+NO_CONTENT와 30일 만료 모두 현재 시도의 첫 삭제가 성공하면 Task를 SUCCEEDED로 끝내고 Upload.deletedAt을 기록한다.
 삭제 후에도 Upload의 COMPLETED와 최초 completedAt은 유지한다.
+업로드 완료 뒤에는 PUT URL을 새로 발급하지 않는다. 완료 전에 받은 URL(기본 15분)로 삭제 뒤 같은 key에 다시 올린 파일은 버킷에 남을 수 있다.
+녹음 시작자 본인 파일이며 다른 사용자에게 노출되지 않으므로 #720에서 이 위험을 받아들이고 삭제 재확인 대기를 없앴다.
 
 ## 설정과 활성화
 
@@ -51,8 +50,6 @@ knot.retention.candidate-limit=20
 knot.retention.poll-interval=1m
 knot.retention.deletion-interval=5s
 knot.retention.execution-lease=2m
-knot.retention.upload-quiescence=30m
-knot.retention.legacy-url-validity=7d
 ```
 
 `enabled=true`로 바꾸기 전에 실제 환경에서 다음을 확인한다.
@@ -60,10 +57,8 @@ knot.retention.legacy-url-validity=7d
 1. 운영 Flyway 이력과 V34~V36 번호 충돌, 기존 Batch 결과/참조를 확인한다. 기존 migration을 수정하지 않는다.
 2. GetBucketVersioning, ListBucketVersions, DeleteObject, DeleteObjectVersion의 저장소 지원과 최소 권한을 확인한다. 설정되지 않은 저장소는 실패를 기록하며 완료로 처리하지 않는다.
 3. 작은 테스트 key로 버전·마커·반복 삭제와 목록 pagination을 확인한다. 운영 파일이나 버킷 전체를 시험 삭제하지 않는다.
-4. 과거 presigned URL의 최대 유효 기간을 확인한다. 7일은 보수적 기본값이며 실제 과거 발급 관측이 아니다.
-5. 만료 직전 시작한 업로드가 완료되는 최대 시간을 확인하고 upload-quiescence를 맞춘다. 기본 30분만으로 운영 안전성을 증명하지 않는다.
-6. 과거 key에 적용된 bucket/prefix와 현재 설정이 같은지 확인한다. 저장소 이동 시 과거 삭제 대상 주소를 먼저 이행한다.
-7. 작업 상태와 정제된 오류 코드를 관측한다. 로그에는 task/job ID와 회차만 남기고 key, 원문, 토큰, 외부 오류 본문을 남기지 않는다.
+4. 과거 key에 적용된 bucket/prefix와 현재 설정이 같은지 확인한다. 저장소 이동 시 과거 삭제 대상 주소를 먼저 이행한다.
+5. 작업 상태와 정제된 오류 코드를 관측한다. 로그에는 task/job ID와 회차만 남기고 key, 원문, 토큰, 외부 오류 본문을 남기지 않는다.
 
 ## 관측 쿼리
 
