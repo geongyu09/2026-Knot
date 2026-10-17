@@ -124,7 +124,8 @@ public class RecordingAudioChunkTransaction {
                 chunk,
                 command
         );
-        Instant cappedExpiry = controlled.stream().capUploadExpiry(expiresAt);
+        Instant cappedExpiry = controlled.stream()
+                .capUploadExpiry(expiresAt);
         chunk.extendUploadUrlExpiry(cappedExpiry);
         chunks.save(chunk);
         return reservation(
