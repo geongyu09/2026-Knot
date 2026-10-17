@@ -43,6 +43,8 @@ class RecordingAudioFinalizationIntegrationTest {
     private RecordingAudioFinalizationWorker worker;
     @MockitoBean
     private RecordingTranscriptionService transcriptions;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
+    private RecordingTranscriptionStateService stateService;
     @MockitoBean
     private Clock clock;
     private long recordingId;
@@ -400,6 +402,181 @@ class RecordingAudioFinalizationIntegrationTest {
                         .getStatus()
                         .name()
         ).isEqualTo("READY");
+    }
+
+    @Test
+    void retentionCutoffBlocksAdoptionEvenWithLiveLease() {
+        // given
+        when(clock.instant()).thenReturn(NOW.plus(java.time.Duration.ofDays(30)).minusSeconds(1));
+        AudioFinalizationClaim claim = transaction.claim(recordingId).orElseThrow();
+        transaction.reconcile(
+                claim,
+                Map.of(
+                1,
+                new StoredAudioChunk(
+                true,
+                2,
+                "application/octet-stream",
+                HASH,
+                "v1"
+        )
+        ),
+                clock.instant()
+        );
+        when(clock.instant()).thenReturn(NOW.plus(java.time.Duration.ofDays(30)));
+
+        // when
+        Throwable failure = catchThrowable(() -> transaction.adopt(
+                claim,
+                new StoredAudioChunk(
+                        true,
+                        46,
+                        "audio/wav",
+                        HASH,
+                        "final-v1"
+                )
+        ));
+
+        // then
+        assertThat(failure).isInstanceOf(AudioFinalizationLeaseLostException.class);
+        assertThat(jdbc.sql("SELECT count(*) FROM recording_audio_uploads").query(Long.class).single()).isZero();
+    }
+
+    @Test
+    void retentionCutoffBlocksNewClaim() {
+        // given
+        when(clock.instant()).thenReturn(NOW.plus(java.time.Duration.ofDays(30)));
+
+        // when
+        java.util.Optional<AudioFinalizationClaim> result = transaction.claim(recordingId);
+
+        // then
+        assertThat(result).isEmpty();
+        assertThat(jobs.findByRecordingId(recordingId).orElseThrow().getStatus().name()).isEqualTo("DISCARDED");
+    }
+
+    @Test
+    void transcriptionRegistrationFailureRollsBackWavAdoptionAndReady() {
+        // given
+        AudioFinalizationClaim claim = transaction.claim(recordingId)
+                .orElseThrow();
+        transaction.reconcile(
+                claim,
+                Map.of(
+                        1,
+                        new StoredAudioChunk(
+                                true,
+                                2,
+                                "application/octet-stream",
+                                HASH,
+                                "v1"
+                        )
+                ),
+                NOW
+        );
+        org.mockito.Mockito.doThrow(new IllegalStateException("접수 실패"))
+                .when(stateService)
+                .registerAutomatic(recordingId);
+
+        // when
+        Throwable failure = catchThrowable(
+                () -> transaction.adopt(
+                        claim,
+                        new StoredAudioChunk(
+                                true,
+                                46,
+                                "audio/wav",
+                                HASH,
+                                "final-v1"
+                        )
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(IllegalStateException.class);
+        assertThat(
+                jdbc.sql("SELECT count(*) FROM recording_audio_uploads")
+                        .query(Long.class)
+                        .single()
+        ).isZero();
+        assertThat(
+                jobs.findByRecordingId(recordingId)
+                        .orElseThrow()
+                        .getStatus()
+                        .name()
+        ).isEqualTo("PROCESSING");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"renew", "adopt", "wait", "fail"})
+    void sameAttemptReplacementRejectsEveryOldOwnerWrite(String operation) {
+        // given
+        AudioFinalizationClaim stale = transaction.claim(recordingId)
+                .orElseThrow();
+        jdbc.sql("""
+                UPDATE recording_audio_finalizations SET owner_token=gen_random_uuid(),claim_epoch=claim_epoch+1
+                WHERE recording_id=:id
+                """)
+                .param(
+                        "id",
+                        recordingId
+                )
+                .update();
+
+        // when
+        Throwable failure = catchThrowable(
+                () -> staleWrite(
+                        operation,
+                        stale
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(AudioFinalizationLeaseLostException.class);
+        assertThat(
+                jobs.findByRecordingId(recordingId)
+                        .orElseThrow()
+                        .getAttempt()
+        ).isEqualTo(1);
+        assertThat(
+                jobs.findByRecordingId(recordingId)
+                        .orElseThrow()
+                        .getStatus()
+                        .name()
+        ).isEqualTo("PROCESSING");
+    }
+
+    private void staleWrite(
+            String operation,
+            AudioFinalizationClaim stale
+    ) {
+        switch (operation) {
+            case "renew" -> transaction.renew(stale);
+            case "adopt" -> transaction.adopt(
+                    stale,
+                    new StoredAudioChunk(
+                            true,
+                            46,
+                            "audio/wav",
+                            HASH,
+                            "v1"
+                    )
+            );
+            case "wait" -> transaction.reconcile(
+                    stale,
+                    Map.of(
+                            1,
+                            StoredAudioChunk.missing()
+                    ),
+                    NOW
+            );
+            case "fail" -> transaction.fail(
+                    stale,
+                    "FAILED",
+                    true
+            );
+            default -> throw new IllegalArgumentException("지원하지 않는 테스트 동작");
+        }
     }
 
     @Test

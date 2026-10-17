@@ -232,6 +232,27 @@ class S3RecordingAudioFinalStorageTest {
         assertThat(result.exists()).isFalse();
     }
 
+    @Test
+    void openChunk_marksAccessDeniedAsPermanentFailure() {
+        // given
+        AudioManifestPart part = new AudioManifestPart(
+                1,
+                0,
+                1,
+                "chunk",
+                CHECKSUM,
+                "v1"
+        );
+        when(client.getObject(any(GetObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(403).build());
+
+        // when
+        Throwable failure = catchThrowable(() -> storage.openChunk(part));
+
+        // then
+        assertThat(failure).isInstanceOf(com.knot.backend.recording.domain.AudioStorageAccessDeniedException.class);
+    }
+
     private HeadObjectResponse head() {
         return HeadObjectResponse.builder()
                 .contentLength(44L)

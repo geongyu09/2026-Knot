@@ -164,10 +164,13 @@ class RecordingAudioSaveRetryAcceptanceTest {
 
     private Fixture failedRecording() throws Exception {
         Fixture fixture = startedRecording();
-        jdbcClient.sql("""
-                UPDATE recording_sessions SET status='ENDED', ended_at=GREATEST(now(),started_at,last_seen_at), end_reason='USER_ENDED',
-                    current_interval_started_at=NULL WHERE id=:id
-                """)
+        jdbcClient
+                .sql(
+                        """
+                                UPDATE recording_sessions SET status='ENDED', ended_at=GREATEST(now(),started_at,last_seen_at), end_reason='USER_ENDED',
+                                    current_interval_started_at=NULL WHERE id=:id
+                                """
+                )
                 .param(
                         "id",
                         fixture.recordingId()

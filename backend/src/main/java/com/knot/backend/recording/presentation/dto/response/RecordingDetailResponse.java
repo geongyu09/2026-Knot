@@ -8,7 +8,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import com.knot.backend.recording.domain.model.TranscriptionStatus;
 import java.util.UUID;
 import java.time.Instant;
-import com.knot.backend.recording.application.dto.result.RecordingSourceAudioQuality;
 
 public record RecordingDetailResponse(
         @Schema(description = "녹음 세션 상태") RecordingStatus status,
@@ -22,7 +21,7 @@ public record RecordingDetailResponse(
 
         @Schema(description = "문서 생성 결과. 접수 전 null", types = {
                 "object", "null"}) RecordingDocumentGenerationResponse documentGeneration,
-        @Schema(description = "원본 오디오 품질과 누락 범위. 기존 녹음이면 null", nullable = true) RecordingSourceAudioQuality sourceAudio
+        @Schema(description = "원본 오디오 품질과 누락 범위. 기존 녹음이면 null", nullable = true) RecordingSourceAudioResponse sourceAudio
 ) {
 
     public static RecordingDetailResponse from(RecordingDetailResult result) {
@@ -38,7 +37,7 @@ public record RecordingDetailResponse(
                 result.documentGeneration() == null
                         ? null
                         : RecordingDocumentGenerationResponse.from(result.documentGeneration()),
-                result.sourceAudio()
+                RecordingSourceAudioResponse.from(result.sourceAudio())
         );
     }
 }

@@ -162,9 +162,10 @@ public class RecordingAudioFinalization {
                 now
         );
         if (manifestJson != null) {
-            if (!manifestJson.equals(manifest) || !manifestHash.equals(hash)) {
-                throw new RecordingException(RecordingErrorCode.AUDIO_CHUNK_CONFLICT);
-            }
+            validateExistingManifest(
+                    manifest,
+                    hash
+            );
             return;
         }
         if (manifest == null || hash == null || !("COMPLETE".equals(quality) || "PARTIAL".equals(quality))) {
@@ -174,6 +175,15 @@ public class RecordingAudioFinalization {
         manifestHash = hash;
         this.quality = quality;
         finalKey = "recordings/" + recordingId + "/final/" + id + "/" + hash + ".wav";
+    }
+
+    private void validateExistingManifest(
+            String manifest,
+            String hash
+    ) {
+        if (!manifestJson.equals(manifest) || !manifestHash.equals(hash)) {
+            throw new RecordingException(RecordingErrorCode.AUDIO_CHUNK_CONFLICT);
+        }
     }
 
     public void waitForObjects(

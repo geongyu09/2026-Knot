@@ -51,6 +51,14 @@ public class S3RecordingAudioFinalStorage implements RecordingAudioFinalStorage 
                             .checksumMode(ChecksumMode.ENABLED)
                             .build()
             );
+        } catch (S3Exception exception) {
+            if (exception.statusCode() == 403 || exception.statusCode() == 401) {
+                throw new AudioStorageAccessDeniedException(exception);
+            }
+            throw new RecordingException(
+                    RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE,
+                    exception
+            );
         } catch (SdkException exception) {
             throw new RecordingException(
                     RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE,

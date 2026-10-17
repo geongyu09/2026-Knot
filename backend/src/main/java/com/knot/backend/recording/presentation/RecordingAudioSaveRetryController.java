@@ -32,7 +32,7 @@ public class RecordingAudioSaveRetryController implements RecordingAudioSaveRetr
                 member.getMemberId(),
                 recordingId
         );
-        return ResponseEntity.status(queued ? HttpStatus.ACCEPTED : HttpStatus.OK)
+        return ResponseEntity.status(retryStatus(queued))
                 .body(
                         RecordingAudioSaveResponse.from(
                                 chunks.findState(
@@ -43,4 +43,11 @@ public class RecordingAudioSaveRetryController implements RecordingAudioSaveRetr
                         )
                 );
     }
+    private HttpStatus retryStatus(boolean queued) {
+        if (queued) {
+            return HttpStatus.ACCEPTED;
+        }
+        return HttpStatus.OK;
+    }
+
 }
