@@ -29,7 +29,10 @@ public record RecordingStartRequest(
     // @formatter:on
 
     public RecordingStartRequest {
-        audioMode = audioMode == null ? RecordingAudioMode.FINAL_WEBM_V1 : audioMode;
+        audioMode = java.util.Objects.requireNonNullElse(
+                audioMode,
+                RecordingAudioMode.FINAL_WEBM_V1
+        );
     }
 
     public RecordingStartRequest(
