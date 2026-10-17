@@ -40,8 +40,15 @@ public class RecordingAudioChunkController implements RecordingAudioChunkApi {
                 recordingId,
                 request.toCommand()
         );
-        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK)
+        return ResponseEntity.status(reservationStatus(result))
                 .body(RecordingAudioChunkReservationResponse.from(result));
+    }
+
+    private HttpStatus reservationStatus(RecordingAudioChunkReservationResult result) {
+        if (result.created()) {
+            return HttpStatus.CREATED;
+        }
+        return HttpStatus.OK;
     }
 
     @Override
