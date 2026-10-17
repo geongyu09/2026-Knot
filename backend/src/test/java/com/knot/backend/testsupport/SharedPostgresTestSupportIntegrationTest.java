@@ -88,11 +88,10 @@ class SharedPostgresTestSupportIntegrationTest {
                 );
                 boolean markerDataVisible = "visible".equals(markerValue);
                 System.out.printf(
-                        "C3_ISOLATION sourceDatabase=%s targetDatabase=%s mode=%s markerQuery=executed "
+                        "C3_ISOLATION sourceDatabase=%s targetDatabase=%s markerQuery=executed "
                                 + "markerDataVisible=%s%n",
                         authDatabase,
                         documentDatabase,
-                        SharedPostgresTestSupport.databaseMode(),
                         markerDataVisible
                 );
                 softly.assertThat(markerDataVisible)

@@ -11,13 +11,8 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 public final class SharedPostgresTestSupport {
-    private static final String PER_CONTEXT_DATABASE_MODE = "per-context";
-    private static final String SHARED_DATABASE_MODE = "shared";
-    private static final String DATABASE_MODE_ENV = "KNOT_TEST_POSTGRES_DATABASE_MODE";
-    private static final String SHARED_DATABASE_NAME = "knot_test_c3_shared";
     private static final Object DATABASE_CREATION_LOCK = new Object();
     private static final Set<String> CREATED_DATABASES = new HashSet<>();
-    private static final String DATABASE_MODE = resolveDatabaseMode(System.getenv(DATABASE_MODE_ENV));
     private static final PostgreSQLContainer POSTGRES = createContainer();
 
     static {
@@ -64,15 +59,8 @@ public final class SharedPostgresTestSupport {
         return POSTGRES.isRunning();
     }
 
-    public static String databaseMode() {
-        return DATABASE_MODE;
-    }
-
     public static String databaseName(String databaseGroup) {
         validateDatabaseName(databaseGroup);
-        if (DATABASE_MODE.equals(SHARED_DATABASE_MODE)) {
-            return SHARED_DATABASE_NAME;
-        }
         return "knot_test_c3_" + databaseGroup;
     }
 
@@ -83,12 +71,11 @@ public final class SharedPostgresTestSupport {
     ) {
         String databaseName = databaseNameFromJdbcUrl(jdbcUrl);
         System.out.printf(
-                "C3_POSTGRES context=%s contextIdentity=0x%08x container=%s database=%s mode=%s%n",
+                "C3_POSTGRES context=%s contextIdentity=0x%08x container=%s database=%s%n",
                 contextId,
                 contextIdentity,
                 containerId(),
-                databaseName,
-                databaseMode()
+                databaseName
         );
     }
 
@@ -173,18 +160,5 @@ public final class SharedPostgresTestSupport {
         if (!databaseName.matches("[a-z][a-z0-9_]*")) {
             throw new IllegalArgumentException("Invalid test database name: " + databaseName);
         }
-    }
-
-    private static String resolveDatabaseMode(String databaseMode) {
-        if (databaseMode == null || databaseMode.isBlank()) {
-            return PER_CONTEXT_DATABASE_MODE;
-        }
-        if (databaseMode.equals(PER_CONTEXT_DATABASE_MODE)) {
-            return PER_CONTEXT_DATABASE_MODE;
-        }
-        if (databaseMode.equals(SHARED_DATABASE_MODE)) {
-            return SHARED_DATABASE_MODE;
-        }
-        throw new IllegalArgumentException("KNOT_TEST_POSTGRES_DATABASE_MODE must be per-context or shared");
     }
 }
