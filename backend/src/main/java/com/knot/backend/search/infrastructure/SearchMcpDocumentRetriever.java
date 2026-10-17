@@ -65,6 +65,7 @@ public class SearchMcpDocumentRetriever implements SearchDocumentRetriever {
                         question
                 )
         );
+        List<Map<String, Object>> initialMessages = List.copyOf(messages);
         SearchAgentContext context = new SearchAgentContext(
                 properties,
                 mapper
@@ -89,7 +90,10 @@ public class SearchMcpDocumentRetriever implements SearchDocumentRetriever {
                         0
                 );
             }
-            messages.add(assistantMessage(response));
+            messages = retainLatestToolExchange(
+                    initialMessages,
+                    response
+            );
             for (JsonNode call : calls) {
                 if (++count > properties.getToolCallLimit()) {
                     throw new SearchToolException("SEARCH_TOOL_LIMIT_EXCEEDED");
@@ -106,6 +110,15 @@ public class SearchMcpDocumentRetriever implements SearchDocumentRetriever {
             }
         }
         throw new SearchToolException("SEARCH_TOOL_LIMIT_EXCEEDED");
+    }
+
+    private List<Map<String, Object>> retainLatestToolExchange(
+            List<Map<String, Object>> initialMessages,
+            JsonNode response
+    ) {
+        List<Map<String, Object>> retained = new ArrayList<>(initialMessages);
+        retained.add(assistantMessage(response));
+        return retained;
     }
 
     private boolean hasNoToolCalls(JsonNode calls) {
