@@ -7,6 +7,8 @@ import com.knot.backend.recording.domain.TranscriptSegment;
 import com.knot.backend.recording.domain.TranscriptSegmentRepository;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import jakarta.persistence.EntityManager;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -46,6 +48,61 @@ class TranscriptSegmentRepositoryIntegrationTest {
                 10000
         );
         transcriptId = fixtures.saveTranscript(recordingId);
+    }
+
+    @Test
+    @DisplayName("구간을 저장하면 DB 시각으로 생성 시간을 채우고 다시 조회해도 유지한다")
+    void saveAll_success_recordsDatabaseCreationTime() {
+        // given
+        Instant databaseNow = jdbc.sql("SELECT CURRENT_TIMESTAMP")
+                .query(OffsetDateTime.class)
+                .single()
+                .toInstant();
+        TranscriptSegment segment = TranscriptSegment.create(
+                transcriptId,
+                0,
+                0,
+                null,
+                null,
+                "발언"
+        );
+
+        // when
+        segments.saveAll(List.of(segment));
+
+        // then
+        entityManager.flush();
+        assertThat(segment.getCreatedAt()).isEqualTo(databaseNow);
+        entityManager.clear();
+        assertThat(segments.findAllByTranscriptId(transcriptId)).singleElement()
+                .extracting(TranscriptSegment::getCreatedAt)
+                .isEqualTo(databaseNow);
+    }
+
+    @Test
+    @DisplayName("SQL로 구간을 추가해도 생성 시간이 기본값으로 기록된다")
+    void insert_success_recordsDatabaseCreationTime() {
+        // given
+        Instant databaseNow = jdbc.sql("SELECT CURRENT_TIMESTAMP")
+                .query(OffsetDateTime.class)
+                .single()
+                .toInstant();
+
+        // when
+        jdbc.sql("""
+                INSERT INTO transcript_segments (transcript_id, position, start_millis, text)
+                VALUES (:id, 0, 0, '발언')
+                """)
+                .param(
+                        "id",
+                        transcriptId
+                )
+                .update();
+
+        // then
+        assertThat(segments.findAllByTranscriptId(transcriptId)).singleElement()
+                .extracting(TranscriptSegment::getCreatedAt)
+                .isEqualTo(databaseNow);
     }
 
     @Test
