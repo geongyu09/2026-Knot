@@ -16,6 +16,21 @@ public enum RecordingErrorCode implements ErrorCode {
             "AUDIO_SAVE_RETRY_NOT_ALLOWED",
             "현재 오디오 저장 작업은 다시 시도할 수 없습니다"
     ),
+    INVALID_AUDIO_SEAL(
+            ErrorCategory.INVALID_INPUT,
+            "INVALID_AUDIO_SEAL",
+            "오디오 종료 명세가 올바르지 않습니다"
+    ),
+    AUDIO_SEAL_CONFLICT(
+            ErrorCategory.CONFLICT,
+            "AUDIO_SEAL_CONFLICT",
+            "이미 확정한 오디오 종료 명세와 다릅니다"
+    ),
+    AUDIO_ACCEPTANCE_CLOSED(
+            ErrorCategory.CONFLICT,
+            "AUDIO_ACCEPTANCE_CLOSED",
+            "오디오 저장 확인 유예 시간이 끝났습니다"
+    ),
     AUDIO_MODE_DISABLED(
             ErrorCategory.CONFLICT,
             "AUDIO_MODE_DISABLED",
