@@ -6,6 +6,11 @@ import lombok.Getter;
 
 @Getter
 public enum RecordingErrorCode implements ErrorCode {
+    AI_OUTCOME_UNKNOWN(
+            ErrorCategory.INTERNAL_SERVER_ERROR,
+            "AI_OUTCOME_UNKNOWN",
+            "AI 실행 결과를 확인하지 못했습니다"
+    ),
     AUDIO_MODE_DISABLED(
             ErrorCategory.CONFLICT,
             "AUDIO_MODE_DISABLED",
