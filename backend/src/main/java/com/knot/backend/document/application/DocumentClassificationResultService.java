@@ -1,15 +1,15 @@
 package com.knot.backend.document.application;
 
-import com.knot.backend.document.domain.DocumentTopic;
+import com.knot.backend.document.domain.model.DocumentTopic;
 import com.knot.backend.document.application.dto.result.DocumentGenerationRegistrationResult;
 import com.knot.backend.document.application.dto.result.DocumentTopicClassificationResult;
 import com.knot.backend.document.domain.DocumentErrorCode;
 import com.knot.backend.document.domain.DocumentException;
-import com.knot.backend.document.domain.DocumentGenerationBatch;
-import com.knot.backend.document.domain.DocumentGenerationBatchRepository;
-import com.knot.backend.document.domain.DocumentGenerationJob;
-import com.knot.backend.document.domain.DocumentGenerationJobStatus;
-import com.knot.backend.document.domain.DocumentGenerationJobRepository;
+import com.knot.backend.document.domain.model.DocumentGenerationBatch;
+import com.knot.backend.document.domain.repository.DocumentGenerationBatchRepository;
+import com.knot.backend.document.domain.model.DocumentGenerationJob;
+import com.knot.backend.document.domain.model.DocumentGenerationJobStatus;
+import com.knot.backend.document.domain.repository.DocumentGenerationJobRepository;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;

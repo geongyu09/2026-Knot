@@ -1,7 +1,7 @@
 package com.knot.backend.search.application.dto.result;
 
-import com.knot.backend.search.domain.SearchMessageStatus;
-import com.knot.backend.search.domain.SearchProgressStage;
+import com.knot.backend.search.domain.model.SearchMessageStatus;
+import com.knot.backend.search.domain.model.SearchProgressStage;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;

@@ -7,9 +7,9 @@ import static org.mockito.Mockito.when;
 
 import com.knot.backend.document.domain.DocumentErrorCode;
 import com.knot.backend.document.domain.DocumentException;
-import com.knot.backend.document.domain.DocumentGenerationBatchRepository;
-import com.knot.backend.document.domain.DocumentGenerationJob;
-import com.knot.backend.document.domain.DocumentGenerationJobRepository;
+import com.knot.backend.document.domain.repository.DocumentGenerationBatchRepository;
+import com.knot.backend.document.domain.model.DocumentGenerationJob;
+import com.knot.backend.document.domain.repository.DocumentGenerationJobRepository;
 import com.knot.backend.global.config.DocumentGenerationWorkerProperties;
 import com.knot.backend.workspace.domain.model.Workspace;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;

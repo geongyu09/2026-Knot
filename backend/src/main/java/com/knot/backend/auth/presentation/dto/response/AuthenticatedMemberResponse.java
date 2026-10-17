@@ -1,6 +1,6 @@
 package com.knot.backend.auth.presentation.dto.response;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 
 public record AuthenticatedMemberResponse(
         long memberId,

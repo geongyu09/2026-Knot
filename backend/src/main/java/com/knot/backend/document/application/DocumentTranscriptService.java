@@ -1,6 +1,6 @@
 package com.knot.backend.document.application;
 
-import com.knot.backend.document.domain.DocumentText;
+import com.knot.backend.document.domain.model.DocumentText;
 import com.knot.backend.document.application.dto.result.DocumentTranscriptResult;
 import com.knot.backend.document.application.dto.result.DocumentTranscriptSnapshot;
 import com.knot.backend.document.domain.DocumentErrorCode;

@@ -3,7 +3,7 @@ package com.knot.backend.document.application;
 import com.knot.backend.document.application.dto.query.DocumentGenerationJobListParameters;
 import com.knot.backend.document.application.dto.result.DocumentGenerationJobItemResult;
 import com.knot.backend.document.application.dto.result.DocumentGenerationJobListResult;
-import com.knot.backend.document.domain.DocumentGenerationJobCursor;
+import com.knot.backend.document.domain.model.DocumentGenerationJobCursor;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;

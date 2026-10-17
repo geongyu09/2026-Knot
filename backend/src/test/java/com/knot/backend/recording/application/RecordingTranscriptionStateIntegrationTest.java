@@ -11,7 +11,7 @@ import com.knot.backend.document.application.DocumentGenerationIntakeService;
 import com.knot.backend.document.application.DocumentClassificationResultService;
 import com.knot.backend.document.application.DocumentRetentionCleanupService;
 import com.knot.backend.document.application.dto.result.DocumentTopicClassificationResult;
-import com.knot.backend.document.domain.DocumentGenerationJobRepository;
+import com.knot.backend.document.domain.repository.DocumentGenerationJobRepository;
 import com.knot.backend.recording.application.dto.result.AiTranscript;
 import com.knot.backend.recording.application.dto.result.RecordingTranscriptionExecution;
 import com.knot.backend.recording.application.dto.result.RecordingTranscriptionRetryResult;

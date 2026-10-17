@@ -12,10 +12,10 @@ import com.knot.backend.document.application.dto.result.DocumentGenerationRegist
 import com.knot.backend.document.application.dto.result.DocumentTopicClassificationResult;
 import com.knot.backend.document.application.dto.result.DocumentGenerationJobItemResult;
 import com.knot.backend.document.domain.DocumentException;
-import com.knot.backend.document.domain.DocumentGenerationJob;
-import com.knot.backend.document.domain.DocumentGenerationJobRepository;
-import com.knot.backend.document.domain.DocumentGenerationBatchRepository;
-import com.knot.backend.document.domain.DocumentTopicRegistrationState;
+import com.knot.backend.document.domain.model.DocumentGenerationJob;
+import com.knot.backend.document.domain.repository.DocumentGenerationJobRepository;
+import com.knot.backend.document.domain.repository.DocumentGenerationBatchRepository;
+import com.knot.backend.document.domain.model.DocumentTopicRegistrationState;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;

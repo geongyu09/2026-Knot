@@ -1,6 +1,6 @@
 package com.knot.backend.search.presentation;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.search.presentation.stream.SearchAnswerStream;
 import java.nio.charset.StandardCharsets;
 import lombok.RequiredArgsConstructor;

@@ -4,11 +4,11 @@ import com.knot.backend.search.application.dto.query.SearchMessageListParameters
 import com.knot.backend.search.application.dto.result.SearchEvidenceItemResult;
 import com.knot.backend.search.application.dto.result.SearchMessageListItemResult;
 import com.knot.backend.search.application.dto.result.SearchMessageListResult;
-import com.knot.backend.search.domain.SearchConversation;
+import com.knot.backend.search.domain.model.SearchConversation;
 import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.SearchException;
-import com.knot.backend.search.domain.SearchMessage;
-import com.knot.backend.search.domain.SearchMessageRole;
+import com.knot.backend.search.domain.model.SearchMessage;
+import com.knot.backend.search.domain.model.SearchMessageRole;
 import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import java.util.Comparator;
 import java.util.List;

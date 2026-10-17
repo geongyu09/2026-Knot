@@ -14,8 +14,8 @@ import com.knot.backend.document.application.dto.result.DocumentConfirmationItem
 import com.knot.backend.document.application.dto.result.DocumentConfirmationOverviewResult;
 import com.knot.backend.document.application.dto.result.DocumentConfirmationSummaryResult;
 import com.knot.backend.document.application.dto.result.DocumentConfirmationsResult;
-import com.knot.backend.document.domain.DocumentConfirmationCursor;
-import com.knot.backend.document.domain.DocumentConfirmationState;
+import com.knot.backend.document.domain.model.DocumentConfirmationCursor;
+import com.knot.backend.document.domain.model.DocumentConfirmationState;
 import com.knot.backend.document.domain.DocumentException;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;

@@ -1,6 +1,6 @@
 package com.knot.backend.document.infrastructure.llm;
 
-import com.knot.backend.document.domain.DocumentGenerationInput;
+import com.knot.backend.document.domain.model.DocumentGenerationInput;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 

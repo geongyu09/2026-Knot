@@ -2,11 +2,11 @@ package com.knot.backend.search.application;
 
 import com.knot.backend.search.application.dto.result.SearchAnswerSnapshotResult;
 import com.knot.backend.search.application.dto.result.SearchEvidenceItemResult;
-import com.knot.backend.search.domain.SearchAnswerExecution;
-import com.knot.backend.search.domain.SearchConversation;
-import com.knot.backend.search.domain.SearchMessage;
-import com.knot.backend.search.domain.SearchMessageRole;
-import com.knot.backend.search.domain.SearchRepository;
+import com.knot.backend.search.domain.model.SearchAnswerExecution;
+import com.knot.backend.search.domain.model.SearchConversation;
+import com.knot.backend.search.domain.model.SearchMessage;
+import com.knot.backend.search.domain.model.SearchMessageRole;
+import com.knot.backend.search.domain.repository.SearchRepository;
 import com.knot.backend.search.domain.SearchErrorCode;
 import com.knot.backend.search.domain.SearchException;
 import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;

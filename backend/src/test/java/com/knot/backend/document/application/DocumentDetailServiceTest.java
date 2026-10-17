@@ -9,8 +9,8 @@ import com.knot.backend.document.application.dto.result.DocumentConfirmationSumm
 import com.knot.backend.document.application.dto.result.DocumentDetailSnapshot;
 import com.knot.backend.document.domain.DocumentErrorCode;
 import com.knot.backend.document.domain.DocumentException;
-import com.knot.backend.document.domain.DocumentStatus;
-import com.knot.backend.document.domain.MyConfirmationState;
+import com.knot.backend.document.domain.model.DocumentStatus;
+import com.knot.backend.document.domain.model.MyConfirmationState;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import java.time.Instant;

@@ -2,7 +2,7 @@ package com.knot.backend.document.application.dto.query;
 
 import com.knot.backend.document.domain.DocumentErrorCode;
 import com.knot.backend.document.domain.DocumentException;
-import com.knot.backend.document.domain.MyConfirmationState;
+import com.knot.backend.document.domain.model.MyConfirmationState;
 
 public record DocumentListParameters(
         String cursor,

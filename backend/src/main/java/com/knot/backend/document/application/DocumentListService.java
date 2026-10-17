@@ -4,7 +4,7 @@ import com.knot.backend.document.application.dto.query.DocumentListParameters;
 import com.knot.backend.document.application.dto.result.DocumentCardResult;
 import com.knot.backend.document.application.dto.result.DocumentListResult;
 import com.knot.backend.document.application.dto.result.DocumentTopicResult;
-import com.knot.backend.document.domain.DocumentCursor;
+import com.knot.backend.document.domain.model.DocumentCursor;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;

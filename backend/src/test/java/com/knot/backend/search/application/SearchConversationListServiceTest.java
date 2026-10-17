@@ -10,7 +10,7 @@ import static org.mockito.Mockito.when;
 import com.knot.backend.search.application.dto.query.SearchConversationListParameters;
 import com.knot.backend.search.application.dto.result.SearchConversationListItemResult;
 import com.knot.backend.search.application.dto.result.SearchConversationListResult;
-import com.knot.backend.search.domain.SearchConversationCursor;
+import com.knot.backend.search.domain.model.SearchConversationCursor;
 import com.knot.backend.search.domain.SearchException;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;

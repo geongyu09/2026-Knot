@@ -1,8 +1,8 @@
 package com.knot.backend.auth.infrastructure.github;
 
 import com.knot.backend.auth.domain.AuthException;
-import com.knot.backend.auth.domain.OAuthProvider;
-import com.knot.backend.auth.domain.OAuthUser;
+import com.knot.backend.auth.domain.model.OAuthProvider;
+import com.knot.backend.auth.domain.model.OAuthUser;
 import java.util.Map;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;

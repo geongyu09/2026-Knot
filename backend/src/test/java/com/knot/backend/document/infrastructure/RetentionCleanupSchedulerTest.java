@@ -12,8 +12,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.knot.backend.document.application.DocumentRetentionCleanupService;
-import com.knot.backend.document.domain.DocumentRetentionCandidate;
-import com.knot.backend.document.domain.DocumentRetentionRepository;
+import com.knot.backend.document.domain.model.DocumentRetentionCandidate;
+import com.knot.backend.document.domain.repository.DocumentRetentionRepository;
 import com.knot.backend.global.config.RetentionCleanupProperties;
 import com.knot.backend.recording.application.RecordingAudioDeletionWorker;
 import com.knot.backend.recording.application.RecordingAudioRetentionService;

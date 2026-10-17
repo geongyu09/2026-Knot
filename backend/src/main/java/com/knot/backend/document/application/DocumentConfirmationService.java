@@ -4,7 +4,7 @@ import com.knot.backend.document.application.dto.query.DocumentConfirmationParam
 import com.knot.backend.document.application.dto.result.DocumentConfirmationItemResult;
 import com.knot.backend.document.application.dto.result.DocumentConfirmationOverviewResult;
 import com.knot.backend.document.application.dto.result.DocumentConfirmationsResult;
-import com.knot.backend.document.domain.DocumentConfirmationCursor;
+import com.knot.backend.document.domain.model.DocumentConfirmationCursor;
 import com.knot.backend.document.domain.DocumentErrorCode;
 import com.knot.backend.document.domain.DocumentException;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;

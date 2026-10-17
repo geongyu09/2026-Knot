@@ -2,12 +2,12 @@ package com.knot.backend.document.application;
 
 import com.knot.backend.document.application.dto.result.DocumentConfirmationResult;
 import com.knot.backend.document.application.dto.result.DocumentConfirmationSummaryResult;
-import com.knot.backend.document.domain.Document;
-import com.knot.backend.document.domain.DocumentConfirmation;
-import com.knot.backend.document.domain.DocumentConfirmationRepository;
+import com.knot.backend.document.domain.model.Document;
+import com.knot.backend.document.domain.model.DocumentConfirmation;
+import com.knot.backend.document.domain.repository.DocumentConfirmationRepository;
 import com.knot.backend.document.domain.DocumentErrorCode;
 import com.knot.backend.document.domain.DocumentException;
-import com.knot.backend.document.domain.DocumentRepository;
+import com.knot.backend.document.domain.repository.DocumentRepository;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;

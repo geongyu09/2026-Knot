@@ -12,7 +12,7 @@ import com.knot.backend.recording.application.dto.result.RecordingTranscriptionS
 import com.knot.backend.recording.domain.model.TranscriptionStatus;
 import com.knot.backend.document.application.DocumentGenerationProgressService;
 import com.knot.backend.document.application.dto.result.DocumentGenerationSummaryResult;
-import com.knot.backend.document.domain.DocumentGenerationProcessingStatus;
+import com.knot.backend.document.domain.model.DocumentGenerationProcessingStatus;
 import java.util.List;
 import java.util.UUID;
 import com.knot.backend.recording.domain.model.RecordingAudioUploadStatus;

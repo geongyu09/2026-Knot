@@ -1,7 +1,7 @@
 package com.knot.backend.recording.presentation.dto.response;
 
 import com.knot.backend.document.application.dto.result.DocumentGenerationSummaryResult;
-import com.knot.backend.document.domain.DocumentGenerationProcessingStatus;
+import com.knot.backend.document.domain.model.DocumentGenerationProcessingStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 

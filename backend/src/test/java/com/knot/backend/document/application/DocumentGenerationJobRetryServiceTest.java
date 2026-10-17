@@ -13,11 +13,11 @@ import com.knot.backend.document.application.dto.result.DocumentGenerationInputR
 import com.knot.backend.document.application.dto.result.DocumentGenerationJobRetryResult;
 import com.knot.backend.document.domain.DocumentErrorCode;
 import com.knot.backend.document.domain.DocumentException;
-import com.knot.backend.document.domain.DocumentGenerationJob;
-import com.knot.backend.document.domain.DocumentGenerationBatchRepository;
-import com.knot.backend.document.domain.DocumentGenerationBatch;
-import com.knot.backend.document.domain.DocumentGenerationJobRepository;
-import com.knot.backend.document.domain.DocumentGenerationJobStatus;
+import com.knot.backend.document.domain.model.DocumentGenerationJob;
+import com.knot.backend.document.domain.repository.DocumentGenerationBatchRepository;
+import com.knot.backend.document.domain.model.DocumentGenerationBatch;
+import com.knot.backend.document.domain.repository.DocumentGenerationJobRepository;
+import com.knot.backend.document.domain.model.DocumentGenerationJobStatus;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.model.RecordingSession;

@@ -1,13 +1,13 @@
 package com.knot.backend.document.application;
 
-import com.knot.backend.document.domain.DocumentGenerationBatch;
+import com.knot.backend.document.domain.model.DocumentGenerationBatch;
 import com.knot.backend.document.domain.DocumentErrorCode;
 import com.knot.backend.document.domain.DocumentException;
-import com.knot.backend.document.domain.DocumentGenerationBatchRepository;
-import com.knot.backend.document.domain.DocumentGenerationFailureCause;
-import com.knot.backend.document.domain.DocumentGenerationJob;
-import com.knot.backend.document.domain.DocumentGenerationJobRepository;
-import com.knot.backend.document.domain.DocumentGenerationJobStatus;
+import com.knot.backend.document.domain.repository.DocumentGenerationBatchRepository;
+import com.knot.backend.document.domain.model.DocumentGenerationFailureCause;
+import com.knot.backend.document.domain.model.DocumentGenerationJob;
+import com.knot.backend.document.domain.repository.DocumentGenerationJobRepository;
+import com.knot.backend.document.domain.model.DocumentGenerationJobStatus;
 import com.knot.backend.document.domain.DocumentGenerationRetryPolicy;
 import com.knot.backend.global.config.DocumentGenerationWorkerProperties;
 import com.knot.backend.workspace.domain.model.Workspace;

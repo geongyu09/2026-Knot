@@ -33,7 +33,7 @@ public class RecordingAudioDeletionRepositoryAdapter implements RecordingAudioDe
                             AND (u.completedAt <= :before OR EXISTS (
                                 SELECT b.id FROM DocumentGenerationBatch b WHERE b.recordingSessionId = u.recordingId
                                     AND b.processingStatus =
-                                        com.knot.backend.document.domain.DocumentGenerationProcessingStatus.NO_CONTENT))
+                                        com.knot.backend.document.domain.model.DocumentGenerationProcessingStatus.NO_CONTENT))
                         ORDER BY u.completedAt, u.id
                         """,
                 Long.class
@@ -145,7 +145,7 @@ public class RecordingAudioDeletionRepositoryAdapter implements RecordingAudioDe
                 .createQuery(
                         """
                                 SELECT count(b) FROM DocumentGenerationBatch b WHERE b.recordingSessionId = :id
-                                    AND b.processingStatus = com.knot.backend.document.domain.DocumentGenerationProcessingStatus.NO_CONTENT
+                                    AND b.processingStatus = com.knot.backend.document.domain.model.DocumentGenerationProcessingStatus.NO_CONTENT
                                 """,
                         Long.class
                 )
