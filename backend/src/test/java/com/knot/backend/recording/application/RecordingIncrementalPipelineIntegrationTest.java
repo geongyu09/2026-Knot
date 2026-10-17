@@ -23,7 +23,6 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
@@ -79,7 +78,8 @@ class RecordingIncrementalPipelineIntegrationTest {
     @BeforeEach
     void setUp() throws Exception {
         when(clock.instant()).thenReturn(NOW);
-        jdbc.sql("TRUNCATE TABLE members, workspaces RESTART IDENTITY CASCADE").update();
+        jdbc.sql("TRUNCATE TABLE members, workspaces RESTART IDENTITY CASCADE")
+                .update();
         DocumentFixtures fixtures = new DocumentFixtures(jdbc);
         long workspaceId = fixtures.saveWorkspace();
         long memberId = fixtures.saveMember("조각 녹음자");
@@ -96,16 +96,19 @@ class RecordingIncrementalPipelineIntegrationTest {
                 .param(
                         "id",
                         recordingId
-                ).update();
+                )
+                .update();
         jdbc.sql("""
                 INSERT INTO recording_audio_streams(recording_id,next_sequence,total_frame_count,
                     seal_kind,sealed_at,accept_until,tail_unknown)
                 SELECT id,4,3,'NORMAL',ended_at,ended_at+INTERVAL '120 seconds',FALSE
                 FROM recording_sessions WHERE id=:id
-                """).param(
+                """)
+                .param(
                         "id",
                         recordingId
-                ).update();
+                )
+                .update();
         for (int sequence = 1; sequence <= 3; sequence++) {
             reserveChunk(sequence);
         }
@@ -114,12 +117,14 @@ class RecordingIncrementalPipelineIntegrationTest {
             com.knot.backend.recording.domain.model.AudioManifestPart part = invocation.getArgument(0);
             return new ByteArrayInputStream(PCM[part.sequence() - 1]);
         });
-        when(finalStorage.uploadFinal(
-                any(),
-                any(),
-                anyLong(),
-                any()
-        )).thenAnswer(invocation -> {
+        when(
+                finalStorage.uploadFinal(
+                        any(),
+                        any(),
+                        anyLong(),
+                        any()
+                )
+        ).thenAnswer(invocation -> {
             Path file = invocation.getArgument(1);
             byte[] bytes = Files.readAllBytes(file);
             uploaded.set(bytes);
@@ -131,39 +136,48 @@ class RecordingIncrementalPipelineIntegrationTest {
                     "final-v1"
             );
         });
-        when(audioStorage.presignDownload(
-                any(),
-                any(),
-                any(),
-                anyLong()
-        ))
-                .thenReturn("https://example.invalid/immutable.wav?versionId=final-v1");
-        when(ai.submit(
-                any(),
-                any(),
-                any()
-        )).thenAnswer(invocation -> new AiTranscriptionJob(
-                invocation.getArgument(0),
-                AiTranscriptionJob.Status.PROCESSING,
-                null,
-                null
-        ));
-        when(ai.get(any())).thenAnswer(invocation -> new AiTranscriptionJob(
-                invocation.getArgument(0),
-                AiTranscriptionJob.Status.SUCCEEDED,
-                null,
-                new AiTranscript(
-                        1,
-                        "{\"transcription\":[{\"text\":\"녹음 조각 연결 검증\"}]}",
-                        List.of(new AiTranscript.Utterance(
-                                0,
-                                "speaker-A",
-                                0,
-                                1,
-                                "녹음 조각 연결 검증"
-                        ))
+        when(
+                audioStorage.presignDownload(
+                        any(),
+                        any(),
+                        any(),
+                        anyLong()
                 )
-        ));
+        ).thenReturn("https://example.invalid/immutable.wav?versionId=final-v1");
+        when(
+                ai.submit(
+                        any(),
+                        any(),
+                        any()
+                )
+        ).thenAnswer(
+                invocation -> new AiTranscriptionJob(
+                        invocation.getArgument(0),
+                        AiTranscriptionJob.Status.PROCESSING,
+                        null,
+                        null
+                )
+        );
+        when(ai.get(any())).thenAnswer(
+                invocation -> new AiTranscriptionJob(
+                        invocation.getArgument(0),
+                        AiTranscriptionJob.Status.SUCCEEDED,
+                        null,
+                        new AiTranscript(
+                                1,
+                                "{\"transcription\":[{\"text\":\"녹음 조각 연결 검증\"}]}",
+                                List.of(
+                                        new AiTranscript.Utterance(
+                                                0,
+                                                "speaker-A",
+                                                0,
+                                                1,
+                                                "녹음 조각 연결 검증"
+                                        )
+                                )
+                        )
+                )
+        );
         finalizer = new RecordingAudioFinalizationWorker(
                 transaction,
                 jobs,
@@ -190,7 +204,8 @@ class RecordingIncrementalPipelineIntegrationTest {
         // given
         configureObjects(missingMiddle);
         transaction.register(recordingId);
-        AudioFinalizationClaim claim = transaction.claim(recordingId).orElseThrow();
+        AudioFinalizationClaim claim = transaction.claim(recordingId)
+                .orElseThrow();
 
         // when
         finalizer.process(claim);
@@ -203,25 +218,42 @@ class RecordingIncrementalPipelineIntegrationTest {
             expected[2] = 0;
             expected[3] = 0;
         }
-        assertThat(Arrays.copyOfRange(
-                uploaded.get(),
-                44,
-                50
-        )).containsExactly(expected);
+        assertThat(
+                Arrays.copyOfRange(
+                        uploaded.get(),
+                        44,
+                        50
+                )
+        ).containsExactly(expected);
         assertThat(count("recording_audio_uploads")).isEqualTo(1);
         assertThat(count("recording_transcriptions")).isEqualTo(1);
         assertThat(count("transcripts")).isEqualTo(1);
         assertThat(count("document_generation_batches")).isEqualTo(1);
         assertThat(count("document_generation_jobs")).isEqualTo(1);
-        assertThat(jobs.findByRecordingId(recordingId).orElseThrow().getStatus().name()).isEqualTo("READY");
-        assertThat(query.sourceQuality(recordingId).quality()).isEqualTo(expectedQuality(missingMiddle));
-        assertThat(query.sourceQuality(recordingId).missingRanges()).hasSize(expectedMissingCount(missingMiddle));
+        assertThat(
+                jobs.findByRecordingId(recordingId)
+                        .orElseThrow()
+                        .getStatus()
+                        .name()
+        ).isEqualTo("READY");
+        assertThat(
+                query.sourceQuality(recordingId)
+                        .quality()
+        ).isEqualTo(expectedQuality(missingMiddle));
+        assertThat(
+                query.sourceQuality(recordingId)
+                        .missingRanges()
+        ).hasSize(expectedMissingCount(missingMiddle));
         jdbc.sql("UPDATE recording_audio_finalizations SET status='DISCARDED' WHERE recording_id=:id")
                 .param(
                         "id",
                         recordingId
-                ).update();
-        assertThat(query.sourceQuality(recordingId).quality()).isEqualTo(expectedQuality(missingMiddle));
+                )
+                .update();
+        assertThat(
+                query.sourceQuality(recordingId)
+                        .quality()
+        ).isEqualTo(expectedQuality(missingMiddle));
         try (java.util.stream.Stream<Path> files = Files.list(temporaryDirectory)) {
             assertThat(files.toList()).isEmpty();
         }
@@ -244,13 +276,15 @@ class RecordingIncrementalPipelineIntegrationTest {
             when(chunks.findStoredObject(key(sequence))).thenReturn(StoredAudioChunk.missing());
             return;
         }
-        when(chunks.findStoredObject(key(sequence))).thenReturn(new StoredAudioChunk(
-                true,
-                2,
-                "application/octet-stream",
-                checksum(PCM[sequence - 1]),
-                "version-" + sequence
-        ));
+        when(chunks.findStoredObject(key(sequence))).thenReturn(
+                new StoredAudioChunk(
+                        true,
+                        2,
+                        "application/octet-stream",
+                        checksum(PCM[sequence - 1]),
+                        "version-" + sequence
+                )
+        );
     }
 
     private void reserveChunk(int sequence) throws Exception {
@@ -258,27 +292,32 @@ class RecordingIncrementalPipelineIntegrationTest {
                 INSERT INTO recording_audio_chunks(recording_id,sequence,sample_offset,frame_count,
                     byte_length,checksum_sha256,storage_key,status,upload_url_expires_at)
                 VALUES (:id,:seq,:offset,1,2,:checksum,:key,'RESERVED',:expiry)
-                """).param(
+                """)
+                .param(
                         "id",
                         recordingId
-                ).param(
+                )
+                .param(
                         "seq",
                         sequence
-                ).param(
+                )
+                .param(
                         "offset",
                         sequence - 1
                 )
                 .param(
                         "checksum",
                         checksum(PCM[sequence - 1])
-                ).param(
+                )
+                .param(
                         "key",
                         key(sequence)
                 )
                 .param(
                         "expiry",
                         java.sql.Timestamp.from(NOW.minusSeconds(1))
-                ).update();
+                )
+                .update();
     }
 
     private String key(int sequence) {
@@ -286,7 +325,11 @@ class RecordingIncrementalPipelineIntegrationTest {
     }
 
     private String checksum(byte[] bytes) throws Exception {
-        return Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(bytes));
+        return Base64.getEncoder()
+                .encodeToString(
+                        MessageDigest.getInstance("SHA-256")
+                                .digest(bytes)
+                );
     }
 
     private String expectedQuality(boolean missing) {
@@ -307,16 +350,22 @@ class RecordingIncrementalPipelineIntegrationTest {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         while (System.nanoTime() < deadline) {
             if (jdbc.sql("SELECT count(*) FROM recording_transcriptions WHERE status='SUCCEEDED'")
-                    .query(Long.class).single() == 1) {
+                    .query(Long.class)
+                    .single() == 1) {
                 return;
             }
             Thread.sleep(10);
         }
-        assertThat(jdbc.sql("SELECT status FROM recording_transcriptions").query(String.class).single())
-                .isEqualTo("SUCCEEDED");
+        assertThat(
+                jdbc.sql("SELECT status FROM recording_transcriptions")
+                        .query(String.class)
+                        .single()
+        ).isEqualTo("SUCCEEDED");
     }
 
     private long count(String table) {
-        return jdbc.sql("SELECT count(*) FROM " + table).query(Long.class).single();
+        return jdbc.sql("SELECT count(*) FROM " + table)
+                .query(Long.class)
+                .single();
     }
 }

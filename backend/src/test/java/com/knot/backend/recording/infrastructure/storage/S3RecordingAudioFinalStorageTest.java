@@ -243,8 +243,11 @@ class S3RecordingAudioFinalStorageTest {
                 CHECKSUM,
                 "v1"
         );
-        when(client.getObject(any(GetObjectRequest.class)))
-                .thenThrow(S3Exception.builder().statusCode(403).build());
+        when(client.getObject(any(GetObjectRequest.class))).thenThrow(
+                S3Exception.builder()
+                        .statusCode(403)
+                        .build()
+        );
 
         // when
         Throwable failure = catchThrowable(() -> storage.openChunk(part));
