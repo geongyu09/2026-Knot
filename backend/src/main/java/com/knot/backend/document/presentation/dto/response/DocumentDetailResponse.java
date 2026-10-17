@@ -23,7 +23,7 @@ public record DocumentDetailResponse(
         @Schema(description = "문서를 만든 Transcript ID", requiredMode = REQUIRED) long sourceTranscriptId,
         @Schema(description = "PENDING=대상 미확인, CONFIRMED=확인 완료, NOT_REQUIRED=비대상", requiredMode = REQUIRED) MyConfirmationState myConfirmationState,
         @Schema(description = "확인 대상 집계", requiredMode = REQUIRED) DocumentConfirmationSummaryResponse confirmationSummary,
-        @Schema(description = "원본 오디오 품질과 누락 범위. 기존 녹음이면 null", nullable = true) RecordingSourceAudioResponse sourceAudio
+        @Schema(description = "원본 오디오 품질·누락. 기존 녹음은 null", nullable = true) RecordingSourceAudioResponse sourceAudio
 ) {
     public static DocumentDetailResponse from(DocumentDetailResult result) {
         return new DocumentDetailResponse(
