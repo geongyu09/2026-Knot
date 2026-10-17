@@ -11,7 +11,10 @@ public record RecordingStartCommand(
 ) {
 
     public RecordingStartCommand {
-        audioMode = audioMode == null ? RecordingAudioMode.FINAL_WEBM_V1 : audioMode;
+        audioMode = java.util.Objects.requireNonNullElse(
+                audioMode,
+                RecordingAudioMode.FINAL_WEBM_V1
+        );
     }
 
     public RecordingStartCommand(

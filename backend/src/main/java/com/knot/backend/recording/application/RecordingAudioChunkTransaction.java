@@ -61,32 +61,11 @@ public class RecordingAudioChunkTransaction {
                         .sequence()
         );
         if (existing.isPresent()) {
-            RecordingAudioChunk chunk = existing.orElseThrow();
-            if (!isVerified(chunk)) {
-                validateWritable(controlled);
-            }
-            validateDescriptor(
+            return reserveExisting(
                     controlled,
-                    chunk,
-                    command
-            );
-            if (isVerified(chunk)) {
-                return reservation(
-                        chunk,
-                        false,
-                        completedReservation(
-                                chunk,
-                                false
-                        )
-                );
-            }
-            validateWritable(controlled);
-            chunk.extendUploadUrlExpiry(expiresAt);
-            chunks.save(chunk);
-            return reservation(
-                    chunk,
-                    false,
-                    null
+                    existing.orElseThrow(),
+                    command,
+                    expiresAt
             );
         }
         validateWritable(controlled);
@@ -104,6 +83,42 @@ public class RecordingAudioChunkTransaction {
         return reservation(
                 chunk,
                 true,
+                null
+        );
+    }
+
+    private RecordingAudioChunkReservation reserveExisting(
+            ControlledAudio controlled,
+            RecordingAudioChunk chunk,
+            RecordingAudioChunkCommand command,
+            Instant expiresAt
+    ) {
+        if (isVerified(chunk)) {
+            validateDescriptor(
+                    controlled,
+                    chunk,
+                    command
+            );
+            return reservation(
+                    chunk,
+                    false,
+                    completedReservation(
+                            chunk,
+                            false
+                    )
+            );
+        }
+        validateWritable(controlled);
+        validateDescriptor(
+                controlled,
+                chunk,
+                command
+        );
+        chunk.extendUploadUrlExpiry(expiresAt);
+        chunks.save(chunk);
+        return reservation(
+                chunk,
+                false,
                 null
         );
     }
@@ -370,9 +385,7 @@ public class RecordingAudioChunkTransaction {
             List<RecordingAudioChunk> all
     ) {
         Progress progress = progress(all);
-        String status = session.getStatus() == RecordingStatus.DISCARDED
-                ? "DISCARDED"
-                : session.isActive() ? "CAPTURING" : "DRAINING";
+        String status = audioSaveStatus(session);
         return new RecordingAudioSaveResult(
                 status,
                 progress.sequence(),
@@ -394,6 +407,16 @@ public class RecordingAudioChunkTransaction {
                 null,
                 null
         );
+    }
+
+    private String audioSaveStatus(RecordingSession session) {
+        if (session.getStatus() == RecordingStatus.DISCARDED) {
+            return "DISCARDED";
+        }
+        if (session.isActive()) {
+            return "CAPTURING";
+        }
+        return "DRAINING";
     }
 
     private Progress progress(List<RecordingAudioChunk> all) {
@@ -432,14 +455,14 @@ public class RecordingAudioChunkTransaction {
                                 end
                         )
                 );
-            } else {
-                ranges.add(
-                        new AudioFrameRange(
-                                start,
-                                end
-                        )
-                );
+                continue;
             }
+            ranges.add(
+                    new AudioFrameRange(
+                            start,
+                            end
+                    )
+            );
         }
         return List.copyOf(ranges);
     }
