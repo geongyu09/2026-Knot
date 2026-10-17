@@ -1,0 +1,14 @@
+package com.knot.backend.workspace.domain.repository;
+
+import com.knot.backend.workspace.domain.model.WorkspaceInvitation;
+
+import java.util.Optional;
+
+public interface WorkspaceInvitationRepository {
+
+    WorkspaceInvitation save(WorkspaceInvitation workspaceInvitation);
+
+    Optional<WorkspaceInvitation> findByLinkTokenHash(String linkTokenHash);
+
+    Optional<WorkspaceInvitation> findByInviteCodeHash(String inviteCodeHash);
+}

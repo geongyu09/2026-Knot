@@ -2,9 +2,9 @@ package com.knot.backend.document.application;
 
 import com.knot.backend.document.application.dto.result.DocumentGenerationProgressResult;
 import com.knot.backend.document.application.dto.result.DocumentGenerationSummaryResult;
-import com.knot.backend.document.domain.DocumentGenerationBatchRepository;
-import com.knot.backend.document.domain.DocumentGenerationJobRepository;
-import com.knot.backend.document.domain.DocumentGenerationJob;
+import com.knot.backend.document.domain.repository.DocumentGenerationBatchRepository;
+import com.knot.backend.document.domain.repository.DocumentGenerationJobRepository;
+import com.knot.backend.document.domain.model.DocumentGenerationJob;
 import java.time.Instant;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;

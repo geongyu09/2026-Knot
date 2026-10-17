@@ -6,7 +6,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
 import com.knot.backend.recording.domain.RecordingException;
 import java.time.Duration;
 import java.util.List;
@@ -27,20 +26,20 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 class S3RecordingAudioDeletionTest {
 
-    private S3Client client;
+    private S3Client s3Client;
     private S3RecordingAudioStorage storage;
 
     @BeforeEach
     void setUp() {
-        client = mock(S3Client.class);
+        s3Client = mock(S3Client.class);
         storage = new S3RecordingAudioStorage(
                 mock(S3Presigner.class),
-                client,
+                s3Client,
                 "bucket",
                 "prefix/",
                 Duration.ofMinutes(15)
         );
-        when(client.getBucketVersioning(any(GetBucketVersioningRequest.class))).thenReturn(
+        when(s3Client.getBucketVersioning(any(GetBucketVersioningRequest.class))).thenReturn(
                 GetBucketVersioningResponse.builder()
                         .build()
         );
@@ -51,7 +50,7 @@ class S3RecordingAudioDeletionTest {
     void deleteStoredObject_unversionedDeletesExactKey() {
         storage.deleteStoredObject("key");
 
-        verify(client).deleteObject(
+        verify(s3Client).deleteObject(
                 DeleteObjectRequest.builder()
                         .bucket("bucket")
                         .key("prefix/key")
@@ -62,7 +61,7 @@ class S3RecordingAudioDeletionTest {
     @Test
     @DisplayName("이미 없는 파일의 반복 삭제는 성공으로 처리한다")
     void deleteStoredObject_missingFileIsIdempotent() {
-        when(client.deleteObject(any(DeleteObjectRequest.class))).thenThrow(
+        when(s3Client.deleteObject(any(DeleteObjectRequest.class))).thenThrow(
                 S3Exception.builder()
                         .statusCode(404)
                         .build()
@@ -74,12 +73,12 @@ class S3RecordingAudioDeletionTest {
     @Test
     @DisplayName("버전 활성 또는 중단 버킷에서는 대상 key의 모든 버전과 마커를 삭제한다")
     void deleteStoredObject_versionedRemovesOnlyExactKey() {
-        when(client.getBucketVersioning(any(GetBucketVersioningRequest.class))).thenReturn(
+        when(s3Client.getBucketVersioning(any(GetBucketVersioningRequest.class))).thenReturn(
                 GetBucketVersioningResponse.builder()
                         .status(BucketVersioningStatus.SUSPENDED)
                         .build()
         );
-        when(client.listObjectVersions(any(ListObjectVersionsRequest.class))).thenReturn(
+        when(s3Client.listObjectVersions(any(ListObjectVersionsRequest.class))).thenReturn(
                 ListObjectVersionsResponse.builder()
                         .versions(
                                 List.of(
@@ -105,14 +104,14 @@ class S3RecordingAudioDeletionTest {
 
         storage.deleteStoredObject("key");
 
-        verify(client).deleteObject(
+        verify(s3Client).deleteObject(
                 DeleteObjectRequest.builder()
                         .bucket("bucket")
                         .key("prefix/key")
                         .versionId("v1")
                         .build()
         );
-        verify(client).deleteObject(
+        verify(s3Client).deleteObject(
                 DeleteObjectRequest.builder()
                         .bucket("bucket")
                         .key("prefix/key")
@@ -120,7 +119,7 @@ class S3RecordingAudioDeletionTest {
                         .build()
         );
         verify(
-                client,
+                s3Client,
                 never()
         ).deleteObject(
                 DeleteObjectRequest.builder()
@@ -134,12 +133,12 @@ class S3RecordingAudioDeletionTest {
     @Test
     @DisplayName("버전 목록의 다음 페이지도 처리한다")
     void deleteStoredObject_paginationDeletesAllVersions() {
-        when(client.getBucketVersioning(any(GetBucketVersioningRequest.class))).thenReturn(
+        when(s3Client.getBucketVersioning(any(GetBucketVersioningRequest.class))).thenReturn(
                 GetBucketVersioningResponse.builder()
                         .status(BucketVersioningStatus.ENABLED)
                         .build()
         );
-        when(client.listObjectVersions(any(ListObjectVersionsRequest.class))).thenReturn(
+        when(s3Client.listObjectVersions(any(ListObjectVersionsRequest.class))).thenReturn(
                 ListObjectVersionsResponse.builder()
                         .versions(
                                 ObjectVersion.builder()
@@ -164,7 +163,7 @@ class S3RecordingAudioDeletionTest {
 
         storage.deleteStoredObject("key");
 
-        verify(client).listObjectVersions(
+        verify(s3Client).listObjectVersions(
                 ListObjectVersionsRequest.builder()
                         .bucket("bucket")
                         .prefix("prefix/key")
@@ -172,7 +171,7 @@ class S3RecordingAudioDeletionTest {
                         .versionIdMarker("v1")
                         .build()
         );
-        verify(client).deleteObject(
+        verify(s3Client).deleteObject(
                 DeleteObjectRequest.builder()
                         .bucket("bucket")
                         .key("prefix/key")
@@ -184,7 +183,7 @@ class S3RecordingAudioDeletionTest {
     @Test
     @DisplayName("권한 및 버전 조회 오류는 삭제 성공으로 기록하지 않는다")
     void deleteStoredObject_storageFailureThrowsTypedError() {
-        when(client.getBucketVersioning(any(GetBucketVersioningRequest.class))).thenThrow(
+        when(s3Client.getBucketVersioning(any(GetBucketVersioningRequest.class))).thenThrow(
                 S3Exception.builder()
                         .statusCode(403)
                         .build()
@@ -193,7 +192,7 @@ class S3RecordingAudioDeletionTest {
         assertThatThrownBy(() -> storage.deleteStoredObject("key")).isInstanceOf(RecordingException.class)
                 .hasCauseInstanceOf(S3Exception.class);
         verify(
-                client,
+                s3Client,
                 never()
         ).deleteObject(any(DeleteObjectRequest.class));
     }
@@ -201,12 +200,12 @@ class S3RecordingAudioDeletionTest {
     @Test
     @DisplayName("버전 ID를 알 수 없으면 일반 삭제로 대체하지 않고 재처리한다")
     void deleteStoredObject_failureMissingVersionId() {
-        when(client.getBucketVersioning(any(GetBucketVersioningRequest.class))).thenReturn(
+        when(s3Client.getBucketVersioning(any(GetBucketVersioningRequest.class))).thenReturn(
                 GetBucketVersioningResponse.builder()
                         .status(BucketVersioningStatus.ENABLED)
                         .build()
         );
-        when(client.listObjectVersions(any(ListObjectVersionsRequest.class))).thenReturn(
+        when(s3Client.listObjectVersions(any(ListObjectVersionsRequest.class))).thenReturn(
                 ListObjectVersionsResponse.builder()
                         .versions(
                                 ObjectVersion.builder()
@@ -219,7 +218,7 @@ class S3RecordingAudioDeletionTest {
 
         assertThatThrownBy(() -> storage.deleteStoredObject("key")).isInstanceOf(RecordingException.class);
         verify(
-                client,
+                s3Client,
                 never()
         ).deleteObject(any(DeleteObjectRequest.class));
     }

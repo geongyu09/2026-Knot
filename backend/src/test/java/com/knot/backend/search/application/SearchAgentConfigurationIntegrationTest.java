@@ -36,8 +36,9 @@ class SearchAgentConfigurationIntegrationTest {
     @DisplayName("JPA와 실제 탐색 adapter 및 worker를 순환 의존 없이 함께 활성화한다")
     void startup_success_enabledAdaptersAndWorker() {
         assertThatNoException().isThrownBy(availability::requireAvailable);
-        assertThat(retriever).isInstanceOf(com.knot.backend.search.infrastructure.SearchMcpDocumentRetriever.class);
-        assertThat(generator).isInstanceOf(com.knot.backend.search.infrastructure.SearchStreamingAnswerGenerator.class);
+        assertThat(retriever).isInstanceOf(com.knot.backend.search.infrastructure.llm.SearchMcpDocumentRetriever.class);
+        assertThat(generator)
+                .isInstanceOf(com.knot.backend.search.infrastructure.llm.SearchStreamingAnswerGenerator.class);
         assertThat(tools.definitions()).hasSize(3);
     }
 }

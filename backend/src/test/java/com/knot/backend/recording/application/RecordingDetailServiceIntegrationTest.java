@@ -8,10 +8,10 @@ import com.knot.backend.recording.application.dto.command.RecordingControlComman
 import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.recording.application.dto.result.RecordingDetailResult;
 import com.knot.backend.recording.application.dto.result.RecordingHeartbeatResult;
-import com.knot.backend.recording.domain.RecordingAudioUploadStatus;
-import com.knot.backend.recording.domain.RecordingEndReason;
+import com.knot.backend.recording.domain.model.RecordingAudioUploadStatus;
+import com.knot.backend.recording.domain.model.RecordingEndReason;
 import com.knot.backend.recording.domain.RecordingErrorCode;
-import com.knot.backend.recording.domain.RecordingStatus;
+import com.knot.backend.recording.domain.model.RecordingStatus;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import com.knot.backend.workspace.application.WorkspaceLeaveService;

@@ -1,0 +1,43 @@
+package com.knot.backend.workspace.infrastructure.persistence;
+
+import com.knot.backend.workspace.domain.model.Workspace;
+import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
+import java.util.List;
+import java.util.Optional;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public class WorkspaceRepositoryAdapter implements WorkspaceRepository {
+
+    private final WorkspaceJpaRepository workspaceJpaRepository;
+
+    public WorkspaceRepositoryAdapter(WorkspaceJpaRepository workspaceJpaRepository) {
+        this.workspaceJpaRepository = workspaceJpaRepository;
+    }
+
+    @Override
+    public Workspace save(Workspace workspace) {
+        return workspaceJpaRepository.save(workspace);
+    }
+
+    @Override
+    public Optional<Workspace> findById(Long workspaceId) {
+        return workspaceJpaRepository.findByIdAndDeletedAtIsNull(workspaceId);
+    }
+
+    @Override
+    public Optional<Workspace> findByIdForUpdate(Long workspaceId) {
+        return workspaceJpaRepository.findWithLockByIdAndDeletedAtIsNull(workspaceId);
+    }
+
+    @Override
+    public Optional<Workspace> findIncludingDeletedByIdForUpdate(Long workspaceId) {
+        workspaceJpaRepository.limitExecutionLockWait();
+        return workspaceJpaRepository.findIncludingDeletedWithLockById(workspaceId);
+    }
+
+    @Override
+    public List<Workspace> findAllByMemberId(Long memberId) {
+        return workspaceJpaRepository.findAllByMemberId(memberId);
+    }
+}

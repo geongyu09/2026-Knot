@@ -3,12 +3,12 @@ package com.knot.backend.workspace.application;
 import com.knot.backend.workspace.application.dto.result.WorkspaceCreateResult;
 import com.knot.backend.workspace.application.dto.result.WorkspaceDetailResult;
 import com.knot.backend.workspace.application.dto.result.WorkspaceListResult;
-import com.knot.backend.workspace.domain.Workspace;
+import com.knot.backend.workspace.domain.model.Workspace;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
-import com.knot.backend.workspace.domain.WorkspaceMember;
-import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
-import com.knot.backend.workspace.domain.WorkspaceRepository;
+import com.knot.backend.workspace.domain.model.WorkspaceMember;
+import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -80,15 +80,15 @@ public class WorkspaceService {
             Long workspaceId
     ) {
         List<WorkspaceMember> workspaceMembers = workspaceMemberRepository.findAllByMemberIdForUpdate(memberId);
-        WorkspaceMember target = findMembership(
+        WorkspaceMember targetMembership = findTargetMembership(
                 workspaceMembers,
                 workspaceId
         );
         workspaceMembers.forEach(WorkspaceMember::clearLastViewed);
         workspaceMemberRepository.saveAll(workspaceMembers);
         workspaceMemberRepository.flush();
-        target.markLastViewed();
-        workspaceMemberRepository.save(target);
+        targetMembership.markLastViewed();
+        workspaceMemberRepository.save(targetMembership);
     }
 
     private boolean containsWorkspace(
@@ -102,7 +102,7 @@ public class WorkspaceService {
                 );
     }
 
-    private WorkspaceMember findMembership(
+    private WorkspaceMember findTargetMembership(
             List<WorkspaceMember> workspaceMembers,
             Long workspaceId
     ) {

@@ -3,8 +3,8 @@ package com.knot.backend.recording.application;
 import com.knot.backend.recording.application.dto.command.RecordingAudioUploadUrlCommand;
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadUrlResult;
-import com.knot.backend.recording.domain.RecordingAudioUpload;
-import com.knot.backend.recording.domain.RecordingAudioUploadRepository;
+import com.knot.backend.recording.domain.model.RecordingAudioUpload;
+import com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
@@ -20,7 +20,7 @@ public class RecordingAudioUploadUrlService {
 
     private final RecordingAccess recordingAccess;
     private final RecordingAudioUploadRepository recordingAudioUploadRepository;
-    private final RecordingAudioStorage audioStorage;
+    private final RecordingAudioStorage recordingAudioStorage;
     private final Clock clock;
 
     @Transactional
@@ -52,7 +52,7 @@ public class RecordingAudioUploadUrlService {
                         )
                 )
         );
-        PresignedAudioUpload presigned = audioStorage.presignUpload(
+        PresignedAudioUpload presigned = recordingAudioStorage.presignUpload(
                 upload.getStorageKey(),
                 upload.getContentType(),
                 upload.getContentLength()

@@ -2,7 +2,7 @@ package com.knot.backend.document.application;
 
 import com.knot.backend.document.application.dto.result.DocumentConfirmationItemResult;
 import com.knot.backend.document.application.dto.result.DocumentConfirmationOverviewResult;
-import com.knot.backend.document.domain.DocumentConfirmationCursor;
+import com.knot.backend.document.domain.model.DocumentConfirmationCursor;
 import java.util.List;
 import java.util.Optional;
 

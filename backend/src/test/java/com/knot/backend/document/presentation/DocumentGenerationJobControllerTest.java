@@ -9,13 +9,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.document.application.DocumentGenerationJobListService;
 import com.knot.backend.document.application.DocumentGenerationJobRetryService;
 import com.knot.backend.document.application.dto.result.DocumentGenerationJobRetryResult;
 import com.knot.backend.document.domain.DocumentErrorCode;
 import com.knot.backend.document.domain.DocumentException;
-import com.knot.backend.document.domain.DocumentGenerationJobStatus;
+import com.knot.backend.document.domain.model.DocumentGenerationJobStatus;
 import com.knot.backend.document.application.dto.query.DocumentGenerationJobListParameters;
 import com.knot.backend.document.application.dto.result.DocumentGenerationJobListResult;
 import com.knot.backend.global.exception.GlobalExceptionHandler;

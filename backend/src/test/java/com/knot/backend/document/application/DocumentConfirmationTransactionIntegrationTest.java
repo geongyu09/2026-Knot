@@ -10,8 +10,8 @@ import static org.mockito.Mockito.when;
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.document.application.dto.result.DocumentConfirmationResult;
 import com.knot.backend.document.application.dto.result.DocumentConfirmationSummaryResult;
-import com.knot.backend.document.domain.DocumentStatus;
-import com.knot.backend.document.infrastructure.DocumentConfirmationQueryAdapter;
+import com.knot.backend.document.domain.model.DocumentStatus;
+import com.knot.backend.document.infrastructure.persistence.DocumentConfirmationQueryAdapter;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import com.knot.backend.workspace.application.WorkspaceLeaveService;
@@ -617,7 +617,7 @@ class DocumentConfirmationTransactionIntegrationTest {
             long successorId
     ) {
         if (ownershipTransfer) {
-            leave.transferOwnership(
+            leave.transferOwnershipAndLeave(
                     memberId,
                     workspaceId,
                     successorId

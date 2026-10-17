@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.knot.backend.auth.domain.AuthErrorCode;
 import com.knot.backend.auth.domain.AuthException;
-import com.knot.backend.auth.domain.OAuthProvider;
-import com.knot.backend.auth.domain.OAuthUser;
+import com.knot.backend.auth.domain.model.OAuthProvider;
+import com.knot.backend.auth.domain.model.OAuthUser;
 import com.knot.backend.member.domain.MemberException;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;

@@ -1,6 +1,6 @@
 package com.knot.backend.document.infrastructure.llm;
 
-import com.knot.backend.document.domain.DocumentTopic;
+import com.knot.backend.document.domain.model.DocumentTopic;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;

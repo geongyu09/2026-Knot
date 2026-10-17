@@ -1,13 +1,13 @@
 package com.knot.backend.document.presentation;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.document.application.DocumentConfirmationService;
 import com.knot.backend.document.application.DocumentConfirmationCommandService;
 import com.knot.backend.document.application.DocumentDetailService;
 import com.knot.backend.document.application.DocumentListService;
 import com.knot.backend.document.application.DocumentTranscriptService;
 import com.knot.backend.document.application.dto.query.DocumentListParameters;
-import com.knot.backend.document.domain.MyConfirmationState;
+import com.knot.backend.document.domain.model.MyConfirmationState;
 import com.knot.backend.document.application.dto.query.DocumentConfirmationParameters;
 import com.knot.backend.document.presentation.dto.response.DocumentConfirmationsResponse;
 import com.knot.backend.document.presentation.dto.response.DocumentConfirmationResponse;

@@ -2,9 +2,9 @@ package com.knot.backend.recording.application;
 
 import com.knot.backend.global.config.RetentionCleanupProperties;
 import com.knot.backend.recording.application.dto.result.RecordingAudioDeletionExecution;
-import com.knot.backend.recording.domain.RecordingAudioDeletionRepository;
-import com.knot.backend.recording.domain.RecordingAudioDeletionTask;
-import com.knot.backend.recording.domain.RecordingAudioUpload;
+import com.knot.backend.recording.domain.repository.RecordingAudioDeletionRepository;
+import com.knot.backend.recording.domain.model.RecordingAudioDeletionTask;
+import com.knot.backend.recording.domain.model.RecordingAudioUpload;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -17,8 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class RecordingAudioDeletionStateService {
-    private final RecordingAudioDeletionRepository deletions;
-    private final RetentionCleanupProperties properties;
+    private final RecordingAudioDeletionRepository recordingAudioDeletionRepository;
+    private final RetentionCleanupProperties retentionCleanupProperties;
     private final Clock clock;
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -28,19 +28,19 @@ public class RecordingAudioDeletionStateService {
             return Optional.empty();
         }
         Instant now = now();
-        RecordingAudioDeletionTask stored = task.orElseThrow();
-        if (!stored.isReadyAt(now)) {
+        RecordingAudioDeletionTask deletionTask = task.orElseThrow();
+        if (!deletionTask.isReadyAt(now)) {
             return Optional.empty();
         }
-        stored.claim(
+        deletionTask.claim(
                 now,
-                now.plus(properties.getExecutionLease())
+                now.plus(retentionCleanupProperties.getExecutionLease())
         );
         return Optional.of(
                 new RecordingAudioDeletionExecution(
                         taskId,
-                        stored.getAttemptCount(),
-                        stored.getStorageKey()
+                        deletionTask.getAttemptCount(),
+                        deletionTask.getStorageKey()
                 )
         );
     }
@@ -54,14 +54,14 @@ public class RecordingAudioDeletionStateService {
         if (task.isEmpty()) {
             return;
         }
-        RecordingAudioDeletionTask stored = task.orElseThrow();
+        RecordingAudioDeletionTask deletionTask = task.orElseThrow();
         Instant now = now();
-        stored.recordSuccess(
+        deletionTask.recordSuccess(
                 attempt,
                 now
         );
-        if (stored.isSucceeded()) {
-            deletions.findUploadForUpdate(stored.getUploadId())
+        if (deletionTask.isSucceeded()) {
+            recordingAudioDeletionRepository.findUploadForUpdate(deletionTask.getUploadId())
                     .orElseThrow()
                     .recordDeleted(now);
         }
@@ -73,7 +73,7 @@ public class RecordingAudioDeletionStateService {
             int attempt
     ) {
         lockUploadAndTask(taskId).ifPresent(
-                stored -> stored.recordStorageFailure(
+                deletionTask -> deletionTask.recordStorageFailure(
                         attempt,
                         now()
                 )
@@ -81,18 +81,18 @@ public class RecordingAudioDeletionStateService {
     }
 
     private Optional<RecordingAudioDeletionTask> lockUploadAndTask(long taskId) {
-        Optional<RecordingAudioDeletionTask> task = deletions.findTask(taskId);
+        Optional<RecordingAudioDeletionTask> task = recordingAudioDeletionRepository.findTask(taskId);
         if (task.isEmpty()) {
             return Optional.empty();
         }
-        Optional<RecordingAudioUpload> upload = deletions.findUploadForUpdate(
+        Optional<RecordingAudioUpload> upload = recordingAudioDeletionRepository.findUploadForUpdate(
                 task.orElseThrow()
                         .getUploadId()
         );
         if (upload.isEmpty()) {
             return Optional.empty();
         }
-        return deletions.findTaskForUpdate(taskId);
+        return recordingAudioDeletionRepository.findTaskForUpdate(taskId);
     }
 
     private Instant now() {

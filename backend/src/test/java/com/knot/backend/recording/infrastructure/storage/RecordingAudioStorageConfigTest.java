@@ -2,7 +2,6 @@ package com.knot.backend.recording.infrastructure.storage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
-
 import com.knot.backend.recording.application.RecordingAudioStorage;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
@@ -16,11 +15,12 @@ class RecordingAudioStorageConfigTest {
     @DisplayName("저장소 설정이 비어 있으면 서버는 뜨고 업로드 URL 요청만 저장소 사용 불가로 거절한다")
     void recordingAudioStorage_success_unconfiguredRejectsUpload() {
         // given
-        RecordingAudioStorage storage = new RecordingAudioStorageConfig().recordingAudioStorage(properties(""));
+        RecordingAudioStorage recordingAudioStorage = new RecordingAudioStorageConfig()
+                .recordingAudioStorage(properties(""));
 
         // when
         Throwable failure = catchThrowable(
-                () -> storage.presignUpload(
+                () -> recordingAudioStorage.presignUpload(
                         "recordings/1/key",
                         "audio/webm",
                         10L
@@ -28,7 +28,7 @@ class RecordingAudioStorageConfigTest {
         );
 
         // then
-        assertThat(storage).isInstanceOf(UnconfiguredRecordingAudioStorage.class);
+        assertThat(recordingAudioStorage).isInstanceOf(UnconfiguredRecordingAudioStorage.class);
         assertThat(failure).isInstanceOf(RecordingException.class)
                 .extracting("errorCode")
                 .isEqualTo(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
@@ -41,10 +41,11 @@ class RecordingAudioStorageConfigTest {
         RecordingAudioStorageProperties properties = properties("knot-audio");
 
         // when
-        RecordingAudioStorage storage = new RecordingAudioStorageConfig().recordingAudioStorage(properties);
+        RecordingAudioStorage recordingAudioStorage = new RecordingAudioStorageConfig()
+                .recordingAudioStorage(properties);
 
         // then
-        assertThat(storage).isInstanceOf(S3RecordingAudioStorage.class);
+        assertThat(recordingAudioStorage).isInstanceOf(S3RecordingAudioStorage.class);
     }
 
     @Test
@@ -71,10 +72,11 @@ class RecordingAudioStorageConfigTest {
         );
 
         // when
-        RecordingAudioStorage storage = new RecordingAudioStorageConfig().recordingAudioStorage(properties);
+        RecordingAudioStorage recordingAudioStorage = new RecordingAudioStorageConfig()
+                .recordingAudioStorage(properties);
 
         // then
-        assertThat(storage).isInstanceOf(S3RecordingAudioStorage.class);
+        assertThat(recordingAudioStorage).isInstanceOf(S3RecordingAudioStorage.class);
     }
 
     @Test
@@ -87,10 +89,11 @@ class RecordingAudioStorageConfigTest {
         );
 
         // when
-        RecordingAudioStorage storage = new RecordingAudioStorageConfig().recordingAudioStorage(properties);
+        RecordingAudioStorage recordingAudioStorage = new RecordingAudioStorageConfig()
+                .recordingAudioStorage(properties);
 
         // then
-        assertThat(storage).isInstanceOf(UnconfiguredRecordingAudioStorage.class);
+        assertThat(recordingAudioStorage).isInstanceOf(UnconfiguredRecordingAudioStorage.class);
     }
 
     @Test
@@ -103,10 +106,11 @@ class RecordingAudioStorageConfigTest {
         );
 
         // when
-        RecordingAudioStorage storage = new RecordingAudioStorageConfig().recordingAudioStorage(properties);
+        RecordingAudioStorage recordingAudioStorage = new RecordingAudioStorageConfig()
+                .recordingAudioStorage(properties);
 
         // then
-        assertThat(storage).isInstanceOf(UnconfiguredRecordingAudioStorage.class);
+        assertThat(recordingAudioStorage).isInstanceOf(UnconfiguredRecordingAudioStorage.class);
     }
 
     private RecordingAudioStorageProperties propertiesWithCredentials(

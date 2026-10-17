@@ -2,7 +2,7 @@ package com.knot.backend.search.presentation;
 
 import static com.knot.backend.global.config.OpenApiConfig.ACCESS_TOKEN_COOKIE;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.search.presentation.dto.request.SearchQuestionRequest;
 import com.knot.backend.search.presentation.dto.request.SearchAnswerRetryRequest;
 import io.swagger.v3.oas.annotations.Operation;

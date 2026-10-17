@@ -6,7 +6,7 @@ import com.knot.backend.recording.application.dto.command.RecordingControlComman
 import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.recording.application.dto.result.RecordingCurrentResult;
 import com.knot.backend.recording.application.dto.result.RecordingPauseResult;
-import com.knot.backend.recording.domain.RecordingStatus;
+import com.knot.backend.recording.domain.model.RecordingStatus;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.time.Instant;

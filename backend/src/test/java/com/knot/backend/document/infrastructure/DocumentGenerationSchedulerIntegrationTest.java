@@ -11,7 +11,7 @@ import com.knot.backend.document.application.DocumentGenerationService;
 import com.knot.backend.document.application.DocumentTopicClassificationService;
 import com.knot.backend.document.application.dto.result.DocumentGenerationResult;
 import com.knot.backend.document.application.dto.result.DocumentTopicClassificationResult;
-import com.knot.backend.document.domain.DocumentGenerationProcessingStatus;
+import com.knot.backend.document.domain.model.DocumentGenerationProcessingStatus;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.util.List;

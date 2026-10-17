@@ -1,8 +1,8 @@
 package com.knot.backend.search.application.dto.result;
 
-import com.knot.backend.search.domain.SearchMessage;
-import com.knot.backend.search.domain.SearchMessageRole;
-import com.knot.backend.search.domain.SearchMessageStatus;
+import com.knot.backend.search.domain.model.SearchMessage;
+import com.knot.backend.search.domain.model.SearchMessageRole;
+import com.knot.backend.search.domain.model.SearchMessageStatus;
 import java.time.Instant;
 import java.util.List;
 

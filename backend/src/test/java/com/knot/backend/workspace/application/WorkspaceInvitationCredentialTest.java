@@ -3,7 +3,6 @@ package com.knot.backend.workspace.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
@@ -24,7 +23,7 @@ class WorkspaceInvitationCredentialTest {
         // then
         assertThat(credential.kind()).isEqualTo(WorkspaceInvitationSecretKind.INVITE_CODE);
         assertThat(credential.secret()).isEqualTo("X35D3S");
-        assertThat(credential.rateLimited()).isTrue();
+        assertThat(credential.requiresRateLimiting()).isTrue();
     }
 
     @DisplayName("허용 알파벳 32자에 속한 6자리 코드는 초대 코드로 분류한다")
@@ -54,7 +53,7 @@ class WorkspaceInvitationCredentialTest {
         // then
         assertThat(credential.kind()).isEqualTo(WorkspaceInvitationSecretKind.LINK_TOKEN);
         assertThat(credential.secret()).isEqualTo("AbC_1234567890");
-        assertThat(credential.rateLimited()).isFalse();
+        assertThat(credential.requiresRateLimiting()).isFalse();
     }
 
     @DisplayName("내부 공백이 포함된 6자리 값은 초대 없음으로 거부한다")

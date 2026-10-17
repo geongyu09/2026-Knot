@@ -13,7 +13,7 @@ import ch.qos.logback.classic.Level;
 import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.search.application.SearchToolScope;
 import com.knot.backend.search.domain.SearchToolException;
-import com.knot.backend.search.infrastructure.SearchAgentHttp;
+import com.knot.backend.search.infrastructure.llm.SearchAgentHttp;
 import com.knot.backend.testsupport.LlmHttpServer;
 import com.knot.backend.testsupport.LogCapture;
 import java.net.http.HttpClient;
@@ -339,7 +339,7 @@ class SearchMcpClientTest {
     @Test
     void json_failure_responseByteLimit() throws Exception {
         try (LlmHttpServer server = new LlmHttpServer();
-                com.knot.backend.search.infrastructure.SearchTransportCancellation cancellation = new com.knot.backend.search.infrastructure.SearchTransportCancellation(
+                com.knot.backend.search.infrastructure.llm.SearchTransportCancellation cancellation = new com.knot.backend.search.infrastructure.llm.SearchTransportCancellation(
                         mock(com.knot.backend.search.application.SearchToolAccess.class),
                         java.time.Duration.ofMillis(250)
                 );
