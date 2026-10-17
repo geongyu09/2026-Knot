@@ -9,7 +9,7 @@ interface DocumentTranscriptReadJpaRepository extends Repository<Document, Long>
 
     @Query("""
             select new com.knot.backend.document.infrastructure.persistence.DocumentTranscriptSourceRow(
-                t.id, r.accumulatedRecordingMillis, t.content
+                t.id, r.accumulatedRecordingMillis, t.rawTranscriptJson
             )
             from Document d
             join Transcript t on t.id = d.sourceTranscriptId

@@ -2,7 +2,6 @@ package com.knot.backend.workspace.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
-
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationAcceptanceResult;
@@ -321,7 +320,7 @@ class WorkspaceLeaveServiceIntegrationTest {
                 workspaceId,
                 leavingMemberId
         );
-        assertThat(result.created()).isTrue();
+        assertThat(result.membershipCreated()).isTrue();
         assertThat(leftMembership.id()).isEqualTo(leftMembershipId);
         assertThat(leftMembership.role()).isEqualTo("MEMBER");
         assertThat(leftMembership.joinedAt()).isEqualTo(JOINED_AT);

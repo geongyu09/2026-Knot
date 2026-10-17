@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
-
 import com.knot.backend.global.exception.ErrorCode;
 import com.knot.backend.global.exception.ProjectException;
 import com.knot.backend.recording.application.dto.command.RecordingAudioUploadUrlCommand;
@@ -62,7 +61,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
     private final JdbcClient jdbcClient;
     private final Clock clock;
     @MockitoBean
-    private RecordingAudioStorage audioStorage;
+    private RecordingAudioStorage recordingAudioStorage;
 
     RecordingAudioUploadCompletionServiceIntegrationTest(
             RecordingAudioUploadUrlService recordingAudioUploadUrlService,
@@ -95,7 +94,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
     @BeforeEach
     void stubPresign() {
         when(
-                audioStorage.presignUpload(
+                recordingAudioStorage.presignUpload(
                         anyString(),
                         anyString(),
                         anyLong()
@@ -144,7 +143,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
                 fixture,
                 1024L
         ).uploadId();
-        when(audioStorage.findStoredObject(anyString())).thenReturn(StoredAudioObject.missing());
+        when(recordingAudioStorage.findStoredObject(anyString())).thenReturn(StoredAudioObject.missing());
 
         // when
         Throwable thrown = catchThrowable(
@@ -170,7 +169,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
                 fixture,
                 1024L
         ).uploadId();
-        when(audioStorage.findStoredObject(anyString()))
+        when(recordingAudioStorage.findStoredObject(anyString()))
                 .thenThrow(new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE));
 
         // when
@@ -312,7 +311,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
             long contentLength,
             String contentType
     ) {
-        when(audioStorage.findStoredObject(anyString())).thenReturn(
+        when(recordingAudioStorage.findStoredObject(anyString())).thenReturn(
                 StoredAudioObject.of(
                         contentLength,
                         contentType,

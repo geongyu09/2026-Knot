@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-
 import ch.qos.logback.classic.Level;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
 import com.knot.backend.recording.domain.model.RecordingSession;
@@ -23,7 +22,7 @@ class RecordingSessionRepositoryDiagnosticsTest {
     @ValueSource(strings = {"uk_recording_sessions_member_active", "uk_recording_sessions_member_request", "unknown"})
     @DisplayName("녹음 DB 변환은 원인을 보존하며 알려진 충돌과 예상 밖 무결성 실패를 구분한다")
     void save_failure_preservesCauseAndClassifiesConflict(String constraint) {
-        RecordingSessionJpaRepository jpa = mock(RecordingSessionJpaRepository.class);
+        RecordingSessionJpaRepository recordingSessionJpaRepository = mock(RecordingSessionJpaRepository.class);
         RecordingSession session = mock(RecordingSession.class);
         ConstraintViolationException violation = new ConstraintViolationException(
                 "private-constraint",
@@ -34,8 +33,10 @@ class RecordingSessionRepositoryDiagnosticsTest {
                 "private-sql",
                 violation
         );
-        when(jpa.saveAndFlush(session)).thenThrow(original);
-        Throwable thrown = catchThrowable(() -> new RecordingSessionRepositoryAdapter(jpa).save(session));
+        when(recordingSessionJpaRepository.saveAndFlush(session)).thenThrow(original);
+        Throwable thrown = catchThrowable(
+                () -> new RecordingSessionRepositoryAdapter(recordingSessionJpaRepository).save(session)
+        );
         assertThat(thrown).isInstanceOf(RecordingException.class)
                 .hasCause(original);
         RecordingException converted = RecordingException.class.cast(thrown);

@@ -19,7 +19,6 @@ import lombok.Getter;
 @Entity
 @Table(name = "search_request_receipts")
 public class SearchRequestReceipt {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

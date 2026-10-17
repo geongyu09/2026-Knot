@@ -11,7 +11,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
 import com.knot.backend.recording.application.dto.command.RecordingAudioUploadUrlCommand;
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadUrlResult;
@@ -54,9 +53,9 @@ class RecordingAudioUploadUrlServiceTest {
         workspaceMemberRepository = mock(WorkspaceMemberRepository.class);
         recordingSessionRepository = mock(RecordingSessionRepository.class);
         recordingAudioUploadRepository = mock(RecordingAudioUploadRepository.class);
-        RecordingAudioStorage storage = mock(RecordingAudioStorage.class);
+        RecordingAudioStorage recordingAudioStorage = mock(RecordingAudioStorage.class);
         when(
-                storage.presignUpload(
+                recordingAudioStorage.presignUpload(
                         anyString(),
                         anyString(),
                         anyLong()
@@ -75,7 +74,7 @@ class RecordingAudioUploadUrlServiceTest {
                         mock(RecordingControlTokenHasher.class)
                 ),
                 recordingAudioUploadRepository,
-                storage,
+                recordingAudioStorage,
                 Clock.fixed(
                         NOW,
                         ZoneOffset.UTC

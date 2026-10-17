@@ -18,7 +18,6 @@ import lombok.Getter;
 @Entity
 @Table(name = "search_answer_executions")
 public class SearchAnswerExecution {
-
     @Id
     @Column(name = "answer_id", updatable = false)
     private Long answerId;

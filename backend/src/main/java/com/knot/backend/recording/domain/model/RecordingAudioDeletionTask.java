@@ -43,9 +43,6 @@ public class RecordingAudioDeletionTask {
     @Column(name = "requested_at", nullable = false)
     private Instant requestedAt;
 
-    @Column(name = "confirmation_after", nullable = false)
-    private Instant confirmationAfter;
-
     @Column(name = "attempt_count", nullable = false)
     private int attemptCount;
 
@@ -64,19 +61,14 @@ public class RecordingAudioDeletionTask {
     private RecordingAudioDeletionTask(
             long uploadId,
             String storageKey,
-            Instant now,
-            Instant confirmationAfter
+            Instant now
     ) {
         validateUploadId(uploadId);
         validateStorageKey(storageKey);
-        validateConfirmationTime(
-                now,
-                confirmationAfter
-        );
+        validateRequestTime(now);
         this.uploadId = uploadId;
         this.storageKey = storageKey;
         this.requestedAt = now;
-        this.confirmationAfter = confirmationAfter;
         this.status = RecordingAudioDeletionStatus.PENDING;
         this.nextAttemptAt = now;
     }
@@ -84,14 +76,12 @@ public class RecordingAudioDeletionTask {
     public static RecordingAudioDeletionTask request(
             long uploadId,
             String storageKey,
-            Instant now,
-            Instant confirmationAfter
+            Instant now
     ) {
         return new RecordingAudioDeletionTask(
                 uploadId,
                 storageKey,
-                now,
-                confirmationAfter
+                now
         );
     }
 
@@ -134,14 +124,9 @@ public class RecordingAudioDeletionTask {
         )) {
             return;
         }
+        status = RecordingAudioDeletionStatus.SUCCEEDED;
         executionDeadlineAt = null;
         lastFailureCode = null;
-        if (now.isBefore(confirmationAfter)) {
-            status = RecordingAudioDeletionStatus.PENDING;
-            nextAttemptAt = confirmationAfter;
-            return;
-        }
-        status = RecordingAudioDeletionStatus.SUCCEEDED;
         completedAt = now;
     }
 
@@ -208,11 +193,8 @@ public class RecordingAudioDeletionTask {
         }
     }
 
-    private void validateConfirmationTime(
-            Instant now,
-            Instant confirmationAfter
-    ) {
-        if (now == null || confirmationAfter == null || confirmationAfter.isBefore(now)) {
+    private void validateRequestTime(Instant now) {
+        if (now == null) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_TIME);
         }
     }

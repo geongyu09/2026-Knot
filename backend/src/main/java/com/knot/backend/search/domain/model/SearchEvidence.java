@@ -13,7 +13,6 @@ import lombok.Getter;
 @Entity
 @Table(name = "search_evidences")
 public class SearchEvidence {
-
     @EmbeddedId
     private SearchEvidenceId id;
 

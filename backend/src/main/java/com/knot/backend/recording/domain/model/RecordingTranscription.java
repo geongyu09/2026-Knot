@@ -89,12 +89,12 @@ public class RecordingTranscription {
         );
     }
 
-    public boolean isProcessing(UUID expectedAttemptId) {
+    public boolean isProcessingAttempt(UUID expectedAttemptId) {
         return status == TranscriptionStatus.PROCESSING && attemptId.equals(expectedAttemptId);
     }
 
     public void succeed(UUID expectedAttemptId) {
-        if (!isProcessing(expectedAttemptId)) {
+        if (!isProcessingAttempt(expectedAttemptId)) {
             return;
         }
         this.status = TranscriptionStatus.SUCCEEDED;
@@ -104,7 +104,7 @@ public class RecordingTranscription {
             UUID expectedAttemptId,
             String failureCode
     ) {
-        if (!isProcessing(expectedAttemptId)) {
+        if (!isProcessingAttempt(expectedAttemptId)) {
             return;
         }
         if (failureCode == null || failureCode.isBlank() || failureCode.length() > 100) {

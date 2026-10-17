@@ -10,30 +10,30 @@ import org.springframework.stereotype.Repository;
 @Repository
 @RequiredArgsConstructor
 public class RecordingTranscriptionRepositoryAdapter implements RecordingTranscriptionRepository {
-    private final RecordingTranscriptionJpaRepository transcriptions;
+    private final RecordingTranscriptionJpaRepository recordingTranscriptionJpaRepository;
 
     @Override
     public RecordingTranscription saveAndFlush(RecordingTranscription transcription) {
-        return transcriptions.saveAndFlush(transcription);
+        return recordingTranscriptionJpaRepository.saveAndFlush(transcription);
     }
 
     @Override
     public Optional<RecordingTranscription> findByRecordingSessionId(long recordingSessionId) {
-        return transcriptions.findByRecordingSessionId(recordingSessionId);
+        return recordingTranscriptionJpaRepository.findByRecordingSessionId(recordingSessionId);
     }
 
     @Override
     public Optional<RecordingTranscription> findByRecordingSessionIdForUpdate(long recordingSessionId) {
-        return transcriptions.findWithLockByRecordingSessionId(recordingSessionId);
+        return recordingTranscriptionJpaRepository.findWithLockByRecordingSessionId(recordingSessionId);
     }
 
     @Override
     public Optional<RecordingTranscription> findProcessing() {
-        return transcriptions.findByStatus(TranscriptionStatus.PROCESSING);
+        return recordingTranscriptionJpaRepository.findByStatus(TranscriptionStatus.PROCESSING);
     }
 
     @Override
     public void lockAdmission() {
-        transcriptions.lockAdmission();
+        recordingTranscriptionJpaRepository.lockAdmission();
     }
 }

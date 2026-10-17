@@ -13,10 +13,8 @@ import lombok.Getter;
 @EqualsAndHashCode
 @Embeddable
 public class SearchEvidenceId implements Serializable {
-
     @Column(name = "message_id", nullable = false)
     private long messageId;
-
     @Column(name = "document_id", nullable = false)
     private long documentId;
 

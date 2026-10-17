@@ -10,7 +10,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
-
 import com.knot.backend.document.application.DocumentArchivalService;
 import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
@@ -44,7 +43,7 @@ class WorkspaceLeaveServiceTest {
 
     private final WorkspaceRepository workspaceRepository = mock(WorkspaceRepository.class);
     private final WorkspaceMemberRepository workspaceMemberRepository = mock(WorkspaceMemberRepository.class);
-    private final WorkspaceOwnershipTransferCandidateQuery candidateQuery = mock(
+    private final WorkspaceOwnershipTransferCandidateQuery workspaceOwnershipTransferCandidateQuery = mock(
             WorkspaceOwnershipTransferCandidateQuery.class
     );
     private final RecordingSessionRepository recordingSessionRepository = mock(RecordingSessionRepository.class);
@@ -52,7 +51,7 @@ class WorkspaceLeaveServiceTest {
     private final WorkspaceLeaveService service = new WorkspaceLeaveService(
             workspaceRepository,
             workspaceMemberRepository,
-            candidateQuery,
+            workspaceOwnershipTransferCandidateQuery,
             recordingSessionRepository,
             documentArchivalService,
             Clock.fixed(
@@ -337,7 +336,7 @@ class WorkspaceLeaveServiceTest {
 
     @DisplayName("Workspace를 먼저 잠그고 승계 결과를 저장한 뒤 요청자 녹음 폐기와 문서 보관을 조정한다")
     @Test
-    void transferOwnership_success() {
+    void transferOwnershipAndLeave_success() {
         // given
         WorkspaceMember owner = participant(
                 2L,
@@ -355,7 +354,7 @@ class WorkspaceLeaveServiceTest {
         );
 
         // when
-        service.transferOwnership(
+        service.transferOwnershipAndLeave(
                 2L,
                 1L,
                 3L
@@ -404,7 +403,7 @@ class WorkspaceLeaveServiceTest {
 
     @DisplayName("보관 실패를 전파해 소유권 승계와 OWNER 탈퇴가 함께 롤백되도록 한다")
     @Test
-    void transferOwnership_failure_documentArchivalFailed() {
+    void transferOwnershipAndLeave_failure_documentArchivalFailed() {
         // given
         stubParticipants(
                 List.of(
@@ -427,7 +426,7 @@ class WorkspaceLeaveServiceTest {
                 );
 
         // when
-        ThrowingCallable action = () -> service.transferOwnership(
+        ThrowingCallable action = () -> service.transferOwnershipAndLeave(
                 2L,
                 1L,
                 3L
@@ -439,12 +438,12 @@ class WorkspaceLeaveServiceTest {
 
     @DisplayName("미존재 또는 삭제된 Workspace는 참여 행을 잠그지 않는다")
     @Test
-    void transferOwnership_failure_workspaceNotFound() {
+    void transferOwnershipAndLeave_failure_workspaceNotFound() {
         // given
         when(workspaceRepository.findByIdForUpdate(1L)).thenReturn(Optional.empty());
 
         // when
-        ThrowingCallable action = () -> service.transferOwnership(
+        ThrowingCallable action = () -> service.transferOwnershipAndLeave(
                 2L,
                 1L,
                 3L
@@ -461,7 +460,7 @@ class WorkspaceLeaveServiceTest {
     @DisplayName("요청자가 활성 OWNER로 조회되지 않으면 승계 대상을 찾기 전에 거절한다")
     @ParameterizedTest
     @ValueSource(strings = {"missing", "member"})
-    void transferOwnership_failure_ownerRequired(String actorState) {
+    void transferOwnershipAndLeave_failure_ownerRequired(String actorState) {
         // given
         WorkspaceMember successor = participant(
                 3L,
@@ -475,7 +474,7 @@ class WorkspaceLeaveServiceTest {
         );
 
         // when
-        ThrowingCallable action = () -> service.transferOwnership(
+        ThrowingCallable action = () -> service.transferOwnershipAndLeave(
                 2L,
                 1L,
                 3L
@@ -494,7 +493,7 @@ class WorkspaceLeaveServiceTest {
 
     @DisplayName("승계 대상이 활성 참여자로 조회되지 않으면 기존 OWNER 상태를 유지한다")
     @Test
-    void transferOwnership_failure_successorMissing() {
+    void transferOwnershipAndLeave_failure_successorMissing() {
         // given
         WorkspaceMember owner = participant(
                 2L,
@@ -503,7 +502,7 @@ class WorkspaceLeaveServiceTest {
         stubParticipants(List.of(owner));
 
         // when
-        ThrowingCallable action = () -> service.transferOwnership(
+        ThrowingCallable action = () -> service.transferOwnershipAndLeave(
                 2L,
                 1L,
                 3L
@@ -540,7 +539,7 @@ class WorkspaceLeaveServiceTest {
                 )
         ).thenReturn(true);
         when(
-                candidateQuery.findAll(
+                workspaceOwnershipTransferCandidateQuery.findAll(
                         1L,
                         2L
                 )
@@ -580,7 +579,7 @@ class WorkspaceLeaveServiceTest {
                 action,
                 WorkspaceErrorCode.WORKSPACE_OWNER_REQUIRED
         );
-        verifyNoInteractions(candidateQuery);
+        verifyNoInteractions(workspaceOwnershipTransferCandidateQuery);
     }
 
     @DisplayName("워크스페이스가 없으면 OWNER 여부를 확인하지 않고 404 오류를 반환한다")
@@ -602,7 +601,7 @@ class WorkspaceLeaveServiceTest {
         );
         verifyNoInteractions(
                 workspaceMemberRepository,
-                candidateQuery
+                workspaceOwnershipTransferCandidateQuery
         );
     }
 

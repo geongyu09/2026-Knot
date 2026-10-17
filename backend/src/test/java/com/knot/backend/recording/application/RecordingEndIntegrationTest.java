@@ -2,7 +2,6 @@ package com.knot.backend.recording.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
-
 import com.knot.backend.global.exception.ErrorCode;
 import com.knot.backend.global.exception.ProjectException;
 import com.knot.backend.recording.application.dto.command.RecordingControlCommand;
@@ -49,7 +48,7 @@ class RecordingEndIntegrationTest {
     private final RecordingControlService recordingControlService;
     private final RecordingStartService recordingStartService;
     private final WorkspaceLeaveService workspaceLeaveService;
-    private final RecordingControlTokenHasher controlTokenHasher;
+    private final RecordingControlTokenHasher recordingControlTokenHasher;
     private final TransactionTemplate transactionTemplate;
     private final JdbcClient jdbcClient;
 
@@ -57,14 +56,14 @@ class RecordingEndIntegrationTest {
             RecordingControlService recordingControlService,
             RecordingStartService recordingStartService,
             WorkspaceLeaveService workspaceLeaveService,
-            RecordingControlTokenHasher controlTokenHasher,
+            RecordingControlTokenHasher recordingControlTokenHasher,
             TransactionTemplate transactionTemplate,
             JdbcClient jdbcClient
     ) {
         this.recordingControlService = recordingControlService;
         this.recordingStartService = recordingStartService;
         this.workspaceLeaveService = workspaceLeaveService;
-        this.controlTokenHasher = controlTokenHasher;
+        this.recordingControlTokenHasher = recordingControlTokenHasher;
         this.transactionTemplate = transactionTemplate;
         this.jdbcClient = jdbcClient;
     }
@@ -554,7 +553,7 @@ class RecordingEndIntegrationTest {
                 )
                 .param(
                         "controlTokenHash",
-                        controlTokenHasher.hash(control.controlToken())
+                        recordingControlTokenHasher.hash(control.controlToken())
                 )
                 .param(
                         "startedAt",

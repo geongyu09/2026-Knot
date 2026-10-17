@@ -4,7 +4,6 @@ import com.knot.backend.recording.domain.RecordingException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
-
 import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,7 +20,7 @@ class TranscriptTest {
         );
 
         // then
-        assertThat(transcript.getContent()).isEqualTo("원문");
+        assertThat(transcript.getRawTranscriptJson()).isEqualTo("원문");
         assertThat(transcript.getRecordingSessionId()).isEqualTo(1);
     }
 

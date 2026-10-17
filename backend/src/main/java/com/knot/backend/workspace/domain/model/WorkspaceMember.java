@@ -97,7 +97,7 @@ public class WorkspaceMember {
         this.lastViewed = false;
     }
 
-    public void transferOwnershipTo(
+    public void transferOwnershipAndLeave(
             WorkspaceMember successor,
             Instant leftAt
     ) {
@@ -114,7 +114,7 @@ public class WorkspaceMember {
         return leftAt == null;
     }
 
-    public boolean isOwner() {
+    public boolean hasOwnerRole() {
         return role == WorkspaceMemberRole.OWNER;
     }
 
@@ -125,7 +125,7 @@ public class WorkspaceMember {
     }
 
     private void validateActiveOwner() {
-        if (!isActive() || !isOwner()) {
+        if (!isActive() || !hasOwnerRole()) {
             throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_OWNER_REQUIRED);
         }
     }

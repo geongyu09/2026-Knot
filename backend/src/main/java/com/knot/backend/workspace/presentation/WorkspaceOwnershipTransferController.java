@@ -29,7 +29,7 @@ public class WorkspaceOwnershipTransferController implements WorkspaceOwnershipT
             @Valid @RequestBody WorkspaceOwnershipTransferRequest request,
             @AuthenticationPrincipal AuthenticatedMember authenticatedMember
     ) {
-        workspaceLeaveService.transferOwnership(
+        workspaceLeaveService.transferOwnershipAndLeave(
                 authenticatedMember.getMemberId(),
                 workspaceId,
                 request.successorMemberId()

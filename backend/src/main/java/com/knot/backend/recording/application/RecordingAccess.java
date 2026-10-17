@@ -18,7 +18,7 @@ public class RecordingAccess {
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final RecordingSessionRepository recordingSessionRepository;
-    private final RecordingControlTokenHasher controlTokenHasher;
+    private final RecordingControlTokenHasher recordingControlTokenHasher;
 
     public void validateMember(
             long workspaceId,
@@ -80,7 +80,7 @@ public class RecordingAccess {
         );
         session.validateControlProof(
                 command.tabId(),
-                controlTokenHasher.hash(command.controlToken())
+                recordingControlTokenHasher.hash(command.controlToken())
         );
         return session;
     }

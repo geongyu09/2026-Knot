@@ -25,7 +25,7 @@ public class DocumentGenerationInputQueryAdapter implements DocumentGenerationIn
                         transcript -> new DocumentGenerationInputResult(
                                 transcript.getId(),
                                 transcript.getRecordingSessionId(),
-                                transcriptTextReader.read(transcript.getContent())
+                                transcriptTextReader.read(transcript.getRawTranscriptJson())
                         )
                 );
     }

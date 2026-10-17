@@ -9,11 +9,14 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.Getter;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.SourceType;
 
 @Getter
 @Entity
@@ -40,6 +43,10 @@ public class TranscriptSegment {
 
     @Column(nullable = false, updatable = false, columnDefinition = "text")
     private String text;
+
+    @CreationTimestamp(source = SourceType.DB)
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
 
     protected TranscriptSegment() {}
 

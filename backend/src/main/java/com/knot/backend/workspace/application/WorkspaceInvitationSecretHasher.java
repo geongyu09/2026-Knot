@@ -1,6 +1,6 @@
 package com.knot.backend.workspace.application;
 
-public interface WorkspaceInvitationSecretProtector {
+public interface WorkspaceInvitationSecretHasher {
 
     String hash(
             WorkspaceInvitationSecretKind kind,

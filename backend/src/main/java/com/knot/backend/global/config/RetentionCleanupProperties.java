@@ -11,12 +11,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @Setter
 @ConfigurationProperties(prefix = "knot.retention")
 public class RetentionCleanupProperties {
-
     private boolean enabled;
     private int candidateLimit = 20;
     private Duration executionLease = Duration.ofMinutes(2);
-    private Duration uploadQuiescence = Duration.ofMinutes(30);
-    private Duration legacyUrlValidity = Duration.ofDays(7);
 
     public void validate() {
         if (candidateLimit < 1 || candidateLimit > 100) {
@@ -24,8 +21,6 @@ public class RetentionCleanupProperties {
         }
         validateDuration(executionLease);
         validateExecutionLease();
-        validateDuration(uploadQuiescence);
-        validateDuration(legacyUrlValidity);
     }
 
     private void validateExecutionLease() {

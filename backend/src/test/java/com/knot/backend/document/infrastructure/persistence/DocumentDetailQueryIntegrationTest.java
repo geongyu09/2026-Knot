@@ -356,7 +356,7 @@ class DocumentDetailQueryIntegrationTest {
                         Transcript.class,
                         transcript.getId()
                 )
-                        .getContent()
+                        .getRawTranscriptJson()
         ).isEqualTo("JPA 저장 원문");
         assertThat(
                 entityManager.find(

@@ -80,15 +80,15 @@ public class WorkspaceService {
             Long workspaceId
     ) {
         List<WorkspaceMember> workspaceMembers = workspaceMemberRepository.findAllByMemberIdForUpdate(memberId);
-        WorkspaceMember target = findMembership(
+        WorkspaceMember targetMembership = findTargetMembership(
                 workspaceMembers,
                 workspaceId
         );
         workspaceMembers.forEach(WorkspaceMember::clearLastViewed);
         workspaceMemberRepository.saveAll(workspaceMembers);
         workspaceMemberRepository.flush();
-        target.markLastViewed();
-        workspaceMemberRepository.save(target);
+        targetMembership.markLastViewed();
+        workspaceMemberRepository.save(targetMembership);
     }
 
     private boolean containsWorkspace(
@@ -102,7 +102,7 @@ public class WorkspaceService {
                 );
     }
 
-    private WorkspaceMember findMembership(
+    private WorkspaceMember findTargetMembership(
             List<WorkspaceMember> workspaceMembers,
             Long workspaceId
     ) {

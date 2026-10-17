@@ -20,7 +20,7 @@ public class RecordingAudioUploadUrlService {
 
     private final RecordingAccess recordingAccess;
     private final RecordingAudioUploadRepository recordingAudioUploadRepository;
-    private final RecordingAudioStorage audioStorage;
+    private final RecordingAudioStorage recordingAudioStorage;
     private final Clock clock;
 
     @Transactional
@@ -52,12 +52,11 @@ public class RecordingAudioUploadUrlService {
                         )
                 )
         );
-        PresignedAudioUpload presigned = audioStorage.presignUpload(
+        PresignedAudioUpload presigned = recordingAudioStorage.presignUpload(
                 upload.getStorageKey(),
                 upload.getContentType(),
                 upload.getContentLength()
         );
-        upload.recordUploadUrlExpiry(presigned.expiresAt());
         return new RecordingAudioUploadUrlResult(
                 upload.getId(),
                 presigned.uploadUrl(),

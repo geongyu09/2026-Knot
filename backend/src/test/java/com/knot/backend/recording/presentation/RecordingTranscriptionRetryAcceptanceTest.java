@@ -8,7 +8,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.recording.application.RecordingTranscriptionService;
@@ -48,8 +47,8 @@ class RecordingTranscriptionRetryAcceptanceTest {
     private final MockMvc mockMvc;
     private final AuthTokenProvider tokens;
     private final JdbcClient jdbc;
-    private final ObjectMapper mapper;
-    private final RecordingTranscriptionStateService state;
+    private final ObjectMapper objectMapper;
+    private final RecordingTranscriptionStateService recordingTranscriptionStateService;
     @MockitoBean
     private RecordingTranscriptionService service;
 
@@ -57,14 +56,14 @@ class RecordingTranscriptionRetryAcceptanceTest {
             MockMvc mockMvc,
             AuthTokenProvider tokens,
             JdbcClient jdbc,
-            ObjectMapper mapper,
-            RecordingTranscriptionStateService state
+            ObjectMapper objectMapper,
+            RecordingTranscriptionStateService recordingTranscriptionStateService
     ) {
         this.mockMvc = mockMvc;
         this.tokens = tokens;
         this.jdbc = jdbc;
-        this.mapper = mapper;
-        this.state = state;
+        this.objectMapper = objectMapper;
+        this.recordingTranscriptionStateService = recordingTranscriptionStateService;
     }
 
     @BeforeEach
@@ -80,7 +79,7 @@ class RecordingTranscriptionRetryAcceptanceTest {
                         anyLong()
                 )
         ).thenAnswer(
-                call -> state.retry(
+                call -> recordingTranscriptionStateService.retry(
                         call.getArgument(0),
                         call.getArgument(1),
                         call.getArgument(2)
@@ -105,7 +104,7 @@ class RecordingTranscriptionRetryAcceptanceTest {
                 .andExpect(jsonPath("$.recordingId").value(1L))
                 .andExpect(jsonPath("$.transcriptionStatus").value("PROCESSING"));
         UUID nextAttempt = UUID.fromString(
-                mapper.readTree(
+                objectMapper.readTree(
                         result.andReturn()
                                 .getResponse()
                                 .getContentAsString()
@@ -115,11 +114,11 @@ class RecordingTranscriptionRetryAcceptanceTest {
         );
         assertThat(nextAttempt).isNotEqualTo(PREVIOUS_ATTEMPT);
         assertThat(
-                state.find(1L)
+                recordingTranscriptionStateService.findSnapshot(1L)
                         .attemptId()
         ).isEqualTo(nextAttempt);
         assertThat(
-                state.find(1L)
+                recordingTranscriptionStateService.findSnapshot(1L)
                         .failureCode()
         ).isNull();
     }
@@ -156,7 +155,7 @@ class RecordingTranscriptionRetryAcceptanceTest {
         result.andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("TRANSCRIPTION_RETRY_NOT_ALLOWED"));
         assertThat(
-                state.find(1L)
+                recordingTranscriptionStateService.findSnapshot(1L)
                         .attemptId()
         ).isEqualTo(PREVIOUS_ATTEMPT);
     }
@@ -184,7 +183,7 @@ class RecordingTranscriptionRetryAcceptanceTest {
         result.andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("RECORDING_CONTROL_DENIED"));
         assertThat(
-                state.find(1L)
+                recordingTranscriptionStateService.findSnapshot(1L)
                         .attemptId()
         ).isEqualTo(PREVIOUS_ATTEMPT);
     }
@@ -269,7 +268,7 @@ class RecordingTranscriptionRetryAcceptanceTest {
         result.andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
         assertThat(
-                state.find(1L)
+                recordingTranscriptionStateService.findSnapshot(1L)
                         .attemptId()
         ).isEqualTo(PREVIOUS_ATTEMPT);
     }
@@ -311,7 +310,7 @@ class RecordingTranscriptionRetryAcceptanceTest {
                 )
                         .header(
                                 "X-XSRF-TOKEN",
-                                mapper.readTree(
+                                objectMapper.readTree(
                                         csrf.getResponse()
                                                 .getContentAsString()
                                 )

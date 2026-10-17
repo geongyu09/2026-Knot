@@ -15,7 +15,6 @@ import lombok.Getter;
 public class DocumentConfirmationId implements Serializable {
     @Column(name = "document_id", nullable = false)
     private long documentId;
-
     @Column(name = "member_id", nullable = false)
     private long memberId;
 

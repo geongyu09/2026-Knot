@@ -5,7 +5,6 @@ import com.knot.backend.recording.domain.RecordingException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
-
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -683,7 +682,7 @@ class RecordingSessionTest {
         // then
         assertThat(expired).isFalse();
         assertThat(session.getStatus()).isEqualTo(RecordingStatus.RECORDING);
-        assertThat(session.getExpiresAt()).isEqualTo(STARTED_AT.plusSeconds(30));
+        assertThat(session.getConnectionExpiresAt()).isEqualTo(STARTED_AT.plusSeconds(30));
     }
 
     @Test
@@ -703,7 +702,7 @@ class RecordingSessionTest {
         assertThat(session.getEndedAt()).isEqualTo(STARTED_AT.plusSeconds(40));
         assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT.plusSeconds(10));
         assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(40_000L);
-        assertThat(session.getExpiresAt()).isNull();
+        assertThat(session.getConnectionExpiresAt()).isNull();
     }
 
     @Test
@@ -768,7 +767,7 @@ class RecordingSessionTest {
         assertThat(session.getAccumulatedRecordingMillis()).isEqualTo(20_000L);
         assertThat(session.getPausedAt()).isEqualTo(STARTED_AT.plusSeconds(20));
         assertThat(session.getLastSeenAt()).isEqualTo(STARTED_AT.plusSeconds(40));
-        assertThat(session.getExpiresAt()).isEqualTo(STARTED_AT.plusSeconds(70));
+        assertThat(session.getConnectionExpiresAt()).isEqualTo(STARTED_AT.plusSeconds(70));
     }
 
     @Test

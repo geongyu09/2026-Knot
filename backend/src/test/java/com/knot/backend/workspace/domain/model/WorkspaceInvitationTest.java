@@ -6,7 +6,6 @@ import com.knot.backend.workspace.domain.WorkspaceException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import java.lang.reflect.Field;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -258,13 +257,13 @@ class WorkspaceInvitationTest {
 
     @DisplayName("사용할 수 있는 초대로 참여하면 초대한 워크스페이스의 MEMBER 멤버십을 만든다")
     @Test
-    void admit_success() {
+    void createMembership_success() {
         // given
         WorkspaceInvitation invitation = createInvitation();
         Instant joinedAt = CREATED_AT.plusSeconds(1);
 
         // when
-        WorkspaceMember member = invitation.admit(
+        WorkspaceMember member = invitation.createMembership(
                 2L,
                 joinedAt
         );
@@ -279,12 +278,12 @@ class WorkspaceInvitationTest {
 
     @DisplayName("만료된 초대로는 멤버십을 만들지 않는다")
     @Test
-    void admit_failure_expiredInvitation() {
+    void createMembership_failure_expiredInvitation() {
         // given
         WorkspaceInvitation invitation = createInvitation();
 
         // when
-        ThrowingCallable action = () -> invitation.admit(
+        ThrowingCallable action = () -> invitation.createMembership(
                 2L,
                 invitation.getExpiresAt()
         );

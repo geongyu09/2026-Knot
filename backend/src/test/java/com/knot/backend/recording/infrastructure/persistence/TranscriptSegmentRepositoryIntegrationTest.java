@@ -2,12 +2,13 @@ package com.knot.backend.recording.infrastructure.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.recording.domain.model.TranscriptSegment;
 import com.knot.backend.recording.domain.repository.TranscriptSegmentRepository;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import jakarta.persistence.EntityManager;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -27,7 +28,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 class TranscriptSegmentRepositoryIntegrationTest {
 
     @Autowired
-    private TranscriptSegmentRepository segments;
+    private TranscriptSegmentRepository transcriptSegmentRepository;
     @Autowired
     private JdbcClient jdbc;
     @Autowired
@@ -50,11 +51,66 @@ class TranscriptSegmentRepositoryIntegrationTest {
     }
 
     @Test
+    @DisplayName("구간을 저장하면 DB 시각으로 생성 시간을 채우고 다시 조회해도 유지한다")
+    void saveAll_success_recordsDatabaseCreationTime() {
+        // given
+        Instant databaseNow = jdbc.sql("SELECT CURRENT_TIMESTAMP")
+                .query(OffsetDateTime.class)
+                .single()
+                .toInstant();
+        TranscriptSegment segment = TranscriptSegment.create(
+                transcriptId,
+                0,
+                0,
+                null,
+                null,
+                "발언"
+        );
+
+        // when
+        transcriptSegmentRepository.saveAll(List.of(segment));
+
+        // then
+        entityManager.flush();
+        assertThat(segment.getCreatedAt()).isEqualTo(databaseNow);
+        entityManager.clear();
+        assertThat(transcriptSegmentRepository.findAllByTranscriptId(transcriptId)).singleElement()
+                .extracting(TranscriptSegment::getCreatedAt)
+                .isEqualTo(databaseNow);
+    }
+
+    @Test
+    @DisplayName("SQL로 구간을 추가해도 생성 시간이 기본값으로 기록된다")
+    void insert_success_recordsDatabaseCreationTime() {
+        // given
+        Instant databaseNow = jdbc.sql("SELECT CURRENT_TIMESTAMP")
+                .query(OffsetDateTime.class)
+                .single()
+                .toInstant();
+
+        // when
+        jdbc.sql("""
+                INSERT INTO transcript_segments (transcript_id, position, start_millis, text)
+                VALUES (:id, 0, 0, '발언')
+                """)
+                .param(
+                        "id",
+                        transcriptId
+                )
+                .update();
+
+        // then
+        assertThat(transcriptSegmentRepository.findAllByTranscriptId(transcriptId)).singleElement()
+                .extracting(TranscriptSegment::getCreatedAt)
+                .isEqualTo(databaseNow);
+    }
+
+    @Test
     @DisplayName("저장한 구간을 원문별 시작 시각·동률 순서로 모두 읽는다")
     void findAllByTranscriptId_success_orderAndScope() {
         // given
         long otherTranscript = fixtures.saveTranscript(recordingId);
-        segments.saveAll(
+        transcriptSegmentRepository.saveAll(
                 List.of(
                         TranscriptSegment.create(
                                 transcriptId,
@@ -94,7 +150,7 @@ class TranscriptSegmentRepositoryIntegrationTest {
         entityManager.clear();
 
         // when
-        List<TranscriptSegment> result = segments.findAllByTranscriptId(transcriptId);
+        List<TranscriptSegment> result = transcriptSegmentRepository.findAllByTranscriptId(transcriptId);
 
         // then
         assertThat(result).extracting(TranscriptSegment::getText)
@@ -127,7 +183,7 @@ class TranscriptSegmentRepositoryIntegrationTest {
     @DisplayName("없는 원문의 구간 조회는 빈 목록이다")
     void findAllByTranscriptId_success_absent() {
         // when & then
-        assertThat(segments.findAllByTranscriptId(Long.MAX_VALUE)).isEmpty();
+        assertThat(transcriptSegmentRepository.findAllByTranscriptId(Long.MAX_VALUE)).isEmpty();
     }
 
     @ParameterizedTest
@@ -157,7 +213,7 @@ class TranscriptSegmentRepositoryIntegrationTest {
     @DisplayName("같은 원문의 중복 저장 순서를 DB가 거절한다")
     void saveAll_failure_duplicatePosition() {
         // given
-        segments.saveAll(
+        transcriptSegmentRepository.saveAll(
                 List.of(
                         TranscriptSegment.create(
                                 transcriptId,
@@ -191,7 +247,7 @@ class TranscriptSegmentRepositoryIntegrationTest {
     void saveAll_failure_missingTranscript() {
         // when & then
         assertThatThrownBy(
-                () -> segments.saveAll(
+                () -> transcriptSegmentRepository.saveAll(
                         List.of(
                                 TranscriptSegment.create(
                                         Long.MAX_VALUE,
@@ -210,7 +266,7 @@ class TranscriptSegmentRepositoryIntegrationTest {
     @DisplayName("구간이 남아 있는 원문의 삭제를 RESTRICT로 막는다")
     void deleteTranscript_failure_restricted() {
         // given
-        segments.saveAll(
+        transcriptSegmentRepository.saveAll(
                 List.of(
                         TranscriptSegment.create(
                                 transcriptId,

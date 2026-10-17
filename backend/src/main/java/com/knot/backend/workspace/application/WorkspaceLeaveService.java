@@ -24,7 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class WorkspaceLeaveService {
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
-    private final WorkspaceOwnershipTransferCandidateQuery candidateQuery;
+    private final WorkspaceOwnershipTransferCandidateQuery workspaceOwnershipTransferCandidateQuery;
     private final RecordingSessionRepository recordingSessionRepository;
     private final DocumentArchivalService documentArchivalService;
     private final Clock clock;
@@ -35,22 +35,23 @@ public class WorkspaceLeaveService {
             Long workspaceId
     ) {
         Workspace workspace = lockWorkspace(workspaceId);
-        WorkspaceMember actor = workspaceMemberRepository.findLatestByWorkspaceIdAndMemberIdForUpdate(
-                workspaceId,
-                memberId
-        )
+        WorkspaceMember leavingMember = workspaceMemberRepository
+                .findLatestByWorkspaceIdAndMemberIdForUpdate(
+                        workspaceId,
+                        memberId
+                )
                 .orElseThrow(() -> new WorkspaceException(WorkspaceErrorCode.WORKSPACE_ACCESS_DENIED));
-        if (!actor.isActive()) {
+        if (!leavingMember.isActive()) {
             return;
         }
         Instant leftAt = now();
         workspace.removeMember(
-                actor,
+                leavingMember,
                 workspaceMemberRepository.countActiveByWorkspaceId(workspaceId),
                 leftAt
         );
         workspaceRepository.save(workspace);
-        workspaceMemberRepository.save(actor);
+        workspaceMemberRepository.save(leavingMember);
         completeDeparture(
                 workspaceId,
                 memberId,
@@ -64,29 +65,30 @@ public class WorkspaceLeaveService {
     }
 
     @Transactional
-    public void transferOwnership(
+    public void transferOwnershipAndLeave(
             long memberId,
             Long workspaceId,
             long successorMemberId
     ) {
         lockWorkspace(workspaceId);
-        List<WorkspaceMember> participants = workspaceMemberRepository.findAllActiveByWorkspaceIdAndMemberIdsForUpdate(
-                workspaceId,
-                List.of(
-                        memberId,
-                        successorMemberId
-                )
-        );
+        List<WorkspaceMember> transferMembers = workspaceMemberRepository
+                .findAllActiveByWorkspaceIdAndMemberIdsForUpdate(
+                        workspaceId,
+                        List.of(
+                                memberId,
+                                successorMemberId
+                        )
+                );
         WorkspaceMember owner = findOwner(
-                participants,
+                transferMembers,
                 memberId
         );
         WorkspaceMember successor = findSuccessor(
-                participants,
+                transferMembers,
                 successorMemberId
         );
         Instant leftAt = now();
-        owner.transferOwnershipTo(
+        owner.transferOwnershipAndLeave(
                 successor,
                 leftAt
         );
@@ -122,7 +124,7 @@ public class WorkspaceLeaveService {
         )) {
             throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_OWNER_REQUIRED);
         }
-        return candidateQuery.findAll(
+        return workspaceOwnershipTransferCandidateQuery.findAll(
                 workspaceId,
                 memberId
         );
@@ -135,22 +137,22 @@ public class WorkspaceLeaveService {
     }
 
     private WorkspaceMember findOwner(
-            List<WorkspaceMember> participants,
+            List<WorkspaceMember> transferMembers,
             long memberId
     ) {
-        return participants.stream()
-                .filter(participant -> participant.getMemberId() == memberId)
-                .filter(WorkspaceMember::isOwner)
+        return transferMembers.stream()
+                .filter(transferMember -> transferMember.getMemberId() == memberId)
+                .filter(WorkspaceMember::hasOwnerRole)
                 .findFirst()
                 .orElseThrow(() -> new WorkspaceException(WorkspaceErrorCode.WORKSPACE_OWNER_REQUIRED));
     }
 
     private WorkspaceMember findSuccessor(
-            List<WorkspaceMember> participants,
+            List<WorkspaceMember> transferMembers,
             long successorMemberId
     ) {
-        return participants.stream()
-                .filter(participant -> participant.getMemberId() == successorMemberId)
+        return transferMembers.stream()
+                .filter(transferMember -> transferMember.getMemberId() == successorMemberId)
                 .findFirst()
                 .orElseThrow(
                         () -> new WorkspaceException(WorkspaceErrorCode.WORKSPACE_OWNERSHIP_TRANSFER_TARGET_CONFLICT)

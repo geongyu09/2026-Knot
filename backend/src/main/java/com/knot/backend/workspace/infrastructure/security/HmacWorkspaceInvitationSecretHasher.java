@@ -1,7 +1,7 @@
 package com.knot.backend.workspace.infrastructure.security;
 
 import com.knot.backend.workspace.application.WorkspaceInvitationSecretKind;
-import com.knot.backend.workspace.application.WorkspaceInvitationSecretProtector;
+import com.knot.backend.workspace.application.WorkspaceInvitationSecretHasher;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import java.nio.charset.StandardCharsets;
@@ -10,13 +10,13 @@ import java.util.Base64;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
-public class HmacWorkspaceInvitationSecretProtector implements WorkspaceInvitationSecretProtector {
+public class HmacWorkspaceInvitationSecretHasher implements WorkspaceInvitationSecretHasher {
     private static final String HASH_ALGORITHM = "HmacSHA256";
     private static final int KEY_BYTES = 32;
 
     private final SecretKeySpec lookupHashKey;
 
-    public HmacWorkspaceInvitationSecretProtector(WorkspaceInvitationSecurityProperties properties) {
+    public HmacWorkspaceInvitationSecretHasher(WorkspaceInvitationSecurityProperties properties) {
         this.lookupHashKey = new SecretKeySpec(
                 decodeConfiguredKey(properties == null ? null : properties.lookupHashKey()),
                 HASH_ALGORITHM

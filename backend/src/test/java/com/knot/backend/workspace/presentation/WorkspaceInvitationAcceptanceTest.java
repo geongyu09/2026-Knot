@@ -13,7 +13,7 @@ import com.knot.backend.member.domain.Member;
 import com.knot.backend.member.domain.MemberRepository;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
-import com.knot.backend.workspace.application.WorkspaceInvitationSecretProtector;
+import com.knot.backend.workspace.application.WorkspaceInvitationSecretHasher;
 import com.knot.backend.workspace.application.WorkspaceInvitationService;
 import com.knot.backend.workspace.domain.model.Workspace;
 import com.knot.backend.workspace.domain.model.WorkspaceInvitation;
@@ -55,7 +55,7 @@ class WorkspaceInvitationAcceptanceTest {
     private final MockMvc mockMvc;
     private final ObjectMapper objectMapper;
     private final AuthTokenProvider authTokenProvider;
-    private final WorkspaceInvitationSecretProtector secretProtector;
+    private final WorkspaceInvitationSecretHasher workspaceInvitationSecretHasher;
     private final MemberRepository memberRepository;
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
@@ -66,7 +66,7 @@ class WorkspaceInvitationAcceptanceTest {
             MockMvc mockMvc,
             ObjectMapper objectMapper,
             AuthTokenProvider authTokenProvider,
-            WorkspaceInvitationSecretProtector secretProtector,
+            WorkspaceInvitationSecretHasher workspaceInvitationSecretHasher,
             MemberRepository memberRepository,
             WorkspaceRepository workspaceRepository,
             WorkspaceMemberRepository workspaceMemberRepository,
@@ -76,7 +76,7 @@ class WorkspaceInvitationAcceptanceTest {
         this.mockMvc = mockMvc;
         this.objectMapper = objectMapper;
         this.authTokenProvider = authTokenProvider;
-        this.secretProtector = secretProtector;
+        this.workspaceInvitationSecretHasher = workspaceInvitationSecretHasher;
         this.memberRepository = memberRepository;
         this.workspaceRepository = workspaceRepository;
         this.workspaceMemberRepository = workspaceMemberRepository;

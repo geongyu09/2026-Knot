@@ -5,7 +5,6 @@ import ch.qos.logback.classic.Level;
 import com.knot.backend.testsupport.LogCapture;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-
 import com.knot.backend.recording.application.RecordingConnectionExpiryService;
 import java.time.Duration;
 import org.junit.jupiter.api.DisplayName;
@@ -17,9 +16,11 @@ class RecordingConnectionExpirySchedulerTest {
     @DisplayName("주기 작업은 설정한 개수만큼 자동 종료 회수를 요청한다")
     void expireDueRecordings_success_usesConfiguredBatchSize() {
         // given
-        RecordingConnectionExpiryService expiryService = mock(RecordingConnectionExpiryService.class);
+        RecordingConnectionExpiryService recordingConnectionExpiryService = mock(
+                RecordingConnectionExpiryService.class
+        );
         RecordingConnectionExpiryScheduler scheduler = new RecordingConnectionExpiryScheduler(
-                expiryService,
+                recordingConnectionExpiryService,
                 new RecordingConnectionExpiryProperties(
                         true,
                         Duration.ofSeconds(1),
@@ -31,7 +32,7 @@ class RecordingConnectionExpirySchedulerTest {
         scheduler.expireDueRecordings();
 
         // then
-        verify(expiryService).expireDue(100);
+        verify(recordingConnectionExpiryService).expireDue(100);
     }
 
     @Test
