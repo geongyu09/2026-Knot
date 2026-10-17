@@ -1,6 +1,6 @@
 # 녹음 중 PCM 오디오 조각 저장 API
 
-[Issue #764](https://github.com/woowacourse-teams/2026-Knot/issues/764)의 구현 계약이다.
+[Issue #764](https://github.com/woowacourse-teams/2026-Knot/issues/764)의 조각 저장과 #765 종료 seal·#767 최종화를 반영한 현재 계약이다.
 최초 탭이 조각을 예약하고 S3에 직접 PUT한 뒤 서버의 저장 확인을 받는다.
 PUT 성공만으로 저장 완료를 표시하지 않고, 완료 API의 `VERIFIED`를 기준으로 삼는다.
 
@@ -11,7 +11,7 @@ PUT 성공만으로 저장 완료를 표시하지 않고, 완료 API의 `VERIFIE
 설정이 꺼져도 기존 PCM 녹음의 동일 시작 재시도와 조각 저장은 계속 허용한다.
 모드를 생략하거나 null로 보내면 기존 `FINAL_WEBM_V1`이며 두 업로드 방식을 섞을 수 없다.
 
-앱 API에는 인증 쿠키가 필요하다. POST에는 `X-XSRF-TOKEN`과 최초 탭의 `tabId`·`controlToken`을 보낸다.
+앱 API에는 인증 쿠키가 필요하다. 조각 예약·완료 POST에는 `X-XSRF-TOKEN`과 최초 탭의 `tabId`·`controlToken`을 보낸다. 저장 재시도는 CSRF와 소유자를 검사하며 탭 증명을 받지 않는다.
 조회는 본인 녹음·현재 Workspace 소속을 확인하며 탭 증명을 요구하지 않는다.
 조각 예약·완료·조회는 heartbeat를 갱신하지 않으므로 기존 heartbeat를 계속 보낸다.
 
@@ -168,6 +168,7 @@ REMOTE/TIMEOUT/LIMIT은 `tailUnknown=true`다. `quality`는 manifest 확정 뒤 
 | 403 | `FORBIDDEN`, `WORKSPACE_ACCESS_DENIED`, `RECORDING_CONTROL_DENIED` | CSRF·현재 소속·녹음 소유자·최초 탭 증명 불일치 |
 | 404 | `WORKSPACE_NOT_FOUND`, `RECORDING_NOT_FOUND`, `AUDIO_CHUNK_NOT_FOUND` | 대상 또는 조각 예약 없음 |
 | 409 | `AUDIO_MODE_CONFLICT` | PCM 녹음이 아닌 대상에 조각 API 사용, 또는 PCM 녹음에 기존 최종 파일 업로드 사용 |
+| 409 | `AUDIO_SAVE_RETRY_NOT_ALLOWED` | READY·폐기·영구 실패·보관 기한 경과 등 재접수 불가 |
 | 409 | `AUDIO_SEQUENCE_GAP` | 다음 예약 번호보다 큰 번호. 최상위 `expectedNextSequence`로 다음 번호를 제공 |
 | 409 | `AUDIO_CHUNK_CONFLICT` | 기존 descriptor 변경 또는 다음 offset 불일치 |
 | 409 | `AUDIO_CHUNK_NOT_STORED` | HEAD에서 저장 객체 없음 |

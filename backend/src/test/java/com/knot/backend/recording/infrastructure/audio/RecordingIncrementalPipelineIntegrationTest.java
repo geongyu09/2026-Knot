@@ -1,4 +1,4 @@
-package com.knot.backend.recording.application;
+package com.knot.backend.recording.infrastructure.audio;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -6,12 +6,19 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.when;
 
 import com.knot.backend.document.DocumentFixtures;
+import com.knot.backend.recording.application.RecordingAudioFinalizationTransaction;
+import com.knot.backend.recording.application.RecordingAudioFinalizationQuery;
+import com.knot.backend.recording.application.RecordingTranscriptionService;
+import com.knot.backend.recording.application.RecordingAudioChunkStorage;
+import com.knot.backend.recording.application.RecordingAudioFinalStorage;
+import com.knot.backend.recording.application.RecordingAudioStorage;
+import com.knot.backend.recording.application.TranscriptionClient;
+import com.knot.backend.recording.application.RecordingAudioFinalizationWorker;
 import com.knot.backend.recording.application.dto.result.AiTranscript;
 import com.knot.backend.recording.application.dto.result.AiTranscriptionJob;
 import com.knot.backend.recording.application.dto.result.AudioFinalizationClaim;
 import com.knot.backend.recording.domain.model.StoredAudioChunk;
 import com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository;
-import com.knot.backend.recording.infrastructure.audio.PcmWavAssembler;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.io.ByteArrayInputStream;
@@ -257,6 +264,88 @@ class RecordingIncrementalPipelineIntegrationTest {
         try (java.util.stream.Stream<Path> files = Files.list(temporaryDirectory)) {
             assertThat(files.toList()).isEmpty();
         }
+    }
+
+    @org.junit.jupiter.api.Test
+    void finalPutBeforeRestartIsAdoptedWithoutAnotherUpload() throws Exception {
+        // given
+        configureObjects(false);
+        transaction.register(recordingId);
+        AudioFinalizationClaim abandoned = transaction.claim(recordingId)
+                .orElseThrow();
+        java.util.Map<Integer, StoredAudioChunk> observations = new java.util.HashMap<>();
+        for (int index = 1; index <= 3; index++) {
+            observations.put(
+                    index,
+                    new StoredAudioChunk(
+                            true,
+                            2,
+                            "application/octet-stream",
+                            checksum(PCM[index - 1]),
+                            "version-" + index
+                    )
+            );
+        }
+        com.knot.backend.recording.application.dto.result.AudioFinalizationInput frozen = transaction
+                .reconcile(
+                        abandoned,
+                        observations,
+                        NOW
+                )
+                .orElseThrow();
+        StoredAudioChunk alreadyUploaded;
+        try (com.knot.backend.recording.application.dto.result.FinalizedAudioFile file = new PcmWavAssembler(
+                finalStorage,
+                temporaryDirectory,
+                () -> 1024L * 1024 * 1024
+        ).assemble(
+                frozen.parts(),
+                frozen.totalFrames(),
+                () -> {
+                }
+        )) {
+            alreadyUploaded = finalStorage.uploadFinal(
+                    frozen.storageKey(),
+                    file.path(),
+                    file.byteLength(),
+                    file.checksumSha256()
+            );
+        }
+        when(finalStorage.findStoredFinal(frozen.storageKey())).thenReturn(alreadyUploaded);
+        when(clock.instant()).thenReturn(NOW.plusSeconds(61));
+        AudioFinalizationClaim recovered = transaction.claim(recordingId)
+                .orElseThrow();
+
+        // when
+        finalizer.process(recovered);
+
+        // then
+        awaitTranscript();
+        org.mockito.Mockito.verify(
+                finalStorage,
+                org.mockito.Mockito.times(1)
+        )
+                .uploadFinal(
+                        any(),
+                        any(),
+                        anyLong(),
+                        any()
+                );
+        assertThat(count("recording_audio_uploads")).isEqualTo(1);
+        assertThat(count("recording_transcriptions")).isEqualTo(1);
+        assertThat(
+                jobs.findByRecordingId(recordingId)
+                        .orElseThrow()
+                        .getAttempt()
+        ).isEqualTo(2);
+        assertThat(
+                org.assertj.core.api.Assertions.catchThrowable(
+                        () -> transaction.adopt(
+                                abandoned,
+                                alreadyUploaded
+                        )
+                )
+        ).isInstanceOf(com.knot.backend.recording.domain.AudioFinalizationLeaseLostException.class);
     }
 
     private void configureObjects(boolean missingMiddle) throws Exception {
