@@ -21,7 +21,7 @@ public record RecordingDetailResponse(
 
         @Schema(description = "문서 생성 결과. 접수 전 null", types = {
                 "object", "null"}) RecordingDocumentGenerationResponse documentGeneration,
-        @Schema(description = "원본 오디오 품질과 누락 범위. 기존 녹음이면 null", nullable = true) RecordingSourceAudioResponse sourceAudio
+        @Schema(description = "원본 오디오 품질·누락. 기존 녹음은 null", nullable = true) RecordingSourceAudioResponse sourceAudio
 ) {
 
     public static RecordingDetailResponse from(RecordingDetailResult result) {

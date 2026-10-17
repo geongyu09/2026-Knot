@@ -17,6 +17,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.DisplayName;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
@@ -233,6 +234,43 @@ class RecordingAudioSaveRetryAcceptanceTest {
             return "QUEUED";
         }
         return "FAILED";
+    }
+
+    @Test
+    @DisplayName("OpenAPI는 저장 재접수의 두 성공 응답과 인증·CSRF·오류 계약을 공개한다")
+    void openApi_success_audioSaveRetryContract() throws Exception {
+        // given
+        String operation = "$.paths['" + RECORDING_PATH + "/audio-save/retry'].post";
+        // when
+        ResultActions result = mockMvc.perform(get("/v3/api-docs"));
+        // then
+        result.andExpect(status().isOk())
+                .andExpect(
+                        jsonPath(operation + ".responses['202'].content['application/json'].schema['$ref']")
+                                .value("#/components/schemas/RecordingAudioSaveResponse")
+                )
+                .andExpect(
+                        jsonPath(operation + ".responses['200'].content['application/json'].schema['$ref']")
+                                .value("#/components/schemas/RecordingAudioSaveResponse")
+                )
+                .andExpect(
+                        jsonPath(operation + ".responses['401'].content['application/json'].schema['$ref']")
+                                .value("#/components/schemas/ErrorResponse")
+                )
+                .andExpect(
+                        jsonPath(operation + ".responses['403'].content['application/json'].schema['$ref']")
+                                .value("#/components/schemas/ErrorResponse")
+                )
+                .andExpect(
+                        jsonPath(operation + ".responses['409'].content['application/json'].schema['$ref']")
+                                .value("#/components/schemas/ErrorResponse")
+                )
+                .andExpect(jsonPath(operation + ".security[0].accessTokenCookie").isArray())
+                .andExpect(
+                        jsonPath(operation + ".parameters[?(@.name == 'X-XSRF-TOKEN' && @.in == 'header')].required")
+                                .value(org.hamcrest.Matchers.contains(true))
+                )
+                .andExpect(jsonPath(operation + ".requestBody").doesNotExist());
     }
 
     private ResultActions retry(Fixture fixture) throws Exception {
