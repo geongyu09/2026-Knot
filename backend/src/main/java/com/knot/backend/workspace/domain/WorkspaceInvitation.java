@@ -80,8 +80,7 @@ public class WorkspaceInvitation {
     }
 
     public void validateUsableAt(Instant pointInTime) {
-        validatePointInTime(pointInTime);
-        if (pointInTime.isBefore(createdAt) || !pointInTime.isBefore(expiresAt) || invalidatedAt != null) {
+        if (!isUsableAt(pointInTime)) {
             throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_INVITATION_PREVIEW_NOT_FOUND);
         }
     }
@@ -97,6 +96,14 @@ public class WorkspaceInvitation {
                 WorkspaceMemberRole.MEMBER,
                 joinedAt
         );
+    }
+
+    private boolean isUsableAt(Instant pointInTime) {
+        validatePointInTime(pointInTime);
+        boolean issued = !pointInTime.isBefore(createdAt);
+        boolean unexpired = pointInTime.isBefore(expiresAt);
+        boolean uninvalidated = invalidatedAt == null;
+        return issued && unexpired && uninvalidated;
     }
 
     private void validateWorkspaceId(Long workspaceId) {

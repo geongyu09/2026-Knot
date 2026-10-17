@@ -3,12 +3,14 @@ package com.knot.backend.workspace.application;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 public record WorkspaceInvitationCredential(
         WorkspaceInvitationSecretKind kind,
         String secret
 ) {
     static final int CODE_LENGTH = 6;
+    private static final Pattern INVITE_CODE_PATTERN = Pattern.compile("[A-Z2-9]{" + CODE_LENGTH + "}");
 
     public static WorkspaceInvitationCredential from(String tokenOrCode) {
         if (tokenOrCode == null || tokenOrCode.isBlank()) {
@@ -32,8 +34,16 @@ public record WorkspaceInvitationCredential(
         );
     }
 
+    public boolean isRateLimited() {
+        return kind == WorkspaceInvitationSecretKind.INVITE_CODE;
+    }
+
     public void validate() {
-        if (kind == WorkspaceInvitationSecretKind.INVITE_CODE && !secret.matches("[A-Z2-9]{6}")) {
+        if (kind != WorkspaceInvitationSecretKind.INVITE_CODE) {
+            return;
+        }
+        if (!INVITE_CODE_PATTERN.matcher(secret)
+                .matches()) {
             throw previewNotFound();
         }
     }
