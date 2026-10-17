@@ -1,12 +1,31 @@
 package com.knot.backend.recording.application.dto.command;
 
+import com.knot.backend.recording.domain.model.RecordingAudioMode;
 import java.util.UUID;
 
 public record RecordingStartCommand(
         UUID requestId,
         UUID tabId,
-        String controlToken
+        String controlToken,
+        RecordingAudioMode audioMode
 ) {
+
+    public RecordingStartCommand {
+        audioMode = audioMode == null ? RecordingAudioMode.FINAL_WEBM_V1 : audioMode;
+    }
+
+    public RecordingStartCommand(
+            UUID requestId,
+            UUID tabId,
+            String controlToken
+    ) {
+        this(
+                requestId,
+                tabId,
+                controlToken,
+                RecordingAudioMode.FINAL_WEBM_V1
+        );
+    }
 
     @Override
     public String toString() {
