@@ -25,7 +25,7 @@ Mac의 신규 설치·수집기 설정 갱신은 [Mac AI 호스트 자원 수집
 | FORWARD 예외 | established/related와 `docker0`·`br-*`에서 시작하는 트래픽. 외부에서 컨테이너로 새로 들어오는 연결은 허용하지 않음 |
 | 중앙 앱 | `mac/central/compose.yml`의 Prometheus·Grafana 두 서비스만 실행 |
 | 앱 바인딩 | host network, Prometheus `127.0.0.1:9090`, Grafana `127.0.0.1:3000`. `ports` publish 없음 |
-| 앱 권한·자원 | 이미지 기본 non-root, `cap_drop: [ALL]`, `no-new-privileges`, 각각 메모리 512MiB. CPU는 Prometheus 1개·Grafana 0.5개 제한 |
+| 앱 권한·자원 | 이미지 기본 non-root, `cap_drop: [ALL]`, `no-new-privileges`, Prometheus 메모리 512MiB·CPU 1개, Grafana 메모리 1GiB·CPU 1개와 `GOMEMLIMIT=640MiB` |
 | 중앙 보존 | Prometheus 14일 또는 `2GB`(2GiB) 중 먼저 도달하는 조건으로 오래된 블록 정리 |
 | Grafana 관리 | 비공개 파일의 무작위 관리자 비밀번호, SSH 터널의 로컬 13000 포트 |
 
@@ -43,6 +43,32 @@ cloud-init은 임시 SSH 키만 추가했으며 nftables 설치·guard 적용은
 중앙 보존은 디스크 사용량의 하드 제한이 아니다. WAL·head와 블록 병합 중 임시 공간 때문에
 설정 크기를 넘을 수 있으므로 호스트 여유 공간도 확인한다. Mac의 로컬 WAL은 별도이며 같은
 `wal/` 경로를 재사용하고 최대 2시간 보존한다. 장기 단절이나 용량 부족의 무손실을 보장하지 않는다.
+
+### Grafana 자원 부족과 보완
+
+2026-10-17 16:42:19 UTC에 대시보드 쿼리 중 Grafana의 메모리 사용량이 초기 컨테이너 제한
+512MiB에 근접한 511.2MiB까지 올라갔다. 커널의 `CONSTRAINT_MEMCG` OOM kill과 Docker
+자동 재시작 1회를 확인했다. 당시 Prometheus는 ready였고 기존 데이터는 유지됐다.
+
+Grafana만 컨테이너 제한을 1GiB·CPU 1개로 올리고 `GOMEMLIMIT=640MiB`를 추가한다.
+Prometheus의 512MiB·CPU 1개와 보존 설정은 유지한다. Grafana 공식 최소 512MB·1코어는
+평가 시작점이며 실제 대시보드 부하를 수용한다는 보장이 아니다. GOMEMLIMIT도 Go 런타임의
+soft limit으로, 프로세스 전체 RSS·플러그인·컨테이너 메모리의 하드 제한이 아니다.
+
+운영 반영 시 아래의 구문 검사 뒤 Grafana 서비스만 재생성한다. Prometheus와 영속 볼륨을
+내리지 않고 Grafana health·loopback 바인딩·최신 표본과 대시보드 조회를 다시 확인한다.
+
+```sh
+cd /opt/knot-observability/mac/central
+if sudo env KNOT_CENTRAL_SECRETS_DIR=/opt/knot-observability/private docker compose config --quiet; then
+  sudo env KNOT_CENTRAL_SECRETS_DIR=/opt/knot-observability/private docker compose up -d --no-deps grafana
+fi
+```
+
+이 보완은 관측된 cgroup OOM의 여유를 늘리는 조치이며 장기 안정성의 증거가 아니다.
+같은 대시보드 부하에서 재시작 횟수·컨테이너 메모리·호스트 가용 메모리와 새 OOM 로그를
+계속 확인한다. 호스트 RAM은 여전히 2GiB이므로 두 컨테이너의 제한과 OS 여유를 함께 봐야 한다.
+반복 OOM이나 호스트 메모리 부족이 생기면 쿼리·갱신 부하와 용량을 다시 검토한다.
 
 ### 중앙 파일과 서비스
 
@@ -160,3 +186,6 @@ TLS 인증서는 365일로 발급했으므로 만료 전에 갱신한다. 중앙
 - [Docker host network](https://docs.docker.com/engine/network/drivers/host/)
 - [localhost publish의 구버전 경고](https://docs.docker.com/engine/network/port-publishing/)
 - [Prometheus 보존 조건과 디스크 여유](https://prometheus.io/docs/prometheus/latest/storage/)
+- [Grafana 최소 자원과 실제 부하 검증](https://grafana.com/docs/grafana/latest/setup-grafana/installation/)
+- [Go 런타임 GOMEMLIMIT](https://pkg.go.dev/runtime#hdr-Environment_Variables)
+- [Go memory limit의 범위와 여유](https://go.dev/doc/gc-guide#Memory_limit)
