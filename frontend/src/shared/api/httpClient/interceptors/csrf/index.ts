@@ -11,8 +11,8 @@ const CSRF_HEADER_NAME = "X-XSRF-TOKEN";
 /** 서버 상태를 바꾸는 메서드. 이 요청들만 CSRF 토큰을 요구해요. */
 const MUTATING_METHODS = ["post", "put", "patch", "delete"];
 
-/** 403을 받았을 때 토큰을 다시 받아 다시 보내는 최대 횟수 */
-const MAX_CSRF_RETRIES = 2;
+/** 403을 받았을 때 토큰을 다시 받아 다시 보내는 최대 횟수. SSE 요청도 같은 횟수를 써요. */
+export const MAX_CSRF_RETRIES = 2;
 
 interface CsrfTokenResponse {
   token: string;
@@ -49,6 +49,13 @@ const loadCsrfToken = (client: AxiosInstance) => {
 
   return loadingCsrfToken;
 };
+
+/**
+ * CSRF 토큰을 새로 받아 돌려줍니다. 다른 요청이 이미 받는 중이면 그 결과를 함께 써요.
+ *
+ * fetch로 직접 보내는 SSE 요청이 403을 받았을 때, 이 인터셉터와 같은 묶인 조회로 토큰을 다시 받기 위해 씁니다.
+ */
+export const reloadCsrfToken = (client: AxiosInstance) => loadCsrfToken(client);
 
 /**
  * 지금 들고 있는 CSRF 토큰을 돌려주고, 없으면 `client`로 받아옵니다.
