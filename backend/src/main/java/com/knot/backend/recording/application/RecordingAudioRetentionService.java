@@ -1,6 +1,5 @@
 package com.knot.backend.recording.application;
 
-import com.knot.backend.global.config.RetentionCleanupProperties;
 import com.knot.backend.recording.domain.RecordingAudioDeletionRepository;
 import com.knot.backend.recording.domain.RecordingAudioDeletionTask;
 import com.knot.backend.recording.domain.RecordingAudioUpload;
@@ -18,7 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class RecordingAudioRetentionService {
     private final RecordingAudioDeletionRepository deletions;
-    private final RetentionCleanupProperties properties;
     private final Clock clock;
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -62,12 +60,7 @@ public class RecordingAudioRetentionService {
                 RecordingAudioDeletionTask.request(
                         upload.getId(),
                         upload.getStorageKey(),
-                        now,
-                        upload.deletionConfirmationAfter(
-                                properties.getLegacyUrlValidity(),
-                                properties.getUploadQuiescence(),
-                                now
-                        )
+                        now
                 )
         );
     }

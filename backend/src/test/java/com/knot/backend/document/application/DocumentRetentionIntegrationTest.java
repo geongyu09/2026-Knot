@@ -670,31 +670,22 @@ class DocumentRetentionIntegrationTest {
     }
 
     @Test
-    @DisplayName("내용 없음은 파일을 즉시 삭제하되 이전 업로드 URL 쓰기 기간 종료 후 재확인한다")
-    void audioDeletion_noContentConfirmsAfterUploadWindow() {
+    @DisplayName("내용 없음 오디오는 첫 저장소 삭제가 성공하면 바로 삭제를 확정한다")
+    void execute_success_noContentConfirmedOnFirstDeletion() {
+        // given
         long batch = fixtures.saveGenerationBatch(transcriptId);
-        jdbc.sql(
-                """
-                        UPDATE document_generation_batches SET topic_registration_state = 'NO_CONTENT', processing_status = 'NO_CONTENT',
-                            cleanup_requested_at = registered_at, finished_at = registered_at WHERE id = :id
-                        """
-        )
+        jdbc.sql("""
+                UPDATE document_generation_batches SET topic_registration_state = 'NO_CONTENT',
+                    processing_status = 'NO_CONTENT', cleanup_requested_at = registered_at,
+                    finished_at = registered_at
+                WHERE id = :id
+                """)
                 .param(
                         "id",
                         batch
                 )
                 .update();
-        long upload = saveAudio(CREATED);
-        jdbc.sql("UPDATE recording_audio_uploads SET last_upload_url_expires_at = :expiry WHERE id = :id")
-                .param(
-                        "expiry",
-                        Timestamp.from(CREATED.plusSeconds(900))
-                )
-                .param(
-                        "id",
-                        upload
-                )
-                .update();
+        saveAudio(CREATED);
         when(clock.instant()).thenReturn(CREATED.plusSeconds(60));
         cleanup.cleanup(
                 workspaceId,
@@ -704,30 +695,22 @@ class DocumentRetentionIntegrationTest {
         long task = jdbc.sql("SELECT id FROM recording_audio_deletion_tasks")
                 .query(Long.class)
                 .single();
-        deletion.execute(task);
-        assertThat(
-                jdbc.sql("SELECT status FROM recording_audio_deletion_tasks")
-                        .query(String.class)
-                        .single()
-        ).isEqualTo("PENDING");
-        assertThat(
-                jdbc.sql("SELECT count(*) FROM recording_audio_uploads WHERE deleted_at IS NOT NULL")
-                        .query(Integer.class)
-                        .single()
-        ).isZero();
 
-        when(clock.instant()).thenReturn(CREATED.plusSeconds(2700));
+        // when
         deletion.execute(task);
 
+        // then
         assertThat(
                 jdbc.sql("SELECT status FROM recording_audio_deletion_tasks")
                         .query(String.class)
                         .single()
         ).isEqualTo("SUCCEEDED");
-        verify(
-                storage,
-                times(2)
-        ).deleteStoredObject("recordings/test-key");
+        assertThat(
+                jdbc.sql("SELECT count(*) FROM recording_audio_uploads WHERE deleted_at IS NOT NULL")
+                        .query(Integer.class)
+                        .single()
+        ).isEqualTo(1);
+        verify(storage).deleteStoredObject("recordings/test-key");
     }
 
     @Test
