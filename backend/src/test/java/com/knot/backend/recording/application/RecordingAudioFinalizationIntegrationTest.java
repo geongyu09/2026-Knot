@@ -12,6 +12,7 @@ import com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRe
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.time.Clock;
+import org.springframework.test.util.AopTestUtils;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Map;
@@ -407,39 +408,49 @@ class RecordingAudioFinalizationIntegrationTest {
     @Test
     void retentionCutoffBlocksAdoptionEvenWithLiveLease() {
         // given
-        when(clock.instant()).thenReturn(NOW.plus(java.time.Duration.ofDays(30)).minusSeconds(1));
-        AudioFinalizationClaim claim = transaction.claim(recordingId).orElseThrow();
+        when(clock.instant()).thenReturn(
+                NOW.plus(java.time.Duration.ofDays(30))
+                        .minusSeconds(1)
+        );
+        AudioFinalizationClaim claim = transaction.claim(recordingId)
+                .orElseThrow();
         transaction.reconcile(
                 claim,
                 Map.of(
-                1,
-                new StoredAudioChunk(
-                true,
-                2,
-                "application/octet-stream",
-                HASH,
-                "v1"
-        )
-        ),
+                        1,
+                        new StoredAudioChunk(
+                                true,
+                                2,
+                                "application/octet-stream",
+                                HASH,
+                                "v1"
+                        )
+                ),
                 clock.instant()
         );
         when(clock.instant()).thenReturn(NOW.plus(java.time.Duration.ofDays(30)));
 
         // when
-        Throwable failure = catchThrowable(() -> transaction.adopt(
-                claim,
-                new StoredAudioChunk(
-                        true,
-                        46,
-                        "audio/wav",
-                        HASH,
-                        "final-v1"
+        Throwable failure = catchThrowable(
+                () -> transaction.adopt(
+                        claim,
+                        new StoredAudioChunk(
+                                true,
+                                46,
+                                "audio/wav",
+                                HASH,
+                                "final-v1"
+                        )
                 )
-        ));
+        );
 
         // then
         assertThat(failure).isInstanceOf(AudioFinalizationLeaseLostException.class);
-        assertThat(jdbc.sql("SELECT count(*) FROM recording_audio_uploads").query(Long.class).single()).isZero();
+        assertThat(
+                jdbc.sql("SELECT count(*) FROM recording_audio_uploads")
+                        .query(Long.class)
+                        .single()
+        ).isZero();
     }
 
     @Test
@@ -452,7 +463,12 @@ class RecordingAudioFinalizationIntegrationTest {
 
         // then
         assertThat(result).isEmpty();
-        assertThat(jobs.findByRecordingId(recordingId).orElseThrow().getStatus().name()).isEqualTo("DISCARDED");
+        assertThat(
+                jobs.findByRecordingId(recordingId)
+                        .orElseThrow()
+                        .getStatus()
+                        .name()
+        ).isEqualTo("DISCARDED");
     }
 
     @Test
@@ -475,7 +491,7 @@ class RecordingAudioFinalizationIntegrationTest {
                 NOW
         );
         org.mockito.Mockito.doThrow(new IllegalStateException("접수 실패"))
-                .when(stateService)
+                .when(AopTestUtils.<RecordingTranscriptionStateService>getUltimateTargetObject(stateService))
                 .registerAutomatic(recordingId);
 
         // when

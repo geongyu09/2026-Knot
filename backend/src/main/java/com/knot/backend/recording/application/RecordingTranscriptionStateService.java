@@ -215,7 +215,7 @@ public class RecordingTranscriptionStateService {
                 });
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Optional<RecordingTranscriptionExecution> claimNext(
             UUID ownerToken,
             Duration lease

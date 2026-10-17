@@ -26,4 +26,12 @@
 
 ## 검증
 
-검증 명령과 최종 결과는 작업 완료 시 이 문서에 기록한다. 별도 실제 S3·AI WAV 사전 검증은 출시 실험 보고서의 증거를 사용한다. 이 문서의 PostgreSQL 통합 테스트는 S3·AI 포트를 대역으로 사용하며 실제 서비스 배포를 뜻하지 않는다.
+2026-10-18 실행 결과:
+
+- `./gradlew spotlessApply test integrationTest acceptanceTest bootJar`: 성공. unit 1,668개, PostgreSQL 통합 749개(통과 748·기존 실제 S3 opt-in 1개 skip), HTTP acceptance 581개, 합계 2,998개다.
+- 추가 `./gradlew integrationTest --tests '*RecordingIncrementalPipelineIntegrationTest' spotlessCheck`: 3개 모두 통과. 정상·중간 누락·최종 PUT 뒤 재시작 재선점에서 실제 PCM 조립, PostgreSQL 저장, 전사 실행자와 문서 접수까지 연결한다. 마지막 경우 두 번째 PUT 없이 같은 객체를 채택하고 오래된 실행자의 채택을 거절한다.
+- 별도 96MiB heap 제한에서 2시간 WAV 230,400,044바이트 조립 통과(해당 테스트 0.867초). 전체 파일을 heap에 올리는 구현으로는 통과할 수 없는 자원 검증이다.
+- 저장소 Governance Python 단위 테스트 10개 통과. 전체 컨벤션 감사에는 기존 파일 진단 1,276개가 남아 미통과이며 신규 Java 파일 진단은 0개다. 전체 감사 통과를 주장하지 않는다.
+- AI 서버 기존 검증은 120개 중 119개 통과·실제 모델 opt-in 1개 skip, Spotless·bootJar 통과다. 실제 S3 WAV를 별도 실행 AI에 전달한 사전 검증도 성공했다.
+
+통합 테스트는 S3·AI 포트를 대역으로 사용한다. 실제 모델 사전 검증과 연결 테스트는 각각의 증거이며 제품 FE·실제 배포 환경의 전체 흐름 검증을 뜻하지 않는다. 신규 PCM과 최종화 설정은 기본 비활성으로 유지하고, FE 연결·AI WAV 호환 배포·#768 정리 검증 후 활성화한다.

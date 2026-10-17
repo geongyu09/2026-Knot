@@ -2,7 +2,6 @@ package com.knot.backend.recording.application;
 
 import com.knot.backend.recording.application.dto.result.AudioFrameRange;
 import com.knot.backend.recording.application.dto.result.RecordingAudioSaveResult;
-import com.knot.backend.recording.domain.model.AudioFinalizationStatus;
 import com.knot.backend.recording.domain.model.AudioManifestPart;
 import com.knot.backend.recording.domain.model.RecordingAudioFinalization;
 import com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository;
@@ -115,15 +114,38 @@ public class RecordingAudioFinalizationQuery {
     private List<AudioFrameRange> missingRanges(AudioManifestPart[] manifest) {
         List<AudioFrameRange> ranges = new ArrayList<>();
         for (AudioManifestPart part : manifest) {
-            if (part.isMissing()) {
-                ranges.add(
-                        new AudioFrameRange(
-                                part.sampleOffset(),
-                                part.sampleOffset() + part.frameCount()
-                        )
-                );
+            if (!part.isMissing()) {
+                continue;
             }
+            addMissingRange(
+                    ranges,
+                    part
+            );
         }
         return ranges;
     }
+    private void addMissingRange(
+            List<AudioFrameRange> ranges,
+            AudioManifestPart part
+    ) {
+        long end = part.sampleOffset() + part.frameCount();
+        if (!ranges.isEmpty() && ranges.getLast()
+                .endExclusive() == part.sampleOffset()) {
+            AudioFrameRange previous = ranges.removeLast();
+            ranges.add(
+                    new AudioFrameRange(
+                            previous.start(),
+                            end
+                    )
+            );
+            return;
+        }
+        ranges.add(
+                new AudioFrameRange(
+                        part.sampleOffset(),
+                        end
+                )
+        );
+    }
+
 }
