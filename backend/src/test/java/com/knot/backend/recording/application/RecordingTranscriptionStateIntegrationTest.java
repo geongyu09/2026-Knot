@@ -801,7 +801,6 @@ class RecordingTranscriptionStateIntegrationTest {
                     100,
                     NOW.minusSeconds(10)
             );
-            upload.recordUploadUrlExpiry(NOW.plusSeconds(60));
             upload.complete(
                     StoredAudioObject.of(
                             100,
