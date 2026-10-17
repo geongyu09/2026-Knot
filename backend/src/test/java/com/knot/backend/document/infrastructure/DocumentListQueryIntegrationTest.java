@@ -10,7 +10,8 @@ import com.knot.backend.document.domain.DocumentCursor;
 import com.knot.backend.document.domain.DocumentConfirmation;
 import com.knot.backend.document.domain.DocumentStatus;
 import com.knot.backend.document.domain.MyConfirmationState;
-import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.testsupport.SharedPostgresDocumentQueryTestSupport;
+import com.knot.backend.testsupport.SharedPostgresTestConfiguration;
 import jakarta.persistence.EntityManager;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -26,9 +27,9 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 @Tag("integration")
 @DataJpaTest
-@Import({TestcontainersConfiguration.class, DocumentConfirmationQueryAdapter.class, DocumentDetailQueryAdapter.class,
-        DocumentGenerationJobListQueryAdapter.class, DocumentListQueryAdapter.class})
-class DocumentListQueryIntegrationTest {
+@Import({SharedPostgresTestConfiguration.class, DocumentConfirmationQueryAdapter.class,
+        DocumentDetailQueryAdapter.class, DocumentGenerationJobListQueryAdapter.class, DocumentListQueryAdapter.class})
+class DocumentListQueryIntegrationTest extends SharedPostgresDocumentQueryTestSupport {
     @Autowired
     private DocumentListQuery query;
     @Autowired
