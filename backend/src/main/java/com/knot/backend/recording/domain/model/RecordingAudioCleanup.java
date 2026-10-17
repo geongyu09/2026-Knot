@@ -53,7 +53,10 @@ public class RecordingAudioCleanup {
 
     protected RecordingAudioCleanup() {}
 
-    public static RecordingAudioCleanup track(long recordingId, Instant now) {
+    public static RecordingAudioCleanup track(
+            long recordingId,
+            Instant now
+    ) {
         if (recordingId <= 0 || now == null) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
         }
@@ -65,7 +68,11 @@ public class RecordingAudioCleanup {
         return value;
     }
 
-    public void request(RecordingAudioCleanupScope requestedScope, Instant expiresAt, Instant now) {
+    public void request(
+            RecordingAudioCleanupScope requestedScope,
+            Instant expiresAt,
+            Instant now
+    ) {
         if (requestedScope == null || requestedScope == RecordingAudioCleanupScope.DORMANT || now == null) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
         }
@@ -82,7 +89,10 @@ public class RecordingAudioCleanup {
         claimEpoch++;
     }
 
-    public boolean claim(Instant now, Duration lease) {
+    public boolean claim(
+            Instant now,
+            Duration lease
+    ) {
         if (now == null || lease == null || lease.isNegative() || lease.isZero()) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_TIME);
         }
@@ -105,7 +115,11 @@ public class RecordingAudioCleanup {
         return storagePrefix;
     }
 
-    public void finish(long epoch, boolean success, Instant now) {
+    public void finish(
+            long epoch,
+            boolean success,
+            Instant now
+    ) {
         if (epoch != claimEpoch || leaseUntil == null || !now.isBefore(leaseUntil)) {
             return;
         }
@@ -115,7 +129,12 @@ public class RecordingAudioCleanup {
             lastSweptAt = now;
         }
         // PUT 시작 시각만으로 완료 시각을 증명할 수 없으므로 tombstone은 성공 후에도 유지한다.
-        nextAttemptAt = now.plus(nextSweepDelay(success, now));
+        nextAttemptAt = now.plus(
+                nextSweepDelay(
+                        success,
+                        now
+                )
+        );
     }
 
     private void recordOutcome(boolean success) {
@@ -126,7 +145,10 @@ public class RecordingAudioCleanup {
         lastFailureCode = RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE.getCode();
     }
 
-    private Duration nextSweepDelay(boolean success, Instant now) {
+    private Duration nextSweepDelay(
+            boolean success,
+            Instant now
+    ) {
         if (!success || (maxUrlExpiresAt != null && now.isBefore(maxUrlExpiresAt))) {
             return Duration.ofMinutes(1);
         }

@@ -11,9 +11,15 @@ class RecordingAudioCleanupTest {
     @Test
     void unadoptedAudioIsNeverClaimed() {
         // given
-        RecordingAudioCleanup task = RecordingAudioCleanup.track(1, NOW);
+        RecordingAudioCleanup task = RecordingAudioCleanup.track(
+                1,
+                NOW
+        );
         // when
-        boolean claimed = task.claim(NOW, Duration.ofMinutes(5));
+        boolean claimed = task.claim(
+                NOW,
+                Duration.ofMinutes(5)
+        );
         // then
         assertThat(claimed).isFalse();
         assertThat(task.getScope()).isEqualTo(RecordingAudioCleanupScope.DORMANT);
@@ -22,9 +28,16 @@ class RecordingAudioCleanupTest {
     @Test
     void adoptedRawCleanupPreservesFinalPrefix() {
         // given
-        RecordingAudioCleanup task = RecordingAudioCleanup.track(1, NOW);
+        RecordingAudioCleanup task = RecordingAudioCleanup.track(
+                1,
+                NOW
+        );
         // when
-        task.request(RecordingAudioCleanupScope.RAW, NOW.plusSeconds(120), NOW);
+        task.request(
+                RecordingAudioCleanupScope.RAW,
+                NOW.plusSeconds(120),
+                NOW
+        );
         // then
         assertThat(task.deletionPrefix()).isEqualTo("recordings/1/chunks/");
     }
@@ -34,9 +47,17 @@ class RecordingAudioCleanupTest {
         // given
         RecordingAudioCleanup task = rawClaim();
         long oldEpoch = task.getClaimEpoch();
-        task.request(RecordingAudioCleanupScope.ALL, NOW.plusSeconds(120), NOW.plusSeconds(1));
+        task.request(
+                RecordingAudioCleanupScope.ALL,
+                NOW.plusSeconds(120),
+                NOW.plusSeconds(1)
+        );
         // when
-        task.finish(oldEpoch, true, NOW.plusSeconds(2));
+        task.finish(
+                oldEpoch,
+                true,
+                NOW.plusSeconds(2)
+        );
         // then
         assertThat(task.getLastSweptAt()).isNull();
         assertThat(task.deletionPrefix()).isEqualTo("recordings/1/");
@@ -48,7 +69,11 @@ class RecordingAudioCleanupTest {
         // given
         RecordingAudioCleanup task = rawClaim();
         // when
-        task.finish(task.getClaimEpoch(), true, NOW.plusSeconds(300));
+        task.finish(
+                task.getClaimEpoch(),
+                true,
+                NOW.plusSeconds(300)
+        );
         // then
         assertThat(task.getLastSweptAt()).isNull();
         assertThat(task.getLeaseUntil()).isEqualTo(NOW.plusSeconds(300));
@@ -59,7 +84,11 @@ class RecordingAudioCleanupTest {
         // given
         RecordingAudioCleanup task = rawClaim();
         // when
-        task.finish(task.getClaimEpoch(), true, NOW.plusSeconds(200));
+        task.finish(
+                task.getClaimEpoch(),
+                true,
+                NOW.plusSeconds(200)
+        );
         // then
         assertThat(task.getNextAttemptAt()).isEqualTo(NOW.plusSeconds(3800));
         assertThat(task.getLastSweptAt()).isEqualTo(NOW.plusSeconds(200));
@@ -71,7 +100,11 @@ class RecordingAudioCleanupTest {
         // given
         RecordingAudioCleanup task = rawClaim();
         // when
-        task.finish(task.getClaimEpoch(), false, NOW.plusSeconds(10));
+        task.finish(
+                task.getClaimEpoch(),
+                false,
+                NOW.plusSeconds(10)
+        );
         // then
         assertThat(task.getLastSweptAt()).isNull();
         assertThat(task.getLastFailureCode()).isEqualTo("AUDIO_STORAGE_UNAVAILABLE");
@@ -83,7 +116,11 @@ class RecordingAudioCleanupTest {
         // given
         RecordingAudioCleanup task = rawClaim();
         // when
-        task.finish(task.getClaimEpoch(), true, NOW.plusSeconds(10));
+        task.finish(
+                task.getClaimEpoch(),
+                true,
+                NOW.plusSeconds(10)
+        );
         // then
         assertThat(task.getNextAttemptAt()).isEqualTo(NOW.plusSeconds(70));
     }
@@ -93,7 +130,10 @@ class RecordingAudioCleanupTest {
         // given
         RecordingAudioCleanup task = rawClaim();
         // when
-        boolean claimed = task.claim(NOW.plusSeconds(1), Duration.ofMinutes(5));
+        boolean claimed = task.claim(
+                NOW.plusSeconds(1),
+                Duration.ofMinutes(5)
+        );
         // then
         assertThat(claimed).isFalse();
     }
@@ -104,16 +144,29 @@ class RecordingAudioCleanupTest {
         RecordingAudioCleanup task = rawClaim();
         long oldEpoch = task.getClaimEpoch();
         // when
-        boolean claimed = task.claim(NOW.plusSeconds(300), Duration.ofMinutes(5));
+        boolean claimed = task.claim(
+                NOW.plusSeconds(300),
+                Duration.ofMinutes(5)
+        );
         // then
         assertThat(claimed).isTrue();
         assertThat(task.getClaimEpoch()).isGreaterThan(oldEpoch);
     }
 
     private RecordingAudioCleanup rawClaim() {
-        RecordingAudioCleanup task = RecordingAudioCleanup.track(1, NOW);
-        task.request(RecordingAudioCleanupScope.RAW, NOW.plusSeconds(120), NOW);
-        task.claim(NOW, Duration.ofMinutes(5));
+        RecordingAudioCleanup task = RecordingAudioCleanup.track(
+                1,
+                NOW
+        );
+        task.request(
+                RecordingAudioCleanupScope.RAW,
+                NOW.plusSeconds(120),
+                NOW
+        );
+        task.claim(
+                NOW,
+                Duration.ofMinutes(5)
+        );
         return task;
     }
 }

@@ -27,11 +27,21 @@ public class RecordingAudioDeletionWorker {
         try {
             recordingAudioStorage.deleteRecordingPrefix(execution.storagePrefix());
         } catch (RuntimeException exception) {
-            cleanupState.finish(execution, false);
-            ServerErrorLogger.recordTaskFailure(log, "Audio prefix deletion deferred recordingId=" + recordingId, exception);
+            cleanupState.finish(
+                    execution,
+                    false
+            );
+            ServerErrorLogger.recordTaskFailure(
+                    log,
+                    "Audio prefix deletion deferred recordingId=" + recordingId,
+                    exception
+            );
             return;
         }
-        cleanupState.finish(execution, true);
+        cleanupState.finish(
+                execution,
+                true
+        );
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
