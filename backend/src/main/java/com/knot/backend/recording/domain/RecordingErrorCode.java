@@ -16,6 +16,11 @@ public enum RecordingErrorCode implements ErrorCode {
             "AUDIO_SAVE_RETRY_NOT_ALLOWED",
             "현재 오디오 저장 작업은 다시 시도할 수 없습니다"
     ),
+    AI_OUTCOME_UNKNOWN(
+            ErrorCategory.INTERNAL_SERVER_ERROR,
+            "AI_OUTCOME_UNKNOWN",
+            "AI 실행 결과를 확인하지 못했습니다"
+    ),
     INVALID_AUDIO_SEAL(
             ErrorCategory.INVALID_INPUT,
             "INVALID_AUDIO_SEAL",
