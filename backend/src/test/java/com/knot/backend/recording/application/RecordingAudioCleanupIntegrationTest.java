@@ -4,6 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import com.knot.backend.recording.application.dto.result.RecordingTranscriptionExecution;
 import com.knot.backend.recording.application.dto.result.AiTranscript;
+import com.knot.backend.recording.application.dto.result.AudioFinalizationClaim;
+import com.knot.backend.recording.domain.AudioFinalizationLeaseLostException;
+import com.knot.backend.recording.domain.model.StoredAudioChunk;
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.List;
 import java.util.UUID;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -52,6 +58,8 @@ class RecordingAudioCleanupIntegrationTest {
     private RecordingAudioDeletionWorker worker;
     @Autowired
     private RecordingTranscriptionStateService transcriptionState;
+    @Autowired
+    private RecordingAudioFinalizationTransaction finalization;
     @Autowired
     private JdbcClient jdbc;
     @Autowired
@@ -390,6 +398,112 @@ class RecordingAudioCleanupIntegrationTest {
     }
 
     @Test
+    void departureCommitRejectsFinalizerWaitingOnWorkspaceLock() throws Exception {
+        // given
+        AudioFinalizationClaim claim = finalization.claim(1)
+                .orElseThrow();
+        StoredAudioChunk chunk = new StoredAudioChunk(
+                true,
+                2,
+                "application/octet-stream",
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "chunk-v1"
+        );
+        assertThat(
+                finalization.reconcile(
+                        claim,
+                        Map.of(
+                                1,
+                                chunk
+                        ),
+                        NOW
+                )
+        ).isPresent();
+        StoredAudioChunk wav = new StoredAudioChunk(
+                true,
+                46,
+                "audio/wav",
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "final-v1"
+        );
+        CountDownLatch cleanupReady = new CountDownLatch(1);
+        CountDownLatch releaseCleanup = new CountDownLatch(1);
+        CountDownLatch adoptionStarted = new CountDownLatch(1);
+        AtomicInteger adoptionPid = new AtomicInteger();
+        try (java.util.concurrent.ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            try {
+                Future<?> departure = executor
+                        .submit(() -> new TransactionTemplate(transactions).executeWithoutResult(status -> {
+                            jdbc.sql("SELECT id FROM workspaces WHERE id=1 FOR UPDATE")
+                                    .query(Long.class)
+                                    .single();
+                            jdbc.sql("UPDATE workspace_members SET left_at=now()")
+                                    .update();
+                            state.afterDeparture(
+                                    1,
+                                    1
+                            );
+                            cleanupReady.countDown();
+                            awaitBarrier(releaseCleanup);
+                        }));
+                awaitBarrier(cleanupReady);
+                Future<Throwable> adoption = executor.submit(
+                        () -> catchThrowable(
+                                () -> new TransactionTemplate(transactions).executeWithoutResult(status -> {
+                                    adoptionPid.set(
+                                            jdbc.sql("SELECT pg_backend_pid()")
+                                                    .query(Integer.class)
+                                                    .single()
+                                    );
+                                    adoptionStarted.countDown();
+                                    finalization.adopt(
+                                            claim,
+                                            wav
+                                    );
+                                })
+                        )
+                );
+                awaitBarrier(adoptionStarted);
+                awaitDatabaseLock(adoptionPid.get());
+                assertThat(adoption.isDone()).isFalse();
+                // when
+                releaseCleanup.countDown();
+                // then
+                departure.get(
+                        10,
+                        TimeUnit.SECONDS
+                );
+                assertThat(
+                        adoption.get(
+                                10,
+                                TimeUnit.SECONDS
+                        )
+                ).isInstanceOf(AudioFinalizationLeaseLostException.class);
+                assertThat(scope()).isEqualTo("ALL");
+                assertThat(
+                        column(
+                                "status",
+                                String.class,
+                                "recording_audio_finalizations"
+                        )
+                ).isEqualTo("DISCARDED");
+                assertThat(
+                        jdbc.sql("SELECT count(*) FROM recording_audio_uploads")
+                                .query(Integer.class)
+                                .single()
+                ).isZero();
+                assertThat(
+                        jdbc.sql("SELECT count(*) FROM recording_transcriptions")
+                                .query(Integer.class)
+                                .single()
+                ).isZero();
+            } finally {
+                releaseCleanup.countDown();
+            }
+        }
+    }
+
+    @Test
     void scopePromotionInvalidatesOldRawDeletionAcknowledgement() {
         // given
         ready();
@@ -553,6 +667,42 @@ class RecordingAudioCleanupIntegrationTest {
         );
         // then
         assertThat(failure).isInstanceOf(com.knot.backend.recording.domain.RecordingException.class);
+    }
+
+    private void awaitBarrier(CountDownLatch barrier) {
+        try {
+            assertThat(
+                    barrier.await(
+                            10,
+                            TimeUnit.SECONDS
+                    )
+            ).isTrue();
+        } catch (InterruptedException failure) {
+            Thread.currentThread()
+                    .interrupt();
+            throw new IllegalStateException(
+                    "경합 테스트 대기 중 인터럽트가 발생했습니다.",
+                    failure
+            );
+        }
+    }
+
+    private void awaitDatabaseLock(int pid) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            boolean blocked = jdbc.sql("SELECT cardinality(pg_blocking_pids(:pid)) > 0")
+                    .param(
+                            "pid",
+                            pid
+                    )
+                    .query(Boolean.class)
+                    .single();
+            if (blocked) {
+                return;
+            }
+            Thread.sleep(10);
+        }
+        throw new AssertionError("최종 WAV 채택 트랜잭션이 PostgreSQL 잠금에서 대기하지 않았습니다.");
     }
 
     private RecordingTranscriptionExecution queuedExecution() {
