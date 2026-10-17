@@ -111,14 +111,25 @@ class SharedPostgresTestSupportIntegrationTest {
     void markerDataIsNotVisibleFromDocumentQueriesToAuthRepository() throws SQLException {
         try (Connection sourceConnection = SharedPostgresTestSupport.openConnection("document_queries");
                 Connection targetConnection = SharedPostgresTestSupport.openConnection("auth_repository")) {
-            String sourceDatabase = query(sourceConnection, "SELECT current_database()");
-            String targetDatabase = query(targetConnection, "SELECT current_database()");
+            String sourceDatabase = query(
+                    sourceConnection,
+                    "SELECT current_database()"
+            );
+            String targetDatabase = query(
+                    targetConnection,
+                    "SELECT current_database()"
+            );
             SoftAssertions softly = new SoftAssertions();
             softly.assertThat(sourceDatabase)
                     .as("different JPA context groups must use different databases")
                     .isNotEqualTo(targetDatabase);
 
-            String markerTable = "c3_marker_" + UUID.randomUUID().toString().replace("-", "");
+            String markerTable = "c3_marker_" + UUID.randomUUID()
+                    .toString()
+                    .replace(
+                            "-",
+                            ""
+                    );
             try {
                 try (Statement statement = sourceConnection.createStatement()) {
                     statement.execute(
@@ -126,7 +137,12 @@ class SharedPostgresTestSupportIntegrationTest {
                     );
                     statement.execute("INSERT INTO public." + markerTable + " (id, value) VALUES (1, 'visible')");
                 }
-                boolean markerDataVisible = "visible".equals(queryMarkerValue(targetConnection, markerTable));
+                boolean markerDataVisible = "visible".equals(
+                        queryMarkerValue(
+                                targetConnection,
+                                markerTable
+                        )
+                );
                 System.out.printf(
                         "C3_ISOLATION_REVERSE sourceDatabase=%s targetDatabase=%s markerQuery=executed "
                                 + "markerDataVisible=%s%n",
