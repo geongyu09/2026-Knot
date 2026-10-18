@@ -9,4 +9,6 @@ export const recordingKeys = {
     [...recordingKeys.all, "current", workspaceId] as const,
   detail: ({ workspaceId, recordingId }: RecordingDetailKeyParams) =>
     [...recordingKeys.all, "detail", workspaceId, recordingId] as const,
+  audioSave: ({ workspaceId, recordingId }: RecordingDetailKeyParams) =>
+    [...recordingKeys.all, "audioSave", workspaceId, recordingId] as const,
 };
