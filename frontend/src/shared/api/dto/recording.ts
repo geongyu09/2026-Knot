@@ -22,6 +22,50 @@ export type RecordingSessionStatus =
  */
 export type RecordingAudioMode = "FINAL_WEBM_V1" | "PCM16_CHUNKS_V1";
 
+/**
+ * PCM 조각 녹음의 저장 상태. 녹음 중 `CAPTURING`, 종료 뒤 조각 확인 대기 `DRAINING`, 조립 중 `FINALIZING`,
+ * 최종 WAV 채택 `READY`, 재시도 소진 `FAILED`, 폐기 `DISCARDED`예요
+ */
+export type RecordingAudioSaveStatus =
+  "CAPTURING" | "DRAINING" | "FINALIZING" | "READY" | "FAILED" | "DISCARDED";
+
+/** PCM 조각 하나의 위치와 내용 증명. 앱이 조각을 만들 때 정한 값 */
+export interface RecordingAudioChunkDescriptorInput {
+  sequence: number;
+  sampleOffset: number;
+  frameCount: number;
+  byteLength: number;
+  checksumSha256: string;
+}
+
+/** PCM 조각 descriptor. 조각 예약 요청과 종료 요청의 `audioSeal.pendingDescriptors`가 공유해요. 예약한 뒤에는 같은 조각의 값을 바꾸지 않아요 */
+export class RecordingAudioChunkDescriptorDto {
+  /** 조각 번호. 1부터 연속 증가하고 순서대로 예약해요 */
+  sequence: number;
+  /** 앞선 조각들의 `frameCount` 합. 첫 조각은 0 */
+  sampleOffset: number;
+  /** 이 조각의 프레임 수(1~80,000). 16kHz라 최대 5초예요 */
+  frameCount: number;
+  /** PCM 바이트 수. `frameCount × 2` */
+  byteLength: number;
+  /** 보낼 PCM 전체의 SHA-256을 패딩 있는 표준 Base64로 쓴 44자. URL-safe Base64나 hex가 아니에요 */
+  checksumSha256: string;
+
+  constructor({
+    sequence,
+    sampleOffset,
+    frameCount,
+    byteLength,
+    checksumSha256,
+  }: RecordingAudioChunkDescriptorInput) {
+    this.sequence = sequence;
+    this.sampleOffset = sampleOffset;
+    this.frameCount = frameCount;
+    this.byteLength = byteLength;
+    this.checksumSha256 = checksumSha256;
+  }
+}
+
 // GET /api/v1/workspaces/{workspaceId}/recordings/current
 
 /**
@@ -322,10 +366,40 @@ export class PostRecordingResumeResponseDto {
 
 // POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/end
 
-/** 녹음 종료 시 앱이 넘기는 값. 시작 때 보낸 증명 그대로 */
+/** PCM 조각 녹음을 정상 종료할 때 앱이 넘기는 마지막 봉인 값 */
+export interface RecordingAudioSealInput {
+  lastSequence: number;
+  totalFrameCount: number;
+  pendingDescriptors: RecordingAudioChunkDescriptorInput[];
+}
+
+/** PCM 조각 녹음의 종료 봉인. 종료 요청 본문의 `audioSeal`로 나가요 */
+export class RecordingAudioSealDto {
+  /** 마지막 조각 번호. 음성이 없으면 0 */
+  lastSequence: number;
+  /** 전체 프레임 수. 일시정지 시간은 더하지 않고, 음성이 없으면 0 */
+  totalFrameCount: number;
+  /** 아직 예약하지 않은 마지막 조각들. 번호와 offset이 이미 예약한 조각에 이어져야 하고, 없으면 빈 배열 */
+  pendingDescriptors: RecordingAudioChunkDescriptorDto[];
+
+  constructor({
+    lastSequence,
+    totalFrameCount,
+    pendingDescriptors,
+  }: RecordingAudioSealInput) {
+    this.lastSequence = lastSequence;
+    this.totalFrameCount = totalFrameCount;
+    this.pendingDescriptors = pendingDescriptors.map(
+      (descriptor) => new RecordingAudioChunkDescriptorDto(descriptor),
+    );
+  }
+}
+
+/** 녹음 종료 시 앱이 넘기는 값. 시작 때 보낸 증명 그대로. PCM 조각 녹음은 `audioSeal`도 넘겨요 */
 export interface PostRecordingEndRequestInput {
   tabId: string;
   controlToken: string;
+  audioSeal?: RecordingAudioSealInput;
 }
 
 /** 녹음 종료 요청 본문. 최초 녹음 탭임을 증명해요 */
@@ -334,18 +408,45 @@ export class PostRecordingEndRequestDto {
   tabId: string;
   /** 녹음 시작 때 보낸 제어 증명(43자 Base64URL) */
   controlToken: string;
+  /** PCM 조각 녹음의 종료 봉인. WebM 녹음은 생략하고, 생략하면 본문에 키가 실리지 않아 지금과 같은 요청이 나가요 */
+  audioSeal?: RecordingAudioSealDto;
 
-  constructor({ tabId, controlToken }: PostRecordingEndRequestInput) {
+  constructor({
+    tabId,
+    controlToken,
+    audioSeal,
+  }: PostRecordingEndRequestInput) {
     this.tabId = tabId;
     this.controlToken = controlToken;
+    this.audioSeal = audioSeal && new RecordingAudioSealDto(audioSeal);
   }
 }
 
-/** 녹음 종료의 서버 응답 모양 */
+/** 종료 응답에 담긴 PCM 저장 상태의 서버 응답 모양. 종료 종류·마지막 길이 필드는 화면에서 쓰지 않아 담지 않아요 */
+export interface RecordingEndAudioSaveRaw {
+  audioSaveStatus: RecordingAudioSaveStatus;
+  acceptUntil: string;
+}
+
+/** 종료 직후의 PCM 저장 상태. 종료 응답 안에 들어 있어요 */
+export class RecordingEndAudioSaveDto {
+  /** 저장 상태. 정상 종료 직후는 보통 `DRAINING`이고, 조각이 모두 확인됐으면 바로 `FINALIZING` 이후예요 */
+  audioSaveStatus: RecordingAudioSaveStatus;
+  /** 남은 조각의 PUT과 저장 확인을 받아 주는 시한(ISO 8601, 종료 시각 + 120초). 반복 종료에도 바뀌지 않아요 */
+  acceptUntil: string;
+
+  constructor(raw: RecordingEndAudioSaveRaw) {
+    this.audioSaveStatus = raw.audioSaveStatus;
+    this.acceptUntil = raw.acceptUntil;
+  }
+}
+
+/** 녹음 종료의 서버 응답 모양. `audioSave`는 PCM 조각 녹음에만 있고 그 전의 서버는 필드 자체를 주지 않아요 */
 export interface PostRecordingEndResponseRaw {
   recordingId: number;
   status: RecordingSessionStatus;
   endedAt: string;
+  audioSave?: RecordingEndAudioSaveRaw | null;
 }
 
 /** 녹음 종료 응답. 이미 종료된 녹음이면 처음 확정한 결과를 그대로 돌려줘요 */
@@ -356,11 +457,16 @@ export class PostRecordingEndResponseDto {
   status: RecordingSessionStatus;
   /** 서버가 확정한 종료 시각(ISO 8601) */
   endedAt: string;
+  /** PCM 조각 녹음의 저장 상태. WebM 녹음이거나 서버가 주지 않으면 null */
+  audioSave: RecordingEndAudioSaveDto | null;
 
   constructor(raw: PostRecordingEndResponseRaw) {
     this.recordingId = raw.recordingId;
     this.status = raw.status;
     this.endedAt = raw.endedAt;
+    this.audioSave = raw.audioSave
+      ? new RecordingEndAudioSaveDto(raw.audioSave)
+      : null;
   }
 }
 
