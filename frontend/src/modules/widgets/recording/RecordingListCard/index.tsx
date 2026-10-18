@@ -7,6 +7,7 @@ import { useTitleId } from "./model/useTitleId";
 import CurrentRecordingItem from "./ui/CurrentRecordingItem";
 import EmptyRecording from "./ui/EmptyRecording";
 import LoadingFallback from "./ui/LoadingFallback";
+import RecordingLoadFailed from "./ui/RecordingLoadFailed";
 
 /**
  * 홈의 「진행 중인 녹음」 카드. 내가 지금 진행 중인 녹음 하나만 보여 주고, 없으면 빈 상태 문구를 보여 줘요.
@@ -16,7 +17,9 @@ import LoadingFallback from "./ui/LoadingFallback";
  *
  * 그 밖에는(관찰 탭) 현재 `:workspaceId`의 현재 녹음 조회 응답을 보여 주고 버튼은 숨겨요.
  * 응답의 누적 시간에 응답을 받은 뒤 흐른 시간을 더해 녹음 중이면 매초 늘리고, 일시정지면 멈춰 둬요.
- * 녹음 중·일시정지가 아닌 녹음(문서 정리 중·실패)과 조회 실패는 녹음이 없는 것으로 보여 줘요.
+ * 녹음 중·일시정지가 아닌 녹음(문서 정리 중·실패)은 녹음이 없는 것으로 보여 줘요.
+ * 조회에 실패하면 칸 자리에 실패 안내(ERR-09)를 두고, `다시 시도`는 이 카드의 녹음만 다시 조회해요.
+ * 이 탭의 녹음은 조회와 관계없이 알 수 있어 조회에 실패해도 그대로 보여 줘요.
  */
 export default function RecordingListCard() {
   const titleId = useTitleId();
@@ -30,6 +33,8 @@ export default function RecordingListCard() {
     status: serverStatus,
     elapsedTime: serverElapsedTime,
     isLoading: isServerLoading,
+    isLoadFailed: isServerLoadFailed,
+    retry: retryServerRecording,
   } = useServerRecording();
 
   // 이 탭의 녹음은 현재 녹음 조회를 기다리지 않고 바로 보여 줘요. 녹음 이름은 어느 쪽이든 칸에 들어가 기다려요
@@ -51,6 +56,8 @@ export default function RecordingListCard() {
           elapsedTime={thisTabElapsedTime}
           onOpenRecording={handleOpenRecording}
         />
+      ) : isServerLoadFailed ? (
+        <RecordingLoadFailed onRetry={retryServerRecording} />
       ) : serverStatus ? (
         <CurrentRecordingItem
           recordingStatus={serverStatus}
