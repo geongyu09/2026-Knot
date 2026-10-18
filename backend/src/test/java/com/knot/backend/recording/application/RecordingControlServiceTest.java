@@ -23,6 +23,12 @@ import com.knot.backend.recording.domain.model.RecordingEndReason;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.model.RecordingSession;
+import com.knot.backend.recording.domain.model.RecordingAudioStream;
+import com.knot.backend.recording.domain.model.RecordingAudioFinalization;
+import com.knot.backend.recording.domain.model.RecordingAudioMode;
+import com.knot.backend.recording.domain.model.RecordingAudioSealKind;
+import com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository;
+import com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository;
 import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
 import com.knot.backend.recording.domain.model.RecordingStatus;
 import com.knot.backend.workspace.domain.model.Workspace;
@@ -57,6 +63,8 @@ class RecordingControlServiceTest {
     private WorkspaceMemberRepository workspaceMemberRepository;
     private RecordingSessionRepository recordingSessionRepository;
     private RecordingControlTokenHasher hasher;
+    private RecordingAudioStreamRepository streams;
+    private RecordingAudioFinalizationRepository finalizations;
     private RecordingService service;
 
     @BeforeEach
@@ -67,6 +75,8 @@ class RecordingControlServiceTest {
         hasher = mock(RecordingControlTokenHasher.class);
         when(hasher.hash(CONTROL_TOKEN)).thenReturn(HASH);
         when(hasher.hash(OTHER_CONTROL_TOKEN)).thenReturn(OTHER_HASH);
+        streams = mock(RecordingAudioStreamRepository.class);
+        finalizations = mock(RecordingAudioFinalizationRepository.class);
         service = new RecordingService(
                 new RecordingAccess(
                         workspaceRepository,
@@ -82,9 +92,10 @@ class RecordingControlServiceTest {
                         ZoneOffset.UTC
                 ),
                 mock(RecordingAudioSealing.class),
-                mock(com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository.class),
+                streams,
                 new RecordingAudioChunksProperties(false),
-                mock(com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository.class)
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository.class),
+                finalizations
         );
     }
 
@@ -863,6 +874,52 @@ class RecordingControlServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(WorkspaceErrorCode.WORKSPACE_ACCESS_DENIED);
         verifyNoInteractions(recordingSessionRepository);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"READY", "FAILED"})
+    void repeatedPcmEnd_returnsCurrentFinalizationState(String finalizationState) {
+        // given
+        prepareAccess();
+        RecordingSession session = spy(
+                RecordingSession.start(
+                        WORKSPACE_ID,
+                        MEMBER_ID,
+                        UUID.randomUUID(),
+                        TAB_ID,
+                        HASH,
+                        HEARTBEAT_STARTED_AT,
+                        RecordingAudioMode.PCM16_CHUNKS_V1
+                )
+        );
+        doReturn(RECORDING_ID).when(session)
+                .getId();
+        session.end(NOW.minusSeconds(1));
+        when(recordingSessionRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(session));
+        RecordingAudioStream stream = RecordingAudioStream.create(RECORDING_ID);
+        stream.seal(
+                RecordingAudioSealKind.NORMAL,
+                NOW.minusSeconds(1)
+        );
+        when(streams.findByRecordingIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(stream));
+        RecordingAudioFinalization job = mock(RecordingAudioFinalization.class);
+        when(job.audioSaveStatus()).thenReturn(finalizationState);
+        when(finalizations.findByRecordingId(RECORDING_ID)).thenReturn(Optional.of(job));
+
+        // when
+        RecordingEndResult result = service.end(
+                WORKSPACE_ID,
+                MEMBER_ID,
+                RECORDING_ID,
+                command(TAB_ID)
+        );
+
+        // then
+        assertThat(
+                result.audioSave()
+                        .audioSaveStatus()
+        ).isEqualTo(finalizationState);
+        assertThat(result.endedAt()).isEqualTo(NOW.minusSeconds(1));
     }
 
     private void prepareAccess() {

@@ -23,6 +23,7 @@ import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
+import com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -43,6 +44,7 @@ public class RecordingService {
     private final RecordingAudioStreamRepository recordingAudioStreamRepository;
     private final RecordingAudioChunksProperties audioChunksProperties;
     private final RecordingAudioChunkRepository chunks;
+    private final RecordingAudioFinalizationRepository finalizations;
 
     @Transactional
     public RecordingStartResult start(
@@ -216,7 +218,9 @@ public class RecordingService {
                 session.getStatus(),
                 session.getEndedAt(),
                 new RecordingAudioSealSummary(
-                        "DRAINING",
+                        finalizations.findByRecordingId(recordingId)
+                                .map(job -> job.audioSaveStatus())
+                                .orElse("DRAINING"),
                         stream.getLastSequence(),
                         stream.getTotalFrameCount(),
                         stream.isTailUnknown(),

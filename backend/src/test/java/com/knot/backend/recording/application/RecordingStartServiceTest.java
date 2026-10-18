@@ -534,7 +534,8 @@ class RecordingStartServiceTest {
                 mock(RecordingAudioSealing.class),
                 streamRepository,
                 new RecordingAudioChunksProperties(enabled),
-                mock(com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository.class)
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository.class),
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository.class)
         );
     }
 
