@@ -5,6 +5,10 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
+
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import com.knot.backend.testsupport.LogCapture;
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.document.application.DocumentGenerationIntakeService;
 import com.knot.backend.document.application.DocumentClassificationResultService;
@@ -1329,6 +1333,509 @@ class RecordingTranscriptionStateIntegrationTest {
                         )
                 )
         );
+    }
+
+    @Test
+    @DisplayName("자동 전사 접수는 커밋 이후 새 attempt를 accepted로 기록한다")
+    void logging_accept_afterCommit() {
+        // given
+        try (LogCapture logs = new LogCapture(RecordingLog.class)) {
+            // when
+            register(
+                    workspaceId,
+                    recordingId
+            );
+
+            // then
+            UUID attempt = recordingTranscriptionStateService.findSnapshot(recordingId)
+                    .attemptId();
+            assertThat(logs.events()).filteredOn(
+                    event -> hasLogField(
+                            event,
+                            "outcome",
+                            "accepted"
+                    )
+            )
+                    .singleElement()
+                    .satisfies(event -> {
+                        assertThat(
+                                hasLogField(
+                                        event,
+                                        "event",
+                                        "recording.transcription.accept"
+                                )
+                        ).isTrue();
+                        assertThat(
+                                hasLogField(
+                                        event,
+                                        "attemptId",
+                                        attempt
+                                )
+                        ).isTrue();
+                        assertThat(
+                                hasLogField(
+                                        event,
+                                        "workspaceId",
+                                        workspaceId
+                                )
+                        ).isTrue();
+                    });
+        }
+    }
+
+    @Test
+    @DisplayName("다른 전사가 있어도 자동 접수는 대기열에 저장하고 accepted를 기록한다")
+    void logging_accept_queuedAlongsideExistingAttempt() {
+        // given
+        register(
+                workspaceId,
+                recordingId
+        );
+        long otherRecording = completedRecording(
+                workspaceId,
+                memberId
+        );
+        try (LogCapture logs = new LogCapture(RecordingLog.class)) {
+            // when
+            register(
+                    workspaceId,
+                    otherRecording
+            );
+
+            // then
+            assertThat(
+                    recordingTranscriptionStateService.findSnapshot(otherRecording)
+                            .status()
+            ).isEqualTo(TranscriptionStatus.QUEUED);
+            assertThat(
+                    recordingTranscriptionStateService.findSnapshot(otherRecording)
+                            .failureCode()
+            ).isNull();
+            assertThat(logs.events()).filteredOn(
+                    event -> hasLogField(
+                            event,
+                            "outcome",
+                            "accepted"
+                    )
+            )
+                    .singleElement()
+                    .satisfies(event -> {
+                        assertThat(
+                                hasLogField(
+                                        event,
+                                        "attemptId",
+                                        recordingTranscriptionStateService.findSnapshot(otherRecording)
+                                                .attemptId()
+                                )
+                        ).isTrue();
+                        assertThat(event.getLevel()).isEqualTo(Level.INFO);
+                    });
+            assertThat(logs.events()).noneMatch(
+                    event -> hasLogField(
+                            event,
+                            "outcome",
+                            "rejected"
+                    )
+            );
+        }
+    }
+
+    @Test
+    @DisplayName("자동 접수 재요청은 기존 attemptId의 replayed를 기록한다")
+    void logging_accept_replayed() {
+        // given
+        register(
+                workspaceId,
+                recordingId
+        );
+        UUID attempt = recordingTranscriptionStateService.findSnapshot(recordingId)
+                .attemptId();
+        try (LogCapture logs = new LogCapture(RecordingLog.class)) {
+            // when
+            register(
+                    workspaceId,
+                    recordingId
+            );
+
+            // then
+            assertThat(logs.events()).filteredOn(
+                    event -> hasLogField(
+                            event,
+                            "outcome",
+                            "replayed"
+                    )
+            )
+                    .singleElement()
+                    .satisfies(
+                            event -> assertThat(
+                                    hasLogField(
+                                            event,
+                                            "attemptId",
+                                            attempt
+                                    )
+                            ).isTrue()
+                    );
+        }
+    }
+
+    @Test
+    @DisplayName("전사 저장 성공은 문서 생성 완료가 아닌 persist completed로 기록한다")
+    void logging_complete_committed() {
+        // given
+        register(
+                workspaceId,
+                recordingId
+        );
+        RecordingTranscriptionExecution execution = currentExecution();
+        try (LogCapture logs = new LogCapture(RecordingLog.class)) {
+            // when
+            recordingTranscriptionStateService.complete(
+                    execution,
+                    transcript()
+            );
+
+            // then
+            assertThat(
+                    recordingTranscriptionStateService.findSnapshot(recordingId)
+                            .status()
+            ).isEqualTo(TranscriptionStatus.SUCCEEDED);
+            assertThat(logs.events()).filteredOn(
+                    event -> hasLogField(
+                            event,
+                            "outcome",
+                            "completed"
+                    )
+            )
+                    .singleElement()
+                    .satisfies(event -> {
+                        assertThat(
+                                hasLogField(
+                                        event,
+                                        "event",
+                                        "recording.transcription.persist"
+                                )
+                        ).isTrue();
+                        assertThat(
+                                hasLogField(
+                                        event,
+                                        "attemptId",
+                                        execution.attemptId()
+                                )
+                        ).isTrue();
+                    });
+            assertThat(logs.events()).allSatisfy(
+                    event -> assertThat(event.getFormattedMessage()).doesNotContain(
+                            transcript().rawWhisperJson(),
+                            execution.storageKey()
+                    )
+            );
+        }
+    }
+
+    @Test
+    @DisplayName("문서 접수 실패로 롤백하면 전사 저장 completed를 기록하지 않는다")
+    void logging_complete_rollback() {
+        // given
+        register(
+                workspaceId,
+                recordingId
+        );
+        RecordingTranscriptionExecution execution = currentExecution();
+        transactions.executeWithoutResult(
+                status -> doThrow(new IllegalStateException("private-intake-body")).when(intake)
+                        .acceptCompletedTranscript(
+                                anyLong(),
+                                anyLong(),
+                                anyLong()
+                        )
+        );
+        try (LogCapture logs = new LogCapture(RecordingLog.class)) {
+            // when
+            Throwable failure = catchThrowable(
+                    () -> recordingTranscriptionStateService.complete(
+                            execution,
+                            transcript()
+                    )
+            );
+
+            // then
+            assertThat(failure).isInstanceOf(IllegalStateException.class);
+            assertThat(
+                    recordingTranscriptionStateService.findSnapshot(recordingId)
+                            .status()
+            ).isEqualTo(TranscriptionStatus.PROCESSING);
+            assertThat(count("transcripts")).isZero();
+            assertThat(logs.events()).noneMatch(
+                    event -> hasLogField(
+                            event,
+                            "outcome",
+                            "completed"
+                    )
+            );
+            assertThat(logs.events()).anyMatch(
+                    event -> hasLogField(
+                            event,
+                            "outcome",
+                            "failed"
+                    )
+            );
+            assertThat(logs.events())
+                    .allSatisfy(event -> assertThat(event.getFormattedMessage()).doesNotContain("private-intake-body"));
+        }
+    }
+
+    @Test
+    @DisplayName("AI의 정상 실패 결과도 실패 상태 커밋과 안전한 코드를 기록한다")
+    void logging_fail_committed() {
+        // given
+        register(
+                workspaceId,
+                recordingId
+        );
+        RecordingTranscriptionExecution execution = currentExecution();
+        try (LogCapture logs = new LogCapture(RecordingLog.class)) {
+            // when
+            recordingTranscriptionStateService.fail(
+                    execution,
+                    "STT_FAILED"
+            );
+
+            // then
+            assertThat(
+                    recordingTranscriptionStateService.findSnapshot(recordingId)
+                            .status()
+            ).isEqualTo(TranscriptionStatus.FAILED);
+            assertThat(logs.events()).filteredOn(
+                    event -> hasLogField(
+                            event,
+                            "outcome",
+                            "failed"
+                    )
+            )
+                    .singleElement()
+                    .satisfies(event -> {
+                        assertThat(
+                                hasLogField(
+                                        event,
+                                        "errorCode",
+                                        "STT_FAILED"
+                                )
+                        ).isTrue();
+                        assertThat(
+                                hasLogField(
+                                        event,
+                                        "attemptId",
+                                        execution.attemptId()
+                                )
+                        ).isTrue();
+                    });
+        }
+    }
+
+    @Test
+    @DisplayName("재시도 뒤 이전 전사 결과는 ignored로 기록하며 저장 성공으로 세지 않는다")
+    void logging_complete_staleIgnored() {
+        // given
+        register(
+                workspaceId,
+                recordingId
+        );
+        RecordingTranscriptionExecution previous = currentExecution();
+        recordingTranscriptionStateService.fail(
+                previous,
+                "STT_FAILED"
+        );
+        recordingTranscriptionStateService.retry(
+                workspaceId,
+                memberId,
+                recordingId
+        );
+        try (LogCapture logs = new LogCapture(RecordingLog.class)) {
+            // when
+            recordingTranscriptionStateService.complete(
+                    previous,
+                    transcript()
+            );
+
+            // then
+            assertThat(
+                    recordingTranscriptionStateService.findSnapshot(recordingId)
+                            .status()
+            ).isEqualTo(TranscriptionStatus.QUEUED);
+            assertThat(count("transcripts")).isZero();
+            assertThat(logs.events()).filteredOn(
+                    event -> hasLogField(
+                            event,
+                            "outcome",
+                            "ignored"
+                    )
+            )
+                    .singleElement()
+                    .satisfies(
+                            event -> assertThat(
+                                    hasLogField(
+                                            event,
+                                            "attemptId",
+                                            previous.attemptId()
+                                    )
+                            ).isTrue()
+                    );
+            assertThat(logs.events()).noneMatch(
+                    event -> hasLogField(
+                            event,
+                            "outcome",
+                            "completed"
+                    )
+            );
+        }
+    }
+
+    @Test
+    @DisplayName("이미 완료된 전사의 늦은 실패 통지는 ignored로 기록하고 성공 상태를 유지한다")
+    void logging_fail_nonProcessingIgnored() {
+        // given
+        register(
+                workspaceId,
+                recordingId
+        );
+        RecordingTranscriptionExecution execution = currentExecution();
+        recordingTranscriptionStateService.complete(
+                execution,
+                transcript()
+        );
+        try (LogCapture logs = new LogCapture(RecordingLog.class)) {
+            // when
+            recordingTranscriptionStateService.fail(
+                    execution,
+                    "STT_FAILED"
+            );
+
+            // then
+            assertThat(
+                    recordingTranscriptionStateService.findSnapshot(recordingId)
+                            .status()
+            ).isEqualTo(TranscriptionStatus.SUCCEEDED);
+            assertThat(logs.events()).filteredOn(
+                    event -> hasLogField(
+                            event,
+                            "outcome",
+                            "ignored"
+                    )
+            )
+                    .hasSize(1);
+            assertThat(logs.events()).noneMatch(
+                    event -> hasLogField(
+                            event,
+                            "outcome",
+                            "failed"
+                    )
+            );
+        }
+    }
+
+    @Test
+    @DisplayName("재시도 예약은 새 attemptId가 커밋된 뒤 accepted로 기록한다")
+    void logging_retry_newAttempt() {
+        // given
+        register(
+                workspaceId,
+                recordingId
+        );
+        RecordingTranscriptionExecution previous = currentExecution();
+        recordingTranscriptionStateService.fail(
+                previous,
+                "STT_FAILED"
+        );
+        try (LogCapture logs = new LogCapture(RecordingLog.class)) {
+            // when
+            RecordingTranscriptionRetryResult result = recordingTranscriptionStateService.retry(
+                    workspaceId,
+                    memberId,
+                    recordingId
+            );
+
+            // then
+            assertThat(result.attemptId()).isNotEqualTo(previous.attemptId());
+            assertThat(logs.events()).filteredOn(
+                    event -> hasLogField(
+                            event,
+                            "outcome",
+                            "accepted"
+                    )
+            )
+                    .singleElement()
+                    .satisfies(event -> {
+                        assertThat(
+                                hasLogField(
+                                        event,
+                                        "event",
+                                        "recording.transcription.retry_reserve"
+                                )
+                        ).isTrue();
+                        assertThat(
+                                hasLogField(
+                                        event,
+                                        "attemptId",
+                                        result.attemptId()
+                                )
+                        ).isTrue();
+                    });
+        }
+    }
+
+    @Test
+    @DisplayName("전사 상태가 사라진 뒤 도착한 실패 통지는 ignored로 기록한다")
+    void logging_fail_missingIgnored() {
+        // given
+        register(
+                workspaceId,
+                recordingId
+        );
+        RecordingTranscriptionExecution execution = currentExecution();
+        jdbc.sql("DELETE FROM recording_transcriptions WHERE recording_session_id = :id")
+                .param(
+                        "id",
+                        recordingId
+                )
+                .update();
+        try (LogCapture logs = new LogCapture(RecordingLog.class)) {
+            // when
+            recordingTranscriptionStateService.fail(
+                    execution,
+                    "STT_FAILED"
+            );
+
+            // then
+            assertThat(recordingTranscriptionStateService.findSnapshot(recordingId)).isNull();
+            assertThat(logs.events()).filteredOn(
+                    event -> hasLogField(
+                            event,
+                            "outcome",
+                            "ignored"
+                    )
+            )
+                    .hasSize(1);
+            assertThat(logs.events()).noneMatch(
+                    event -> hasLogField(
+                            event,
+                            "outcome",
+                            "failed"
+                    )
+            );
+        }
+    }
+
+    private boolean hasLogField(
+            ILoggingEvent event,
+            String key,
+            Object value
+    ) {
+        return event.getKeyValuePairs() != null && event.getKeyValuePairs()
+                .stream()
+                .anyMatch(
+                        pair -> pair.key.equals(key) && String.valueOf(pair.value)
+                                .equals(String.valueOf(value))
+                );
     }
 
     private long completedRecording(
