@@ -65,13 +65,14 @@ const wait = (ms: number) =>
  */
 let pcmControlChain: Promise<unknown> = Promise.resolve();
 
-const runInOrder = <T>(task: () => Promise<T>) => {
+// Babel 8은 .ts에서도 JSX를 켜서 `<T>(…) =>`를 태그로 읽으니 function 선언으로 둬요
+function runInOrder<T>(task: () => Promise<T>) {
   const result = pcmControlChain.then(task);
   // 앞 작업이 실패해도 다음 작업은 이어 가요
   pcmControlChain = result.catch(() => undefined);
 
   return result;
-};
+}
 
 const isPcmSession = () =>
   useRecordingStore.getState().session?.audioMode === "PCM16_CHUNKS_V1";

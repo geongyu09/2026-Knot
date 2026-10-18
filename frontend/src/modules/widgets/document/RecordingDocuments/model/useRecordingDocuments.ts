@@ -1,10 +1,11 @@
 import { HTTP_ERROR_TYPE, isHttpError } from "@api/httpClient/error";
 import useRetryDocumentGenerationJobsMutation from "@api/mutations/useRetryDocumentGenerationJobsMutation";
+import useRecordingAudioSaveQuery from "@api/queries/useRecordingAudioSaveQuery";
 import useRecordingQuery from "@api/queries/useRecordingQuery";
 import useRedirectToLoginOnUnauthorized from "@hooks/domain/auth/useRedirectToLoginOnUnauthorized";
 import { getRecordingDocumentsStatus } from "@utils/getRecordingDocumentsStatus";
 import { isUnauthorizedError } from "@utils/isUnauthorizedError";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface UseRecordingDocumentsParams {
   workspaceId: number;
@@ -32,6 +33,11 @@ const isRetryRejectedError = (error: unknown) =>
  * - 그 밖에는 응답으로 정한 문서 정리 상태 그대로예요.
  *   `organizing`(정리 중) · `noContent`(문서로 만들 내용 없음) · `failed`(문서를 만들지 못함),
  *   그리고 이 화면에 머물 이유가 없는 `completed`(정리가 끝남) · `recording`(아직 끝내지 않은 녹음)이에요.
+ * - `audioSaveFailed`: PCM 조각 녹음의 서버 저장이 끝내 실패했거나 폐기되어 정리할 음성이 없어요. 이 화면에 머물 이유가 없어요.
+ *   끝낸 녹음의 전사가 시작되기 전(전사 상태와 문서 생성 결과가 모두 null)에는 녹음 상태와 함께 저장 상태도 3초마다 조회해요.
+ *   녹음 상태 응답에는 어떤 방식의 녹음인지(audioMode)가 없어 PCM인지 미리 알 수 없어서, 모든 녹음에 조회하고 WebM 녹음은 409로 알아요.
+ *   저장된 음성이 없는 실패(`AUDIO_NO_CONTENT`)는 문서로 만들 내용이 없는 것과 같은 결과라 `noContent`예요.
+ *   저장 상태 조회가 실패해도 화면은 바꾸지 않고 `organizing`을 유지해요. 저장 중(`DRAINING` · `FINALIZING`)도 `organizing`이에요.
  *   서버가 버린 녹음처럼 정리 상태를 정할 수 없는 응답은 보여 줄 화면이 없어 `loadFailed`예요.
  *   `failed`에서 다시 시도할 수 있으면 `retryGeneration`이 있어요.
  *
@@ -56,6 +62,23 @@ export const useRecordingDocuments = ({
     isError,
     refetch,
   } = useRecordingQuery({ workspaceId, recordingId });
+  // 끝낸 녹음의 전사가 시작되기 전이에요. 이 동안만 저장 상태를 함께 조회해요
+  const isAwaitingAudioSave =
+    recording?.sessionStatus === "ENDED" &&
+    recording.transcriptionStatus === null &&
+    recording.documentGeneration === null;
+  const { data: audioSave } = useRecordingAudioSaveQuery({
+    workspaceId,
+    recordingId,
+    isEnabled: isAwaitingAudioSave,
+  });
+  // 전사 전에 저장이 끝내 실패한 결과예요. 저장 중이거나 조회에 실패했으면 결과가 없어 정리 중을 유지해요
+  const audioSaveFailure =
+    isAwaitingAudioSave &&
+    (audioSave?.audioSaveStatus === "FAILED" ||
+      audioSave?.audioSaveStatus === "DISCARDED")
+      ? audioSave
+      : undefined;
   const {
     mutate: requestRetry,
     isPending: isRetryPending,
@@ -80,6 +103,13 @@ export const useRecordingDocuments = ({
     if (isLoadFailed) return "loadFailed" as const;
     if (recording === undefined) return "loading" as const;
 
+    if (audioSaveFailure !== undefined) {
+      // 저장된 음성이 없는 실패는 문서로 만들 내용이 없는 것과 같은 결과예요
+      return audioSaveFailure.failureCode === "AUDIO_NO_CONTENT"
+        ? ("noContent" as const)
+        : ("audioSaveFailed" as const);
+    }
+
     const documentsStatus = getRecordingDocumentsStatus(recording);
 
     // 서버가 버린 녹음이나 타입에 없는 값은 보여 줄 화면이 없어 불러오지 못한 것으로 둬요
@@ -89,6 +119,18 @@ export const useRecordingDocuments = ({
   };
 
   const viewStatus = getViewStatus();
+
+  // 저장 실패는 업로드 실패와 같은 정책으로 안내 없이 콘솔에만 남겨요. 홈으로 보내는 일은 `useRecordingDocumentsRedirect`가 맡아요
+  const audioSaveStatus = audioSaveFailure?.audioSaveStatus;
+  const audioSaveFailureCode = audioSaveFailure?.failureCode;
+  useEffect(() => {
+    if (viewStatus !== "audioSaveFailed") return;
+
+    console.error("녹음 오디오를 저장하지 못해 홈으로 보내요", {
+      audioSaveStatus,
+      failureCode: audioSaveFailureCode,
+    });
+  }, [audioSaveFailureCode, audioSaveStatus, viewStatus]);
 
   // 문서 만들기가 실패로 끝났을 때 다시 시도할 수 있게 남아 있는 작업의 id예요.
   // 전사 실패는 문서 생성 결과가 없어 비어 있어요
