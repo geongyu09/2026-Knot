@@ -10,6 +10,7 @@ import { queryClient } from "./shared/provider/queryClient";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import AppProviders from "@provider/AppProviders";
 import { routes } from "@routes/routes";
+import { syncAnalyticsUser } from "@utils/syncAnalyticsUser";
 import posthog from "posthog-js";
 
 // 키가 없는 환경(로컬, 테스트)에서는 사용 기록을 보내지 않아요
@@ -18,6 +19,7 @@ if (process.env.POSTHOG_KEY && process.env.POSTHOG_HOST) {
     api_host: process.env.POSTHOG_HOST,
     defaults: "2026-08-30",
   });
+  syncAnalyticsUser(queryClient);
 }
 
 // 정적 import하면 msw가 프로덕션 번들에 들어가므로 플래그 안에서 동적 import해요

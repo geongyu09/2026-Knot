@@ -2,11 +2,13 @@ import { useDialog } from "@provider/context/dialogContext";
 import CenteredLayout from "@pages/_layout/CenteredLayout";
 import { useToast } from "@provider/context/toastContext";
 import { act, fireEvent, screen } from "@testing-library/react";
+import { syncAnalyticsUser } from "@utils/syncAnalyticsUser";
 import posthog from "posthog-js";
 import { useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("posthog-js", () => ({ default: { init: vi.fn() } }));
+vi.mock("@utils/syncAnalyticsUser", () => ({ syncAnalyticsUser: vi.fn() }));
 
 const { NEXT_PATH, NEXT_TEXT } = vi.hoisted(() => ({
   NEXT_PATH: "/next",
@@ -120,9 +122,10 @@ describe("앱 진입점", () => {
       vi.doUnmock("./App");
       vi.unstubAllEnvs();
       vi.mocked(posthog.init).mockClear();
+      vi.mocked(syncAnalyticsUser).mockClear();
     });
 
-    it("키와 주소가 있으면 사용 기록을 켠다", async () => {
+    it("키와 주소가 있으면 사용 기록을 켜고, 로그인 확인 결과로 사용자를 식별하게 연결한다", async () => {
       vi.stubEnv("POSTHOG_KEY", "phc_test");
       vi.stubEnv("POSTHOG_HOST", "https://us.i.posthog.com");
 
@@ -132,12 +135,14 @@ describe("앱 진입점", () => {
         "phc_test",
         expect.objectContaining({ api_host: "https://us.i.posthog.com" }),
       );
+      expect(syncAnalyticsUser).toHaveBeenCalledTimes(1);
     });
 
-    it("키가 없으면 사용 기록을 켜지 않는다", async () => {
+    it("키가 없으면 사용 기록을 켜지 않고 사용자 식별도 연결하지 않는다", async () => {
       await import("./index");
 
       expect(posthog.init).not.toHaveBeenCalled();
+      expect(syncAnalyticsUser).not.toHaveBeenCalled();
     });
   });
 });
