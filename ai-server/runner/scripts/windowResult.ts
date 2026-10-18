@@ -1,4 +1,5 @@
 import { parseWhisperOutput } from '../src/main/pipeline/whisper'
+import type { SttWord } from '../src/core/types'
 
 export interface WindowInput {
   pipelineVersion: string
@@ -17,6 +18,39 @@ export const validWindow = (w:WindowInput) => typeof w.pipelineVersion === 'stri
   && Number.isSafeInteger(w.inputStartFrame) && Number.isSafeInteger(w.inputEndFrame)
   && w.inputStartFrame >= 0 && w.inputEndFrame > w.inputStartFrame && w.inputEndFrame <= 115200000
   && w.inputEndFrame-w.inputStartFrame <= 960000
+
+const combineWords = (first: SttWord, second: SttWord): SttWord => ({
+  start: Math.min(first.start, second.start),
+  end: Math.max(first.end, second.end),
+  text: `${first.text} ${second.text}`
+})
+
+const measuredWordGroups = (words: SttWord[], frames: number): SttWord[] => {
+  const groups: SttWord[] = []
+  let leading: SttWord | undefined
+  for (const word of words) {
+    if (!Number.isFinite(word.start) || !Number.isFinite(word.end) || word.start < 0 || word.end < word.start)
+      throw new Error('INVALID_RESULT')
+    const rawStart = Math.round(word.start * 16000), rawEnd = Math.round(word.end * 16000)
+    if (!Number.isSafeInteger(rawStart) || !Number.isSafeInteger(rawEnd)) throw new Error('INVALID_RESULT')
+    // A point at frame zero belongs to the input; a point at its exclusive end does not.
+    if (rawStart >= frames || (rawEnd <= 0 && rawStart !== rawEnd)) continue
+    if (rawStart === rawEnd) {
+      const previous = groups.at(-1)
+      if (previous) {
+        groups[groups.length - 1] = combineWords(previous, word)
+        continue
+      }
+      leading = leading ? combineWords(leading, word) : word
+      continue
+    }
+    groups.push(leading ? combineWords(leading, word) : word)
+    leading = undefined
+  }
+  // A segment without a positive-duration word supplies no measured anchor for its text.
+  if (leading) throw new Error('INVALID_RESULT')
+  return groups
+}
 
 export const assembleWindowResult = (raw:Buffer, evidence:Evidence, window:WindowInput) => {
   const frames = window.inputEndFrame-window.inputStartFrame
@@ -37,15 +71,8 @@ export const assembleWindowResult = (raw:Buffer, evidence:Evidence, window:Windo
   }
   const tokens = parseWhisperOutput(raw).flatMap(s => {
     if (s.text.trim() && !s.words?.length) throw new Error('WORD_TIMESTAMPS_REQUIRED')
-    return (s.words??[]).flatMap(w => {
-      const rawStart=Math.round(w.start*16000), rawEnd=Math.round(w.end*16000)
-      const startFrame=Math.max(0,rawStart), endFrame=Math.min(frames,rawEnd)
-      if (!Number.isSafeInteger(rawStart)||!Number.isSafeInteger(rawEnd)||rawStart<0||rawEnd<0||rawEnd<rawStart)
-        throw new Error('INVALID_RESULT')
-      // Whisper may emit zero-duration words wholly after the actual WAV end.
-      if (rawStart>=frames||rawEnd<=0) return []
-      if (rawEnd===rawStart) throw new Error('INVALID_RESULT')
-      if (endFrame<=startFrame) return []
+    return measuredWordGroups(s.words??[], frames).map(w => {
+      const startFrame=Math.round(w.start*16000), endFrame=Math.min(frames,Math.round(w.end*16000))
       const ranked=evidence.segments.map(s=>({speaker:s.speaker,
         overlap:Math.max(0,Math.min(w.end,s.end)-Math.max(w.start,s.start))}))
         .sort((a,b)=>b.overlap-a.overlap||a.speaker.localeCompare(b.speaker))
@@ -53,7 +80,7 @@ export const assembleWindowResult = (raw:Buffer, evidence:Evidence, window:Windo
       if(speakerId==='unknown'&&!ids.has(speakerId)) {
         ids.add(speakerId);speakers.push({speakerId,embedding:[],voicedFrames:0})
       }
-      return [{startFrame,endFrame,text:w.text,speakerId}]
+      return {startFrame,endFrame,text:w.text,speakerId}
     })
   }).sort((a,b)=>a.startFrame-b.startFrame||a.endFrame-b.endFrame)
   const utterances=tokens.map((t,ord)=>({ord,speakerLabel:t.speakerId,

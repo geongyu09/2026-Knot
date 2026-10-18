@@ -322,9 +322,136 @@ test('window discards zero-duration words beyond Opus-decoded tail before durati
   assert.deepEqual(result.window.tokens.map(t=>t.text),['kept'])
 })
 
-test('window still rejects negative or zero-duration timestamps inside audio',()=>{
+test('window still rejects negative or isolated zero-duration timestamps inside audio',()=>{
   for (const offsets of [{from:-100,to:100},{from:500,to:500}]) {
     const raw=Buffer.from(JSON.stringify({transcription:[{offsets,text:' invalid',tokens:[{text:' invalid',offsets}]}]}))
     assert.throws(()=>assembleWindowResult(raw,evidence,windowInput),/INVALID_RESULT/)
   }
+})
+
+const measuredWords = (words: { text: string; from: number; to: number }[]) => ({
+  offsets: { from: Math.min(...words.map(word => word.from)), to: Math.max(...words.map(word => word.to)) },
+  text: words.map(word => word.text).join(' '),
+  tokens: words.map(word => ({ text: ` ${word.text}`, offsets: { from: word.from, to: word.to } }))
+})
+
+for (const scenario of [
+  {
+    name: 'leading zero-duration words',
+    words: [{ text: 'first', from: 500, to: 500 }, { text: 'second', from: 500, to: 1000 }],
+    expected: [{ startFrame: 8000, endFrame: 16000, text: 'first second', speakerId: 'speaker_0' }]
+  },
+  {
+    name: 'zero-duration words at frame zero',
+    words: [{ text: 'first', from: 0, to: 0 }, { text: 'second', from: 100, to: 1000 }],
+    expected: [{ startFrame: 0, endFrame: 16000, text: 'first second', speakerId: 'speaker_0' }]
+  },
+  {
+    name: 'interior zero-duration words',
+    words: [
+      { text: 'first', from: 0, to: 500 },
+      { text: 'second', from: 500, to: 500 },
+      { text: 'third', from: 500, to: 1000 }
+    ],
+    expected: [
+      { startFrame: 0, endFrame: 8000, text: 'first second', speakerId: 'speaker_0' },
+      { startFrame: 8000, endFrame: 16000, text: 'third', speakerId: 'speaker_0' }
+    ]
+  },
+  {
+    name: 'consecutive trailing zero-duration words with an observed later timestamp',
+    words: [
+      { text: 'first', from: 0, to: 500 },
+      { text: 'second', from: 600, to: 600 },
+      { text: 'third', from: 600, to: 600 }
+    ],
+    expected: [{ startFrame: 0, endFrame: 9600, text: 'first second third', speakerId: 'speaker_0' }]
+  },
+  {
+    name: 'consecutive leading zero-duration words',
+    words: [
+      { text: 'first', from: 100, to: 100 },
+      { text: 'second', from: 200, to: 200 },
+      { text: 'third', from: 300, to: 1000 }
+    ],
+    expected: [{ startFrame: 1600, endFrame: 16000, text: 'first second third', speakerId: 'speaker_0' }]
+  }
+]) {
+  test(`window preserves text and measured bounds when grouping ${scenario.name}`, () => {
+    // given
+    const raw = Buffer.from(JSON.stringify({ transcription: [measuredWords(scenario.words)] }))
+
+    // when
+    const result = assembleWindowResult(raw, evidence, windowInput)
+
+    // then
+    assert.deepEqual(result.window.tokens, scenario.expected)
+    assert.equal(result.utterances.map(utterance => utterance.text).join(' '),
+      scenario.words.map(word => word.text).join(' '))
+    assert.equal(result.rawWhisperJson, raw.toString('utf8'))
+    assert.deepEqual(result.window.speakers, evidence.speakers)
+  })
+}
+
+test('window rejects zero-duration-only segments instead of borrowing a neighboring segment interval', () => {
+  // given
+  const raw = Buffer.from(JSON.stringify({ transcription: [
+    measuredWords([{ text: 'measured', from: 0, to: 500 }]),
+    measuredWords([{ text: 'unmeasured', from: 500, to: 500 }])
+  ] }))
+
+  // when
+  const assemble = () => assembleWindowResult(raw, evidence, windowInput)
+
+  // then
+  assert.throws(assemble, /INVALID_RESULT/)
+})
+
+test('window rejects reversed words even when a measured neighbor is available', () => {
+  // given
+  const raw = Buffer.from(JSON.stringify({ transcription: [measuredWords([
+    { text: 'first', from: 0, to: 500 },
+    { text: 'reversed', from: 700, to: 600 },
+    { text: 'last', from: 1000, to: 1500 }
+  ])] }))
+
+  // when
+  const assemble = () => assembleWindowResult(raw, evidence, windowInput)
+
+  // then
+  assert.throws(assemble, /INVALID_RESULT/)
+})
+
+test('window preserves Korean split-byte words and punctuation when grouping a zero-duration word', () => {
+  // given
+  const first = Buffer.from(' 첫', 'utf8')
+  const raw = Buffer.from(JSON.stringify({ transcription: [{
+    offsets: { from: 500, to: 1000 }, text: 'unused', tokens: [
+      { text: first.subarray(0, 2).toString('latin1'), offsets: { from: 500, to: 500 } },
+      { text: first.subarray(2).toString('latin1'), offsets: { from: 500, to: 500 } },
+      { text: Buffer.from(' 측정.', 'utf8').toString('latin1'), offsets: { from: 500, to: 1000 } }
+    ]
+  }] }), 'latin1')
+
+  // when
+  const result = assembleWindowResult(raw, evidence, windowInput)
+
+  // then
+  assert.deepEqual(result.window.tokens, [
+    { startFrame: 8000, endFrame: 16000, text: '첫 측정.', speakerId: 'speaker_0' }
+  ])
+  assert.equal(result.rawWhisperJson, raw.toString('utf8'))
+})
+
+test('window rejects nonfinite model times even when a measured neighbor is available', () => {
+  // given
+  const raw = Buffer.from('{"transcription":[{"offsets":{"from":0,"to":1000},"text":"invalid measured",'
+    + '"tokens":[{"text":" invalid","offsets":{"from":1e999,"to":1e999}},'
+    + '{"text":" measured","offsets":{"from":500,"to":1000}}]}]}')
+
+  // when
+  const assemble = () => assembleWindowResult(raw, evidence, windowInput)
+
+  // then
+  assert.throws(assemble, /INVALID_RESULT/)
 })
