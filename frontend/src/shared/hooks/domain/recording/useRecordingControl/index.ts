@@ -31,6 +31,23 @@ import useEndRecordingDialog from "../useEndRecordingDialog";
 /** 최종 오디오 업로드가 일시 실패했을 때 다시 시도하는 최대 횟수(첫 시도 제외) */
 const AUDIO_UPLOAD_MAX_RETRIES = 3;
 
+/**
+ * PCM 녹음의 일시정지·이어서 녹음을 순서대로 처리하는 사슬. 봉인과 서버 응답을 기다리는 동안 연타가 겹치지 않게 해요.
+ * 훅을 쓰는 화면(독·녹음 바)이 여럿이라 모듈에 둬요
+ */
+let pcmControlChain: Promise<unknown> = Promise.resolve();
+
+const runInOrder = <T>(task: () => Promise<T>) => {
+  const result = pcmControlChain.then(task);
+  // 앞 작업이 실패해도 다음 작업은 이어 가요
+  pcmControlChain = result.catch(() => undefined);
+
+  return result;
+};
+
+const isPcmSession = () =>
+  useRecordingStore.getState().session?.audioMode === "PCM16_CHUNKS_V1";
+
 interface HandleControlErrorParams {
   action: string;
   error: unknown;
@@ -51,8 +68,10 @@ interface UploadRecordedAudioParams {
  *   서버가 409로 거절하거나, 남아 있던 증명의 녹음을 돌려주면(200) 이어받지 않고 거절로 돌려줘요.
  *   돌려준 녹음이 이미 끝났거나 버려졌으면 새 증명으로 한 번만 다시 보내요. 시작 중에 다시 불러도 겹쳐 보내지 않아요.
  *   저장 방식이 PCM이면 시작 요청에 `audioMode`를 싣고, 조각 예약·PUT·저장 확인 요청에 세션과 최초 탭 증명을 묶어 저장소에 넘겨요.
- * - 일시정지·이어서 녹음: 브라우저 녹음을 먼저 바꾸고 서버에 알려요. 서버 요청이 실패해도 다시 보내지 않고
+ * - 일시정지·이어서 녹음(WebM): 브라우저 녹음을 먼저 바꾸고 서버에 알려요. 서버 요청이 실패해도 다시 보내지 않고
  *   사용자가 누른 대로 둬요.
+ * - 일시정지·이어서 녹음(PCM): 일시정지는 남은 소리를 봉인해 큐에 넣은 뒤 서버에 알리고, 이어서 녹음은 서버 재개가
+ *   성공한 뒤에 수집을 이어 가요. 연타는 앞 요청이 끝난 뒤 순서대로 처리해요.
  * - 끝내기: 확인 창에서 [녹음 끝내기]를 고르면 종료 요청 → 업로드 URL 발급 → 오디오 PUT → 업로드 완료 확인 → 녹음 비우기 → 그 녹음의 문서 정리 화면.
  *   끝내는 동안에는 확인 창을 다시 띄우지 않아요. 종료가 실패하면 녹음을 그대로 두고,
  *   업로드가 일시 실패하면 URL 발급부터 3번까지 다시 시도하고, 그래도 실패하면 오디오를 버리고 홈으로 가요.
@@ -319,8 +338,7 @@ const useRecordingControl = () => {
     [connectAndStartRecording],
   );
 
-  /** 서버에 일시정지를 알려요. 마이크가 끊겨 브라우저가 먼저 멈춘 경우에도 불러요 */
-  const syncPause = useCallback(async () => {
+  const sendPause = useCallback(async () => {
     const { session, isEnding } = useRecordingStore.getState();
     const proof = getRecordingControlProof();
     if (!session || !proof || isEnding) return;
@@ -336,15 +354,64 @@ const useRecordingControl = () => {
     }
   }, [handleControlError, pauseRecordingSession]);
 
-  const pauseRecording = useCallback(async () => {
-    if (useRecordingStore.getState().isEnding) return;
+  /** 서버에 일시정지를 알려요. 마이크가 끊겨 브라우저가 먼저 멈춘 경우에도 불러요 */
+  const syncPause = useCallback(
+    () => (isPcmSession() ? runInOrder(sendPause) : sendPause()),
+    [sendPause],
+  );
 
-    useRecordingStore.getState().pauseRecording();
-    await syncPause();
-  }, [syncPause]);
+  const pauseRecording = useCallback(async () => {
+    const pause = async () => {
+      if (useRecordingStore.getState().isEnding) return;
+
+      // PCM은 남은 소리를 봉인해 큐에 넣은 뒤 서버에 알려요. 이미 올리던 조각은 큐가 계속 올려요
+      await useRecordingStore.getState().pauseRecording();
+      await sendPause();
+    };
+
+    await (isPcmSession() ? runInOrder(pause) : pause());
+  }, [sendPause]);
+
+  /** PCM 녹음을 이어 가요. 서버 재개가 성공한 뒤에 수집을 이어 가므로, 실패하면 일시정지로 남아요 */
+  const resumePcmRecording = useCallback(async () => {
+    const store = useRecordingStore.getState();
+    if (store.isEnding || store.status !== "paused") {
+      return store.status === "recording";
+    }
+
+    try {
+      const isReady = await store.ensureMicrophone();
+      if (!isReady) return false;
+    } catch (error) {
+      // 새 마이크로 수집기를 만들지 못했어요. 마이크를 받지 못한 것처럼 안내해 다시 시도하게 해요
+      logRequestError("이어서 녹음", error);
+
+      return false;
+    }
+
+    const { session } = useRecordingStore.getState();
+    const proof = getRecordingControlProof();
+    if (session && proof) {
+      try {
+        await resumeRecordingSession({ ...session, ...proof });
+      } catch (error) {
+        handleControlError({
+          action: "이어서 녹음",
+          error,
+          workspaceId: session.workspaceId,
+        });
+
+        return true;
+      }
+    }
+
+    return useRecordingStore.getState().resumeRecording();
+  }, [handleControlError, resumeRecordingSession]);
 
   /** 이어서 녹음해요. 마이크를 다시 받지 못하면 `false`를 돌려주고 서버에는 알리지 않아요 */
   const resumeRecording = useCallback(async () => {
+    if (isPcmSession()) return runInOrder(resumePcmRecording);
+
     const store = useRecordingStore.getState();
     if (store.isEnding) return false;
 
@@ -366,7 +433,7 @@ const useRecordingControl = () => {
     }
 
     return true;
-  }, [handleControlError, resumeRecordingSession]);
+  }, [handleControlError, resumePcmRecording, resumeRecordingSession]);
 
   /**
    * 확인 창 없이 녹음을 끝내 올린 뒤 비워요. 이동은 부른 쪽이 정해요.
