@@ -27,13 +27,12 @@ public class DocumentListQueryAdapter implements DocumentListQuery {
             long memberId,
             DocumentListParameters parameters
     ) {
-        return documents.findTopics(
+        List<DocumentTopicRow> topics = findTopicRows(
                 workspaceId,
                 memberId,
-                parameters.recordingSessionId(),
-                confirmationFilter(parameters.myConfirmation())
-        )
-                .stream()
+                parameters
+        );
+        return topics.stream()
                 .map(
                         row -> new DocumentTopicResult(
                                 row.topic(),
@@ -41,6 +40,26 @@ public class DocumentListQueryAdapter implements DocumentListQuery {
                         )
                 )
                 .toList();
+    }
+
+    private List<DocumentTopicRow> findTopicRows(
+            long workspaceId,
+            long memberId,
+            DocumentListParameters parameters
+    ) {
+        if (parameters.myConfirmation() == MyConfirmationState.PENDING) {
+            return documents.findPendingTopics(
+                    workspaceId,
+                    memberId,
+                    parameters.recordingSessionId()
+            );
+        }
+        return documents.findTopics(
+                workspaceId,
+                memberId,
+                parameters.recordingSessionId(),
+                confirmationFilter(parameters.myConfirmation())
+        );
     }
 
     @Override

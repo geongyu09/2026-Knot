@@ -31,6 +31,22 @@ interface DocumentListJpaRepository extends Repository<Document, Long> {
     );
 
     @Query("""
+            select new com.knot.backend.document.infrastructure.persistence.DocumentTopicRow(d.topic, count(d.id))
+            from Document d
+            join DocumentConfirmation mine
+                on mine.id.documentId = d.id and mine.id.memberId = :memberId
+            where d.workspaceId = :workspaceId and mine.confirmedAt is null
+                and (:recordingSessionId is null or d.recordingSessionId = :recordingSessionId)
+            group by d.topic
+            order by d.topic
+            """)
+    List<DocumentTopicRow> findPendingTopics(
+            long workspaceId,
+            long memberId,
+            Long recordingSessionId
+    );
+
+    @Query("""
             select new com.knot.backend.document.infrastructure.persistence.DocumentCardRow(
                 d.id, d.recordingSessionId, d.topic, d.title, d.summary, d.status, d.createdAt,
                 rs.accumulatedRecordingMillis,

@@ -6,6 +6,7 @@ import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.document.application.DocumentListQuery;
 import com.knot.backend.document.application.dto.query.DocumentListParameters;
 import com.knot.backend.document.application.dto.result.DocumentCardResult;
+import com.knot.backend.document.application.dto.result.DocumentTopicResult;
 import com.knot.backend.document.domain.model.DocumentCursor;
 import com.knot.backend.document.domain.model.DocumentConfirmation;
 import com.knot.backend.document.domain.model.DocumentStatus;
@@ -687,6 +688,223 @@ class DocumentListQueryIntegrationTest {
                         101
                 )
         ).hasSize(24);
+    }
+
+    @Test
+    @DisplayName("미확인 주제 집계는 녹음과 회원 범위를 지키고 페이지와 무관하게 전체 건수를 센다")
+    void findTopics_success_pendingCountsAndRecordingScope() {
+        // given
+        long otherMember = fixtures.saveMember("다른 집계 조회자");
+        List<String> topics = List.of(
+                "alpha",
+                "beta",
+                "gamma"
+        );
+        long pendingDocument = 0;
+        for (int index = 0; index < 12; index++) {
+            long document = saveDocument(
+                    workspaceId,
+                    topics.get(index % 3)
+            );
+            if (index % 6 == 0) {
+                fixtures.target(
+                        document,
+                        memberId,
+                        DocumentFixtures.CREATED_AT
+                );
+                continue;
+            }
+            if (index % 6 == 1) {
+                fixtures.target(
+                        document,
+                        otherMember,
+                        null
+                );
+                continue;
+            }
+            fixtures.target(
+                    document,
+                    memberId,
+                    null
+            );
+            pendingDocument = document;
+        }
+        long foreign = saveDocument(
+                fixtures.saveWorkspace(),
+                "gamma"
+        );
+        fixtures.target(
+                foreign,
+                memberId,
+                null
+        );
+        DocumentListParameters parameters = DocumentListParameters.of(
+                null,
+                1,
+                MyConfirmationState.PENDING,
+                null
+        );
+
+        // when
+        List<DocumentTopicResult> actual = query.findTopics(
+                workspaceId,
+                memberId,
+                parameters
+        );
+
+        // then
+        assertThat(actual).containsExactly(
+                new DocumentTopicResult(
+                        "alpha",
+                        2
+                ),
+                new DocumentTopicResult(
+                        "beta",
+                        2
+                ),
+                new DocumentTopicResult(
+                        "gamma",
+                        4
+                )
+        );
+        assertThat(
+                repository.findPendingTopics(
+                        workspaceId,
+                        memberId,
+                        null
+                )
+        ).containsExactlyElementsOf(
+                repository.findTopics(
+                        workspaceId,
+                        memberId,
+                        null,
+                        "PENDING"
+                )
+        );
+        DocumentCursor cursor = DocumentCursor.of(
+                workspaceId,
+                memberId,
+                MyConfirmationState.PENDING,
+                null,
+                DocumentFixtures.CREATED_AT,
+                pendingDocument
+        );
+        DocumentListParameters nextPage = DocumentListParameters.of(
+                cursor.encode(),
+                100,
+                MyConfirmationState.PENDING,
+                null
+        );
+        assertThat(
+                query.findTopics(
+                        workspaceId,
+                        memberId,
+                        nextPage
+                )
+        ).isEqualTo(actual);
+        long recording = recordingId(pendingDocument);
+        assertThat(
+                query.findTopics(
+                        workspaceId,
+                        memberId,
+                        DocumentListParameters.of(
+                                null,
+                                1,
+                                MyConfirmationState.PENDING,
+                                recording
+                        )
+                )
+        ).containsExactly(
+                new DocumentTopicResult(
+                        "gamma",
+                        1
+                )
+        );
+        assertThat(
+                repository.findPendingTopics(
+                        workspaceId,
+                        memberId,
+                        recording
+                )
+        ).containsExactlyElementsOf(
+                repository.findTopics(
+                        workspaceId,
+                        memberId,
+                        recording,
+                        "PENDING"
+                )
+        );
+        assertThat(
+                repository.findPendingTopics(
+                        workspaceId,
+                        otherMember,
+                        null
+                )
+        ).containsExactly(
+                new DocumentTopicRow(
+                        "beta",
+                        2
+                )
+        );
+        for (long excludedRecording : List.of(
+                recordingId(foreign),
+                Long.MAX_VALUE
+        )) {
+            assertThat(
+                    query.findTopics(
+                            workspaceId,
+                            memberId,
+                            DocumentListParameters.of(
+                                    null,
+                                    1,
+                                    MyConfirmationState.PENDING,
+                                    excludedRecording
+                            )
+                    )
+            ).isEmpty();
+        }
+        assertThat(
+                repository.findPendingTopics(
+                        workspaceId,
+                        Long.MAX_VALUE,
+                        null
+                )
+        ).isEmpty();
+    }
+
+    @Test
+    @DisplayName("주제 집계만 읽어도 JPA에 등록한 미확인 대상이 반영된다")
+    void findTopics_success_pendingJpaConfirmation() {
+        // given
+        long document = saveDocument(
+                workspaceId,
+                "정책"
+        );
+        entityManager.persist(
+                DocumentConfirmation.require(
+                        document,
+                        memberId
+                )
+        );
+
+        // when & then
+        assertThat(
+                query.findTopics(
+                        workspaceId,
+                        memberId,
+                        DocumentListParameters.of(
+                                null,
+                                1,
+                                MyConfirmationState.PENDING,
+                                null
+                        )
+                )
+        ).containsExactly(
+                new DocumentTopicResult(
+                        "정책",
+                        1
+                )
+        );
     }
 
     private void assertPendingPagesEqual(
