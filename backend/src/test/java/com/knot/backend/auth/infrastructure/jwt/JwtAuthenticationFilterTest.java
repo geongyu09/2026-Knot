@@ -2,7 +2,7 @@ package com.knot.backend.auth.infrastructure.jwt;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.global.config.JwtProperties;
 import jakarta.servlet.http.Cookie;
 import java.time.Clock;

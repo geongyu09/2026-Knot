@@ -8,10 +8,10 @@ import com.knot.backend.recording.application.dto.command.RecordingControlComman
 import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.recording.application.dto.result.RecordingDetailResult;
 import com.knot.backend.recording.application.dto.result.RecordingHeartbeatResult;
-import com.knot.backend.recording.domain.RecordingAudioUploadStatus;
-import com.knot.backend.recording.domain.RecordingEndReason;
+import com.knot.backend.recording.domain.model.RecordingAudioUploadStatus;
+import com.knot.backend.recording.domain.model.RecordingEndReason;
 import com.knot.backend.recording.domain.RecordingErrorCode;
-import com.knot.backend.recording.domain.RecordingStatus;
+import com.knot.backend.recording.domain.model.RecordingStatus;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import com.knot.backend.workspace.application.WorkspaceLeaveService;
@@ -47,21 +47,18 @@ class RecordingDetailServiceIntegrationTest {
     private static final int READ_COUNT = 200;
 
     private final RecordingDetailService recordingDetailService;
-    private final RecordingStartService recordingStartService;
-    private final RecordingControlService recordingControlService;
+    private final RecordingService recordingService;
     private final WorkspaceLeaveService workspaceLeaveService;
     private final JdbcClient jdbcClient;
 
     RecordingDetailServiceIntegrationTest(
             RecordingDetailService recordingDetailService,
-            RecordingStartService recordingStartService,
-            RecordingControlService recordingControlService,
+            RecordingService recordingService,
             WorkspaceLeaveService workspaceLeaveService,
             JdbcClient jdbcClient
     ) {
         this.recordingDetailService = recordingDetailService;
-        this.recordingStartService = recordingStartService;
-        this.recordingControlService = recordingControlService;
+        this.recordingService = recordingService;
         this.workspaceLeaveService = workspaceLeaveService;
         this.jdbcClient = jdbcClient;
     }
@@ -84,7 +81,7 @@ class RecordingDetailServiceIntegrationTest {
         StartedRecording recording = startRecording(recordingFixture);
         Fixture pausedFixture = ownerFixture("일시정지 팀");
         StartedRecording paused = startRecording(pausedFixture);
-        recordingControlService.pause(
+        recordingService.pause(
                 pausedFixture.workspaceId(),
                 pausedFixture.memberId(),
                 paused.id(),
@@ -165,7 +162,7 @@ class RecordingDetailServiceIntegrationTest {
         Fixture fixture = ownerFixture("만료 팀");
         StartedRecording recording = startRecording(fixture);
         disconnect(recording.id());
-        RecordingHeartbeatResult heartbeat = recordingControlService.heartbeat(
+        RecordingHeartbeatResult heartbeat = recordingService.heartbeat(
                 fixture.workspaceId(),
                 fixture.memberId(),
                 recording.id(),
@@ -314,7 +311,7 @@ class RecordingDetailServiceIntegrationTest {
                         5,
                         TimeUnit.SECONDS
                 );
-                recordingControlService.end(
+                recordingService.end(
                         fixture.workspaceId(),
                         fixture.memberId(),
                         recording.id(),
@@ -374,7 +371,7 @@ class RecordingDetailServiceIntegrationTest {
 
     private StartedRecording endedRecording(Fixture fixture) {
         StartedRecording recording = startRecording(fixture);
-        recordingControlService.end(
+        recordingService.end(
                 fixture.workspaceId(),
                 fixture.memberId(),
                 recording.id(),
@@ -454,7 +451,7 @@ class RecordingDetailServiceIntegrationTest {
 
     private StartedRecording startRecording(Fixture fixture) {
         UUID tabId = UUID.randomUUID();
-        long recordingId = recordingStartService.start(
+        long recordingId = recordingService.start(
                 fixture.workspaceId(),
                 fixture.memberId(),
                 new RecordingStartCommand(

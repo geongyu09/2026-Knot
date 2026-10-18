@@ -1,7 +1,7 @@
 package com.knot.backend.document.infrastructure.llm;
 
-import com.knot.backend.document.domain.DocumentGenerationInput;
-import com.knot.backend.document.domain.DocumentText;
+import com.knot.backend.document.domain.model.DocumentGenerationInput;
+import com.knot.backend.document.domain.model.DocumentText;
 import com.knot.backend.document.application.DocumentGenerator;
 import com.knot.backend.document.application.dto.result.DocumentGenerationResult;
 import com.knot.backend.document.domain.DocumentErrorCode;

@@ -1,0 +1,19 @@
+package com.knot.backend.workspace.domain.repository;
+
+import com.knot.backend.workspace.domain.model.Workspace;
+
+import java.util.List;
+import java.util.Optional;
+
+public interface WorkspaceRepository {
+
+    Workspace save(Workspace workspace);
+
+    Optional<Workspace> findById(Long workspaceId);
+
+    Optional<Workspace> findByIdForUpdate(Long workspaceId);
+
+    Optional<Workspace> findIncludingDeletedByIdForUpdate(Long workspaceId);
+
+    List<Workspace> findAllByMemberId(Long memberId);
+}

@@ -1,9 +1,9 @@
 package com.knot.backend.document.application.dto.result;
 
-import com.knot.backend.document.domain.DocumentGenerationBatch;
-import com.knot.backend.document.domain.DocumentGenerationJob;
-import com.knot.backend.document.domain.DocumentGenerationJobStage;
-import com.knot.backend.document.domain.DocumentTopicRegistrationState;
+import com.knot.backend.document.domain.model.DocumentGenerationBatch;
+import com.knot.backend.document.domain.model.DocumentGenerationJob;
+import com.knot.backend.document.domain.model.DocumentGenerationJobStage;
+import com.knot.backend.document.domain.model.DocumentTopicRegistrationState;
 import java.util.ArrayList;
 import java.util.List;
 

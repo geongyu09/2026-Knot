@@ -1,0 +1,340 @@
+package com.knot.backend.auth.domain.model;
+
+import com.knot.backend.auth.domain.AuthException;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.time.Duration;
+import java.time.Instant;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
+
+class AuthSessionTest {
+    private static final Instant NOW = Instant.parse("2026-10-01T00:00:00Z");
+    private static final String HASH = "a".repeat(64);
+
+    @Test
+    @DisplayName("로그인 세션은 refresh 해시와 7일 비활성·30일 절대 만료를 보존한다")
+    void create_success() {
+        // when
+        AuthSession session = AuthSession.create(
+                1L,
+                HASH,
+                NOW
+        );
+
+        // then
+        assertThat(session.getMemberId()).isEqualTo(1L);
+        assertThat(session.getRefreshTokenHash()).isEqualTo(HASH);
+        assertThat(session.getCreatedAt()).isEqualTo(NOW);
+        assertThat(session.getExpiresAt()).isEqualTo(NOW.plus(Duration.ofDays(7)));
+        assertThat(session.getAbsoluteExpiresAt()).isEqualTo(NOW.plus(Duration.ofDays(30)));
+        assertThat(session.getRevokedAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("refresh 만료는 온보딩 시작 후 30일과 발급 후 7일 중 빠른 시각을 따른다")
+    void create_success_absoluteLifetimeStartsAtOAuthLogin() {
+        // given
+        Instant firstOAuthLoginAt = NOW.minus(Duration.ofDays(29));
+
+        // when
+        AuthSession session = AuthSession.create(
+                1L,
+                HASH,
+                NOW,
+                firstOAuthLoginAt
+        );
+
+        // then
+        assertThat(session.getCreatedAt()).isEqualTo(NOW);
+        assertThat(session.getAbsoluteExpiresAt()).isEqualTo(NOW.plus(Duration.ofDays(1)));
+        assertThat(session.getExpiresAt()).isEqualTo(NOW.plus(Duration.ofDays(1)));
+        assertThat(session.remainingRefreshLifetime(NOW)).isEqualTo(Duration.ofDays(1));
+    }
+
+    @Test
+    @DisplayName("최초 OAuth 로그인 시각이 세션 발급 뒤라면 세션을 생성할 수 없다")
+    void create_failure_initialLoginAfterSessionCreation() {
+        // when & then
+        assertThatThrownBy(
+                () -> AuthSession.create(
+                        1L,
+                        HASH,
+                        NOW,
+                        NOW.plusSeconds(1)
+                )
+        ).isInstanceOf(AuthException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {0, -1})
+    @DisplayName("양수가 아닌 회원 ID로는 로그인 세션을 생성할 수 없다")
+    void create_failure_invalidMemberId(long memberId) {
+        // when & then
+        assertThatThrownBy(
+                () -> AuthSession.create(
+                        memberId,
+                        HASH,
+                        NOW
+                )
+        ).isInstanceOf(AuthException.class);
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {" ", "raw-refresh-token"})
+    @DisplayName("해시가 아닌 값으로는 로그인 세션을 생성할 수 없다")
+    void create_failure_invalidHash(String hash) {
+        // when & then
+        assertThatThrownBy(
+                () -> AuthSession.create(
+                        1L,
+                        hash,
+                        NOW
+                )
+        ).isInstanceOf(AuthException.class);
+    }
+
+    @Test
+    @DisplayName("발급 시각이 없으면 로그인 세션을 생성할 수 없다")
+    void create_failure_missingCreatedAt() {
+        // when & then
+        assertThatThrownBy(
+                () -> AuthSession.create(
+                        1L,
+                        HASH,
+                        null
+                )
+        ).isInstanceOf(AuthException.class);
+    }
+
+    @Test
+    @DisplayName("로그인 세션은 만료 직전까지 활성 상태다")
+    void isActive_success_beforeExpiry() {
+        // given
+        AuthSession session = AuthSession.create(
+                1L,
+                HASH,
+                NOW
+        );
+
+        // when & then
+        assertThat(
+                session.isActive(
+                        NOW.plus(Duration.ofDays(7))
+                                .minusSeconds(1)
+                )
+        ).isTrue();
+    }
+
+    @Test
+    @DisplayName("만료 시각에 도달한 로그인 세션은 사용할 수 없다")
+    void isActive_failure_expired() {
+        // given
+        AuthSession session = AuthSession.create(
+                1L,
+                HASH,
+                NOW
+        );
+
+        // when & then
+        assertThat(session.isActive(NOW.plus(Duration.ofDays(7)))).isFalse();
+    }
+
+    @Test
+    @DisplayName("발급 이전 시각이나 시각 누락은 활성 세션으로 판단하지 않는다")
+    void isActive_failure_invalidTime() {
+        // given
+        AuthSession session = AuthSession.create(
+                1L,
+                HASH,
+                NOW
+        );
+
+        // when & then
+        assertThat(session.isActive(NOW.minusSeconds(1))).isFalse();
+        assertThat(session.isActive(null)).isFalse();
+    }
+
+    @Test
+    @DisplayName("refresh 쿠키 수명은 로그인 세션에서 남은 시간만 반환한다")
+    void remainingRefreshLifetime_success() {
+        // given
+        AuthSession session = AuthSession.create(
+                1L,
+                HASH,
+                NOW
+        );
+
+        // when & then
+        assertThat(session.remainingRefreshLifetime(NOW)).isEqualTo(Duration.ofDays(7));
+        assertThat(session.remainingRefreshLifetime(NOW.plus(Duration.ofDays(6)))).isEqualTo(Duration.ofDays(1));
+    }
+
+    @Test
+    @DisplayName("이미 만료되거나 유효하지 않은 시각에는 refresh 쿠키 수명이 없다")
+    void remainingRefreshLifetime_failure_expired() {
+        // given
+        AuthSession session = AuthSession.create(
+                1L,
+                HASH,
+                NOW
+        );
+
+        // when & then
+        assertThat(session.remainingRefreshLifetime(NOW.plus(Duration.ofDays(7)))).isEqualTo(Duration.ZERO);
+        assertThat(session.remainingRefreshLifetime(null)).isEqualTo(Duration.ZERO);
+    }
+
+    @Test
+    @DisplayName("refresh 회전은 이전 해시를 반환하고 비활성 만료를 연장한다")
+    void rotateRefreshToken_success() {
+        // given
+        AuthSession session = AuthSession.create(
+                1L,
+                HASH,
+                NOW
+        );
+        String newHash = "b".repeat(64);
+        Instant rotatedAt = NOW.plus(Duration.ofDays(3));
+
+        // when
+        String previousHash = session.rotateRefreshToken(
+                newHash,
+                rotatedAt
+        );
+
+        // then
+        assertThat(previousHash).isEqualTo(HASH);
+        assertThat(session.getRefreshTokenHash()).isEqualTo(newHash);
+        assertThat(session.getExpiresAt()).isEqualTo(rotatedAt.plus(Duration.ofDays(7)));
+        assertThat(session.getAbsoluteExpiresAt()).isEqualTo(NOW.plus(Duration.ofDays(30)));
+        assertThat(session.remainingRefreshLifetime(rotatedAt)).isEqualTo(Duration.ofDays(7));
+    }
+
+    @Test
+    @DisplayName("refresh 회전의 비활성 만료는 최초 OAuth 로그인 후 30일을 넘지 않는다")
+    void rotateRefreshToken_success_capsAtAbsoluteExpiry() {
+        // given
+        Instant firstOAuthLoginAt = NOW.minus(Duration.ofDays(29));
+        AuthSession session = AuthSession.create(
+                1L,
+                HASH,
+                NOW,
+                firstOAuthLoginAt
+        );
+        Instant rotatedAt = NOW.plus(Duration.ofHours(12));
+
+        // when
+        session.rotateRefreshToken(
+                "b".repeat(64),
+                rotatedAt
+        );
+
+        // then
+        assertThat(session.getExpiresAt()).isEqualTo(firstOAuthLoginAt.plus(Duration.ofDays(30)));
+        assertThat(session.getAbsoluteExpiresAt()).isEqualTo(firstOAuthLoginAt.plus(Duration.ofDays(30)));
+    }
+
+    @Test
+    @DisplayName("폐기된 로그인 세션은 refresh 회전할 수 없다")
+    void rotateRefreshToken_failure_revokedSession() {
+        // given
+        AuthSession session = AuthSession.create(
+                1L,
+                HASH,
+                NOW
+        );
+        session.revoke(NOW.plusSeconds(1));
+
+        // when & then
+        assertThatThrownBy(
+                () -> session.rotateRefreshToken(
+                        "b".repeat(64),
+                        NOW.plusSeconds(2)
+                )
+        ).isInstanceOf(AuthException.class);
+        assertThat(session.getRefreshTokenHash()).isEqualTo(HASH);
+    }
+
+    @Test
+    @DisplayName("비활성 만료된 로그인 세션은 refresh 회전할 수 없다")
+    void rotateRefreshToken_failure_expiredSession() {
+        // given
+        AuthSession session = AuthSession.create(
+                1L,
+                HASH,
+                NOW
+        );
+
+        // when & then
+        assertThatThrownBy(
+                () -> session.rotateRefreshToken(
+                        "b".repeat(64),
+                        NOW.plus(Duration.ofDays(7))
+                )
+        ).isInstanceOf(AuthException.class);
+        assertThat(session.getRefreshTokenHash()).isEqualTo(HASH);
+    }
+
+    @Test
+    @DisplayName("활성 로그인 세션은 로그아웃 시각으로 폐기한다")
+    void revoke_success_activeSession() {
+        // given
+        AuthSession session = AuthSession.create(
+                1L,
+                HASH,
+                NOW.minusSeconds(1)
+        );
+
+        // when
+        boolean revoked = session.revoke(NOW);
+
+        // then
+        assertThat(revoked).isTrue();
+        assertThat(session.getRevokedAt()).isEqualTo(NOW);
+        assertThat(session.isActive(NOW)).isFalse();
+    }
+
+    @Test
+    @DisplayName("만료된 로그인 세션은 다시 폐기하지 않는다")
+    void revoke_failure_expiredSession() {
+        // given
+        AuthSession session = AuthSession.create(
+                1L,
+                HASH,
+                NOW.minus(Duration.ofDays(8))
+        );
+
+        // when
+        boolean revoked = session.revoke(NOW);
+
+        // then
+        assertThat(revoked).isFalse();
+        assertThat(session.getRevokedAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("이미 폐기된 로그인 세션을 다시 폐기해도 최초 시각을 보존한다")
+    void revoke_success_alreadyRevokedSession() {
+        // given
+        AuthSession session = AuthSession.create(
+                1L,
+                HASH,
+                NOW.minusSeconds(2)
+        );
+        session.revoke(NOW.minusSeconds(1));
+
+        // when
+        boolean revoked = session.revoke(NOW);
+
+        // then
+        assertThat(revoked).isFalse();
+        assertThat(session.getRevokedAt()).isEqualTo(NOW.minusSeconds(1));
+    }
+}

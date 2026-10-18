@@ -5,7 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.knot.backend.recording.domain.RecordingSessionRepository;
+import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -19,16 +19,16 @@ class RecordingConnectionExpiryServiceTest {
     private static final int BATCH_SIZE = 100;
 
     private RecordingSessionRepository recordingSessionRepository;
-    private RecordingConnectionExpiryTransaction expiryTransaction;
+    private RecordingConnectionExpiryTransaction recordingConnectionExpiryTransaction;
     private RecordingConnectionExpiryService service;
 
     @BeforeEach
     void setUp() {
         recordingSessionRepository = mock(RecordingSessionRepository.class);
-        expiryTransaction = mock(RecordingConnectionExpiryTransaction.class);
+        recordingConnectionExpiryTransaction = mock(RecordingConnectionExpiryTransaction.class);
         service = new RecordingConnectionExpiryService(
                 recordingSessionRepository,
-                expiryTransaction,
+                recordingConnectionExpiryTransaction,
                 Clock.fixed(
                         NOW,
                         ZoneOffset.UTC
@@ -51,16 +51,16 @@ class RecordingConnectionExpiryServiceTest {
                         2L
                 )
         );
-        when(expiryTransaction.expire(1L)).thenReturn(true);
-        when(expiryTransaction.expire(2L)).thenReturn(false);
+        when(recordingConnectionExpiryTransaction.expire(1L)).thenReturn(true);
+        when(recordingConnectionExpiryTransaction.expire(2L)).thenReturn(false);
 
         // when
         int expiredCount = service.expireDue(BATCH_SIZE);
 
         // then
         assertThat(expiredCount).isEqualTo(1);
-        verify(expiryTransaction).expire(1L);
-        verify(expiryTransaction).expire(2L);
+        verify(recordingConnectionExpiryTransaction).expire(1L);
+        verify(recordingConnectionExpiryTransaction).expire(2L);
     }
 
     @Test
@@ -78,14 +78,14 @@ class RecordingConnectionExpiryServiceTest {
                         2L
                 )
         );
-        when(expiryTransaction.expire(1L)).thenThrow(new IllegalStateException("잠금 시간 초과"));
-        when(expiryTransaction.expire(2L)).thenReturn(true);
+        when(recordingConnectionExpiryTransaction.expire(1L)).thenThrow(new IllegalStateException("잠금 시간 초과"));
+        when(recordingConnectionExpiryTransaction.expire(2L)).thenReturn(true);
 
         // when
         int expiredCount = service.expireDue(BATCH_SIZE);
 
         // then
         assertThat(expiredCount).isEqualTo(1);
-        verify(expiryTransaction).expire(2L);
+        verify(recordingConnectionExpiryTransaction).expire(2L);
     }
 }

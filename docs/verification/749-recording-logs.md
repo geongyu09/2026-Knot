@@ -6,7 +6,7 @@
 
 | 요구 | 근거 |
 | --- | --- |
-| 생성·재요청·제어·자동 종료·업로드 구분 | RecordingStart/Control/Upload Service와 lifecycle/upload 로그 테스트 |
+| 생성·재요청·제어·자동 종료·업로드 구분 | RecordingService·Upload Service와 lifecycle/upload 로그 테스트 |
 | 커밋 뒤 성공, rollback·커밋 미확정 구분 | RecordingLogTest의 JDBC commit/rollback/commit 예외, PostgreSQL lifecycle 로그 통합 테스트 |
 | 구조화 필드·레벨·시간·개인정보 제외 | RecordingLogTest의 native KVP/JSON·requestId 캡처·오류 코드·진단 검증 |
 | 정상 heartbeat 생략 | RecordingLifecycleLoggingIntegrationTest |
@@ -30,4 +30,8 @@
 
 Spring의 기존 TransactionSynchronization을 사용하며 제품 정책을 새 기본값으로 정하지 않는다. ADR672의 관측 구현 범위를 보완하므로 새 ADR은 필요하지 않다. 자동 종료 사실에는 시간을 붙이지 않는다.
 
-전체 컨벤션 감사의 기존 기준선은 1,215건이다. 공통 verify_backend.py --full은 이 감사에서 중단되므로 Gradle 전체 검증을 직접 실행한다. 이 PR 변경 Java의 신규 진단은 없으며 기존 코드의 위반을 이 PR에서 고치지 않는다. 테스트·빌드의 실제 최종 결과와 CI 상태는 PR 본문에서 확인한다.
+2026-10-18 최신 develop(`7b4133d5`)을 통합했다. 삭제된 시작·제어 서비스를 복원하지 않고 RecordingService에 로그를 옮겼다. PCM 모드 검증, 스트림 생성, 종료 seal과 정리 추적, 기존 트랜잭션 예외 정책을 유지한다.
+
+`./gradlew spotlessCheck test integrationTest acceptanceTest bootJar --continue`가 5분 24초에 통과했다. 단위 1,735건, 통합 777건(실제 S3 조건부 시험 1건 생략), 인수 586건이며 실패·오류는 없다. 로그·제어·legacy/PCM 종료 대상 회귀 검증과 Governance 10건도 통과했다.
+
+원문 hash gate는 통과했다. 변경 범위 컨벤션 감사는 1,053건, 전체 감사는 1,232건의 기존 진단으로 중단됐다. 전체 진단 대상 306개 파일은 develop과 바이트 단위로 동일하고, 이번 PR 변경 파일의 진단은 없다. 공통 검증기가 감사에서 중단하므로 위 Gradle 검증은 직접 실행했다. 원격 CI의 최종 상태는 PR 본문에서 확인한다.

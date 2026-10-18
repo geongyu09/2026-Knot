@@ -18,9 +18,10 @@ import org.springframework.transaction.annotation.Isolation;
 public class RecordingDetailService {
     private final RecordingAccess recordingAccess;
     private final RecordingDetailQuery recordingDetailQuery;
-    private final RecordingTranscriptionStateService transcriptionState;
-    private final DocumentGenerationProgressService documentProgress;
+    private final RecordingTranscriptionStateService recordingTranscriptionStateService;
+    private final DocumentGenerationProgressService documentGenerationProgressService;
     private final Clock clock;
+    private final RecordingAudioFinalizationQuery audioQuality;
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public RecordingDetailResult find(
@@ -47,14 +48,15 @@ public class RecordingDetailService {
                 .truncatedTo(ChronoUnit.MICROS);
         return RecordingDetailResult.of(
                 snapshot,
-                transcriptionState.find(recordingId),
-                documentProgress.findSummary(
+                recordingTranscriptionStateService.findSnapshot(recordingId),
+                documentGenerationProgressService.findSummary(
                         workspaceId,
                         recordingId,
                         now
                 )
                         .orElse(null),
                 now
-        );
+        )
+                .withSourceAudio(audioQuality.sourceQuality(recordingId));
     }
 }

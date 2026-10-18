@@ -13,19 +13,46 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class RecordingAudioDeletionWorker {
+    private final RecordingAudioDeletionStateService recordingAudioDeletionStateService;
+    private final RecordingAudioStorage recordingAudioStorage;
+    private final RecordingAudioCleanupStateService cleanupState;
 
-    private final RecordingAudioDeletionStateService state;
-    private final RecordingAudioStorage storage;
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public void executeCleanup(long recordingId) {
+        Optional<RecordingAudioCleanupStateService.CleanupExecution> claim = cleanupState.claim(recordingId);
+        if (claim.isEmpty()) {
+            return;
+        }
+        RecordingAudioCleanupStateService.CleanupExecution execution = claim.orElseThrow();
+        try {
+            recordingAudioStorage.deleteRecordingPrefix(execution.storagePrefix());
+        } catch (RuntimeException exception) {
+            cleanupState.finish(
+                    execution,
+                    false
+            );
+            ServerErrorLogger.recordTaskFailure(
+                    log,
+                    "Audio prefix deletion deferred recordingId=" + recordingId,
+                    exception
+            );
+            return;
+        }
+        cleanupState.finish(
+                execution,
+                true
+        );
+    }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void execute(long taskId) {
-        Optional<RecordingAudioDeletionExecution> claim = state.claim(taskId);
+        Optional<RecordingAudioDeletionExecution> claim = recordingAudioDeletionStateService.claim(taskId);
         if (claim.isEmpty()) {
             return;
         }
         RecordingAudioDeletionExecution execution = claim.orElseThrow();
         try {
-            storage.deleteStoredObject(execution.storageKey());
+            recordingAudioStorage.deleteStoredObject(execution.storageKey());
         } catch (RuntimeException exception) {
             ServerErrorLogger.recordTaskFailure(
                     log,
@@ -33,13 +60,13 @@ public class RecordingAudioDeletionWorker {
                             + " phase=delete",
                     exception
             );
-            state.fail(
+            recordingAudioDeletionStateService.fail(
                     taskId,
                     execution.attemptCount()
             );
             return;
         }
-        state.succeed(
+        recordingAudioDeletionStateService.succeed(
                 taskId,
                 execution.attemptCount()
         );

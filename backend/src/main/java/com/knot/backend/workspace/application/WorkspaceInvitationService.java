@@ -4,15 +4,15 @@ import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationAcce
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationPreviewResult;
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationResult;
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationSecrets;
-import com.knot.backend.workspace.domain.Workspace;
+import com.knot.backend.workspace.domain.model.Workspace;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
-import com.knot.backend.workspace.domain.WorkspaceInvitation;
-import com.knot.backend.workspace.domain.WorkspaceInvitationRepository;
+import com.knot.backend.workspace.domain.model.WorkspaceInvitation;
+import com.knot.backend.workspace.domain.repository.WorkspaceInvitationRepository;
 import com.knot.backend.workspace.domain.WorkspaceInvitationSecretCollisionException;
-import com.knot.backend.workspace.domain.WorkspaceMember;
-import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
-import com.knot.backend.workspace.domain.WorkspaceRepository;
+import com.knot.backend.workspace.domain.model.WorkspaceMember;
+import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -28,29 +28,29 @@ public class WorkspaceInvitationService {
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final WorkspaceInvitationRepository workspaceInvitationRepository;
-    private final WorkspaceInvitationSecretGenerator secretGenerator;
-    private final WorkspaceInvitationSecretProtector secretProtector;
-    private final WorkspaceInvitationPreviewRateLimiter previewRateLimiter;
-    private final WorkspaceInvitationTransactionExecutor transactionExecutor;
+    private final WorkspaceInvitationSecretGenerator workspaceInvitationSecretGenerator;
+    private final WorkspaceInvitationSecretHasher workspaceInvitationSecretHasher;
+    private final WorkspaceInvitationPreviewRateLimiter workspaceInvitationPreviewRateLimiter;
+    private final WorkspaceInvitationTransactionExecutor workspaceInvitationTransactionExecutor;
     private final Clock clock;
 
     public WorkspaceInvitationService(
             WorkspaceRepository workspaceRepository,
             WorkspaceMemberRepository workspaceMemberRepository,
             WorkspaceInvitationRepository workspaceInvitationRepository,
-            WorkspaceInvitationSecretGenerator secretGenerator,
-            WorkspaceInvitationSecretProtector secretProtector,
-            WorkspaceInvitationPreviewRateLimiter previewRateLimiter,
-            WorkspaceInvitationTransactionExecutor transactionExecutor,
+            WorkspaceInvitationSecretGenerator workspaceInvitationSecretGenerator,
+            WorkspaceInvitationSecretHasher workspaceInvitationSecretHasher,
+            WorkspaceInvitationPreviewRateLimiter workspaceInvitationPreviewRateLimiter,
+            WorkspaceInvitationTransactionExecutor workspaceInvitationTransactionExecutor,
             Clock clock
     ) {
         this.workspaceRepository = workspaceRepository;
         this.workspaceMemberRepository = workspaceMemberRepository;
         this.workspaceInvitationRepository = workspaceInvitationRepository;
-        this.secretGenerator = secretGenerator;
-        this.secretProtector = secretProtector;
-        this.previewRateLimiter = previewRateLimiter;
-        this.transactionExecutor = transactionExecutor;
+        this.workspaceInvitationSecretGenerator = workspaceInvitationSecretGenerator;
+        this.workspaceInvitationSecretHasher = workspaceInvitationSecretHasher;
+        this.workspaceInvitationPreviewRateLimiter = workspaceInvitationPreviewRateLimiter;
+        this.workspaceInvitationTransactionExecutor = workspaceInvitationTransactionExecutor;
         this.clock = clock;
     }
 
@@ -96,8 +96,8 @@ public class WorkspaceInvitationService {
         );
         Workspace workspace = workspaceRepository.findByIdForUpdate(invitation.getWorkspaceId())
                 .orElseThrow(this::invitationNotFound);
-        boolean created = joinIfAbsent(
-                invitation.admit(
+        boolean membershipCreated = joinIfAbsent(
+                invitation.createMembership(
                         memberId,
                         currentTime()
                 )
@@ -105,7 +105,7 @@ public class WorkspaceInvitationService {
         return new WorkspaceInvitationAcceptanceResult(
                 invitation.getWorkspaceId(),
                 workspace.getName(),
-                created
+                membershipCreated
         );
     }
 
@@ -122,15 +122,15 @@ public class WorkspaceInvitationService {
         )) {
             throw new WorkspaceException(WorkspaceErrorCode.WORKSPACE_ACCESS_DENIED);
         }
-        WorkspaceInvitationSecrets secrets = secretGenerator.generate();
+        WorkspaceInvitationSecrets secrets = workspaceInvitationSecretGenerator.generate();
         WorkspaceInvitation invitation = workspaceInvitationRepository.save(
                 WorkspaceInvitation.create(
                         workspaceId,
-                        secretProtector.hash(
+                        workspaceInvitationSecretHasher.hash(
                                 WorkspaceInvitationSecretKind.LINK_TOKEN,
                                 secrets.linkToken()
                         ),
-                        secretProtector.hash(
+                        workspaceInvitationSecretHasher.hash(
                                 WorkspaceInvitationSecretKind.INVITE_CODE,
                                 secrets.code()
                         ),
@@ -148,7 +148,7 @@ public class WorkspaceInvitationService {
         WorkspaceInvitationSecretCollisionException lastCollision = null;
         for (int attempt = 0; attempt < MAX_SECRET_GENERATION_ATTEMPTS; attempt++) {
             try {
-                return transactionExecutor.execute(operation);
+                return workspaceInvitationTransactionExecutor.execute(operation);
             } catch (WorkspaceInvitationSecretCollisionException exception) {
                 lastCollision = exception;
             }
@@ -161,11 +161,11 @@ public class WorkspaceInvitationService {
             String remoteAddress
     ) {
         WorkspaceInvitationCredential credential = WorkspaceInvitationCredential.from(tokenOrCode);
-        if (credential.rateLimited()) {
-            previewRateLimiter.consume(remoteAddress);
+        if (credential.requiresRateLimiting()) {
+            workspaceInvitationPreviewRateLimiter.consume(remoteAddress);
             credential.validate();
         }
-        String secretHash = secretProtector.hash(
+        String secretHash = workspaceInvitationSecretHasher.hash(
                 credential.kind(),
                 credential.secret()
         );

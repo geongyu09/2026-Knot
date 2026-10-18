@@ -2,9 +2,9 @@ package com.knot.backend.auth.application;
 
 import com.knot.backend.auth.domain.AuthErrorCode;
 import com.knot.backend.auth.domain.AuthException;
-import com.knot.backend.auth.domain.OAuthIdentity;
-import com.knot.backend.auth.domain.OAuthIdentityRepository;
-import com.knot.backend.auth.domain.OAuthProvider;
+import com.knot.backend.auth.domain.model.OAuthIdentity;
+import com.knot.backend.auth.domain.repository.OAuthIdentityRepository;
+import com.knot.backend.auth.domain.model.OAuthProvider;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

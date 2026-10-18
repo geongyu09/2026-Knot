@@ -1,48 +1,50 @@
-import { keyframes } from "@emotion/react";
 import styled from "@emotion/styled";
 import GithubLoginButton from "@features/auth/GithubLoginButton";
-
-import ChevronDownIcon from "@/assets/icons/chevronDown.svg";
+import type { Ref } from "react";
 
 import { DesktopOnly, Lead, Phrase } from "./ScenePanel";
-import { interactive, mobile, sceneFade, visuallyHidden } from "./SceneLayer";
+import { focusRing, interactive, mobile, sceneFade, visuallyHidden } from "./SceneLayer";
 
 interface IntroSceneProps {
   isOn: boolean;
+
+  /** 스크롤 안내 마우스가 그려질 자리. 엔진이 이 자리에 입자로 마우스와 휠 점을 그려요. */
+  scrollCueRef: Ref<HTMLDivElement>;
+
+  /** 스크롤 안내를 눌렀을 때. 다음 장면으로 넘겨요. */
+  onNext: () => void;
 }
 
 /**
  * 첫 장면. 워드마크 아래에 슬로건과 서비스 설명, 바로 시작하는 버튼을 함께 보여 줘요.
  *
  * 긴 도입 연출로 설명과 시작 버튼을 가리지 않도록, 첫 화면에서 바로 모두 보이게 둡니다.
+ * 화면 아래에는 입자로 그린 마우스의 휠 점이 아래로 굴러가며 스크롤하면 된다는 걸 알려 주고, 누르면 다음 장면으로 넘어가요.
  */
-export default function IntroScene({ isOn }: IntroSceneProps) {
+export default function IntroScene({ isOn, scrollCueRef, onNext }: IntroSceneProps) {
   return (
-    <Container $isOn={isOn} aria-hidden={!isOn} inert={!isOn}>
-      <ServiceName>knot</ServiceName>
-      <Slogan>팀의 결정을 모두의 기억으로</Slogan>
-      <Lead>
-        <Phrase>회의를 녹음하면</Phrase> <Phrase>결정만 골라</Phrase> <Phrase>주제별 문서로 정리해요.</Phrase>
-        <DesktopOnly>
-          <br />
-        </DesktopOnly>{" "}
-        <Phrase>나중에 물어보면</Phrase> <Phrase>근거와 함께 다시 찾아 줘요.</Phrase>
-      </Lead>
-      <StartWrapper $isOn={isOn}>
-        <GithubLoginButton />
-      </StartWrapper>
-      <ScrollHint>
-        <span>스크롤하면 한 장씩 넘어가요</span>
-        <BobbingIcon aria-hidden />
-      </ScrollHint>
-    </Container>
+    <>
+      <Container $isOn={isOn} aria-hidden={!isOn} inert={!isOn}>
+        <ServiceName>knot</ServiceName>
+        <Slogan>팀의 결정을 모두의 기억으로</Slogan>
+        <Lead>
+          <Phrase>회의를 녹음하면</Phrase> <Phrase>결정만 골라</Phrase> <Phrase>주제별 문서로 정리해요.</Phrase>
+          <DesktopOnly>
+            <br />
+          </DesktopOnly>{" "}
+          <Phrase>나중에 물어보면</Phrase> <Phrase>근거와 함께 다시 찾아 줘요.</Phrase>
+        </Lead>
+        <StartWrapper $isOn={isOn}>
+          <GithubLoginButton />
+        </StartWrapper>
+      </Container>
+      <ScrollCue type="button" $isOn={isOn} aria-hidden={!isOn} inert={!isOn} onClick={onNext}>
+        스크롤하면 한 장씩 넘어가요
+        <MouseSlot ref={scrollCueRef} aria-hidden />
+      </ScrollCue>
+    </>
   );
 }
-
-const bob = keyframes`
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(5px); }
-`;
 
 const Container = styled.section<{ $isOn: boolean }>`
   ${({ $isOn }) => sceneFade({ isOn: $isOn })};
@@ -83,21 +85,34 @@ const StartWrapper = styled.div<{ $isOn: boolean }>`
   margin-top: 0.875rem; /* 14px */
 `;
 
-const ScrollHint = styled.div`
+/** 화면 맨 아래 가운데의 스크롤 안내. 글자 아래 빈자리에 캔버스 입자가 마우스를 그려요. */
+const ScrollCue = styled.button<{ $isOn: boolean }>`
+  ${({ $isOn }) => sceneFade({ isOn: $isOn })};
+  ${({ $isOn }) => interactive({ isOn: $isOn })};
+  position: absolute;
+  bottom: 1.5rem; /* 24px */
+  left: 50%;
+  z-index: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.375rem; /* 6px */
-  margin-top: 1.75rem; /* 28px */
+  gap: 0.25rem; /* 4px */
+  padding: 0.5rem 1rem 0; /* 8px 16px */
   ${({ theme }) => theme.text.caption02};
-  color: ${({ theme }) => theme.neutral[400]};
+  color: ${({ theme }) => theme.neutral[600]};
+  transform: translateX(-50%);
+  ${({ theme }) => focusRing(theme)};
+
+  &:hover {
+    color: ${({ theme }) => theme.neutral[800]};
+  }
+
+  ${mobile} {
+    bottom: 1rem; /* 16px */
+  }
 `;
 
-const BobbingIcon = styled(ChevronDownIcon)`
-  width: 0.875rem; /* 14px */
-  height: 0.875rem;
-  animation: ${bob} 2s ease-in-out infinite;
-
-  @media (prefers-reduced-motion: reduce) {
-    animation: none;
-  }
+const MouseSlot = styled.div`
+  width: 2rem; /* 32px */
+  height: 2.75rem; /* 44px */
 `;

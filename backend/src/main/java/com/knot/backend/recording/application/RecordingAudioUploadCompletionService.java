@@ -1,7 +1,7 @@
 package com.knot.backend.recording.application;
 
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadCompletionResult;
-import com.knot.backend.recording.domain.StoredAudioObject;
+import com.knot.backend.recording.domain.model.StoredAudioObject;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -9,9 +9,9 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class RecordingAudioUploadCompletionService {
-    private final RecordingAudioUploadCompletionTransaction completionTransaction;
-    private final RecordingAudioStorage audioStorage;
-    private final RecordingTranscriptionService transcriptionService;
+    private final RecordingAudioUploadCompletionTransaction recordingAudioUploadCompletionTransaction;
+    private final RecordingAudioStorage recordingAudioStorage;
+    private final RecordingTranscriptionService recordingTranscriptionService;
 
     public RecordingAudioUploadCompletionResult complete(
             long workspaceId,
@@ -27,7 +27,7 @@ public class RecordingAudioUploadCompletionService {
                 null
         );
         Optional<String> storageKey = prepare.call(() -> {
-            Optional<String> found = completionTransaction.findStorageKeyToConfirm(
+            Optional<String> found = recordingAudioUploadCompletionTransaction.findStorageKeyToConfirm(
                     workspaceId,
                     memberId,
                     recordingId,
@@ -45,20 +45,20 @@ public class RecordingAudioUploadCompletionService {
                     null
             );
             return verification.call(() -> {
-                StoredAudioObject found = audioStorage.findStoredObject(key);
+                StoredAudioObject found = recordingAudioStorage.findStoredObject(key);
                 verification.outcome(found.exists() ? "found" : "missing");
                 return found;
             });
         })
                 .orElseGet(StoredAudioObject::missing);
-        RecordingAudioUploadCompletionResult result = completionTransaction.complete(
+        RecordingAudioUploadCompletionResult result = recordingAudioUploadCompletionTransaction.complete(
                 workspaceId,
                 memberId,
                 recordingId,
                 uploadId,
                 storedObject
         );
-        transcriptionService.dispatch();
+        recordingTranscriptionService.dispatch();
         return result;
     }
 }

@@ -1,4 +1,5 @@
 import styled from "@emotion/styled";
+import useExitAnimation from "@hooks/common/useExitAnimation";
 import Avatar from "@primitives/ui/Avatar";
 
 import ChevronDownIcon from "@/assets/icons/chevronDown.svg";
@@ -10,6 +11,7 @@ import WorkspaceMenu from "./ui/WorkspaceMenu";
  * 지금 워크스페이스의 이름을 보여 주고, 누르면 다른 워크스페이스로 옮겨 가거나 새로 만들거나 나갈 수 있는 메뉴를 여는 버튼.
  *
  * 사이드바 맨 위에 둬요. 메뉴는 이름 바로 아래로 펼쳐지고, 감싸는 영역의 폭을 그대로 써요.
+ * 닫힌 메뉴는 `useExitAnimation`이 접히는 애니메이션이 끝날 때까지 조금 더 그려 둬요.
  */
 export default function WorkspaceSwitcher() {
   const {
@@ -24,6 +26,8 @@ export default function WorkspaceSwitcher() {
     handleCreateWorkspace,
     handleLeaveWorkspace,
   } = useWorkspaceSwitcher();
+  const { renderedValue: isMenuRendered, isExiting: isMenuClosing } =
+    useExitAnimation({ value: isOpen || null, ref: menuAreaRef });
 
   return (
     <Container ref={menuAreaRef}>
@@ -46,7 +50,7 @@ export default function WorkspaceSwitcher() {
         <ChevronDownIcon size={12} />
       </Trigger>
 
-      {isOpen && (
+      {isMenuRendered && (
         <WorkspaceMenu
           id={menuId}
           workspaces={workspaces}
@@ -54,6 +58,7 @@ export default function WorkspaceSwitcher() {
           onSelectWorkspace={handleSelectWorkspace}
           onCreateWorkspace={handleCreateWorkspace}
           onLeaveWorkspace={handleLeaveWorkspace}
+          isClosing={isMenuClosing}
         />
       )}
     </Container>

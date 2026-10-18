@@ -8,7 +8,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.knot.backend.auth.domain.AuthTokenProvider;
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.global.config.JwtProperties;
 import com.knot.backend.search.SearchMessageFixtures;
@@ -19,9 +19,9 @@ import com.knot.backend.search.application.SearchGenerationAvailability;
 import com.knot.backend.search.application.SearchIntentClassifier;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
-import com.knot.backend.search.domain.SearchIntent;
+import com.knot.backend.search.domain.model.SearchIntent;
 import com.knot.backend.search.domain.SearchToolException;
-import com.knot.backend.search.infrastructure.SearchExploration;
+import com.knot.backend.search.infrastructure.llm.SearchExploration;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.io.BufferedReader;
@@ -43,6 +43,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -50,6 +51,8 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
@@ -151,6 +154,9 @@ class SearchQuestionAcceptanceTest {
     private JsonMapper json;
     @Autowired
     private SearchAnswerWorker worker;
+    @Autowired
+    @Qualifier("searchStreamExecutor")
+    private ThreadPoolTaskExecutor streamExecutor;
     @MockitoBean
     private SearchGenerationAvailability availability;
     @MockitoBean
@@ -166,8 +172,25 @@ class SearchQuestionAcceptanceTest {
     private String csrfCookie;
     private String accessCookie;
 
+    @AfterEach
+    void awaitStreamsIdle() throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(5)
+                .toNanos();
+        while (!streamsAreIdle() && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+        }
+        assertThat(streamExecutor.getActiveCount()).as("다음 TRUNCATE 전에 이전 SSE 작업이 종료되어야 한다")
+                .isZero();
+        assertThat(streamExecutor.getQueueSize()).isZero();
+    }
+
+    private boolean streamsAreIdle() {
+        return streamExecutor.getActiveCount() == 0 && streamExecutor.getQueueSize() == 0;
+    }
+
     @BeforeEach
     void setUp() throws Exception {
+        awaitStreamsIdle();
         when(
                 classifier.classify(
                         any(),

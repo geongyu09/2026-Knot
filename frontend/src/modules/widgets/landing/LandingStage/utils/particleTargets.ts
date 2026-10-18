@@ -101,6 +101,52 @@ export const buildWordmarkTargets = (size: StageSize) => {
   return fitTargets({ targets: shuffle(targets), size });
 };
 
+/** 스크롤 안내 마우스의 크기(px)와 입자 수. 휠 점은 마우스 위쪽에서 `travel`만큼 굴러 내려가요. */
+const SCROLL_CUE = {
+  width: 22,
+  height: 34,
+  outline: 260,
+  wheel: { top: 6, length: 4, travel: 11, count: 100 },
+} as const;
+
+/**
+ * 소개 장면의 스크롤 안내: 입자로 그린 마우스 윤곽과 그 안에서 아래로 굴러가는 휠 점.
+ * 휠 점이 구를 때 마우스도 살짝 따라 내려갔다 돌아와, 스크롤을 한 번 내리는 손짓처럼 보여요.
+ *
+ * 휠 점 입자의 `phase`는 머리보다 얼마나 늦게 따라가는지예요. 늦은 입자일수록 위에 남아 꼬리가 돼요.
+ */
+const buildScrollCueTargets = (box: StageRect) => {
+  const { width, height, outline, wheel } = SCROLL_CUE;
+  const rect = { x: box.x + (box.w - width) / 2, y: box.y + (box.h - height) / 2, w: width, h: height };
+  const radius = width / 2;
+  const perimeter = 2 * (height - 2 * radius) + 2 * Math.PI * radius;
+  const targets: ParticleTarget[] = [];
+
+  for (let i = 0; i < outline; i++) {
+    const point = roundedRectPoint({ rect, radius, distance: (i / outline) * perimeter });
+    const offset = gaussian() * 0.5;
+    const x = point.x + point.nx * offset;
+    const y = point.y + point.ny * offset;
+    targets.push({ x, y, baseX: x, baseY: y, kind: 61, phase: 0, motion: 3 });
+  }
+
+  const cx = rect.x + width / 2;
+  for (let i = 0; i < wheel.count; i++) {
+    // 꼬리 쪽으로 갈수록 입자가 드물어지도록 늦는 정도를 제곱으로 퍼뜨려요
+    const lag = Math.random() ** 2 * 0.22;
+    const x = cx + gaussian() * (lag < 0.04 ? 1.4 : 0.8);
+    const y = rect.y + wheel.top + Math.random() * wheel.length;
+    targets.push({ x, y, baseX: x, baseY: y, kind: 62, phase: lag, motion: 2, travel: wheel.travel });
+  }
+  return targets;
+};
+
+/** 소개 장면: knot 워드마크와 화면 아래의 스크롤 안내 */
+export const buildIntroTargets = ({ stage, box, size }: ElementTargetsParams) => {
+  const cue = buildScrollCueTargets(rectInStage(stage, box));
+  return [...buildWordmarkTargets({ ...size, count: size.count - cue.length }), ...cue];
+};
+
 /** 시작 장면: 파형이 문서의 줄로 이어지는 새 심볼 */
 export const buildSymbolTargets = (size: StageSize) => {
   const { width, height, isMobile } = size;

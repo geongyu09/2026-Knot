@@ -2,11 +2,12 @@ package com.knot.backend.recording.application;
 
 import com.knot.backend.global.config.TranscriptionProperties;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadCompletionResult;
-import com.knot.backend.recording.domain.RecordingAudioUpload;
-import com.knot.backend.recording.domain.RecordingAudioUploadRepository;
+import com.knot.backend.recording.domain.model.RecordingAudioUpload;
+import com.knot.backend.recording.domain.model.RecordingSession;
+import com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
-import com.knot.backend.recording.domain.StoredAudioObject;
+import com.knot.backend.recording.domain.model.StoredAudioObject;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
@@ -20,7 +21,7 @@ public class RecordingAudioUploadCompletionTransaction {
     private final RecordingAccess recordingAccess;
     private final RecordingAudioUploadRepository recordingAudioUploadRepository;
     private final Clock clock;
-    private final RecordingTranscriptionStateService transcriptionState;
+    private final RecordingTranscriptionStateService recordingTranscriptionStateService;
     private final TranscriptionProperties transcriptionProperties;
 
     @Transactional
@@ -68,7 +69,7 @@ public class RecordingAudioUploadCompletionTransaction {
             );
             recordingAudioUploadRepository.save(upload);
             if (transcriptionProperties.enabled() && upload.isAudioAvailable()) {
-                transcriptionState.registerAutomatic(recordingId);
+                recordingTranscriptionStateService.registerAutomatic(recordingId);
             }
             return RecordingAudioUploadCompletionResult.from(upload);
         });
@@ -83,12 +84,13 @@ public class RecordingAudioUploadCompletionTransaction {
         if (uploadId <= 0) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
         }
-        recordingAccess.loadOwnedForUpdate(
+        RecordingSession session = recordingAccess.loadOwnedForUpdate(
                 workspaceId,
                 memberId,
                 recordingId
-        )
-                .validateAudioUploadable();
+        );
+        session.validateLegacyAudioMode();
+        session.validateEnded();
         RecordingAudioUpload upload = recordingAudioUploadRepository.findById(uploadId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
         upload.validateBelongsTo(recordingId);

@@ -1,7 +1,7 @@
 package com.knot.backend.recording.application;
 
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
-import com.knot.backend.recording.domain.StoredAudioObject;
+import com.knot.backend.recording.domain.model.StoredAudioObject;
 
 public interface RecordingAudioStorage {
 
@@ -21,4 +21,6 @@ public interface RecordingAudioStorage {
     StoredAudioObject findStoredObject(String storageKey);
 
     void deleteStoredObject(String storageKey);
+
+    void deleteRecordingPrefix(String storagePrefix);
 }

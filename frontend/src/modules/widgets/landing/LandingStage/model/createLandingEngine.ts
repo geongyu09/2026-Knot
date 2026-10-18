@@ -13,10 +13,10 @@ import {
   buildDocumentTargets,
   buildGraph,
   buildGraphTargets,
+  buildIntroTargets,
   buildSpeechTargets,
   buildSymbolTargets,
   buildWaveTargets,
-  buildWordmarkTargets,
   WAVE_COLUMNS,
 } from "../utils/particleTargets";
 
@@ -26,6 +26,8 @@ export interface LandingEngineElements {
   /** 화면에 붙어 있는 무대 */
   stage: HTMLElement;
   canvas: HTMLCanvasElement;
+  /** 소개 장면에서 스크롤 안내 마우스가 그려질 자리 */
+  scrollCue: HTMLElement;
   /** 정리 장면의 문서 카드 묶음 */
   documents: HTMLElement;
   /** 확인 장면의 문서 카드 */
@@ -60,7 +62,7 @@ type AssignMode = "morph" | "fall" | "instant";
  * `listeners`로 알립니다. 반환한 `destroy`를 부르면 붙인 이벤트와 반복을 모두 걷어요.
  */
 export const createLandingEngine = ({ elements, listeners, palette }: CreateLandingEngineParams) => {
-  const { scroller, stage, canvas, documents, confirmation, questionInput } = elements;
+  const { scroller, stage, canvas, scrollCue, documents, confirmation, questionInput } = elements;
   const context = canvas.getContext("2d");
   if (!context) return null;
 
@@ -233,7 +235,7 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
   };
 
   const targetsFor = (index: number) => {
-    if (index === SCENE.INTRO) return cached("wordmark", () => buildWordmarkTargets(size));
+    if (index === SCENE.INTRO) return cached("intro", () => buildIntroTargets({ stage, box: scrollCue, size }));
     if (index === SCENE.PROBLEM) return cached("speech", () => buildSpeechTargets(size));
     if (index === SCENE.RECORDING) return cached("wave", () => buildWaveTargets(size));
     // 카드 위치는 무대 크기마다 바뀌어서 장면에 들어설 때마다 다시 재요
@@ -320,12 +322,16 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
     let x0 = Infinity;
     let x1 = -Infinity;
     let sumY = 0;
+    let sampled = 0;
+    // 화면 아래의 스크롤 안내는 빼고, 워드마크 자리만으로 선의 폭과 높이를 정해요
     for (let i = 0; i < targets.length; i += 7) {
+      if (targets[i].kind === 61 || targets[i].kind === 62) continue;
       x0 = Math.min(x0, targets[i].x);
       x1 = Math.max(x1, targets[i].x);
       sumY += targets[i].y;
+      sampled++;
     }
-    const centerY = sumY / Math.ceil(targets.length / 7);
+    const centerY = sampled ? sumY / sampled : size.height / 2;
     if (!isFinite(x0)) {
       x0 = size.width * 0.3;
       x1 = size.width * 0.7;
@@ -395,11 +401,25 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
     }
   };
 
+  /** 스크롤 안내의 휠 점이 한 번 굴러 내려가는 동안의 진행(0~1). 2초에 한 번 구르고, `lag`만큼 늦은 입자가 꼬리가 돼요. */
+  const wheelProgress = (lag: number) => {
+    if (prefersReducedMotion) return 0;
+    const t = (frameCount / 120 - lag) % 1;
+    return t < 0 ? t + 1 : t;
+  };
+
   /** 입자를 어느 색 묶음으로 그릴지 정해요. 묶음 번호는 `palette`의 순서예요. */
   const bucketFor = (particle: Particle, threadPhase: number) => {
     const { kind, target } = particle;
     if (kind === 0 || kind === 50) return particle.shade;
     if (kind === 60) return particle.shade === 0 ? 1 : 2;
+    if (kind === 61) return particle.shade === 2 ? 2 : 1;
+    if (kind === 62) {
+      // 굴러 내려가며 흐려지고, 꼬리는 머리보다 한 단계 옅게 그려요
+      const t = wheelProgress(particle.phase);
+      const fade = t < 0.55 ? 0 : t < 0.8 ? 1 : 3;
+      return Math.min(3, fade + (particle.phase > 0.06 ? 1 : 0));
+    }
     if (kind === 7) {
       const level = target ? Math.abs(target.level ?? 0) : 0;
       return level < 0.45 ? 0 : level < 0.8 ? 1 : 2;
@@ -482,6 +502,19 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
         if (target.motion === 1) {
           particle.homeX = target.x;
           particle.homeY = (target.centerY ?? 0) + (target.level ?? 0) * amplitudes[target.column ?? 0] * (target.amplitudeScale ?? 1);
+        } else if (target.motion === 2) {
+          const roll = clamp(wheelProgress(target.phase) / 0.75, 0, 1);
+          const eased = roll < 0.5 ? 2 * roll * roll : 1 - Math.pow(-2 * roll + 2, 2) / 2;
+          const nextY = (target.baseY ?? target.y) + eased * (target.travel ?? 0);
+          // 다 굴러간 점이 위로 끌려 올라가는 모습이 보이지 않게, 다음 바퀴의 출발점으로 바로 옮겨요
+          if (nextY < particle.homeY - 2) particle.y = nextY;
+          particle.homeX = target.baseX ?? target.x;
+          particle.homeY = nextY;
+        } else if (target.motion === 3) {
+          // 휠 점이 구르는 동안 마우스도 2px 내려갔다 돌아와요
+          const roll = clamp(wheelProgress(0) / 0.75, 0, 1);
+          particle.homeX = target.baseX ?? target.x;
+          particle.homeY = (target.baseY ?? target.y) + Math.sin(roll * Math.PI) * 2;
         } else {
           const group = target.group ?? 0;
           particle.homeX = (target.baseX ?? target.x) + Math.cos(frameCount * 0.012 + group * 2.1) * 5;

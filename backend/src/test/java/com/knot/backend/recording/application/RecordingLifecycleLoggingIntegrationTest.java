@@ -32,16 +32,16 @@ import org.springframework.transaction.support.TransactionTemplate;
 class RecordingLifecycleLoggingIntegrationTest {
     private static final String CONTROL_TOKEN = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefA";
 
-    private final RecordingStartService startService;
-    private final RecordingControlService controlService;
+    private final RecordingService startService;
+    private final RecordingService controlService;
     private final TransactionTemplate transactionTemplate;
     private final JdbcClient jdbcClient;
     private long memberId;
     private long workspaceId;
 
     RecordingLifecycleLoggingIntegrationTest(
-            RecordingStartService startService,
-            RecordingControlService controlService,
+            RecordingService startService,
+            RecordingService controlService,
             TransactionTemplate transactionTemplate,
             JdbcClient jdbcClient
     ) {

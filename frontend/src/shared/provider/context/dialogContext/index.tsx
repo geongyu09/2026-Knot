@@ -1,9 +1,12 @@
+import styled from "@emotion/styled";
+import useExitAnimation from "@hooks/common/useExitAnimation";
 import useReturnFocus from "@hooks/common/useReturnFocus";
 import {
   createContext,
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -68,10 +71,19 @@ const useOpenedDialog = () => {
  * 모달의 종류나 겉모양이 바뀌어도 이 파일은 바뀌지 않아요.
  * 어떤 모달이 떠 있는지는 `useOpenedDialog`가, 모두 닫히면 처음 모달을 열기 전
  * 포커스 자리로 돌려주는 일은 `useReturnFocus`가 맡고, 여기서는 둘을 이어 주기만 해요.
+ *
+ * 닫힌 모달은 `useExitAnimation`이 닫힘 애니메이션이 끝날 때까지 조금 더 그려 둬요.
+ * 그동안 감싼 요소에 `data-overlay-state="closing"`을 붙이고, 어떻게 사라질지는 이 표시를 읽는 `Dim`과 카드(`Pop`)가 정해요.
+ * 사라지는 모달은 `inert`로 막아서 버튼이 클릭이나 키보드로 다시 눌리지 않아요.
  */
 export function DialogProvider({ children }: { children: ReactNode }) {
   const { dialog, show } = useOpenedDialog();
   const { remember } = useReturnFocus({ isActive: dialog !== null });
+  const dialogLayerRef = useRef<HTMLDivElement>(null);
+  const { renderedValue: renderedDialog, isExiting } = useExitAnimation({
+    value: dialog,
+    ref: dialogLayerRef,
+  });
 
   const controlsValue = useMemo<DialogControls>(
     () => ({
@@ -87,10 +99,23 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   return (
     <DialogContext.Provider value={controlsValue}>
       {children}
-      {dialog?.render({ close: dialog.close })}
+      {renderedDialog && (
+        <DialogLayer
+          ref={dialogLayerRef}
+          data-overlay-state={isExiting ? "closing" : "open"}
+          inert={isExiting}
+        >
+          {renderedDialog.render({ close: renderedDialog.close })}
+        </DialogLayer>
+      )}
     </DialogContext.Provider>
   );
 }
+
+// 닫힘 표시를 붙이고 애니메이션을 재는 기준만 맡아서, 화면 배치에는 끼어들지 않아요
+const DialogLayer = styled.div`
+  display: contents;
+`;
 
 /**
  * 모달을 여는 함수를 돌려줘요. `DialogProvider` 안에서만 부를 수 있어요.

@@ -1,39 +1,21 @@
 package com.knot.backend.recording.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.timeout;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
 
 import com.knot.backend.global.config.TranscriptionProperties;
-import com.knot.backend.recording.application.dto.result.AiTranscript;
-import com.knot.backend.recording.application.dto.result.AiTranscriptionJob;
-import com.knot.backend.recording.application.dto.result.RecordingTranscriptionExecution;
+import com.knot.backend.recording.application.dto.result.*;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
+import com.knot.backend.recording.domain.model.RemoteObservation;
 import java.net.URI;
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.time.*;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -43,7 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class RecordingTranscriptionServiceTest {
     private static final Instant NOW = Instant.parse("2026-10-13T00:00:00Z");
-    private static final UUID ATTEMPT = UUID.fromString("019bbbc0-51ae-7000-8000-000000000001");
+    private static final UUID ATTEMPT = UUID.randomUUID();
 
     @Mock
     private RecordingTranscriptionStateService state;
@@ -61,14 +43,12 @@ class RecordingTranscriptionServiceTest {
     }
 
     @Test
-    @DisplayName("비활성 상태에서는 AI 작업을 시작하지 않는다")
-    void disabledDoesNotDispatch() {
+    @DisplayName("비활성 전사는 대기열과 외부 서비스를 호출하지 않는다")
+    void dispatch_success_disabled() {
         // given
         service = service(false);
-
         // when
         service.dispatch();
-
         // then
         verifyNoInteractions(
                 state,
@@ -78,38 +58,364 @@ class RecordingTranscriptionServiceTest {
     }
 
     @Test
-    @DisplayName("기존 worker가 실행 중이면 같은 작업을 다시 접수하지 않는다")
-    void duplicateDispatchDoesNotSubmitAgain() throws Exception {
+    @DisplayName("새 작업은 최초 POST 직전 deadline을 저장하고 성공 snapshot을 즉시 채택한다")
+    void dispatch_success_newAttempt() {
         // given
-        RecordingTranscriptionExecution execution = prepare();
-        CountDownLatch submitted = new CountDownLatch(1);
-        CountDownLatch release = new CountDownLatch(1);
+        RecordingTranscriptionExecution execution = prepare(
+                RemoteObservation.NOT_SUBMITTED,
+                null
+        );
+        preparePost(execution);
         when(
                 client.submit(
                         ATTEMPT,
-                        "https://immutable.example/audio"
+                        "https://immutable.example/audio",
+                        null
                 )
-        ).thenAnswer(call -> {
-            submitted.countDown();
+        ).thenReturn(success());
+        service = service(true);
+        // when
+        service.dispatch();
+        // then
+        verify(
+                state,
+                timeout(2000)
+        ).complete(
+                execution,
+                transcript()
+        );
+        org.mockito.InOrder order = inOrder(
+                state,
+                client
+        );
+        order.verify(state)
+                .beginRemotePost(
+                        eq(execution),
+                        any()
+                );
+        order.verify(client)
+                .submit(
+                        ATTEMPT,
+                        "https://immutable.example/audio",
+                        null
+                );
+        verify(
+                client,
+                never()
+        ).get(any());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = RecordingErrorCode.class, names = {"AI_TIMEOUT", "AI_UNAVAILABLE"})
+    @DisplayName("POST 응답 유실은 새 시도 없이 같은 ID를 GET으로 확인한다")
+    void dispatch_success_responseUnknown(RecordingErrorCode code) {
+        // given
+        RecordingTranscriptionExecution execution = prepare(
+                RemoteObservation.NOT_SUBMITTED,
+                null
+        );
+        preparePost(execution);
+        when(
+                client.submit(
+                        ATTEMPT,
+                        "https://immutable.example/audio",
+                        null
+                )
+        ).thenThrow(new RecordingException(code));
+        when(client.get(ATTEMPT)).thenReturn(success());
+        service = service(true);
+        // when
+        service.dispatch();
+        // then
+        verify(
+                state,
+                timeout(2000)
+        ).complete(
+                execution,
+                transcript()
+        );
+        verify(client).submit(
+                ATTEMPT,
+                "https://immutable.example/audio",
+                null
+        );
+        verify(client).get(ATTEMPT);
+    }
+
+    @Test
+    @DisplayName("재선점한 실행은 원격 GET 성공을 채택하고 POST하지 않는다")
+    void dispatch_success_recoveredSucceeded() {
+        // given
+        RecordingTranscriptionExecution execution = prepare(
+                RemoteObservation.UNCONFIRMED,
+                NOW.plusSeconds(20)
+        );
+        when(client.get(ATTEMPT)).thenReturn(success());
+        service = service(true);
+        // when
+        service.dispatch();
+        // then
+        verify(
+                state,
+                timeout(2000)
+        ).complete(
+                execution,
+                transcript()
+        );
+        verifyNoInteractions(storage);
+        verify(
+                client,
+                never()
+        ).submit(
+                any(),
+                any(),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("원격 404는 같은 version과 시도 ID의 새 URL로 재접수한다")
+    void dispatch_success_recoveredNotFound() {
+        // given
+        RecordingTranscriptionExecution execution = prepare(
+                RemoteObservation.UNCONFIRMED,
+                NOW.plusSeconds(20)
+        );
+        preparePost(execution);
+        when(client.get(ATTEMPT)).thenThrow(new RecordingException(RecordingErrorCode.AI_JOB_NOT_FOUND));
+        when(
+                client.submit(
+                        ATTEMPT,
+                        "https://immutable.example/audio",
+                        null
+                )
+        ).thenReturn(success());
+        service = service(true);
+        // when
+        service.dispatch();
+        // then
+        verify(
+                state,
+                timeout(2000)
+        ).complete(
+                execution,
+                transcript()
+        );
+        verify(storage).presignDownload(
+                "key",
+                "version",
+                "audio/webm",
+                1024
+        );
+        verify(client).submit(
+                ATTEMPT,
+                "https://immutable.example/audio",
+                null
+        );
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = RecordingErrorCode.class, names = {"AI_BUSY", "AI_NOT_READY"})
+    @DisplayName("명시적인 최초 접수 거절은 준비 대기로 돌리고 사용자 실패로 확정하지 않는다")
+    void dispatch_success_readinessRequeue(RecordingErrorCode code) {
+        // given
+        RecordingTranscriptionExecution execution = prepare(
+                RemoteObservation.NOT_SUBMITTED,
+                null
+        );
+        preparePost(execution);
+        when(
+                client.submit(
+                        ATTEMPT,
+                        "https://immutable.example/audio",
+                        null
+                )
+        ).thenThrow(new RecordingException(code));
+        service = service(true);
+        // when
+        service.dispatch();
+        // then
+        verify(
+                state,
+                timeout(2000)
+        ).deferReadiness(
+                execution,
+                Duration.ofSeconds(120),
+                true
+        );
+        verify(
+                state,
+                never()
+        ).fail(
+                any(),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("원격 terminal 실패는 동일 attempt POST로 재실행하지 않는다")
+    void dispatch_failure_remoteTerminal() {
+        // given
+        RecordingTranscriptionExecution execution = prepare(
+                RemoteObservation.UNCONFIRMED,
+                NOW.plusSeconds(20)
+        );
+        when(client.get(ATTEMPT)).thenReturn(
+                new AiTranscriptionJob(
+                        ATTEMPT,
+                        AiTranscriptionJob.Status.FAILED,
+                        "INFERENCE_FAILED",
+                        null
+                )
+        );
+        service = service(true);
+        // when
+        service.dispatch();
+        // then
+        verify(
+                state,
+                timeout(2000)
+        ).fail(
+                execution,
+                "INFERENCE_FAILED"
+        );
+        verify(
+                client,
+                never()
+        ).submit(
+                any(),
+                any(),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("기한이 지나도 마지막 GET 성공 결과는 채택한다")
+    void dispatch_success_lastGetSucceeded() {
+        // given
+        RecordingTranscriptionExecution execution = prepare(
+                RemoteObservation.PROCESSING,
+                NOW
+        );
+        when(client.get(ATTEMPT)).thenReturn(success());
+        service = service(true);
+        // when
+        service.dispatch();
+        // then
+        verify(
+                state,
+                timeout(2000)
+        ).complete(
+                execution,
+                transcript()
+        );
+    }
+
+    @Test
+    @DisplayName("기한이 지난 원격 실행은 결과 미확정으로 저장하고 POST하지 않는다")
+    void dispatch_failure_deadlineProcessing() {
+        // given
+        RecordingTranscriptionExecution execution = prepare(
+                RemoteObservation.PROCESSING,
+                NOW
+        );
+        when(client.get(ATTEMPT)).thenReturn(
+                new AiTranscriptionJob(
+                        ATTEMPT,
+                        AiTranscriptionJob.Status.PROCESSING,
+                        null,
+                        null
+                )
+        );
+        service = service(true);
+        // when
+        service.dispatch();
+        // then
+        verify(
+                state,
+                timeout(2000)
+        ).fail(
+                execution,
+                "AI_OUTCOME_UNKNOWN"
+        );
+        verify(
+                client,
+                never()
+        ).submit(
+                any(),
+                any(),
+                any()
+        );
+    }
+
+    @Test
+    @DisplayName("소유권이나 녹음 가용성을 잃으면 외부 AI를 호출하지 않는다")
+    void dispatch_success_lostOwnership() {
+        // given
+        RecordingTranscriptionExecution execution = execution(
+                RemoteObservation.UNCONFIRMED,
+                NOW.plusSeconds(20)
+        );
+        when(
+                state.claimNext(
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                Optional.of(execution),
+                Optional.empty()
+        );
+        when(state.prepare(execution)).thenReturn(Optional.empty());
+        service = service(true);
+        // when
+        service.dispatch();
+        // then
+        verify(
+                state,
+                timeout(2000).atLeast(2)
+        ).claimNext(
+                any(),
+                any()
+        );
+        verifyNoInteractions(
+                client,
+                storage
+        );
+    }
+
+    @Test
+    @DisplayName("동일 프로세스의 중복 dispatch는 실행 중 worker를 하나만 유지한다")
+    void dispatch_success_singleLocalWorker() throws Exception {
+        // given
+        RecordingTranscriptionExecution execution = prepare(
+                RemoteObservation.UNCONFIRMED,
+                NOW.plusSeconds(20)
+        );
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        when(client.get(ATTEMPT)).thenAnswer(call -> {
+            entered.countDown();
             release.await(
                     2,
                     TimeUnit.SECONDS
             );
-            return succeeded(ATTEMPT);
+            return success();
         });
         service = service(true);
         service.dispatch();
         assertThat(
-                submitted.await(
+                entered.await(
                         2,
                         TimeUnit.SECONDS
                 )
         ).isTrue();
-
         // when
         service.dispatch();
-
         // then
+        verify(state).claimNext(
+                any(),
+                any()
+        );
         release.countDown();
         verify(
                 state,
@@ -118,497 +424,307 @@ class RecordingTranscriptionServiceTest {
                 execution,
                 transcript()
         );
-        verify(client).submit(
-                ATTEMPT,
-                "https://immutable.example/audio"
-        );
-        verify(state).findProcessing();
-    }
-
-    @ParameterizedTest
-    @EnumSource(value = RecordingErrorCode.class, names = {"AI_TIMEOUT", "AI_UNAVAILABLE"})
-    @DisplayName("POST 응답 유실은 같은 ID를 조회해 확인하고 POST를 반복하지 않는다")
-    void lostPostResponseConfirmsSameAttempt(RecordingErrorCode code) {
-        // given
-        RecordingTranscriptionExecution execution = prepare();
-        when(
-                client.submit(
-                        ATTEMPT,
-                        "https://immutable.example/audio"
-                )
-        ).thenThrow(new RecordingException(code));
-        when(client.get(ATTEMPT)).thenReturn(succeeded(ATTEMPT));
-        service = service(true);
-
-        // when
-        service.dispatch();
-
-        // then
-        verify(
-                state,
-                timeout(2000)
-        ).complete(
-                execution,
-                transcript()
-        );
-        verify(client).submit(
-                ATTEMPT,
-                "https://immutable.example/audio"
-        );
-        verify(client).get(ATTEMPT);
     }
 
     @Test
-    @DisplayName("접수 확인 조회도 실패하면 새 접수 없이 실패를 기록한다")
-    void lostConfirmationFailsAttempt() {
+    @DisplayName("정상 종료는 현재 owner 작업을 같은 시도로 다시 대기시킨다")
+    void close_success_requeuesOwnedAttempt() throws Exception {
         // given
-        RecordingTranscriptionExecution execution = prepare();
-        when(
-                client.submit(
-                        ATTEMPT,
-                        "https://immutable.example/audio"
-                )
-        ).thenThrow(new RecordingException(RecordingErrorCode.AI_TIMEOUT));
-        when(client.get(ATTEMPT)).thenThrow(new RecordingException(RecordingErrorCode.AI_JOB_NOT_FOUND));
-        service = service(true);
-
-        // when
-        service.dispatch();
-
-        // then
-        verify(
-                state,
-                timeout(2000)
-        ).fail(
-                execution,
-                "AI_JOB_NOT_FOUND"
+        RecordingTranscriptionExecution execution = prepare(
+                RemoteObservation.PROCESSING,
+                NOW.plusSeconds(20)
         );
-        verify(client).submit(
-                ATTEMPT,
-                "https://immutable.example/audio"
+        CountDownLatch entered = new CountDownLatch(1);
+        when(client.get(ATTEMPT)).thenAnswer(call -> {
+            entered.countDown();
+            try {
+                Thread.sleep(10_000);
+            } catch (InterruptedException exception) {
+                Thread.currentThread()
+                        .interrupt();
+                throw new RecordingException(
+                        RecordingErrorCode.AI_INTERRUPTED,
+                        exception
+                );
+            }
+            return success();
+        });
+        service = service(true);
+        service.dispatch();
+        assertThat(
+                entered.await(
+                        2,
+                        TimeUnit.SECONDS
+                )
+        ).isTrue();
+        // when
+        service.close();
+        // then
+        verify(state).requeue(
+                execution,
+                Duration.ZERO
         );
     }
 
     @Test
-    @DisplayName("처리 중인 같은 시도를 조회해 성공 결과를 저장한다")
-    void processingPollsUntilSucceeded() {
+    @DisplayName("미확정 실패 재시도는 원격 실행을 확인하고 같은 attempt 관측으로 복귀한다")
+    void retry_success_resumesUncertainAttempt() {
         // given
-        RecordingTranscriptionExecution execution = prepare();
+        RecordingTranscriptionExecution previous = execution(
+                RemoteObservation.UNCONFIRMED,
+                NOW
+        );
         when(
-                client.submit(
-                        ATTEMPT,
-                        "https://immutable.example/audio"
+                state.findUncertainRetry(
+                        1,
+                        2,
+                        3
                 )
-        ).thenReturn(processing());
-        when(client.get(ATTEMPT)).thenReturn(succeeded(ATTEMPT));
-        service = service(true);
-
-        // when
-        service.dispatch();
-
-        // then
-        verify(
-                state,
-                timeout(2000)
-        ).complete(
-                execution,
-                transcript()
-        );
-        verify(client).get(ATTEMPT);
-    }
-
-    @Test
-    @DisplayName("접수 기한이 지난 작업은 AI에 제출하지 않는다")
-    void expiredAttemptDoesNotSubmit() {
-        // given
-        RecordingTranscriptionExecution execution = execution(
-                ATTEMPT,
-                NOW.minusSeconds(100)
-        );
-        when(state.findProcessing()).thenReturn(Optional.of(execution));
-        service = service(true);
-
-        // when
-        service.dispatch();
-
-        // then
-        verify(
-                state,
-                timeout(2000)
-        ).fail(
-                execution,
-                "AI_TIMEOUT"
-        );
-        verifyNoInteractions(
-                client,
-                storage
-        );
-    }
-
-    @Test
-    @DisplayName("AI 실패는 실패 코드만 저장하고 원문을 저장하지 않는다")
-    void remoteFailureDoesNotSaveTranscript() {
-        // given
-        RecordingTranscriptionExecution execution = prepare();
-        when(
-                client.submit(
-                        ATTEMPT,
-                        "https://immutable.example/audio"
-                )
-        ).thenReturn(
+        ).thenReturn(Optional.of(previous));
+        when(client.get(ATTEMPT)).thenReturn(
                 new AiTranscriptionJob(
                         ATTEMPT,
-                        AiTranscriptionJob.Status.FAILED,
-                        "STT_FAILED",
+                        AiTranscriptionJob.Status.PROCESSING,
+                        null,
                         null
                 )
         );
-        service = service(true);
-
-        // when
-        service.dispatch();
-
-        // then
-        verify(
-                state,
-                timeout(2000)
-        ).fail(
-                execution,
-                "STT_FAILED"
+        RecordingTranscriptionRetryResult queued = new RecordingTranscriptionRetryResult(
+                3,
+                ATTEMPT,
+                com.knot.backend.recording.domain.model.TranscriptionStatus.QUEUED
         );
+        when(
+                state.resolveUncertainRetry(
+                        1,
+                        2,
+                        previous,
+                        true
+                )
+        ).thenReturn(queued);
+        service = service(true);
+        // when
+        RecordingTranscriptionRetryResult result = service.retry(
+                1,
+                2,
+                3
+        );
+        // then
+        assertThat(result.attemptId()).isEqualTo(ATTEMPT);
         verify(
                 state,
                 never()
-        ).complete(
+        ).retry(
+                anyLong(),
+                anyLong(),
+                anyLong()
+        );
+        verify(
+                client,
+                never()
+        ).submit(
+                any(),
                 any(),
                 any()
         );
     }
 
     @Test
-    @DisplayName("결과 저장 실패를 실패 상태로 확정한 뒤 슬롯을 비운다")
-    void failedResultStorageReleasesSlotAfterFailureCommit() {
+    @DisplayName("미확정 실패가 원격에서 사라진 것을 확인한 사용자 재시도만 새 attempt를 만든다")
+    void retry_success_newAttemptAfterNotFound() {
         // given
-        RecordingTranscriptionExecution execution = prepare();
-        when(
-                client.submit(
-                        ATTEMPT,
-                        "https://immutable.example/audio"
-                )
-        ).thenReturn(succeeded(ATTEMPT));
-        doThrow(new IllegalStateException("테스트 저장 실패")).when(state)
-                .complete(
-                        execution,
-                        transcript()
-                );
-        service = service(true);
-        service.dispatch();
-        verify(
-                state,
-                timeout(2000)
-        ).fail(
-                execution,
-                "RESULT_STORAGE_FAILED"
+        RecordingTranscriptionExecution previous = execution(
+                RemoteObservation.UNCONFIRMED,
+                NOW
         );
-
+        when(
+                state.findUncertainRetry(
+                        1,
+                        2,
+                        3
+                )
+        ).thenReturn(Optional.of(previous));
+        when(client.get(ATTEMPT)).thenThrow(new RecordingException(RecordingErrorCode.AI_JOB_NOT_FOUND));
+        RecordingTranscriptionRetryResult queued = new RecordingTranscriptionRetryResult(
+                3,
+                UUID.randomUUID(),
+                com.knot.backend.recording.domain.model.TranscriptionStatus.QUEUED
+        );
+        when(
+                state.resolveUncertainRetry(
+                        1,
+                        2,
+                        previous,
+                        false
+                )
+        ).thenReturn(queued);
+        service = service(true);
         // when
-        service.dispatch();
-
+        RecordingTranscriptionRetryResult result = service.retry(
+                1,
+                2,
+                3
+        );
         // then
-        verify(
-                state,
-                times(2)
-        ).findProcessing();
-        verify(client).submit(
-                ATTEMPT,
-                "https://immutable.example/audio"
+        assertThat(result.attemptId()).isNotEqualTo(ATTEMPT);
+        verify(state).resolveUncertainRetry(
+                1,
+                2,
+                previous,
+                false
         );
     }
 
     @Test
-    @DisplayName("결과와 실패 상태를 모두 저장하지 못하면 슬롯을 유지한다")
-    void failedTerminalStorageKeepsSlot() throws Exception {
+    @DisplayName("미확정 시도를 조회할 수 없으면 새 접수를 성공으로 반환하지 않는다")
+    void retry_failure_uncertainRemoteUnavailable() {
         // given
-        RecordingTranscriptionExecution execution = prepare();
-        CountDownLatch failed = new CountDownLatch(1);
+        RecordingTranscriptionExecution previous = execution(
+                RemoteObservation.UNCONFIRMED,
+                NOW
+        );
         when(
-                client.submit(
-                        ATTEMPT,
-                        "https://immutable.example/audio"
+                state.findUncertainRetry(
+                        1,
+                        2,
+                        3
                 )
-        ).thenReturn(succeeded(ATTEMPT));
-        doThrow(new IllegalStateException("테스트 결과 저장 실패")).when(state)
-                .complete(
-                        execution,
-                        transcript()
-                );
-        doAnswer(call -> {
-            failed.countDown();
-            throw new IllegalStateException("테스트 실패 상태 저장 실패");
-        }).when(state)
-                .fail(
-                        execution,
-                        "RESULT_STORAGE_FAILED"
-                );
+        ).thenReturn(Optional.of(previous));
+        when(client.get(ATTEMPT)).thenThrow(new RecordingException(RecordingErrorCode.AI_UNAVAILABLE));
         service = service(true);
-        service.dispatch();
-        assertThat(
-                failed.await(
-                        2,
-                        TimeUnit.SECONDS
-                )
-        ).isTrue();
-
         // when
-        service.dispatch();
-
-        // then
-        verify(state).findProcessing();
-        verify(client).submit(
-                ATTEMPT,
-                "https://immutable.example/audio"
-        );
-    }
-
-    @Test
-    @DisplayName("종료하면 polling을 중단하고 중단 상태를 저장한다")
-    void shutdownInterruptsPolling() throws Exception {
-        // given
-        RecordingTranscriptionExecution execution = prepare();
-        CountDownLatch submitted = new CountDownLatch(1);
-        when(
-                client.submit(
-                        ATTEMPT,
-                        "https://immutable.example/audio"
-                )
-        ).thenAnswer(call -> {
-            submitted.countDown();
-            return processing();
-        });
-        service = new RecordingTranscriptionService(
-                state,
-                properties(
-                        true,
-                        Duration.ofHours(1)
-                ),
-                client,
-                storage,
-                clock()
-        );
-        service.dispatch();
-        assertThat(
-                submitted.await(
+        Throwable failure = org.assertj.core.api.Assertions.catchThrowable(
+                () -> service.retry(
+                        1,
                         2,
-                        TimeUnit.SECONDS
+                        3
                 )
-        ).isTrue();
-
-        // when
-        service.close();
-
-        // then
-        verify(state).fail(
-                execution,
-                "AI_INTERRUPTED"
         );
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class);
         verify(
-                client,
+                state,
                 never()
-        ).get(any());
+        ).resolveUncertainRetry(
+                anyLong(),
+                anyLong(),
+                any(),
+                anyBoolean()
+        );
+        verify(
+                state,
+                never()
+        ).claimNext(
+                any(),
+                any()
+        );
     }
 
     @Test
-    @DisplayName("이전 DB 확정과 경합하는 다음 dispatch도 결과를 덮어쓰지 않고 실행한다")
-    void concurrentDispatchWaitsForTerminalCommit() throws Exception {
+    @DisplayName("미확정 성공 조회의 snapshot을 다시 GET하지 않고 채택한다")
+    void retry_success_adoptsObservedSnapshot() {
         // given
-        RecordingTranscriptionExecution first = prepare();
-        UUID nextId = UUID.randomUUID();
-        RecordingTranscriptionExecution next = execution(
-                nextId,
+        RecordingTranscriptionExecution previous = execution(
+                RemoteObservation.UNCONFIRMED,
                 NOW
         );
-        when(state.findProcessing()).thenReturn(
-                Optional.of(first),
-                Optional.of(next),
-                Optional.empty()
-        );
         when(
-                client.submit(
-                        ATTEMPT,
-                        "https://immutable.example/audio"
-                )
-        ).thenReturn(succeeded(ATTEMPT));
-        when(
-                client.submit(
-                        nextId,
-                        "https://immutable.example/audio"
-                )
-        ).thenReturn(succeeded(nextId));
-        CountDownLatch committing = new CountDownLatch(1);
-        CountDownLatch release = new CountDownLatch(1);
-        doAnswer(call -> {
-            committing.countDown();
-            release.await(
-                    2,
-                    TimeUnit.SECONDS
-            );
-            return null;
-        }).when(state)
-                .complete(
-                        first,
-                        transcript()
-                );
-        service = service(true);
-        service.dispatch();
-        assertThat(
-                committing.await(
+                state.findUncertainRetry(
+                        1,
                         2,
-                        TimeUnit.SECONDS
+                        3
                 )
-        ).isTrue();
-        try (ExecutorService requests = Executors.newSingleThreadExecutor()) {
-            // when
-            Future<?> dispatch = requests.submit(service::dispatch);
-
-            // then
-            release.countDown();
-            dispatch.get(
-                    2,
-                    TimeUnit.SECONDS
-            );
-            verify(
-                    state,
-                    timeout(2000)
-            ).complete(
-                    next,
-                    transcript()
-            );
-            verify(client).submit(
-                    ATTEMPT,
-                    "https://immutable.example/audio"
-            );
-            verify(client).submit(
-                    nextId,
-                    "https://immutable.example/audio"
-            );
-        }
-    }
-
-    @Test
-    @DisplayName("비활성 기능은 재시도를 예약하기 전에 거절한다")
-    void disabledRetryDoesNotReserveAttempt() {
-        // given
-        service = service(false);
-
-        // when
-        Throwable failure = catchThrowable(
-                () -> service.retry(
-                        1,
-                        3,
-                        2
-                )
-        );
-
-        // then
-        assertThat(failure).hasMessage(RecordingErrorCode.TRANSCRIPTION_DISABLED.getMessage());
-        verifyNoInteractions(
-                state,
-                client,
-                storage
-        );
-    }
-
-    @Test
-    @DisplayName("종료 후에는 재시도를 예약하지 않는다")
-    void closedRetryDoesNotReserveAttempt() {
-        // given
-        service = service(true);
-        service.close();
-
-        // when
-        Throwable failure = catchThrowable(
-                () -> service.retry(
-                        1,
-                        3,
-                        2
-                )
-        );
-
-        // then
-        assertThat(failure).hasMessage(RecordingErrorCode.AI_NOT_READY.getMessage());
-        verifyNoInteractions(
-                state,
-                client,
-                storage
-        );
-    }
-
-    private RecordingTranscriptionExecution prepare() {
-        RecordingTranscriptionExecution execution = execution(
+        ).thenReturn(Optional.of(previous));
+        when(client.get(ATTEMPT)).thenReturn(success());
+        RecordingTranscriptionRetryResult adopted = new RecordingTranscriptionRetryResult(
+                3,
                 ATTEMPT,
-                NOW
+                com.knot.backend.recording.domain.model.TranscriptionStatus.SUCCEEDED
         );
-        when(state.findProcessing()).thenReturn(
+        when(
+                state.adoptUncertainResult(
+                        1,
+                        2,
+                        previous,
+                        transcript()
+                )
+        ).thenReturn(adopted);
+        service = service(true);
+        // when
+        RecordingTranscriptionRetryResult result = service.retry(
+                1,
+                2,
+                3
+        );
+        // then
+        assertThat(result.status()).isEqualTo(com.knot.backend.recording.domain.model.TranscriptionStatus.SUCCEEDED);
+        verify(client).get(ATTEMPT);
+        verify(
+                state,
+                never()
+        ).resolveUncertainRetry(
+                anyLong(),
+                anyLong(),
+                any(),
+                anyBoolean()
+        );
+    }
+
+    private RecordingTranscriptionExecution prepare(
+            RemoteObservation observation,
+            Instant deadline
+    ) {
+        RecordingTranscriptionExecution execution = execution(
+                observation,
+                deadline
+        );
+        when(
+                state.claimNext(
+                        any(),
+                        any()
+                )
+        ).thenReturn(
                 Optional.of(execution),
                 Optional.empty()
         );
-        when(
-                storage.presignDownload(
-                        "recording.webm",
-                        "version-1",
-                        "audio/webm",
-                        100
-                )
-        ).thenReturn("https://immutable.example/audio");
+        when(state.prepare(execution)).thenReturn(Optional.of(execution));
         return execution;
     }
 
+    private void preparePost(RecordingTranscriptionExecution execution) {
+        when(
+                storage.presignDownload(
+                        "key",
+                        "version",
+                        "audio/webm",
+                        1024
+                )
+        ).thenReturn("https://immutable.example/audio");
+        when(
+                state.beginRemotePost(
+                        eq(execution),
+                        any()
+                )
+        ).thenReturn(Optional.of(NOW.plusSeconds(20)));
+    }
+
     private RecordingTranscriptionExecution execution(
-            UUID id,
-            Instant startedAt
+            RemoteObservation observation,
+            Instant deadline
     ) {
         return new RecordingTranscriptionExecution(
                 1,
                 2,
-                id,
-                "recording.webm",
-                "version-1",
-                "audio/webm",
-                100,
-                startedAt
-        );
-    }
-
-    private AiTranscript transcript() {
-        return new AiTranscript(
-                1,
-                "{\"transcription\":[]}",
-                List.of(
-                        new AiTranscript.Utterance(
-                                0,
-                                "화자 1",
-                                0,
-                                1,
-                                "발언"
-                        )
-                )
-        );
-    }
-
-    private AiTranscriptionJob succeeded(UUID id) {
-        return new AiTranscriptionJob(
-                id,
-                AiTranscriptionJob.Status.SUCCEEDED,
-                null,
-                transcript()
-        );
-    }
-
-    private AiTranscriptionJob processing() {
-        return new AiTranscriptionJob(
                 ATTEMPT,
-                AiTranscriptionJob.Status.PROCESSING,
-                null,
+                "key",
+                "version",
+                "audio/webm",
+                1024,
+                NOW,
+                UUID.randomUUID(),
+                1,
+                deadline,
+                observation,
                 null
         );
     }
@@ -616,35 +732,38 @@ class RecordingTranscriptionServiceTest {
     private RecordingTranscriptionService service(boolean enabled) {
         return new RecordingTranscriptionService(
                 state,
-                properties(
+                new TranscriptionProperties(
                         enabled,
-                        Duration.ofMillis(1)
+                        URI.create("http://localhost"),
+                        "token",
+                        Duration.ofSeconds(1),
+                        Duration.ofSeconds(1),
+                        Duration.ofMillis(1),
+                        Duration.ofSeconds(20)
                 ),
                 client,
                 storage,
-                clock()
+                Clock.fixed(
+                        NOW,
+                        ZoneOffset.UTC
+                )
         );
     }
 
-    private TranscriptionProperties properties(
-            boolean enabled,
-            Duration poll
-    ) {
-        return new TranscriptionProperties(
-                enabled,
-                URI.create("http://localhost:18765"),
-                "test-token",
-                Duration.ofSeconds(1),
-                Duration.ofSeconds(1),
-                poll,
-                Duration.ofSeconds(60)
+    private AiTranscriptionJob success() {
+        return new AiTranscriptionJob(
+                ATTEMPT,
+                AiTranscriptionJob.Status.SUCCEEDED,
+                null,
+                transcript()
         );
     }
 
-    private Clock clock() {
-        return Clock.fixed(
-                NOW,
-                ZoneOffset.UTC
+    private AiTranscript transcript() {
+        return new AiTranscript(
+                1,
+                "원문",
+                List.of()
         );
     }
 }

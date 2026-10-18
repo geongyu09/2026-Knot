@@ -11,7 +11,7 @@ import com.knot.backend.search.application.dto.command.SearchQuestionCommand;
 import com.knot.backend.search.application.dto.result.SearchAnswerSnapshotResult;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.result.SearchQuestionAcceptedResult;
-import com.knot.backend.search.infrastructure.SearchMessageListQueryAdapter;
+import com.knot.backend.search.infrastructure.persistence.SearchMessageListQueryAdapter;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.time.Instant;

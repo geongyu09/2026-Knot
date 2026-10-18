@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
-
 import com.knot.backend.global.exception.ErrorCode;
 import com.knot.backend.global.exception.ProjectException;
 import com.knot.backend.recording.application.dto.command.RecordingAudioUploadUrlCommand;
@@ -14,10 +13,10 @@ import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadCompletionResult;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadUrlResult;
-import com.knot.backend.recording.domain.RecordingAudioUploadStatus;
+import com.knot.backend.recording.domain.model.RecordingAudioUploadStatus;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
-import com.knot.backend.recording.domain.StoredAudioObject;
+import com.knot.backend.recording.domain.model.StoredAudioObject;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.time.Clock;
@@ -56,27 +55,24 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
 
     private final RecordingAudioUploadUrlService recordingAudioUploadUrlService;
     private final RecordingAudioUploadCompletionService recordingAudioUploadCompletionService;
-    private final RecordingStartService recordingStartService;
-    private final RecordingControlService recordingControlService;
+    private final RecordingService recordingService;
     private final TransactionTemplate transactionTemplate;
     private final JdbcClient jdbcClient;
     private final Clock clock;
     @MockitoBean
-    private RecordingAudioStorage audioStorage;
+    private RecordingAudioStorage recordingAudioStorage;
 
     RecordingAudioUploadCompletionServiceIntegrationTest(
             RecordingAudioUploadUrlService recordingAudioUploadUrlService,
             RecordingAudioUploadCompletionService recordingAudioUploadCompletionService,
-            RecordingStartService recordingStartService,
-            RecordingControlService recordingControlService,
+            RecordingService recordingService,
             TransactionTemplate transactionTemplate,
             JdbcClient jdbcClient,
             Clock clock
     ) {
         this.recordingAudioUploadUrlService = recordingAudioUploadUrlService;
         this.recordingAudioUploadCompletionService = recordingAudioUploadCompletionService;
-        this.recordingStartService = recordingStartService;
-        this.recordingControlService = recordingControlService;
+        this.recordingService = recordingService;
         this.transactionTemplate = transactionTemplate;
         this.jdbcClient = jdbcClient;
         this.clock = clock;
@@ -95,7 +91,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
     @BeforeEach
     void stubPresign() {
         when(
-                audioStorage.presignUpload(
+                recordingAudioStorage.presignUpload(
                         anyString(),
                         anyString(),
                         anyLong()
@@ -144,7 +140,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
                 fixture,
                 1024L
         ).uploadId();
-        when(audioStorage.findStoredObject(anyString())).thenReturn(StoredAudioObject.missing());
+        when(recordingAudioStorage.findStoredObject(anyString())).thenReturn(StoredAudioObject.missing());
 
         // when
         Throwable thrown = catchThrowable(
@@ -170,7 +166,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
                 fixture,
                 1024L
         ).uploadId();
-        when(audioStorage.findStoredObject(anyString()))
+        when(recordingAudioStorage.findStoredObject(anyString()))
                 .thenThrow(new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE));
 
         // when
@@ -312,7 +308,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
             long contentLength,
             String contentType
     ) {
-        when(audioStorage.findStoredObject(anyString())).thenReturn(
+        when(recordingAudioStorage.findStoredObject(anyString())).thenReturn(
                 StoredAudioObject.of(
                         contentLength,
                         contentType,
@@ -369,7 +365,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
                 memberId,
                 tabId
         );
-        recordingControlService.end(
+        recordingService.end(
                 workspaceId,
                 memberId,
                 recordingId,
@@ -470,7 +466,7 @@ class RecordingAudioUploadCompletionServiceIntegrationTest {
             long memberId,
             UUID tabId
     ) {
-        return recordingStartService.start(
+        return recordingService.start(
                 workspaceId,
                 memberId,
                 command(tabId)

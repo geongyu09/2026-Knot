@@ -1,4 +1,5 @@
 import styled from "@emotion/styled";
+import Pop from "@primitives/animation/Pop";
 import Avatar from "@primitives/ui/Avatar";
 import Button from "@primitives/ui/Button";
 import { useId, type HTMLAttributes, type ReactNode } from "react";
@@ -111,7 +112,7 @@ export default function MemberSelectDialog({
   );
 }
 
-const Container = styled.div`
+const Container = styled(Pop)`
   display: flex;
   flex-direction: column;
   gap: 2rem; /* 32px */
