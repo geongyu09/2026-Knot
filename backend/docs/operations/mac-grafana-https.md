@@ -95,16 +95,17 @@ realip와 방화벽은 같은 목록을 사용한다. Cloudflare IPv4에만 80·
 사용 중인 Compose·Nginx를 먼저 백업한다. root 환경에서 다음 순서를 따른다.
 
 1. DNS origin IPv4·Cloudflare 프록시·SSL **Full (strict)** 설정을 확인한다.
-   인증서가 없는 신규 origin은 443을 열기 전에 HTTP ACME challenge부터 준비한다.
+   인증서가 없는 신규 origin은 공개 TLS server를 활성화하기 전에 HTTP ACME challenge부터 준비한다.
 2. 기존 `nginx.conf`의 http 블록에서 `knot-ingest.conf`를 유지하고 공개 conf include를
    추가한다. 최초 인증서 발급 전에는 템플릿의 80번 server 두 개와 map만 설치한다.
    `listen 443 ssl` server는 인증서가 준비될 때까지 넣지 않는다. `nginx -t` 후 reload한다.
    access log는 기존처럼 끈다.
-   `/var/lib/knot-acme/.well-known/acme-challenge`에 검사용 파일을 만들어 공개 도메인에서
-   읽히는지 확인한다. Cloudflare 리다이렉트·WAF·Access가 challenge를 막으면 먼저 해결한다.
 3. 방화벽 원본 백업과 시간 제한 원복 작업을 예약하고 `nft -c -f 후보파일`을 실행한다.
    후보를 설치하고 `systemctl reload knot-host-guard`한다. 새 SSH 연결·Mac 수신을 확인한
    후 원복 예약을 해제한다. 기존 SSH 연결 유지만으로 성공을 판정하지 않는다.
+   Cloudflare의 80번 접근이 허용된 뒤 `/var/lib/knot-acme/.well-known/acme-challenge`에
+   검사용 파일을 만들어 공개 도메인에서 읽히는지 확인한다. Cloudflare 리다이렉트·WAF·Access가
+   challenge를 막으면 인증서 발급 전에 해결한다.
 4. AL2023에 설치된 Certbot으로 `certbot certonly --webroot -w /var/lib/knot-acme
    -d "$KNOT_GRAFANA_DOMAIN"`을 실행한다. 계정 등록·이메일·약관은 운영자가 처리한다.
    인증서가 이미 있으면 재발급하지 않고 기존 renewal 설정·만료일을 확인한다.
