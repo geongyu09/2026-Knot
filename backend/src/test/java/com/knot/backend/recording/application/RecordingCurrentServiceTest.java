@@ -21,6 +21,8 @@ import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
+import com.knot.backend.global.config.RecordingAudioChunksProperties;
+import com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -63,7 +65,9 @@ class RecordingCurrentServiceTest {
                 Clock.fixed(
                         NOW,
                         ZoneOffset.UTC
-                )
+                ),
+                mock(RecordingAudioStreamRepository.class),
+                new RecordingAudioChunksProperties(false)
         );
     }
 
@@ -159,7 +163,9 @@ class RecordingCurrentServiceTest {
                 mock(MemberRepository.class),
                 recordingSessionRepository,
                 mock(RecordingControlTokenHasher.class),
-                clock
+                clock,
+                mock(RecordingAudioStreamRepository.class),
+                new RecordingAudioChunksProperties(false)
         );
 
         // when

@@ -1,6 +1,10 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.global.config.RecordingAudioChunksProperties;
 import com.knot.backend.member.domain.MemberRepository;
+import com.knot.backend.recording.domain.model.RecordingAudioMode;
+import com.knot.backend.recording.domain.model.RecordingAudioStream;
+import com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository;
 import com.knot.backend.recording.application.dto.command.RecordingControlCommand;
 import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.recording.application.dto.result.RecordingCurrentResult;
@@ -29,6 +33,8 @@ public class RecordingService {
     private final RecordingSessionRepository recordingSessionRepository;
     private final RecordingControlTokenHasher recordingControlTokenHasher;
     private final Clock clock;
+    private final RecordingAudioStreamRepository recordingAudioStreamRepository;
+    private final RecordingAudioChunksProperties audioChunksProperties;
 
     @Transactional
     public RecordingStartResult start(
@@ -56,6 +62,9 @@ public class RecordingService {
                     controlTokenHash
             );
         }
+        if (command.audioMode() == RecordingAudioMode.PCM16_CHUNKS_V1 && !audioChunksProperties.enabled()) {
+            throw new RecordingException(RecordingErrorCode.AUDIO_MODE_DISABLED);
+        }
         releaseActiveRecordings(memberId);
 
         RecordingSession session = RecordingSession.start(
@@ -64,10 +73,15 @@ public class RecordingService {
                 command.requestId(),
                 command.tabId(),
                 controlTokenHash,
-                now()
+                now(),
+                command.audioMode()
         );
+        RecordingSession saved = recordingSessionRepository.save(session);
+        if (saved.getAudioMode() == RecordingAudioMode.PCM16_CHUNKS_V1) {
+            recordingAudioStreamRepository.save(RecordingAudioStream.create(saved.getId()));
+        }
         return RecordingStartResult.from(
-                recordingSessionRepository.save(session),
+                saved,
                 true
         );
     }
@@ -175,7 +189,8 @@ public class RecordingService {
         session.validateStartRetry(
                 workspaceId,
                 command.tabId(),
-                controlTokenHash
+                controlTokenHash,
+                command.audioMode()
         );
         if (session.expireIfDue(now())) {
             recordingSessionRepository.save(session);
