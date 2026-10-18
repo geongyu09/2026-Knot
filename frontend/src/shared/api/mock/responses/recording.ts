@@ -229,9 +229,20 @@ export const recordingAudioChunkCompleteResponse = {
   confirmedAt: fromNow(0),
 } satisfies RecordingAudioChunkCompleteResponse;
 
-// 녹음 상세 mock처럼 8분 전에 끝난 녹음이라, 받아 주는 시한(종료 + 2분)도 이미 지났어요
+// 녹음 상세 mock처럼 8분 전에 끝난 녹음이라, 받아 주는 시한(종료 + 2분)도 이미 지났어요.
+// 5초 조각 뒤에 1,600프레임 tail까지 모두 확인돼 최종 WAV를 채택한 상태예요
 export const recordingAudioSaveResponse = {
   audioSaveStatus: "READY",
-  failureCode: null,
+  verifiedThroughSequence: 2,
+  verifiedThroughFrame: 81600,
+  verifiedAudioMillis: 5100,
+  verifiedRanges: [{ start: 0, endExclusive: 81600 }],
+  missingRanges: [],
+  tailUnknown: false,
+  expectedLastSequence: 2,
   acceptUntil: fromNow(-6 * MINUTE),
+  failureCode: null,
+  canRetry: false,
+  jobId: 1,
+  quality: "COMPLETE",
 } satisfies RecordingAudioSaveResponse;

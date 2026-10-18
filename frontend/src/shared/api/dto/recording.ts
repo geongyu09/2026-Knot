@@ -69,6 +69,95 @@ export class RecordingAudioChunkDescriptorDto {
   }
 }
 
+/** 최종 WAV의 품질. 모든 조각이 저장됐으면 `COMPLETE`, 저장되지 않은 구간을 무음으로 채웠으면 `PARTIAL`이에요 */
+export type RecordingAudioQuality = "COMPLETE" | "PARTIAL";
+
+/** 프레임 구간의 서버 응답 모양 */
+export interface RecordingAudioFrameRangeRaw {
+  start: number;
+  endExclusive: number;
+}
+
+/** 녹음 안의 프레임 구간. 저장 상태의 확인·누락 구간과 원본 오디오 품질의 누락 구간이 공유해요 */
+export class RecordingAudioFrameRangeDto {
+  /** 구간 시작 프레임(포함). 16kHz라 16,000프레임이 1초예요 */
+  start: number;
+  /** 구간 끝 프레임(제외) */
+  endExclusive: number;
+
+  constructor(raw: RecordingAudioFrameRangeRaw) {
+    this.start = raw.start;
+    this.endExclusive = raw.endExclusive;
+  }
+}
+
+/** PCM 조각 녹음 저장 상태의 서버 응답 모양 */
+export interface RecordingAudioSaveRaw {
+  audioSaveStatus: RecordingAudioSaveStatus;
+  verifiedThroughSequence: number;
+  verifiedThroughFrame: number;
+  verifiedAudioMillis: number;
+  verifiedRanges: RecordingAudioFrameRangeRaw[];
+  missingRanges: RecordingAudioFrameRangeRaw[];
+  tailUnknown: boolean;
+  expectedLastSequence: number | null;
+  acceptUntil: string | null;
+  failureCode: string | null;
+  canRetry: boolean;
+  jobId: number | null;
+  quality: RecordingAudioQuality | null;
+}
+
+/** PCM 조각 녹음의 저장 상태. 저장 상태 조회와 저장 재시도 응답이 공유해요 */
+export class RecordingAudioSaveDto {
+  /** 저장 상태 */
+  audioSaveStatus: RecordingAudioSaveStatus;
+  /** 첫 조각부터 빈틈없이 저장이 확인된 마지막 조각 번호. 확인된 조각이 없으면 0 */
+  verifiedThroughSequence: number;
+  /** 첫 조각부터 빈틈없이 확인된 구간의 끝 프레임(그 프레임은 제외). 확인된 조각이 없으면 0 */
+  verifiedThroughFrame: number;
+  /** `verifiedThroughFrame`을 ms로 바꾼 길이 */
+  verifiedAudioMillis: number;
+  /** 저장이 확인된 구간. 앞 조각이 빠져도 뒤쪽에서 확인된 구간은 따로 담겨요 */
+  verifiedRanges: RecordingAudioFrameRangeDto[];
+  /** 최종 명세를 고정하기 전에는 예약했지만 아직 확인되지 않은 구간, 고정한 뒤에는 무음으로 채운 구간이에요. 없으면 빈 배열 */
+  missingRanges: RecordingAudioFrameRangeDto[];
+  /** 종료 봉인 없이 끝나 마지막 길이를 알 수 없으면 true */
+  tailUnknown: boolean;
+  /** 종료 봉인의 마지막 조각 번호. 봉인 전이면 null */
+  expectedLastSequence: number | null;
+  /** 종료 뒤 남은 조각을 받아 주는 시한(ISO 8601). 종료 전이면 null */
+  acceptUntil: string | null;
+  /** `FAILED`일 때의 실패 이유 코드(예: `AUDIO_NO_CONTENT`). 최종화 작업이 없거나 실패가 아니면 null */
+  failureCode: string | null;
+  /** 저장 재시도 API로 다시 시도할 수 있으면 true. 최종화 작업이 없거나, 폐기됐거나, 종료 30일이 지났으면 false */
+  canRetry: boolean;
+  /** 최종화 작업 ID. 작업이 만들어지기 전이면 null. 재시도해도 같은 ID예요 */
+  jobId: number | null;
+  /** 최종 WAV의 품질. 최종화 작업이 품질을 정하기 전이면 null */
+  quality: RecordingAudioQuality | null;
+
+  constructor(raw: RecordingAudioSaveRaw) {
+    this.audioSaveStatus = raw.audioSaveStatus;
+    this.verifiedThroughSequence = raw.verifiedThroughSequence;
+    this.verifiedThroughFrame = raw.verifiedThroughFrame;
+    this.verifiedAudioMillis = raw.verifiedAudioMillis;
+    this.verifiedRanges = raw.verifiedRanges.map(
+      (range) => new RecordingAudioFrameRangeDto(range),
+    );
+    this.missingRanges = raw.missingRanges.map(
+      (range) => new RecordingAudioFrameRangeDto(range),
+    );
+    this.tailUnknown = raw.tailUnknown;
+    this.expectedLastSequence = raw.expectedLastSequence;
+    this.acceptUntil = raw.acceptUntil;
+    this.failureCode = raw.failureCode;
+    this.canRetry = raw.canRetry;
+    this.jobId = raw.jobId;
+    this.quality = raw.quality;
+  }
+}
+
 // GET /api/v1/workspaces/{workspaceId}/recordings/current
 
 /**
@@ -771,25 +860,8 @@ export class PostRecordingAudioChunkCompleteResponseDto {
 
 // GET /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-save
 
-/** 저장 상태 조회의 서버 응답 모양. 확인 범위·누락 범위·품질·재시도 가능 여부 필드는 화면에서 쓰지 않아 담지 않아요 */
-export interface GetRecordingAudioSaveResponseRaw {
-  audioSaveStatus: RecordingAudioSaveStatus;
-  failureCode: string | null;
-  acceptUntil: string | null;
-}
+/** 저장 상태 조회의 서버 응답 모양 */
+export type GetRecordingAudioSaveResponseRaw = RecordingAudioSaveRaw;
 
 /** PCM 조각 녹음의 저장 상태 조회 응답. 조회해도 생존 신호는 갱신되지 않아요 */
-export class GetRecordingAudioSaveResponseDto {
-  /** 저장 상태 */
-  audioSaveStatus: RecordingAudioSaveStatus;
-  /** `FAILED`일 때의 실패 이유 코드(예: `AUDIO_NO_CONTENT`). 실패가 아니면 null */
-  failureCode: string | null;
-  /** 종료 뒤 남은 조각을 받아 주는 시한(ISO 8601). 종료 전이면 null */
-  acceptUntil: string | null;
-
-  constructor(raw: GetRecordingAudioSaveResponseRaw) {
-    this.audioSaveStatus = raw.audioSaveStatus;
-    this.failureCode = raw.failureCode;
-    this.acceptUntil = raw.acceptUntil;
-  }
-}
+export class GetRecordingAudioSaveResponseDto extends RecordingAudioSaveDto {}

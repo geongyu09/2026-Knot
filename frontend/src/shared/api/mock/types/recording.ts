@@ -174,10 +174,32 @@ export interface RecordingAudioChunkCompleteResponse {
 export type RecordingAudioSaveStatus =
   "CAPTURING" | "DRAINING" | "FINALIZING" | "READY" | "FAILED" | "DISCARDED";
 
+/** 프레임 구간. end는 포함하지 않음 */
+export interface RecordingAudioFrameRange {
+  start: number;
+  endExclusive: number;
+}
+
+/** 최종 WAV의 품질. 누락 구간이 있으면 PARTIAL */
+export type RecordingAudioQuality = "COMPLETE" | "PARTIAL";
+
 export interface RecordingAudioSaveResponse {
   audioSaveStatus: RecordingAudioSaveStatus;
-  /** FAILED가 아니면 null */
-  failureCode: string | null;
+  verifiedThroughSequence: number;
+  verifiedThroughFrame: number;
+  verifiedAudioMillis: number;
+  verifiedRanges: RecordingAudioFrameRange[];
+  missingRanges: RecordingAudioFrameRange[];
+  tailUnknown: boolean;
+  /** 종료 봉인 전이면 null */
+  expectedLastSequence: number | null;
   /** ISO 8601. 종료 전이면 null */
   acceptUntil: string | null;
+  /** FAILED가 아니면 null */
+  failureCode: string | null;
+  canRetry: boolean;
+  /** 최종화 작업이 없으면 null */
+  jobId: number | null;
+  /** 최종화 전이면 null */
+  quality: RecordingAudioQuality | null;
 }
