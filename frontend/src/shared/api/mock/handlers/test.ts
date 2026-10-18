@@ -13,6 +13,7 @@ import {
   GetRecordingResponseDto,
   PostRecordingAudioChunkCompleteResponseDto,
   PostRecordingAudioChunkResponseDto,
+  PostRecordingAudioSaveRetryResponseDto,
   PostRecordingAudioUploadCompleteResponseDto,
   PostRecordingAudioUploadUrlResponseDto,
   PostRecordingEndResponseDto,
@@ -83,6 +84,7 @@ import { getRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/reco
 import { reserveRecordingAudioChunkApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioChunks";
 import { completeRecordingAudioChunkApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioChunks/[sequence]/complete";
 import { getRecordingAudioSaveApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioSave";
+import { retryRecordingAudioSaveApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioSave/retry";
 import { completeRecordingAudioUploadApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioUploadComplete";
 import {
   issueRecordingAudioUploadUrlApi,
@@ -911,6 +913,17 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
         }),
       ).resolves.toEqual(
         new GetRecordingAudioSaveResponseDto(recordingAudioSaveResponse),
+      );
+    });
+
+    it("POST .../recordings/:recordingId/audio-save/retry는 recordingAudioSaveResponse를 돌려준다", async () => {
+      await expect(
+        retryRecordingAudioSaveApi({
+          workspaceId: WORKSPACE_ID,
+          recordingId: RECORDING_ID,
+        }),
+      ).resolves.toEqual(
+        new PostRecordingAudioSaveRetryResponseDto(recordingAudioSaveResponse),
       );
     });
 

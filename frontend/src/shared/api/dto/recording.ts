@@ -13,6 +13,7 @@
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-chunks
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-chunks/{sequence}/complete
  * - GET  /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-save
+ * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-save/retry
  */
 
 /** 녹음 세션 상태. 시작·일시정지·재개·종료 응답과 녹음 상세 조회가 공유하는 서버 값. `DISCARDED`는 서버가 버린 녹음이에요 */
@@ -865,3 +866,14 @@ export type GetRecordingAudioSaveResponseRaw = RecordingAudioSaveRaw;
 
 /** PCM 조각 녹음의 저장 상태 조회 응답. 조회해도 생존 신호는 갱신되지 않아요 */
 export class GetRecordingAudioSaveResponseDto extends RecordingAudioSaveDto {}
+
+// POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-save/retry
+
+/** 저장 재시도의 서버 응답 모양 */
+export type PostRecordingAudioSaveRetryResponseRaw = RecordingAudioSaveRaw;
+
+/**
+ * 저장 재시도 응답. 다시 접수하면 202, 같은 작업이 이미 대기 또는 실행 중이면 200으로 같은 모양이에요.
+ * 접수 뒤의 저장 상태라 최종 WAV가 준비됐다는 뜻은 아니에요. 다시 시도할 수 없으면 409 `AUDIO_SAVE_RETRY_NOT_ALLOWED`예요
+ */
+export class PostRecordingAudioSaveRetryResponseDto extends RecordingAudioSaveDto {}
