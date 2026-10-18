@@ -1,3 +1,8 @@
+import {
+  RecordingSourceAudioDto,
+  type RecordingSourceAudioRaw,
+} from "@api/dto/recording";
+
 /**
  * 문서 DTO
  *
@@ -159,6 +164,8 @@ export interface GetDocumentResponseRaw {
   sourceTranscriptId: number;
   myConfirmationState: MyConfirmationState;
   confirmationSummary: ConfirmationSummaryRaw;
+  /** PCM 조각 저장 전의 서버는 필드 자체를 주지 않아요 */
+  sourceAudio?: RecordingSourceAudioRaw | null;
 }
 
 /** 문서 상세 조회 응답 */
@@ -189,6 +196,8 @@ export class GetDocumentResponseDto {
   myConfirmationState: MyConfirmationState;
   /** 확인 집계 */
   confirmationSummary: ConfirmationSummaryDto;
+  /** 문서를 만든 녹음의 원본 오디오 품질. `PARTIAL`이면 원본에 빠진 구간이 있어요. WebM 녹음이면 null. 서버가 주지 않으면 null */
+  sourceAudio: RecordingSourceAudioDto | null;
 
   constructor(raw: GetDocumentResponseRaw) {
     this.id = raw.id;
@@ -206,6 +215,9 @@ export class GetDocumentResponseDto {
     this.confirmationSummary = new ConfirmationSummaryDto(
       raw.confirmationSummary,
     );
+    this.sourceAudio = raw.sourceAudio
+      ? new RecordingSourceAudioDto(raw.sourceAudio)
+      : null;
   }
 }
 

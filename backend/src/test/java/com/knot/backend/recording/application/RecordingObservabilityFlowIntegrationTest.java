@@ -11,14 +11,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import com.knot.backend.auth.domain.AuthTokenProvider;
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.document.application.DocumentGenerationIntakeService;
 import com.knot.backend.recording.application.dto.result.RecordingTranscriptionSnapshot;
-import com.knot.backend.recording.domain.RecordingAudioUpload;
-import com.knot.backend.recording.domain.RecordingAudioUploadRepository;
-import com.knot.backend.recording.domain.StoredAudioObject;
-import com.knot.backend.recording.domain.TranscriptionStatus;
+import com.knot.backend.recording.domain.model.RecordingAudioUpload;
+import com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository;
+import com.knot.backend.recording.domain.model.StoredAudioObject;
+import com.knot.backend.recording.domain.model.TranscriptionStatus;
 import com.knot.backend.testsupport.LogCapture;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
@@ -202,7 +202,7 @@ class RecordingObservabilityFlowIntegrationTest {
         MvcResult response = complete(upload);
 
         // then
-        RecordingTranscriptionSnapshot snapshot = awaitTerminal(
+        RecordingTranscriptionSnapshot snapshot = awaitObservedState(
                 upload,
                 TranscriptionStatus.SUCCEEDED,
                 deadline
@@ -248,7 +248,7 @@ class RecordingObservabilityFlowIntegrationTest {
         MvcResult response = complete(upload);
 
         // then
-        RecordingTranscriptionSnapshot snapshot = awaitTerminal(
+        RecordingTranscriptionSnapshot snapshot = awaitObservedState(
                 upload,
                 TranscriptionStatus.FAILED,
                 deadline
@@ -298,9 +298,9 @@ class RecordingObservabilityFlowIntegrationTest {
         MvcResult response = complete(upload);
 
         // then
-        RecordingTranscriptionSnapshot snapshot = awaitTerminal(
+        RecordingTranscriptionSnapshot snapshot = awaitObservedState(
                 upload,
-                TranscriptionStatus.FAILED,
+                TranscriptionStatus.PROCESSING,
                 deadline
         );
         assertCorrelation(
@@ -308,7 +308,7 @@ class RecordingObservabilityFlowIntegrationTest {
                 upload,
                 snapshot.attemptId()
         );
-        assertThat(snapshot.failureCode()).isEqualTo("RESULT_STORAGE_FAILED");
+        assertThat(snapshot.failureCode()).isNull();
         assertNoStoredTranscript();
         assertEvent(
                 "recording.transcription.result",
@@ -418,13 +418,13 @@ class RecordingObservabilityFlowIntegrationTest {
                 .andReturn();
     }
 
-    private RecordingTranscriptionSnapshot awaitTerminal(
+    private RecordingTranscriptionSnapshot awaitObservedState(
             Upload upload,
             TranscriptionStatus expected,
             long deadline
     ) throws InterruptedException {
         while (System.nanoTime() < deadline) {
-            RecordingTranscriptionSnapshot snapshot = state.find(upload.recordingId());
+            RecordingTranscriptionSnapshot snapshot = state.findSnapshot(upload.recordingId());
             if (snapshot != null && snapshot.status() == expected && fields().stream()
                     .anyMatch(
                             event -> matches(
@@ -437,7 +437,7 @@ class RecordingObservabilityFlowIntegrationTest {
             }
             Thread.sleep(200);
         }
-        throw new AssertionError("실제 AI 관측 검증이 2분 안에 기대한 종료 상태에 도달하지 않았습니다");
+        throw new AssertionError("실제 AI 관측 검증이 2분 안에 기대한 상태와 저장 로그에 도달하지 않았습니다");
     }
 
     private String expectedOutcome(TranscriptionStatus status) {

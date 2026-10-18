@@ -4,7 +4,7 @@ import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.global.config.SearchWorkerProperties;
 import com.knot.backend.search.application.SearchAnswerExecutionService;
 import com.knot.backend.search.application.SearchAnswerWorker;
-import com.knot.backend.search.domain.SearchRepository;
+import com.knot.backend.search.domain.repository.SearchRepository;
 import java.time.Clock;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;

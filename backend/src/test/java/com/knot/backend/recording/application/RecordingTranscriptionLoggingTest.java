@@ -2,8 +2,8 @@ package com.knot.backend.recording.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -18,6 +18,7 @@ import com.knot.backend.recording.application.dto.result.AiTranscriptionJob;
 import com.knot.backend.recording.application.dto.result.RecordingTranscriptionExecution;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
+import com.knot.backend.recording.domain.model.RemoteObservation;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
@@ -56,7 +57,12 @@ class RecordingTranscriptionLoggingTest {
             "private-version",
             "audio/webm",
             100,
-            NOW
+            NOW,
+            UUID.randomUUID(),
+            1,
+            null,
+            RemoteObservation.NOT_SUBMITTED,
+            null
     );
     @Mock
     private RecordingTranscriptionStateService state;
@@ -76,7 +82,22 @@ class RecordingTranscriptionLoggingTest {
         MDC.clear();
         appender.start();
         logger.addAppender(appender);
-        when(state.findProcessing()).thenReturn(Optional.of(EXECUTION));
+        when(
+                state.claimNext(
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                Optional.of(EXECUTION),
+                Optional.empty()
+        );
+        when(state.prepare(EXECUTION)).thenReturn(Optional.of(EXECUTION));
+        when(
+                state.beginRemotePost(
+                        eq(EXECUTION),
+                        any()
+                )
+        ).thenReturn(Optional.of(NOW.plusSeconds(60)));
         when(
                 storage.presignDownload(
                         "private-storage-key",
@@ -124,9 +145,30 @@ class RecordingTranscriptionLoggingTest {
         when(
                 client.submit(
                         ATTEMPT,
-                        DOWNLOAD_URL
+                        DOWNLOAD_URL,
+                        null
                 )
         ).thenThrow(new RecordingException(RecordingErrorCode.AI_TIMEOUT));
+        RecordingTranscriptionExecution uncertain = new RecordingTranscriptionExecution(
+                1,
+                2,
+                ATTEMPT,
+                "private-storage-key",
+                "private-version",
+                "audio/webm",
+                100,
+                NOW,
+                EXECUTION.ownerToken(),
+                1,
+                NOW.plusSeconds(60),
+                RemoteObservation.UNCONFIRMED,
+                null
+        );
+        when(state.prepare(EXECUTION)).thenReturn(
+                Optional.of(EXECUTION),
+                Optional.of(EXECUTION),
+                Optional.of(uncertain)
+        );
         when(client.get(ATTEMPT)).thenReturn(succeeded());
         completeSignalsTerminal();
 
@@ -155,7 +197,8 @@ class RecordingTranscriptionLoggingTest {
         );
         verify(client).submit(
                 ATTEMPT,
-                DOWNLOAD_URL
+                DOWNLOAD_URL,
+                null
         );
         verify(client).get(ATTEMPT);
         assertCorrelationAndSafeFields();
@@ -172,7 +215,8 @@ class RecordingTranscriptionLoggingTest {
         when(
                 client.submit(
                         ATTEMPT,
-                        DOWNLOAD_URL
+                        DOWNLOAD_URL,
+                        null
                 )
         ).thenReturn(
                 new AiTranscriptionJob(
@@ -223,21 +267,17 @@ class RecordingTranscriptionLoggingTest {
         when(
                 client.submit(
                         ATTEMPT,
-                        DOWNLOAD_URL
+                        DOWNLOAD_URL,
+                        null
                 )
         ).thenReturn(succeeded());
-        doThrow(new IllegalStateException("PRIVATE_TRANSCRIPT")).when(state)
+        doAnswer(call -> {
+            terminal.countDown();
+            throw new IllegalStateException("PRIVATE_TRANSCRIPT");
+        }).when(state)
                 .complete(
                         EXECUTION,
                         transcript()
-                );
-        doAnswer(call -> {
-            terminal.countDown();
-            return null;
-        }).when(state)
-                .fail(
-                        EXECUTION,
-                        "RESULT_STORAGE_FAILED"
                 );
 
         // when
@@ -249,9 +289,12 @@ class RecordingTranscriptionLoggingTest {
                 "started",
                 "completed"
         );
-        verify(state).fail(
-                EXECUTION,
-                "RESULT_STORAGE_FAILED"
+        verify(
+                state,
+                never()
+        ).fail(
+                any(),
+                any()
         );
         assertThat(fields("persist")).isEmpty();
         assertCorrelationAndSafeFields();
@@ -268,7 +311,8 @@ class RecordingTranscriptionLoggingTest {
         when(
                 client.submit(
                         ATTEMPT,
-                        DOWNLOAD_URL
+                        DOWNLOAD_URL,
+                        null
                 )
         ).thenReturn(succeeded());
         completeSignalsTerminal();
@@ -301,7 +345,8 @@ class RecordingTranscriptionLoggingTest {
         when(
                 client.submit(
                         ATTEMPT,
-                        DOWNLOAD_URL
+                        DOWNLOAD_URL,
+                        null
                 )
         ).thenReturn(processing);
         when(client.get(ATTEMPT)).thenReturn(
@@ -344,8 +389,8 @@ class RecordingTranscriptionLoggingTest {
             return null;
         }).when(state)
                 .complete(
-                        EXECUTION,
-                        transcript()
+                        any(),
+                        eq(transcript())
                 );
     }
 

@@ -7,20 +7,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.member.domain.Member;
 import com.knot.backend.member.domain.MemberRepository;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
-import com.knot.backend.workspace.application.WorkspaceInvitationSecretProtector;
+import com.knot.backend.workspace.application.WorkspaceInvitationSecretHasher;
 import com.knot.backend.workspace.application.WorkspaceInvitationService;
-import com.knot.backend.workspace.domain.Workspace;
-import com.knot.backend.workspace.domain.WorkspaceInvitation;
-import com.knot.backend.workspace.domain.WorkspaceMember;
-import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
-import com.knot.backend.workspace.domain.WorkspaceMemberRole;
-import com.knot.backend.workspace.domain.WorkspaceRepository;
+import com.knot.backend.workspace.domain.model.Workspace;
+import com.knot.backend.workspace.domain.model.WorkspaceInvitation;
+import com.knot.backend.workspace.domain.model.WorkspaceMember;
+import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.model.WorkspaceMemberRole;
+import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -55,7 +55,7 @@ class WorkspaceInvitationAcceptanceTest {
     private final MockMvc mockMvc;
     private final ObjectMapper objectMapper;
     private final AuthTokenProvider authTokenProvider;
-    private final WorkspaceInvitationSecretProtector secretProtector;
+    private final WorkspaceInvitationSecretHasher workspaceInvitationSecretHasher;
     private final MemberRepository memberRepository;
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
@@ -66,7 +66,7 @@ class WorkspaceInvitationAcceptanceTest {
             MockMvc mockMvc,
             ObjectMapper objectMapper,
             AuthTokenProvider authTokenProvider,
-            WorkspaceInvitationSecretProtector secretProtector,
+            WorkspaceInvitationSecretHasher workspaceInvitationSecretHasher,
             MemberRepository memberRepository,
             WorkspaceRepository workspaceRepository,
             WorkspaceMemberRepository workspaceMemberRepository,
@@ -76,7 +76,7 @@ class WorkspaceInvitationAcceptanceTest {
         this.mockMvc = mockMvc;
         this.objectMapper = objectMapper;
         this.authTokenProvider = authTokenProvider;
-        this.secretProtector = secretProtector;
+        this.workspaceInvitationSecretHasher = workspaceInvitationSecretHasher;
         this.memberRepository = memberRepository;
         this.workspaceRepository = workspaceRepository;
         this.workspaceMemberRepository = workspaceMemberRepository;

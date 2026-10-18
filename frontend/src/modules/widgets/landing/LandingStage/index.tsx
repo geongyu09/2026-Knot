@@ -47,7 +47,11 @@ export default function LandingStage() {
 
         <SceneSteps scene={scene} onSceneSelect={goToScene} />
 
-        <IntroScene isOn={scene === SCENE.INTRO} />
+        <IntroScene
+          isOn={scene === SCENE.INTRO}
+          scrollCueRef={refs.scrollCueRef}
+          onNext={() => goToScene(SCENE.PROBLEM)}
+        />
         <ProblemScene isOn={scene === SCENE.PROBLEM} />
         <RecordingScene isOn={scene === SCENE.RECORDING} recordingSeconds={recordingSeconds} />
         <DocumentsScene

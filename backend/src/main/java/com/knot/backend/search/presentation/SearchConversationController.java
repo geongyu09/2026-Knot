@@ -1,6 +1,6 @@
 package com.knot.backend.search.presentation;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.search.application.SearchConversationListService;
 import com.knot.backend.search.application.SearchMessageListService;
 import com.knot.backend.search.application.dto.query.SearchConversationListParameters;

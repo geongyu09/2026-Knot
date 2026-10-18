@@ -1,7 +1,7 @@
 package com.knot.backend.document.application.dto.result;
 
-import com.knot.backend.document.domain.DocumentStatus;
-import com.knot.backend.document.domain.MyConfirmationState;
+import com.knot.backend.document.domain.model.DocumentStatus;
+import com.knot.backend.document.domain.model.MyConfirmationState;
 import java.time.Instant;
 
 public record DocumentDetailResult(
@@ -17,9 +17,31 @@ public record DocumentDetailResult(
         int recordingDurationSeconds,
         long sourceTranscriptId,
         MyConfirmationState myConfirmationState,
-        DocumentConfirmationSummaryResult confirmationSummary
+        DocumentConfirmationSummaryResult confirmationSummary,
+        com.knot.backend.recording.application.dto.result.RecordingSourceAudioQuality sourceAudio
 ) {
     private static final long MILLIS_PER_SECOND = 1000;
+
+    public DocumentDetailResult withSourceAudio(
+            com.knot.backend.recording.application.dto.result.RecordingSourceAudioQuality source
+    ) {
+        return new DocumentDetailResult(
+                id,
+                recordingSessionId,
+                topic,
+                title,
+                summary,
+                content,
+                status,
+                createdAt,
+                archivedAt,
+                recordingDurationSeconds,
+                sourceTranscriptId,
+                myConfirmationState,
+                confirmationSummary,
+                source
+        );
+    }
 
     public static DocumentDetailResult from(DocumentDetailSnapshot snapshot) {
         return new DocumentDetailResult(
@@ -38,7 +60,8 @@ public record DocumentDetailResult(
                         snapshot.requiredByMe(),
                         snapshot.confirmedAtByMe()
                 ),
-                snapshot.confirmationSummary()
+                snapshot.confirmationSummary(),
+                null
         );
     }
 }

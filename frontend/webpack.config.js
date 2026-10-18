@@ -2,6 +2,7 @@ import fs from "fs";
 import webpack from "webpack";
 import path from "path";
 import HtmlWebpackPlugin from "html-webpack-plugin";
+import CopyWebpackPlugin from "copy-webpack-plugin";
 
 const __dirname = import.meta.dirname;
 
@@ -73,6 +74,8 @@ export default (env, argv) => {
       },
     },
     module: {
+      // audioWorklet.addModule(new URL(...))을 찾아 processor를 TypeScript째 별도 파일로 묶어요 (기본은 꺼져 있어요)
+      parser: { javascript: { worklet: true } },
       rules: [
         {
           test: /\.(ts|tsx)$/, // .ts와 .tsx 파일을 대상으로
@@ -205,6 +208,16 @@ ${exports}
         template: "./index.html", // 이 파일을 기반으로 번들 스크립트가 주입된 HTML을 생성해요
         filename: "index.html", // 출력될 HTML 파일 이름
         inject: true, // <script> 태그 자동 삽입
+      }),
+      // 파비콘, 앱 아이콘, 공유 이미지처럼 고정 주소로 불리는 파일을 dist로 복사해요
+      new CopyWebpackPlugin({
+        patterns: [
+          {
+            from: "public",
+            // msw 워커는 개발 서버에서만 써요
+            globOptions: { ignore: ["**/mockServiceWorker.js"] },
+          },
+        ],
       }),
       new webpack.DefinePlugin({
         // mock 모드에서는 오리진 없이(같은 오리진) 요청해야 msw와 mock OAuth 미들웨어가 받아요

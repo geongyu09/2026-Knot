@@ -1,7 +1,7 @@
 package com.knot.backend.search.application;
 
 import static org.mockito.ArgumentMatchers.any;
-import com.knot.backend.search.domain.SearchIntent;
+import com.knot.backend.search.domain.model.SearchIntent;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
@@ -58,7 +58,7 @@ class SearchAnswerExecutionIntegrationTest {
     @Autowired
     private SearchAnswerSnapshotService snapshots;
     @Autowired
-    private com.knot.backend.search.domain.SearchRepository repository;
+    private com.knot.backend.search.domain.repository.SearchRepository repository;
     @Autowired
     private JdbcClient jdbc;
     @MockitoBean
@@ -759,7 +759,7 @@ class SearchAnswerExecutionIntegrationTest {
                 work.answerId()
         );
         assertThat(snapshot.content()).isEqualTo("부분 😀");
-        assertThat(snapshot.status()).isEqualTo(com.knot.backend.search.domain.SearchMessageStatus.STREAMING);
+        assertThat(snapshot.status()).isEqualTo(com.knot.backend.search.domain.model.SearchMessageStatus.STREAMING);
         assertThat(snapshot.evidences()).isEmpty();
         assertThat(status()).isEqualTo("STREAMING");
         long otherMember = fixtures.saveMember("다른 사용자");

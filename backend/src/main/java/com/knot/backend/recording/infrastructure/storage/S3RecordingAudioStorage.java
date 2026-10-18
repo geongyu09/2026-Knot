@@ -4,7 +4,7 @@ import com.knot.backend.recording.application.RecordingAudioStorage;
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
-import com.knot.backend.recording.domain.StoredAudioObject;
+import com.knot.backend.recording.domain.model.StoredAudioObject;
 import java.time.Duration;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -31,21 +31,21 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
     private static final int MAX_VERSION_PAGES = 100;
     private static final Duration DELETION_TIMEOUT = Duration.ofSeconds(60);
 
-    private final S3Presigner presigner;
-    private final S3Client client;
+    private final S3Presigner s3Presigner;
+    private final S3Client s3Client;
     private final String bucket;
     private final String keyPrefix;
     private final Duration uploadUrlTtl;
 
     public S3RecordingAudioStorage(
-            S3Presigner presigner,
-            S3Client client,
+            S3Presigner s3Presigner,
+            S3Client s3Client,
             String bucket,
             String keyPrefix,
             Duration uploadUrlTtl
     ) {
-        this.presigner = presigner;
-        this.client = client;
+        this.s3Presigner = s3Presigner;
+        this.s3Client = s3Client;
         this.bucket = bucket;
         this.keyPrefix = normalizeKeyPrefix(keyPrefix);
         this.uploadUrlTtl = uploadUrlTtl;
@@ -70,7 +70,7 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
         }
         try {
             String key = keyPrefix + storageKey;
-            HeadObjectResponse object = client.headObject(
+            HeadObjectResponse object = s3Client.headObject(
                     HeadObjectRequest.builder()
                             .bucket(bucket)
                             .key(key)
@@ -81,7 +81,7 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
                     || !contentType.equals(object.contentType())) {
                 throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
             }
-            return presigner.presignGetObject(
+            return s3Presigner.presignGetObject(
                     GetObjectPresignRequest.builder()
                             .signatureDuration(uploadUrlTtl)
                             .getObjectRequest(
@@ -115,7 +115,7 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
                 .contentType(contentType)
                 .contentLength(contentLength)
                 .build();
-        PresignedPutObjectRequest presigned = presigner.presignPutObject(
+        PresignedPutObjectRequest presigned = s3Presigner.presignPutObject(
                 PutObjectPresignRequest.builder()
                         .signatureDuration(uploadUrlTtl)
                         .putObjectRequest(putObjectRequest)
@@ -131,7 +131,7 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
     @Override
     public StoredAudioObject findStoredObject(String storageKey) {
         try {
-            HeadObjectResponse response = client.headObject(
+            HeadObjectResponse response = s3Client.headObject(
                     HeadObjectRequest.builder()
                             .bucket(bucket)
                             .key(keyPrefix + storageKey)
@@ -163,7 +163,7 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
         try {
             long deadline = System.nanoTime() + DELETION_TIMEOUT.toNanos();
             String key = keyPrefix + storageKey;
-            GetBucketVersioningResponse versioning = client.getBucketVersioning(
+            GetBucketVersioningResponse versioning = s3Client.getBucketVersioning(
                     GetBucketVersioningRequest.builder()
                             .bucket(bucket)
                             .build()
@@ -192,6 +192,87 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
         }
     }
 
+    @Override
+    public void deleteRecordingPrefix(String storagePrefix) {
+        if (storagePrefix == null || !storagePrefix.matches("recordings/[1-9][0-9]*/(chunks/)?")) {
+            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
+        }
+        try {
+            long deadline = System.nanoTime() + DELETION_TIMEOUT.toNanos();
+            String prefix = keyPrefix + storagePrefix;
+            GetBucketVersioningResponse versioning = s3Client.getBucketVersioning(
+                    GetBucketVersioningRequest.builder()
+                            .bucket(bucket)
+                            .build()
+            );
+            if (versioning.status() != BucketVersioningStatus.ENABLED
+                    && versioning.status() != BucketVersioningStatus.SUSPENDED) {
+                throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+            }
+            // 삭제한 페이지의 continuation marker에 의존하지 않고 남은 첫 페이지를 다시 읽는다.
+            for (int page = 0; page < MAX_VERSION_PAGES; page++) {
+                validateDeletionDeadline(deadline);
+                ListObjectVersionsResponse versions = s3Client.listObjectVersions(
+                        ListObjectVersionsRequest.builder()
+                                .bucket(bucket)
+                                .prefix(prefix)
+                                .maxKeys(1000)
+                                .build()
+                );
+                if (versions.versions()
+                        .isEmpty()
+                        && versions.deleteMarkers()
+                                .isEmpty()) {
+                    if (Boolean.TRUE.equals(versions.isTruncated())) {
+                        throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+                    }
+                    return;
+                }
+                for (ObjectVersion version : versions.versions()) {
+                    validatePrefixObject(
+                            prefix,
+                            version.key(),
+                            version.versionId()
+                    );
+                    validateDeletionDeadline(deadline);
+                    deleteObject(
+                            version.key(),
+                            version.versionId()
+                    );
+                }
+                for (DeleteMarkerEntry marker : versions.deleteMarkers()) {
+                    validatePrefixObject(
+                            prefix,
+                            marker.key(),
+                            marker.versionId()
+                    );
+                    validateDeletionDeadline(deadline);
+                    deleteObject(
+                            marker.key(),
+                            marker.versionId()
+                    );
+                }
+            }
+            throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+        } catch (SdkException exception) {
+            throw new RecordingException(
+                    RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE,
+                    exception
+            );
+        }
+    }
+
+    private void validatePrefixObject(
+            String prefix,
+            String key,
+            String version
+    ) {
+        if (key == null || !key.startsWith(prefix)) {
+            throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+        }
+        validateVersionId(version);
+    }
+
     private void deleteVersions(
             String key,
             long deadline
@@ -200,7 +281,7 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
         String versionMarker = null;
         for (int page = 0; page < MAX_VERSION_PAGES; page++) {
             validateDeletionDeadline(deadline);
-            ListObjectVersionsResponse versions = client.listObjectVersions(
+            ListObjectVersionsResponse versions = s3Client.listObjectVersions(
                     ListObjectVersionsRequest.builder()
                             .bucket(bucket)
                             .prefix(key)
@@ -254,7 +335,7 @@ public class S3RecordingAudioStorage implements RecordingAudioStorage {
             String versionId
     ) {
         try {
-            client.deleteObject(
+            s3Client.deleteObject(
                     DeleteObjectRequest.builder()
                             .bucket(bucket)
                             .key(key)

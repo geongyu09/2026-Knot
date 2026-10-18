@@ -9,7 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
 
 import com.knot.backend.search.domain.SearchErrorCode;
-import com.knot.backend.search.domain.SearchMessageStatus;
+import com.knot.backend.search.domain.model.SearchMessageStatus;
 import com.knot.backend.search.application.dto.result.SearchAnswerSnapshotResult;
 import java.util.List;
 import org.mockito.ArgumentCaptor;

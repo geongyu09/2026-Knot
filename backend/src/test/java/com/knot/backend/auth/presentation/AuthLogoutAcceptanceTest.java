@@ -8,9 +8,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.knot.backend.auth.domain.AuthSession;
-import com.knot.backend.auth.domain.AuthSessionRepository;
-import com.knot.backend.auth.domain.RefreshToken;
+import com.knot.backend.auth.domain.model.AuthSession;
+import com.knot.backend.auth.domain.repository.AuthSessionRepository;
+import com.knot.backend.auth.domain.model.RefreshToken;
 import com.knot.backend.auth.domain.RefreshTokenProvider;
 import com.knot.backend.member.application.MemberService;
 import com.knot.backend.member.domain.Member;

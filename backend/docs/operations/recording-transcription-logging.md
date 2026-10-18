@@ -1,6 +1,6 @@
 # 전사 실행 로그
 
-백엔드와 AI는 기존 전사 API의 `attemptId`로 연결한다. 같은 실행의 제출·확인·polling은 같은 ID, 사용자 재시도는 새 ID다. `recordingId`는 여러 시도를 묶는다. HTTP 요청의 `requestId`를 AI·Worker에 복사하지 않는다. Worker가 DB에서 고른 작업은 dispatch를 깨운 HTTP 요청의 작업과 다를 수 있다.
+백엔드와 AI는 기존 전사 API의 `attemptId`로 연결한다. 같은 실행의 제출·확인·polling은 같은 ID다. 사용자 재시도는 확정 실패를 다시 접수할 때 새 ID를 만들고, 결과 미확정 시 기존 작업을 확인·재개하거나 성공 결과를 채택할 수 있다. `recordingId`는 여러 시도를 묶는다. HTTP 요청의 `requestId`를 AI·Worker에 복사하지 않는다. Worker가 DB에서 고른 작업은 dispatch를 깨운 HTTP 요청의 작업과 다를 수 있다.
 
 ## 단계별 경계
 
@@ -9,10 +9,10 @@
 | recording.transcription.accept | accepted / replayed / rejected | 자동 접수 진입→DB 트랜잭션 완료 |
 | recording.transcription.retry | accepted / rejected / failed | 재시도 API Service 진입→예약 및 dispatch 반환 |
 | recording.transcription.retry_reserve | accepted / rejected / failed | 재시도 예약→DB 트랜잭션 완료 |
-| recording.transcription.input | prepared / rejected / failed | 기한 확인·불변 오디오 다운로드 URL 준비 |
+| recording.transcription.input | prepared / rejected / failed | 불변 오디오 다운로드 URL 준비 |
 | recording.transcription.submit | accepted / rejected / failed / unconfirmed | POST 제출→응답 또는 오류 |
-| recording.transcription.confirm | confirmed / unconfirmed | POST 응답 유실 후 같은 ID 조회 |
-| recording.transcription.result | completed / failed / unconfirmed | 제출 시작→종료 결과 수신, 네트워크·polling 대기 포함 |
+| recording.transcription.confirm | confirmed / unconfirmed | 응답 미확정 상태에서 같은 ID 조회 |
+| recording.transcription.result | completed / failed / unconfirmed / deferred / ignored | worker의 원격 관측 시작→종료 결과 수신, 입력 준비·네트워크·polling 대기 포함 |
 | recording.transcription.persist | completed / failed / ignored | 결과·실패 상태 저장→DB 트랜잭션 완료 |
 | recording.transcription.accept (AI) | accepted / replayed / rejected / failed | AI 접수 처리 |
 | recording.transcription.execute (AI) | started / completed / failed | AI 실행 시작→정리 후 최종 상태 공개 |
@@ -29,13 +29,13 @@
 - `submit=unconfirmed`: 응답을 못 받았다. AI 실행 실패라고 단정하지 않는다. 기존 동작대로 같은 attemptId를 GET으로 확인한다.
 - `result=failed`: AI의 FAILED 응답을 받았다. `errorCode`로 AI 내부 실패 단계와 연결한다.
 - `result=unconfirmed`: 제한 시간·통신·중단으로 최종 결과를 확인하지 못했다. 기존 정책이 로컬 DB를 FAILED로 바꿀 수 있지만 AI의 실제 실행 결과와 다르다.
-- `result=completed` 후 `persist=failed`: AI 결과는 수신했지만 DB 저장이 실패했다. 후속 실패 상태 저장도 별도의 persist 구간이다.
+- `result=completed` 후 `persist=failed`: AI 결과는 수신했지만 DB 저장이 실패했다. 저장 실패 뒤에는 기존 lease 복구 정책에 따라 같은 attempt를 다시 확인한다. 로그 때문에 실패 상태로 강제 전환하지 않는다.
 - `persist=ignored`: 이미 끝났거나 사라진 과거 시도의 결과다. 새 전사 실패로 세지 않는다.
 - `persist=completed`: 전사본·구간과 문서 생성 **접수**가 커밋됐다. 문서 생성 완료를 뜻하지 않는다.
 
-자동 접수가 BUSY로 거절되어 기존 정책대로 DB FAILED/BUSY가 저장된 경우 `accept=rejected`가 남는다. DB 트랜잭션 자체가 실패하면 커밋 콜백은 정상 결과를 기록하지 않는다.
+자동 접수는 기존 대기열 정책대로 QUEUED를 저장하고 `accept=accepted`를 기록한다. 다른 실행이 있다는 이유로 FAILED/BUSY를 저장하지 않는다. AI가 BUSY/NOT_READY로 제출을 거절해 재대기하면 `result=deferred`가 남는다. 실행권이 없거나 실행할 대상이 없어 관측을 종료하면 `result=ignored`가 남고, 준비 단계에서 실제 실패 상태를 저장한 경우에는 별도 `persist=failed`로 구분한다. DB 트랜잭션 자체가 실패하면 커밋 콜백은 정상 결과를 기록하지 않는다.
 
-AI 정리 실패는 cleanup에서 드러난다. 기존 정책대로 연산 성공 결과를 보존할 수 있으므로 cleanup 실패와 execute 완료가 함께 나올 수 있다. 최종 execute 결과는 정리를 마친 뒤 실제 조회 가능한 상태를 공개하면서 기록한다. 정상 상태 조회와 반복 polling에는 매회 업무 로그를 만들지 않는다.
+AI 정리 실패는 cleanup에서 드러난다. 기존 정책대로 연산 성공 결과를 보존할 수 있으므로 cleanup 실패와 execute 완료가 함께 나올 수 있다. 최종 execute 결과는 정리를 마친 뒤 실제 조회 가능한 상태를 공개하면서 기록한다. 정상 상태 조회와 반복 polling에는 매회 업무 로그를 만들지 않는다. lease 회수로 worker가 다시 시작하면 같은 attemptId에 새 result 구간이 생길 수 있다. result의 elapsedMs는 해당 관측 구간이며 대기열 대기부터의 전체 시간은 아니다.
 
 ## 레벨과 개인정보
 

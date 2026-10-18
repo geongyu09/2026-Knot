@@ -10,9 +10,9 @@ import static org.mockito.Mockito.when;
 
 import com.knot.backend.auth.domain.AuthErrorCode;
 import com.knot.backend.auth.domain.AuthException;
-import com.knot.backend.auth.domain.OAuthIdentity;
-import com.knot.backend.auth.domain.OAuthProvider;
-import com.knot.backend.auth.domain.OAuthUser;
+import com.knot.backend.auth.domain.model.OAuthIdentity;
+import com.knot.backend.auth.domain.model.OAuthProvider;
+import com.knot.backend.auth.domain.model.OAuthUser;
 import com.knot.backend.member.application.MemberService;
 import com.knot.backend.member.domain.Member;
 import org.junit.jupiter.api.DisplayName;

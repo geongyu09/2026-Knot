@@ -1,6 +1,6 @@
 package com.knot.backend.document.application.dto.result;
 
-import com.knot.backend.document.domain.DocumentGenerationJobStage;
+import com.knot.backend.document.domain.model.DocumentGenerationJobStage;
 
 public record DocumentGenerationExecution(
         long workspaceId,

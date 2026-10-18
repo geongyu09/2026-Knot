@@ -1,8 +1,8 @@
 package com.knot.backend.search.application;
 
 import com.knot.backend.search.application.dto.result.SearchEvidenceItemResult;
-import com.knot.backend.search.domain.SearchConversation;
-import com.knot.backend.search.domain.SearchMessage;
+import com.knot.backend.search.domain.model.SearchConversation;
+import com.knot.backend.search.domain.model.SearchMessage;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;

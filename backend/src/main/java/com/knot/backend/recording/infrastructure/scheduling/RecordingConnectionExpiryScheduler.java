@@ -11,14 +11,14 @@ import org.springframework.scheduling.annotation.Scheduled;
 public class RecordingConnectionExpiryScheduler {
     private static final Logger log = LoggerFactory.getLogger(RecordingConnectionExpiryScheduler.class);
 
-    private final RecordingConnectionExpiryService expiryService;
-    private final RecordingConnectionExpiryProperties properties;
+    private final RecordingConnectionExpiryService recordingConnectionExpiryService;
+    private final RecordingConnectionExpiryProperties recordingConnectionExpiryProperties;
 
     @Scheduled(fixedDelayString = "${recording.connection-expiry.interval}")
     public void expireDueRecordings() {
         int expiredCount;
         try {
-            expiredCount = expiryService.expireDue(properties.batchSize());
+            expiredCount = recordingConnectionExpiryService.expireDue(recordingConnectionExpiryProperties.batchSize());
         } catch (RuntimeException exception) {
             ServerErrorLogger.record(
                     log,
