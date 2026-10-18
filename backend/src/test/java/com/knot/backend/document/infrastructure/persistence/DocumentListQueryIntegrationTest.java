@@ -14,6 +14,8 @@ import com.knot.backend.testsupport.TestcontainersConfiguration;
 import jakarta.persistence.EntityManager;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -22,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 @Tag("integration")
@@ -30,6 +33,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 class DocumentListQueryIntegrationTest {
     @Autowired
     private DocumentListQuery query;
+    @Autowired
+    private DocumentListJpaRepository repository;
     @Autowired
     private JdbcClient jdbc;
     @Autowired
@@ -525,6 +530,241 @@ class DocumentListQueryIntegrationTest {
                 )
         ).extracting(DocumentCardResult::id)
                 .containsExactly(document);
+    }
+
+    @Test
+    @DisplayName("미확인 후보가 페이지보다 많아도 모든 카드 값과 커서 순서가 기존 조회와 같다")
+    void findPage_success_manyPendingCandidatesAndCursor() {
+        // given
+        long recording = fixtures.saveRecording(
+                workspaceId,
+                memberId,
+                1850999
+        );
+        long transcript = fixtures.saveTranscript(recording);
+        long otherMember = fixtures.saveMember("다른 조회자");
+        List<Long> expectedIds = new ArrayList<>();
+        for (int index = 0; index < 168; index++) {
+            long document = fixtures.saveDocument(
+                    workspaceId,
+                    recording,
+                    transcript,
+                    fixtures.saveJob(
+                            transcript,
+                            "SUCCEEDED"
+                    ),
+                    "주제-" + index
+            );
+            Instant time = DocumentFixtures.CREATED_AT.plusNanos((index / 3) * 1000L);
+            jdbc.sql("UPDATE documents SET created_at = :time WHERE id = :id")
+                    .param(
+                            "time",
+                            Timestamp.from(time)
+                    )
+                    .param(
+                            "id",
+                            document
+                    )
+                    .update();
+            if (index % 7 == 0) {
+                fixtures.target(
+                        document,
+                        memberId,
+                        DocumentFixtures.CREATED_AT
+                );
+                continue;
+            }
+            if (index % 7 == 1) {
+                fixtures.target(
+                        document,
+                        otherMember,
+                        null
+                );
+                continue;
+            }
+            fixtures.target(
+                    document,
+                    memberId,
+                    null
+            );
+            expectedIds.add(document);
+        }
+        List<Long> recordingIds = new ArrayList<>(expectedIds);
+        Collections.reverse(recordingIds);
+        for (int index = 0; index < 8; index++) {
+            long otherRecordingDocument = saveDocument(
+                    workspaceId,
+                    "다른 녹음-" + index
+            );
+            fixtures.target(
+                    otherRecordingDocument,
+                    memberId,
+                    null
+            );
+            jdbc.sql("UPDATE documents SET created_at = :time WHERE id = :id")
+                    .param(
+                            "time",
+                            Timestamp.from(DocumentFixtures.CREATED_AT.plusSeconds(1))
+                    )
+                    .param(
+                            "id",
+                            otherRecordingDocument
+                    )
+                    .update();
+            expectedIds.add(otherRecordingDocument);
+        }
+        jdbc.sql("""
+                UPDATE documents SET status = 'ARCHIVED', archived_at = created_at, summary = '요약'
+                WHERE id = :id
+                """)
+                .param(
+                        "id",
+                        recordingIds.getFirst()
+                )
+                .update();
+        long foreignDocument = saveDocument(
+                fixtures.saveWorkspace(),
+                "외부"
+        );
+        fixtures.target(
+                foreignDocument,
+                memberId,
+                null
+        );
+        Collections.reverse(expectedIds);
+
+        // when & then
+        assertThat(
+                repository.findPendingPage(
+                        workspaceId,
+                        memberId,
+                        null,
+                        false,
+                        Instant.EPOCH,
+                        0,
+                        101
+                )
+        ).containsExactlyElementsOf(
+                repository.findPage(
+                        workspaceId,
+                        memberId,
+                        null,
+                        "PENDING",
+                        false,
+                        Instant.EPOCH,
+                        0,
+                        PageRequest.of(
+                                0,
+                                101
+                        )
+                )
+        )
+                .hasSize(101);
+        assertPendingPagesEqual(
+                null,
+                expectedIds
+        );
+        assertPendingPagesEqual(
+                recording,
+                recordingIds
+        );
+        assertPendingPagesEqual(
+                recordingId(foreignDocument),
+                List.of()
+        );
+        assertPendingPagesEqual(
+                Long.MAX_VALUE,
+                List.of()
+        );
+        assertThat(
+                repository.findPendingPage(
+                        workspaceId,
+                        otherMember,
+                        null,
+                        false,
+                        Instant.EPOCH,
+                        0,
+                        101
+                )
+        ).hasSize(24);
+    }
+
+    private void assertPendingPagesEqual(
+            Long recording,
+            List<Long> expectedIds
+    ) {
+        List<Long> actualIds = new ArrayList<>();
+        DocumentCursor cursor = null;
+        DocumentListParameters parameters = DocumentListParameters.of(
+                null,
+                20,
+                MyConfirmationState.PENDING,
+                recording
+        );
+        for (int page = 0; page <= expectedIds.size() / 20; page++) {
+            Instant cursorTime = Instant.EPOCH;
+            long cursorId = 0;
+            if (cursor != null) {
+                cursorTime = cursor.getCreatedAt();
+                cursorId = cursor.getDocumentId();
+            }
+            List<DocumentCardRow> original = repository.findPage(
+                    workspaceId,
+                    memberId,
+                    recording,
+                    "PENDING",
+                    cursor != null,
+                    cursorTime,
+                    cursorId,
+                    PageRequest.of(
+                            0,
+                            21
+                    )
+            );
+            List<DocumentCardRow> candidates = repository.findPendingPage(
+                    workspaceId,
+                    memberId,
+                    recording,
+                    cursor != null,
+                    cursorTime,
+                    cursorId,
+                    21
+            );
+            assertThat(candidates).containsExactlyElementsOf(original);
+            List<DocumentCardResult> cards = query.findPage(
+                    workspaceId,
+                    memberId,
+                    parameters,
+                    cursor
+            );
+            assertThat(cards).extracting(DocumentCardResult::id)
+                    .containsExactlyElementsOf(
+                            original.stream()
+                                    .map(DocumentCardRow::id)
+                                    .toList()
+                    );
+            List<DocumentCardRow> consumed = candidates.stream()
+                    .limit(20)
+                    .toList();
+            actualIds.addAll(
+                    consumed.stream()
+                            .map(DocumentCardRow::id)
+                            .toList()
+            );
+            if (consumed.isEmpty()) {
+                break;
+            }
+            DocumentCardRow last = consumed.getLast();
+            cursor = DocumentCursor.of(
+                    workspaceId,
+                    memberId,
+                    MyConfirmationState.PENDING,
+                    recording,
+                    last.createdAt(),
+                    last.id()
+            );
+        }
+        assertThat(actualIds).containsExactlyElementsOf(expectedIds);
     }
 
     private long saveDocument(
