@@ -1,6 +1,7 @@
 import { AUTH_CSRF_API_PATH } from "@api/fetch/api/v1/auth/csrf";
 import { AUTH_REFRESH_API_PATH } from "@api/fetch/api/v1/auth/refresh";
 import { mockServer } from "@api/mock/server";
+import { setupSentryEvents } from "@provider/sentry/mock";
 import { delay, http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -431,6 +432,78 @@ describe("httpClient의 토큰 재발급", () => {
 
     expect(refresh.calls).toHaveLength(1);
     expect(late.attempts.count).toBe(2);
+  });
+
+  // 원래 요청은 401로 실패해 Sentry가 보지 않으므로, 재발급이 왜 실패했는지는 재발급 요청의 오류로 남겨요
+  describe("재발급 실패 보고", () => {
+    const { flushEvents } = setupSentryEvents();
+
+    it("재발급 응답이 5xx면 원래 요청은 지금처럼 401로 실패하고, 재발급 오류를 한 번 보고한다", async () => {
+      const refresh = countingRefreshHandler({ status: 503 });
+      mockServer.use(
+        refresh.handler,
+        failingThenOkHandler({ status: 401, failures: 1 }).handler,
+      );
+
+      const error = await httpClient.get(TEST_PATH).catch((e: unknown) => e);
+
+      expect(isHttpError(error, HTTP_ERROR_TYPE.unauthorized)).toBe(true);
+      const events = await flushEvents();
+      expect(events).toHaveLength(1);
+      expect(events[0].tags).toMatchObject({ feature: "auth" });
+      expect(events[0].fingerprint).toEqual([
+        "POST",
+        AUTH_REFRESH_API_PATH,
+        "503",
+      ]);
+    });
+
+    it("재발급 요청이 응답을 받지 못하면 보고한다", async () => {
+      mockServer.use(
+        http.post(`*${AUTH_REFRESH_API_PATH}`, () => HttpResponse.error()),
+        failingThenOkHandler({ status: 401, failures: 1 }).handler,
+      );
+
+      await httpClient.get(TEST_PATH).catch(() => undefined);
+
+      const events = await flushEvents();
+      expect(events).toHaveLength(1);
+      expect(events[0].fingerprint).toEqual([
+        "POST",
+        AUTH_REFRESH_API_PATH,
+        HTTP_ERROR_TYPE.network,
+      ]);
+    });
+
+    it("재발급 응답이 401이면(refresh 토큰 만료) 로그인 화면으로 보내는 예상 실패라 보고하지 않는다", async () => {
+      mockServer.use(
+        countingRefreshHandler({ status: 401 }).handler,
+        failingThenOkHandler({ status: 401, failures: 1 }).handler,
+      );
+
+      await httpClient.get(TEST_PATH).catch(() => undefined);
+
+      expect(await flushEvents()).toHaveLength(0);
+    });
+
+    it("동시에 401을 받은 요청들이 함께 기다린 재발급이 실패하면 한 번만 보고한다", async () => {
+      const refresh = countingRefreshHandler({ status: 500, delayMs: 50 });
+      const paths = ["/__refresh-a", "/__refresh-b", "/__refresh-c"];
+      mockServer.use(
+        refresh.handler,
+        ...paths.map(
+          (path) =>
+            failingThenOkHandler({ status: 401, failures: 1, path }).handler,
+        ),
+      );
+
+      await Promise.all(
+        paths.map((path) => httpClient.get(path).catch(() => undefined)),
+      );
+
+      expect(refresh.calls).toHaveLength(1);
+      expect(await flushEvents()).toHaveLength(1);
+    });
   });
 });
 
