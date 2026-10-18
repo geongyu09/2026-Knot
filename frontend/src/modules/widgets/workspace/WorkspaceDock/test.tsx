@@ -35,6 +35,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WorkspaceDock from ".";
 import { DOCK_HINT_MAX_SEEN_COUNT, DOCK_HINT_TEXT } from "./constants/dockHint";
 
+// 이 파일은 WebM 녹음만 보므로, PCM 켜기(#799) 뒤에도 WebM으로 고정해요. PCM 시작은 useRecordingControl 테스트가 봐요
+vi.mock("@constants/recording", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@constants/recording")>()),
+  RECORDING_AUDIO_MODE: "FINAL_WEBM_V1",
+}));
+
 const WORKSPACE_ID = "1";
 const HOME_PATH = getRouterPath({
   routeKey: "WORKSPACE_HOME",

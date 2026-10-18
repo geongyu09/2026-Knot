@@ -8,7 +8,8 @@ import type { RecordingAudioMode } from "@/shared/types/recording";
 export const MAX_RECORDING_DURATION_MS = 2 * 60 * 60 * 1000;
 
 /**
- * 새 녹음의 오디오 저장 방식. PCM 조각 녹음을 켜기(#799) 전이라 기존 WebM이에요.
- * WebM이면 시작 요청에 `audioMode`를 보내지 않아 지금과 같은 요청이 나가요.
+ * 새 녹음의 오디오 저장 방식. PCM이면 시작 요청에 `audioMode`를 실어 조각 녹음을 켜요.
+ * 운영에서 끄는 일은 FE 재배포가 아니라 BE 설정(`recording.audio-chunks.enabled=false`)으로 하고,
+ * 그러면 FE는 거절(409 `AUDIO_MODE_DISABLED`)을 받아 WebM으로 돌아가요.
  */
-export const RECORDING_AUDIO_MODE: RecordingAudioMode = "FINAL_WEBM_V1";
+export const RECORDING_AUDIO_MODE: RecordingAudioMode = "PCM16_CHUNKS_V1";
