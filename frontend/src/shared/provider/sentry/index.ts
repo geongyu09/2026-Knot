@@ -4,6 +4,7 @@ import {
   reactRouterBrowserTracingIntegration,
   wrapUseRoutes,
 } from "@sentry/react/react-router";
+import { PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { getRequestErrorFingerprint } from "@utils/getRequestErrorFingerprint";
 import {
   scrubSentryBreadcrumb,
@@ -12,7 +13,12 @@ import {
 } from "@utils/scrubSentryEvent";
 import { shouldReportError } from "@utils/shouldReportError";
 import type { RootOptions } from "react-dom/client";
-import { useRoutes } from "react-router";
+import { useLayoutEffect } from "react";
+import { matchPath, useLocation, useRoutes } from "react-router";
+
+import type { createReplayIntegration } from "./replay";
+
+type ReplayIntegration = ReturnType<typeof createReplayIntegration>;
 
 /** production에서 성능을 측정할 페이지 로딩 · 화면 이동의 비율. 그 밖의 환경은 모두 측정해요 */
 const PRODUCTION_TRACES_SAMPLE_RATE = 0.2;
@@ -24,13 +30,24 @@ const getTracesSampleRate = (environment?: string) =>
     : 1;
 
 /**
+ * 초대 화면(`/invite/:token` 아래 전부)인지 봐요. 주소에 워크스페이스에 들어올 수 있는 토큰이 있어 리플레이에 남기지 않아요.
+ *
+ * 리플레이는 `beforeSend`를 거치지 않고 주소를 그대로 기록해요(첫 화면 기록의 href, 화면 이동 기록, 리플레이의 urls).
+ */
+const isInvitePath = (pathname: string) =>
+  matchPath({ path: PATH_ROUTE.INVITE, end: false }, pathname) !== null;
+
+/**
  * 세션 리플레이 통합을 첫 화면 번들과 따로 받아 붙여요. 같은 오리진의 파일이라 외부 CDN을 부르지 않아요.
  *
  * 파일을 받지 못하면(오프라인, 배포 중 파일 교체) 리플레이 없이 오류 보고만 해요. 받기 전에 난 오류에는 리플레이가 없어요.
+ * 받은 때 초대 화면이면(초대 화면으로 들어왔거나 받는 동안 옮김) 붙이지 않고, 새로고침 전까지 다시 시도하지 않아요.
+ * 나중에 붙이면 SDK가 페이지 로딩 기록(주소가 초대 화면)을 모으기 때문이에요.
  */
 const addReplayIntegration = async () => {
   try {
     const { createReplayIntegration } = await import("./replay");
+    if (isInvitePath(window.location.pathname)) return;
     Sentry.addIntegration(createReplayIntegration());
   } catch {
     // 리플레이는 부가 기능이라 실패해도 화면과 오류 보고를 막지 않아요
@@ -76,7 +93,7 @@ interface InitSentryParams {
  * 보낼 오류는 `shouldReportError`로 고르고, 보내기 전에 `scrubSentryEvent`로 민감한 값을 지워요.
  *
  * - 성능 측정: 페이지 로딩, 화면 이동(라우트 경로 패턴 이름), API 응답 시간, Web Vitals. span은 `scrubSentrySpan`으로 주소를 정리해 보내요
- * - 세션 리플레이: 오류가 난 세션만 남겨요. 통합은 `addReplayIntegration`이 따로 받아 붙여요
+ * - 세션 리플레이: 오류가 난 세션만 남겨요. 통합은 `addReplayIntegration`이 따로 받아 붙여요. 초대 화면에서는 기록하지 않아요
  */
 export const initSentry = ({
   dsn,
@@ -116,11 +133,37 @@ export const initSentry = ({
 };
 
 /**
+ * 초대 화면으로 옮기면 리플레이를 멈춰요. 아직 보내지 않은 기록(초대 화면으로 옮긴 기록 포함)은 보내지 않고 버려요.
+ *
+ * 초대 화면을 벗어나도 새로고침 전까지 다시 켜지 않아요. 오류 보고와 성능 측정은 그대로예요.
+ */
+const useStopReplayOnInvitePath = () => {
+  const { pathname } = useLocation();
+
+  // 초대 화면이 그려진 직후, 화면의 요청보다 먼저 멈추도록 layout effect에서 불러요
+  useLayoutEffect(() => {
+    if (!isInvitePath(pathname)) return;
+
+    // `Sentry.getReplay`는 리플레이 코드와 한 파일이라, 가져오면 리플레이가 첫 화면 번들에 들어가요
+    void Sentry.getClient()
+      ?.getIntegrationByName<ReplayIntegration>("Replay")
+      ?.stop({ flush: false });
+  }, [pathname]);
+};
+
+const useTracedRoutes = wrapUseRoutes(useRoutes);
+
+/**
  * react-router의 `useRoutes`에 Sentry 성능 측정을 붙인 훅. 페이지 로딩 · 화면 이동 이름을 주소 대신 경로 패턴(`/workspace/:workspaceId`)으로 남겨요.
+ * 초대 화면에서는 세션 리플레이를 멈춰요.
  *
  * Sentry가 꺼져 있으면 `useRoutes`와 같아요.
  */
-export const useSentryRoutes = wrapUseRoutes(useRoutes);
+export const useSentryRoutes: typeof useRoutes = (routes, locationArg) => {
+  useStopReplayOnInvitePath();
+
+  return useTracedRoutes(routes, locationArg);
+};
 
 /**
  * React 루트(`createRoot`)에 넘길 오류 처리. React 19가 알려 주는 오류를 Sentry로 보내요.

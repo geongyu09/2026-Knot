@@ -16,7 +16,7 @@ import {
 import { fireEvent, render, screen } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { Link, MemoryRouter, Route, Routes } from "react-router";
 import {
   afterAll,
   afterEach,
@@ -385,5 +385,98 @@ describe("성능 측정 비율", () => {
     initSentry({ dsn: SENTRY_DSN, environment, transport: testTransport });
 
     expect(Sentry.getClient()?.getOptions().tracesSampleRate).toBe(sampleRate);
+  });
+});
+
+// 초대 화면 주소(`/invite/:token`)에는 워크스페이스에 들어올 수 있는 토큰이 있어요. 리플레이는 주소를 그대로 기록해요
+describe("초대 화면 리플레이", () => {
+  const INVITE_URL = "/invite/secret-token";
+
+  const initTestSentry = () =>
+    initSentry({
+      dsn: SENTRY_DSN,
+      environment: "test",
+      transport: testTransport,
+    });
+
+  const waitForReplay = () =>
+    vi.waitFor(() => {
+      const replay = Sentry.getReplay();
+      expect(replay).toBeDefined();
+      return replay!;
+    });
+
+  /** 앱처럼 `useSentryRoutes`로 그린 화면에서 다른 주소로 이동해요 */
+  const renderSentryRoutes = (initialPath: string, to: string) => {
+    function SentryRoutes() {
+      return useSentryRoutes([
+        {
+          path: PATH_ROUTE.WORKSPACE_HOME,
+          element: <Link to={to}>이동</Link>,
+        },
+        { path: PATH_ROUTE.DOCUMENTS, element: <p>문서 목록</p> },
+        { path: PATH_ROUTE.INVITE, element: <p>초대 화면</p> },
+      ]);
+    }
+
+    render(
+      <MemoryRouter initialEntries={[initialPath]}>
+        <SentryRoutes />
+      </MemoryRouter>,
+    );
+  };
+
+  afterEach(async () => {
+    await Sentry.close();
+    window.history.pushState(null, "", "/");
+  });
+
+  // 초대 경로 아래라면 토큰 뒤에 경로가 더 붙어도 초대 화면으로 봐요
+  it.each([INVITE_URL, `${INVITE_URL}/next`])(
+    "처음 들어온 주소가 초대 화면(%s)이면 리플레이를 붙이지 않는다",
+    async (url) => {
+      window.history.pushState(null, "", url);
+
+      initTestSentry();
+      await vi.dynamicImportSettled();
+
+      expect(Sentry.getReplay()).toBeUndefined();
+    },
+  );
+
+  it("리플레이를 받는 동안 초대 화면으로 이동하면 받은 뒤에도 붙이지 않는다", async () => {
+    window.history.pushState(null, "", "/workspace/1");
+
+    initTestSentry();
+    window.history.pushState(null, "", INVITE_URL);
+    await vi.dynamicImportSettled();
+
+    expect(Sentry.getReplay()).toBeUndefined();
+  });
+
+  it("초대 화면 밖에서는 리플레이를 붙이고, 초대 화면이 아닌 곳으로 옮겨도 멈추지 않는다", async () => {
+    window.history.pushState(null, "", "/workspace/1");
+
+    initTestSentry();
+    const stop = vi.spyOn(await waitForReplay(), "stop");
+    renderSentryRoutes("/workspace/1", "/workspace/1/documents");
+    fireEvent.click(screen.getByRole("link", { name: "이동" }));
+
+    expect(screen.getByText("문서 목록")).toBeInTheDocument();
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it("다른 화면에서 초대 화면으로 이동하면 쌓인 기록을 보내지 않고 리플레이를 멈춘다", async () => {
+    window.history.pushState(null, "", "/workspace/1");
+
+    initTestSentry();
+    const stop = vi.spyOn(await waitForReplay(), "stop");
+    renderSentryRoutes("/workspace/1", INVITE_URL);
+    expect(stop).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("link", { name: "이동" }));
+
+    expect(screen.getByText("초대 화면")).toBeInTheDocument();
+    expect(stop).toHaveBeenCalledWith({ flush: false });
   });
 });
