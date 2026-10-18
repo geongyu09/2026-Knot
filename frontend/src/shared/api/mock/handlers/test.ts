@@ -10,6 +10,7 @@ import {
 import {
   GetCurrentRecordingResponseDto,
   GetRecordingResponseDto,
+  PostRecordingAudioChunkResponseDto,
   PostRecordingAudioUploadCompleteResponseDto,
   PostRecordingAudioUploadUrlResponseDto,
   PostRecordingEndResponseDto,
@@ -77,6 +78,7 @@ import { reissueWorkspaceInvitationApi } from "@api/fetch/api/v1/workspaces/[wor
 import { retryDocumentGenerationJobApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documentGenerationJobs/[jobId]/retry";
 import { startRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings";
 import { getRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]";
+import { reserveRecordingAudioChunkApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioChunks";
 import { completeRecordingAudioUploadApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioUploadComplete";
 import {
   issueRecordingAudioUploadUrlApi,
@@ -98,6 +100,7 @@ import {
 } from "@api/mock/responses/document";
 import {
   currentRecordingResponse,
+  recordingAudioChunkReserveResponse,
   recordingAudioUploadCompleteResponse,
   recordingAudioUploadUrlResponse,
   recordingDetailsResponse,
@@ -845,6 +848,34 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
         new PostRecordingAudioUploadCompleteResponseDto(
           recordingAudioUploadCompleteResponse,
         ),
+      );
+    });
+
+    it("POST .../recordings/:recordingId/audio-chunks는 요청한 조각 번호로 recordingAudioChunkReserveResponse를 돌려준다", async () => {
+      // 기본 응답(1번)과 다른 번호여야 요청 값을 되돌려 주는지 드러나요
+      const sequence = 2;
+
+      await expect(
+        reserveRecordingAudioChunkApi({
+          workspaceId: WORKSPACE_ID,
+          recordingId: RECORDING_ID,
+          body: {
+            ...CONTROL_PROOF,
+            sequence,
+            sampleOffset: 80000,
+            frameCount: 80000,
+            byteLength: 160000,
+            checksumSha256:
+              recordingAudioChunkReserveResponse.requiredHeaders[
+                "x-amz-checksum-sha256"
+              ],
+          },
+        }),
+      ).resolves.toEqual(
+        new PostRecordingAudioChunkResponseDto({
+          ...recordingAudioChunkReserveResponse,
+          sequence,
+        }),
       );
     });
 

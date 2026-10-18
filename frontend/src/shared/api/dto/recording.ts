@@ -10,6 +10,7 @@
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/heartbeat
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-upload-url
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-upload-complete
+ * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-chunks
  */
 
 /** 녹음 세션 상태. 시작·일시정지·재개·종료 응답과 녹음 상세 조회가 공유하는 서버 값. `DISCARDED`는 서버가 버린 녹음이에요 */
@@ -632,5 +633,65 @@ export class PostRecordingAudioUploadCompleteResponseDto {
     this.uploadId = raw.uploadId;
     this.uploadStatus = raw.uploadStatus;
     this.completedAt = raw.completedAt;
+  }
+}
+
+// POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-chunks
+
+/** PCM 조각 상태. `RESERVED`는 PUT과 저장 확인 전, `VERIFIED`는 서버가 저장을 확인한 뒤예요 */
+export type RecordingAudioChunkStatus = "RESERVED" | "VERIFIED";
+
+/** 조각 예약 시 앱이 넘기는 값. 최초 탭 증명과 조각 descriptor */
+export interface PostRecordingAudioChunkRequestInput extends RecordingAudioChunkDescriptorInput {
+  tabId: string;
+  controlToken: string;
+}
+
+/** 조각 예약 요청 본문. 증명과 descriptor 필드를 한 단계에 평평하게 담아요 */
+export class PostRecordingAudioChunkRequestDto extends RecordingAudioChunkDescriptorDto {
+  /** 녹음을 시작한 최초 탭의 UUID */
+  tabId: string;
+  /** 녹음 시작 때 보낸 제어 증명(43자 Base64URL) */
+  controlToken: string;
+
+  constructor({
+    tabId,
+    controlToken,
+    ...descriptor
+  }: PostRecordingAudioChunkRequestInput) {
+    super(descriptor);
+    this.tabId = tabId;
+    this.controlToken = controlToken;
+  }
+}
+
+/** 조각 예약의 서버 응답 모양 */
+export interface PostRecordingAudioChunkResponseRaw {
+  sequence: number;
+  status: RecordingAudioChunkStatus;
+  uploadUrl: string | null;
+  expiresAt: string | null;
+  requiredHeaders: Record<string, string>;
+}
+
+/** 조각 예약 응답. 새 예약은 201, 같은 descriptor의 재요청은 200으로 같은 모양이고 URL을 다시 발급해요 */
+export class PostRecordingAudioChunkResponseDto {
+  /** 예약한 조각 번호 */
+  sequence: number;
+  /** `RESERVED`면 `uploadUrl`로 PUT한 뒤 저장 확인을 보내고, `VERIFIED`면 이미 저장돼 할 일이 없어요 */
+  status: RecordingAudioChunkStatus;
+  /** PCM을 PUT할 서명 URL(절대 URL). `VERIFIED`면 null. 로그에 남기지 않아요 */
+  uploadUrl: string | null;
+  /** 서명 URL 만료 시각(ISO 8601). 종료 뒤에는 `acceptUntil`을 넘지 않아요. `VERIFIED`면 null */
+  expiresAt: string | null;
+  /** PUT에 그대로 실을 헤더(`content-type`, `if-none-match`, `x-amz-checksum-sha256`). `VERIFIED`면 빈 객체 */
+  requiredHeaders: Record<string, string>;
+
+  constructor(raw: PostRecordingAudioChunkResponseRaw) {
+    this.sequence = raw.sequence;
+    this.status = raw.status;
+    this.uploadUrl = raw.uploadUrl;
+    this.expiresAt = raw.expiresAt;
+    this.requiredHeaders = raw.requiredHeaders;
   }
 }
