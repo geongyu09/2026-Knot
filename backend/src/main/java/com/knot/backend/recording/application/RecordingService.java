@@ -1,5 +1,11 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository;
+import com.knot.backend.recording.domain.model.RecordingAudioSealKind;
+import com.knot.backend.recording.domain.model.RecordingAudioChunk;
+import com.knot.backend.recording.domain.model.AudioChunkDescriptor;
+import com.knot.backend.recording.application.dto.command.RecordingAudioSealCommand;
+import com.knot.backend.recording.application.dto.result.RecordingAudioSealSummary;
 import com.knot.backend.global.config.RecordingAudioChunksProperties;
 import com.knot.backend.member.domain.MemberRepository;
 import com.knot.backend.recording.domain.model.RecordingAudioMode;
@@ -33,8 +39,10 @@ public class RecordingService {
     private final RecordingSessionRepository recordingSessionRepository;
     private final RecordingControlTokenHasher recordingControlTokenHasher;
     private final Clock clock;
+    private final RecordingAudioSealing audioSealing;
     private final RecordingAudioStreamRepository recordingAudioStreamRepository;
     private final RecordingAudioChunksProperties audioChunksProperties;
+    private final RecordingAudioChunkRepository chunks;
 
     @Transactional
     public RecordingStartResult start(
@@ -121,7 +129,12 @@ public class RecordingService {
                 recordingId,
                 command
         );
-        session.pause(now());
+        Instant now = now();
+        expireAndSeal(
+                session,
+                now
+        );
+        session.pause(now);
         return RecordingPauseResult.from(recordingSessionRepository.save(session));
     }
 
@@ -138,25 +151,202 @@ public class RecordingService {
                 recordingId,
                 command
         );
-        session.resume(now());
+        Instant now = now();
+        expireAndSeal(
+                session,
+                now
+        );
+        session.resume(now);
         return RecordingResumeResult.from(recordingSessionRepository.save(session));
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = RecordingAudioCaptureExpiredException.class)
     public RecordingEndResult end(
             long workspaceId,
             long memberId,
             long recordingId,
             RecordingControlCommand command
     ) {
-        RecordingSession session = recordingAccess.loadControlledForUpdate(
+        return end(
+                workspaceId,
+                memberId,
+                recordingId,
+                command,
+                null
+        );
+    }
+
+    @Transactional(noRollbackFor = RecordingAudioCaptureExpiredException.class)
+    public RecordingEndResult end(
+            long workspaceId,
+            long memberId,
+            long recordingId,
+            RecordingControlCommand command,
+            RecordingAudioSealCommand seal
+    ) {
+        RecordingSession session = loadForEnd(
                 workspaceId,
                 memberId,
                 recordingId,
                 command
         );
-        session.end(now());
-        return RecordingEndResult.from(recordingSessionRepository.save(session));
+        if (seal != null && session.getAudioMode() != RecordingAudioMode.PCM16_CHUNKS_V1) {
+            throw new RecordingException(RecordingErrorCode.AUDIO_MODE_CONFLICT);
+        }
+        Instant endedAt = now();
+        boolean expired = expireAndSeal(
+                session,
+                endedAt
+        );
+        sealCapture(
+                session,
+                command,
+                seal,
+                endedAt,
+                expired
+        );
+        recordingSessionRepository.save(session);
+        if (session.getAudioMode() != RecordingAudioMode.PCM16_CHUNKS_V1) {
+            return RecordingEndResult.from(session);
+        }
+        RecordingAudioStream stream = recordingAudioStreamRepository.findByRecordingIdForUpdate(recordingId)
+                .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND));
+        return new RecordingEndResult(
+                session.getId(),
+                session.getStatus(),
+                session.getEndedAt(),
+                new RecordingAudioSealSummary(
+                        "DRAINING",
+                        stream.getLastSequence(),
+                        stream.getTotalFrameCount(),
+                        stream.isTailUnknown(),
+                        stream.getAcceptUntil()
+                )
+        );
+    }
+
+    private void normalSeal(
+            RecordingSession session,
+            RecordingAudioSealCommand seal,
+            Instant endedAt
+    ) {
+        session.validateNotDiscarded();
+        RecordingAudioStream stream = recordingAudioStreamRepository.findByRecordingIdForUpdate(session.getId())
+                .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND));
+        if (stream.isSealed()) {
+            stream.validateNormalSeal(
+                    seal.lastSequence(),
+                    seal.totalFrameCount()
+            );
+            for (AudioChunkDescriptor descriptor : seal.pendingDescriptors()) {
+                chunks.findByRecordingIdAndSequence(
+                        session.getId(),
+                        descriptor.sequence()
+                )
+                        .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_SEAL_CONFLICT))
+                        .validateDescriptor(descriptor);
+            }
+            return;
+        }
+        for (AudioChunkDescriptor descriptor : seal.pendingDescriptors()) {
+            reservePending(
+                    session,
+                    stream,
+                    descriptor,
+                    endedAt
+            );
+        }
+        stream.validateNormalSeal(
+                seal.lastSequence(),
+                seal.totalFrameCount()
+        );
+        session.end(endedAt);
+        stream.seal(
+                RecordingAudioSealKind.NORMAL,
+                session.getEndedAt()
+        );
+        recordingAudioStreamRepository.save(stream);
+    }
+
+    private RecordingSession loadForEnd(
+            long workspaceId,
+            long memberId,
+            long recordingId,
+            RecordingControlCommand command
+    ) {
+        if (command == null) {
+            return recordingAccess.loadOwnedForUpdate(
+                    workspaceId,
+                    memberId,
+                    recordingId
+            );
+        }
+        return recordingAccess.loadControlledForUpdate(
+                workspaceId,
+                memberId,
+                recordingId,
+                command
+        );
+    }
+
+    private void sealCapture(
+            RecordingSession session,
+            RecordingControlCommand command,
+            RecordingAudioSealCommand seal,
+            Instant endedAt,
+            boolean expired
+    ) {
+        if (seal == null) {
+            session.end(endedAt);
+            audioSealing.sealEnded(session);
+            return;
+        }
+        if (command == null) {
+            throw new RecordingException(RecordingErrorCode.RECORDING_CONTROL_DENIED);
+        }
+        if (expired) {
+            throw new RecordingAudioCaptureExpiredException();
+        }
+        normalSeal(
+                session,
+                seal,
+                endedAt
+        );
+    }
+
+    private void reservePending(
+            RecordingSession session,
+            RecordingAudioStream stream,
+            AudioChunkDescriptor descriptor,
+            Instant endedAt
+    ) {
+        Optional<RecordingAudioChunk> existing = chunks.findByRecordingIdAndSequence(
+                session.getId(),
+                descriptor.sequence()
+        );
+        if (existing.isPresent()) {
+            existing.orElseThrow()
+                    .validateDescriptor(descriptor);
+            return;
+        }
+        stream.reserve(descriptor);
+        chunks.save(
+                RecordingAudioChunk.reserve(
+                        session.getId(),
+                        descriptor,
+                        "recordings/" + session.getId() + "/chunks/" + descriptor.sequence(),
+                        endedAt.plusSeconds(120)
+                )
+        );
+    }
+
+    private boolean expireAndSeal(
+            RecordingSession session,
+            Instant now
+    ) {
+        boolean expired = session.expireIfDue(now);
+        audioSealing.sealEnded(session);
+        return expired;
     }
 
     @Transactional
@@ -174,6 +364,7 @@ public class RecordingService {
         );
         Instant now = now();
         session.recordHeartbeat(now);
+        audioSealing.sealEnded(session);
         return RecordingHeartbeatResult.of(
                 recordingSessionRepository.save(session),
                 now
@@ -193,6 +384,7 @@ public class RecordingService {
                 command.audioMode()
         );
         if (session.expireIfDue(now())) {
+            audioSealing.sealEnded(session);
             recordingSessionRepository.save(session);
         }
         return RecordingStartResult.from(
@@ -205,6 +397,7 @@ public class RecordingService {
         Instant now = now();
         for (RecordingSession active : recordingSessionRepository.findAllActiveByMemberIdForUpdate(memberId)) {
             active.releaseForNewRecording(now);
+            audioSealing.sealEnded(active);
             recordingSessionRepository.save(active);
         }
     }

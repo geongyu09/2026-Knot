@@ -66,8 +66,10 @@ class RecordingCurrentServiceTest {
                         NOW,
                         ZoneOffset.UTC
                 ),
+                mock(RecordingAudioSealing.class),
                 mock(RecordingAudioStreamRepository.class),
-                new RecordingAudioChunksProperties(false)
+                new RecordingAudioChunksProperties(false),
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository.class)
         );
     }
 
@@ -164,8 +166,10 @@ class RecordingCurrentServiceTest {
                 recordingSessionRepository,
                 mock(RecordingControlTokenHasher.class),
                 clock,
+                mock(RecordingAudioSealing.class),
                 mock(RecordingAudioStreamRepository.class),
-                new RecordingAudioChunksProperties(false)
+                new RecordingAudioChunksProperties(false),
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository.class)
         );
 
         // when

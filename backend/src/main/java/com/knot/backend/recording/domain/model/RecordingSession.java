@@ -227,6 +227,10 @@ public class RecordingSession {
         return belongsTo(workspaceId) && status == RecordingStatus.ENDED;
     }
 
+    public void validateNotDiscarded() {
+        ensureNotDiscarded();
+    }
+
     public void validateEnded() {
         ensureNotDiscarded();
         if (status != RecordingStatus.ENDED) {

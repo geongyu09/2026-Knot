@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.knot.backend.global.config.RecordingAudioChunksProperties;
 import com.knot.backend.member.domain.MemberRepository;
 import com.knot.backend.recording.application.dto.command.RecordingControlCommand;
 import com.knot.backend.recording.application.dto.result.RecordingEndResult;
@@ -29,8 +30,6 @@ import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
-import com.knot.backend.global.config.RecordingAudioChunksProperties;
-import com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -82,8 +81,10 @@ class RecordingControlServiceTest {
                         NOW,
                         ZoneOffset.UTC
                 ),
-                mock(RecordingAudioStreamRepository.class),
-                new RecordingAudioChunksProperties(false)
+                mock(RecordingAudioSealing.class),
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository.class),
+                new RecordingAudioChunksProperties(false),
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository.class)
         );
     }
 
