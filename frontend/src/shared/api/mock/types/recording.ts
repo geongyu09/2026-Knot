@@ -60,6 +60,14 @@ export interface RecordingDetailResponse {
   sourceAudio?: RecordingSourceAudio | null;
 }
 
+export interface RecordingTranscriptionRetryResponse {
+  recordingId: number;
+  /** 접수한 새 전사 시도의 UUID */
+  attemptId: string;
+  /** 다른 전사가 실행 중이면 QUEUED로 기다림 */
+  transcriptionStatus: RecordingTranscriptionStatus | "QUEUED";
+}
+
 /** 녹음 상세 mock 하나. 서버 응답에는 녹음 ID가 없어서, 어느 녹음의 응답인지 함께 적어요 */
 export interface RecordingDetailEntry {
   recordingId: number;

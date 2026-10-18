@@ -21,6 +21,7 @@ import {
   PostRecordingPauseResponseDto,
   PostRecordingResponseDto,
   PostRecordingResumeResponseDto,
+  PostRecordingTranscriptionRetryResponseDto,
 } from "@api/dto/recording";
 import {
   GetSearchConversationsResponseDto,
@@ -85,6 +86,7 @@ import { reserveRecordingAudioChunkApi } from "@api/fetch/api/v1/workspaces/[wor
 import { completeRecordingAudioChunkApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioChunks/[sequence]/complete";
 import { getRecordingAudioSaveApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioSave";
 import { retryRecordingAudioSaveApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioSave/retry";
+import { retryRecordingTranscriptionApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/transcription/retry";
 import { completeRecordingAudioUploadApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioUploadComplete";
 import {
   issueRecordingAudioUploadUrlApi,
@@ -117,6 +119,7 @@ import {
   recordingPauseResponse,
   recordingResumeResponse,
   recordingStartResponse,
+  recordingTranscriptionRetryResponse,
 } from "@api/mock/responses/recording";
 import type { RecordingDetailEntry } from "@api/mock/types/recording";
 import {
@@ -925,6 +928,46 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
       ).resolves.toEqual(
         new PostRecordingAudioSaveRetryResponseDto(recordingAudioSaveResponse),
       );
+    });
+
+    // 전사에 실패한 mock 녹음이에요
+    const transcriptionFailedRecordingParams = {
+      workspaceId: WORKSPACE_ID,
+      recordingId: recordingTranscriptionRetryResponse.recordingId,
+    };
+
+    it("POST .../recordings/:recordingId/transcription/retry는 전사에 실패한 녹음의 전사를 접수하고 recordingTranscriptionRetryResponse를 돌려준다", async () => {
+      await expect(
+        retryRecordingTranscriptionApi(transcriptionFailedRecordingParams),
+      ).resolves.toEqual(
+        new PostRecordingTranscriptionRetryResponseDto(
+          recordingTranscriptionRetryResponse,
+        ),
+      );
+    });
+
+    it("전사를 다시 접수한 뒤에는 그 녹음이 새 시도 ID로 전사 중이 되고 실패 코드가 지워진다", async () => {
+      await retryRecordingTranscriptionApi(transcriptionFailedRecordingParams);
+
+      await expect(
+        getRecordingApi(transcriptionFailedRecordingParams),
+      ).resolves.toMatchObject({
+        transcriptionAttemptId: recordingTranscriptionRetryResponse.attemptId,
+        transcriptionStatus: "PROCESSING",
+        transcriptionFailureCode: null,
+      });
+    });
+
+    it("전사가 실패 상태가 아닌 녹음의 전사를 다시 시도하면 409 TRANSCRIPTION_RETRY_NOT_ALLOWED로 답한다", async () => {
+      await expect(
+        retryRecordingTranscriptionApi({
+          workspaceId: WORKSPACE_ID,
+          recordingId: RECORDING_ID,
+        }),
+      ).rejects.toMatchObject({
+        type: HTTP_ERROR_TYPE.conflict,
+        code: "TRANSCRIPTION_RETRY_NOT_ALLOWED",
+      });
     });
 
     it("GET .../recordings/:recordingId는 recordingDetailsResponse에서 그 녹음을 찾아 돌려준다", async () => {

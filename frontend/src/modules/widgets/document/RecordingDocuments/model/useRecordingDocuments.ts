@@ -1,5 +1,6 @@
 import { HTTP_ERROR_TYPE, isHttpError } from "@api/httpClient/error";
 import useRetryDocumentGenerationJobsMutation from "@api/mutations/useRetryDocumentGenerationJobsMutation";
+import useRetryRecordingTranscriptionMutation from "@api/mutations/useRetryRecordingTranscriptionMutation";
 import useRecordingAudioSaveQuery from "@api/queries/useRecordingAudioSaveQuery";
 import useRecordingQuery from "@api/queries/useRecordingQuery";
 import useRedirectToLoginOnUnauthorized from "@hooks/domain/auth/useRedirectToLoginOnUnauthorized";
@@ -41,8 +42,13 @@ const isRetryRejectedError = (error: unknown) =>
  *   서버가 버린 녹음처럼 정리 상태를 정할 수 없는 응답은 보여 줄 화면이 없어 `loadFailed`예요.
  *   `failed`에서 다시 시도할 수 있으면 `retryGeneration`이 있어요.
  *
- * 다시 시도는 문서 만들기가 실패로 끝났고 다시 시도할 작업이 남아 있을 때만 할 수 있어요.
- * 전사 실패는 문서 만들기가 접수되지 않아 다시 시도할 작업이 없어요.
+ * 전사가 실패했으면(`transcriptionStatus`가 `FAILED`) 문서 만들기가 접수되지 않아 다시 시도할 작업이 없고,
+ * 대신 실패 코드와 녹음 방식(PCM · WebM)에 관계없이 `retryGeneration`이 전사부터 다시 접수해요.
+ * 접수되면 녹음 상태를 다시 받아 전사 중, 곧 정리 중으로 돌아가요. 그 조회가 끝날 때까지 다시 시도 중(`isRetrying`)이에요.
+ * 거절(409 · 404 · 5xx · 네트워크)은 종류를 가리지 않고 콘솔에 오류 코드만 남기고 버튼을 유지해요. 화면은 그 뒤의 녹음 조회 결과를 따라요.
+ * 아래 문서 다시 시도의 거절 기록(409 · 404면 버튼을 숨김)은 전사에 쓰지 않아요. 다른 전사가 끝나면 풀리는 일시적 거절(`TRANSCRIPTION_BUSY`)이 있어서예요.
+ *
+ * 문서 다시 시도는 문서 만들기가 실패로 끝났고 다시 시도할 작업이 남아 있을 때만 할 수 있어요.
  * 실패한 작업이 여러 개면 한 번에 모두 다시 시도해요. 하나라도 접수되면 녹음 상태를 다시 받아 정리 중으로 돌아가요.
  * 남은 실패 작업이 모두 거절된(409 · 404) 작업이면 더 시도할 수 없어 `retryGeneration`을 없애요.
  * 네트워크 · 서버 문제로 실패한 작업은 거절된 것이 아니라 다시 시도할 수 있어요.
@@ -85,6 +91,11 @@ export const useRecordingDocuments = ({
     data: retryResults = [],
     reset: clearRetryResults,
   } = useRetryDocumentGenerationJobsMutation();
+  const {
+    mutate: requestTranscriptionRetry,
+    isPending: isTranscriptionRetryPending,
+    error: transcriptionRetryError,
+  } = useRetryRecordingTranscriptionMutation();
   // 409 뒤에 거절 기록을 지울지 정하려고 녹음 상태를 다시 조회하는 중인지.
   // 그동안 버튼이 풀리면 그사이 시작한 새 다시 시도의 결과까지 아래 `clearRetryResults`가 지울 수 있어, 조회가 끝날 때까지 다시 시도 중으로 둬요
   const [isCheckingRejection, setIsCheckingRejection] = useState(false);
@@ -93,7 +104,9 @@ export const useRecordingDocuments = ({
   const unauthorizedRetry = retryResults.find(({ error: retryError }) =>
     isUnauthorizedError(retryError),
   );
-  useRedirectToLoginOnUnauthorized({ error: unauthorizedRetry?.error });
+  useRedirectToLoginOnUnauthorized({
+    error: unauthorizedRetry?.error ?? transcriptionRetryError,
+  });
 
   const isLoadFailed =
     !isUnauthorized &&
@@ -153,7 +166,23 @@ export const useRecordingDocuments = ({
     refetch();
   };
 
-  const retryGeneration = canRetry
+  // 전사가 실패한 녹음이에요. 문서 만들기가 접수되지 않아 실패 작업이 없고, 실패 코드와 관계없이 전사부터 다시 시도할 수 있어요
+  const isTranscriptionFailed =
+    viewStatus === "failed" && recording?.transcriptionStatus === "FAILED";
+
+  // 거절은 종류를 가리지 않고 콘솔에 오류 코드만 남기고 버튼을 유지해요. 일시적 거절(TRANSCRIPTION_BUSY)이 있어 거절 기록으로 버튼을 숨기지 않아요
+  const retryTranscription = () =>
+    requestTranscriptionRetry(
+      { workspaceId, recordingId },
+      {
+        onError: (retryError) =>
+          console.error("전사를 다시 시도하지 못했어요", {
+            code: isHttpError(retryError) ? retryError.code : undefined,
+          }),
+      },
+    );
+
+  const retryDocumentGeneration = canRetry
     ? () =>
         requestRetry(
           { workspaceId, jobIds: failedJobIds },
@@ -191,7 +220,10 @@ export const useRecordingDocuments = ({
   return {
     viewStatus,
     retryLoad,
-    retryGeneration,
-    isRetrying: isRetryPending || isCheckingRejection,
+    retryGeneration: isTranscriptionFailed
+      ? retryTranscription
+      : retryDocumentGeneration,
+    isRetrying:
+      isRetryPending || isCheckingRejection || isTranscriptionRetryPending,
   };
 };

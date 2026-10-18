@@ -20,6 +20,7 @@ import type {
   RecordingPauseResponse,
   RecordingResumeResponse,
   RecordingStartResponse,
+  RecordingTranscriptionRetryResponse,
 } from "@api/mock/types/recording";
 
 const MINUTE = 60 * 1000;
@@ -88,6 +89,8 @@ const endedRecording = {
 } satisfies Partial<RecordingDetailResponse>;
 
 const TRANSCRIPTION_ATTEMPT_ID = "d0a03c18-1687-4512-8f79-1df67a8e56ef";
+// 전사에 실패한 녹음의 ID. 전사 다시 시도 mock 응답이 가리키는 녹음이에요
+const TRANSCRIPTION_FAILED_RECORDING_ID = 13;
 
 // 전사까지 끝나 문서 생성이 접수된 뒤의 공통 값이에요
 const transcribedRecording = {
@@ -142,7 +145,7 @@ export const recordingDetailsResponse = [
     },
   },
   {
-    recordingId: 13,
+    recordingId: TRANSCRIPTION_FAILED_RECORDING_ID,
     detail: {
       ...endedRecording,
       transcriptionAttemptId: TRANSCRIPTION_ATTEMPT_ID,
@@ -191,6 +194,13 @@ export const recordingDetailsResponse = [
     },
   },
 ] satisfies RecordingDetailEntry[];
+
+// 전사에 실패한 녹음의 전사를 다시 접수했을 때의 응답이에요. 새 시도라 녹음 상세의 시도 ID와 달라요
+export const recordingTranscriptionRetryResponse = {
+  recordingId: TRANSCRIPTION_FAILED_RECORDING_ID,
+  attemptId: "6f2b9c44-3d1e-4b7a-9f0c-2a8e5d7c1b33",
+  transcriptionStatus: "PROCESSING",
+} satisfies RecordingTranscriptionRetryResponse;
 
 export const recordingAudioUploadUrlResponse = {
   uploadId: 300,
