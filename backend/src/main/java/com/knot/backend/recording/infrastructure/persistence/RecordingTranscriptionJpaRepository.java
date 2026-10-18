@@ -26,6 +26,11 @@ interface RecordingTranscriptionJpaRepository extends JpaRepository<RecordingTra
     @Query(value = """
             SELECT * FROM recording_transcriptions
             WHERE status = 'QUEUED' AND next_run_at <= :now
+                AND NOT EXISTS (SELECT 1 FROM recording_sessions s
+                    WHERE s.id=recording_session_id AND s.incremental_pipeline_version IS NOT NULL)
+                AND NOT EXISTS (SELECT 1 FROM recording_transcription_inputs i
+                    WHERE i.recording_id=recording_session_id)
+                AND NOT EXISTS (SELECT 1 FROM recording_transcription_windows w WHERE w.status='PROCESSING')
             ORDER BY queued_at, id LIMIT 1 FOR UPDATE
             """, nativeQuery = true)
     Optional<RecordingTranscription> findNextQueuedForUpdate(java.time.Instant now);

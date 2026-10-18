@@ -40,7 +40,6 @@ public class RecordingAudioCleanupRepositoryAdapter implements RecordingAudioCle
             LEFT JOIN recording_audio_finalizations j ON j.recording_id = t.recording_id
             LEFT JOIN recording_audio_uploads u ON u.recording_id = t.recording_id
             """;
-
     private final EntityManager entityManager;
 
     @Override
@@ -50,9 +49,11 @@ public class RecordingAudioCleanupRepositoryAdapter implements RecordingAudioCle
     ) {
         return entityManager.createNativeQuery(
                 """
-                        SELECT s.recording_id FROM recording_audio_streams s
-                        JOIN recording_sessions r ON r.id = s.recording_id
-                        WHERE r.workspace_id = :workspaceId AND r.member_id = :memberId ORDER BY r.id
+                        SELECT r.id FROM recording_sessions r
+                        WHERE r.workspace_id = :workspaceId AND r.member_id = :memberId
+                            AND (EXISTS (SELECT 1 FROM recording_audio_streams s WHERE s.recording_id=r.id)
+                                OR EXISTS (SELECT 1 FROM recording_transcription_inputs i WHERE i.recording_id=r.id))
+                        ORDER BY r.id
                         """,
                 Long.class
         )

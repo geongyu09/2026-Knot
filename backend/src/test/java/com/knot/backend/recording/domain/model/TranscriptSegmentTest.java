@@ -18,9 +18,12 @@ class TranscriptSegmentTest {
     @Test
     @DisplayName("시작 시각 0과 미상 종료 시각·화자로 구간을 생성한다")
     void create_success_unknownEndAndSpeaker() {
+        // given
+        long transcriptId = 81;
+
         // when
         TranscriptSegment segment = TranscriptSegment.create(
-                81,
+                transcriptId,
                 0,
                 0,
                 null,
@@ -40,9 +43,12 @@ class TranscriptSegmentTest {
     @Test
     @DisplayName("같은 시작·종료 시각과 익명 화자 번호를 유지한다")
     void create_success_knownEndAndSpeaker() {
+        // given
+        long transcriptId = 81;
+
         // when
         TranscriptSegment segment = TranscriptSegment.create(
-                81,
+                transcriptId,
                 1,
                 1200,
                 1200L,
@@ -63,6 +69,9 @@ class TranscriptSegmentTest {
             int position,
             long startMillis
     ) {
+        // given
+        String text = "발언";
+
         // when
         Throwable failure = catchThrowable(
                 () -> TranscriptSegment.create(
@@ -71,7 +80,7 @@ class TranscriptSegmentTest {
                         startMillis,
                         null,
                         null,
-                        "발언"
+                        text
                 )
         );
 
@@ -82,13 +91,16 @@ class TranscriptSegmentTest {
     @Test
     @DisplayName("시작보다 이른 종료 시각을 거절한다")
     void create_failure_reversedTime() {
+        // given
+        long endMillis = 99;
+
         // when
         Throwable failure = catchThrowable(
                 () -> TranscriptSegment.create(
                         81,
                         0,
                         100,
-                        99L,
+                        endMillis,
                         null,
                         "발언"
                 )
@@ -102,10 +114,13 @@ class TranscriptSegmentTest {
     @ValueSource(ints = {0, -1})
     @DisplayName("화자 번호는 1 이상이어야 한다")
     void create_failure_invalidSpeaker(int speakerNumber) {
+        // given
+        long transcriptId = 81;
+
         // when
         Throwable failure = catchThrowable(
                 () -> TranscriptSegment.create(
-                        81,
+                        transcriptId,
                         0,
                         0,
                         null,
@@ -123,10 +138,13 @@ class TranscriptSegmentTest {
     @ValueSource(strings = {" ", "\t\n", "\u2003"})
     @DisplayName("문장이 없거나 공백만 있으면 거절한다")
     void create_failure_blankText(String text) {
+        // given
+        long transcriptId = 81;
+
         // when
         Throwable failure = catchThrowable(
                 () -> TranscriptSegment.create(
-                        81,
+                        transcriptId,
                         0,
                         0,
                         null,
@@ -269,5 +287,59 @@ class TranscriptSegmentTest {
 
         // then
         assertThat(failure).isInstanceOf(RecordingException.class);
+    }
+
+    @Test
+    @DisplayName("구간 전사 미확정 화자는 번호 없이 보관하고 다음 화자는 1번부터 부여한다")
+    void createAll_success_unknownLabelsHaveNoSpeakerNumber() {
+        // given
+        List<TranscriptUtterance> utterances = List.of(
+                new TranscriptUtterance(
+                        "UNKNOWN_0_local",
+                        0,
+                        1,
+                        "미확정 발화"
+                ),
+                new TranscriptUtterance(
+                        "SPEAKER_0",
+                        1,
+                        2,
+                        "확정 발화"
+                ),
+                new TranscriptUtterance(
+                        "UNKNOWN_1_local",
+                        2,
+                        3,
+                        "다른 미확정 발화"
+                ),
+                new TranscriptUtterance(
+                        "SPEAKER_0",
+                        3,
+                        4,
+                        "같은 화자"
+                )
+        );
+
+        // when
+        List<TranscriptSegment> segments = TranscriptSegment.createAll(
+                81,
+                utterances
+        );
+
+        // then
+        assertThat(segments).extracting(TranscriptSegment::getSpeakerNumber)
+                .containsExactly(
+                        null,
+                        1,
+                        null,
+                        1
+                );
+        assertThat(segments).extracting(TranscriptSegment::getText)
+                .containsExactly(
+                        "미확정 발화",
+                        "확정 발화",
+                        "다른 미확정 발화",
+                        "같은 화자"
+                );
     }
 }

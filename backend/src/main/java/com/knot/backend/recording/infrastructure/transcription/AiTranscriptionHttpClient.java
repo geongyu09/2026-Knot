@@ -44,7 +44,41 @@ public final class AiTranscriptionHttpClient implements TranscriptionClient {
             String downloadUrl,
             Integer speakerCount
     ) {
+        return submitRequest(
+                attemptId,
+                downloadUrl,
+                speakerCount,
+                null
+        );
+    }
+
+    @Override
+    public AiTranscriptionJob submitWindow(
+            UUID attemptId,
+            String downloadUrl,
+            com.knot.backend.recording.application.dto.command.AiWindowInput window
+    ) {
+        return submitRequest(
+                attemptId,
+                downloadUrl,
+                null,
+                window
+        );
+    }
+
+    private AiTranscriptionJob submitRequest(
+            UUID attemptId,
+            String downloadUrl,
+            Integer speakerCount,
+            com.knot.backend.recording.application.dto.command.AiWindowInput window
+    ) {
         ObjectNode body = objectMapper.createObjectNode();
+        if (window != null) {
+            body.set(
+                    "window",
+                    objectMapper.valueToTree(window)
+            );
+        }
         if (speakerCount != null) {
             body.put(
                     "speakerCount",

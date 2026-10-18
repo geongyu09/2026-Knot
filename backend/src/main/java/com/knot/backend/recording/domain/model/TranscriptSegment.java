@@ -129,7 +129,7 @@ public class TranscriptSegment {
             Map<String, Integer> speakerNumbers,
             String speakerLabel
     ) {
-        if (speakerLabel == null || speakerLabel.isBlank()) {
+        if (speakerLabel == null || speakerLabel.isBlank() || speakerLabel.startsWith("UNKNOWN_")) {
             return null;
         }
         return speakerNumbers.computeIfAbsent(

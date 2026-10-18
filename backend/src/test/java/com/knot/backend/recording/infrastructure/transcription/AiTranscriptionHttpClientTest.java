@@ -1,5 +1,7 @@
 package com.knot.backend.recording.infrastructure.transcription;
 
+import com.knot.backend.recording.application.dto.result.AiWindowEvidence;
+import com.knot.backend.recording.application.dto.command.AiWindowInput;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import com.knot.backend.global.config.TranscriptionConfig;
@@ -376,6 +378,151 @@ class AiTranscriptionHttpClientTest {
 
             // then
             assertThat(thrown).hasMessage(RecordingErrorCode.AI_UNAVAILABLE.getMessage());
+        }
+    }
+
+    @Test
+    @DisplayName("구간 접수는 선택 메타데이터를 전송하고 실제 화자 근거를 역직렬화한다")
+    void submitWindow_success_metadataAndEvidence() throws Exception {
+        // given
+        try (LlmHttpServer server = new LlmHttpServer()) {
+            String checksum = "a".repeat(64);
+            AiWindowEvidence evidence = new AiWindowEvidence(
+                    1,
+                    "pcm-window-v1",
+                    checksum,
+                    16000,
+                    32000,
+                    "model-v1",
+                    List.of(
+                            new AiWindowEvidence.Token(
+                                    0,
+                                    8000,
+                                    "단어",
+                                    "speaker_0"
+                            )
+                    ),
+                    List.of(
+                            new AiWindowEvidence.Speaker(
+                                    "speaker_0",
+                                    java.util.Collections.nCopies(
+                                            512,
+                                            .1
+                                    ),
+                                    16000
+                            )
+                    )
+            );
+            String body = objectMapper.writeValueAsString(
+                    new AiTranscriptionJob(
+                            ID,
+                            AiTranscriptionJob.Status.SUCCEEDED,
+                            null,
+                            new AiTranscript(
+                                    1,
+                                    "{\"transcription\":[]}",
+                                    List.of(),
+                                    evidence
+                            )
+                    )
+            );
+            respond(
+                    server,
+                    202,
+                    body,
+                    new AtomicReference<>()
+            );
+            AiTranscriptionHttpClient client = client(
+                    server,
+                    Duration.ofSeconds(2)
+            );
+            // when
+            AiTranscriptionJob result = client.submitWindow(
+                    ID,
+                    "https://audio.example/window",
+                    new AiWindowInput(
+                            "pcm-window-v1",
+                            checksum,
+                            16000,
+                            32000
+                    )
+            );
+            // then
+            JsonNode request = objectMapper.readTree(server.requestBody());
+            assertThat(request.size()).isEqualTo(3);
+            assertThat(
+                    request.path("window")
+                            .path("inputStartFrame")
+                            .asLong()
+            ).isEqualTo(16000);
+            assertThat(
+                    request.path("window")
+                            .path("inputManifestSha256")
+                            .asString()
+            ).isEqualTo(checksum);
+            assertThat(
+                    result.result()
+                            .window()
+            ).isEqualTo(evidence);
+            assertThat(
+                    result.result()
+                            .window()
+                            .speakers()
+                            .getFirst()
+                            .embedding()
+            ).hasSize(512);
+        }
+    }
+
+    @Test
+    @DisplayName("무음 구간 성공은 빈 발화와 빈 근거 목록을 보존한다")
+    void get_success_silentWindow() throws Exception {
+        // given
+        try (LlmHttpServer server = new LlmHttpServer()) {
+            AiWindowEvidence evidence = new AiWindowEvidence(
+                    1,
+                    "pcm-window-v1",
+                    "a".repeat(64),
+                    0,
+                    16000,
+                    "model-v1",
+                    List.of(),
+                    List.of()
+            );
+            String body = objectMapper.writeValueAsString(
+                    new AiTranscriptionJob(
+                            ID,
+                            AiTranscriptionJob.Status.SUCCEEDED,
+                            null,
+                            new AiTranscript(
+                                    1,
+                                    "{\"transcription\":[]}",
+                                    List.of(),
+                                    evidence
+                            )
+                    )
+            );
+            respond(
+                    server,
+                    200,
+                    body,
+                    new AtomicReference<>()
+            );
+            // when
+            AiTranscriptionJob result = client(
+                    server,
+                    Duration.ofSeconds(2)
+            ).get(ID);
+            // then
+            assertThat(
+                    result.result()
+                            .utterances()
+            ).isEmpty();
+            assertThat(
+                    result.result()
+                            .window()
+                            .tokens()
+            ).isEmpty();
         }
     }
 

@@ -9,12 +9,26 @@ import java.util.List;
 public record AiTranscript(
         int schemaVersion,
         String rawWhisperJson,
-        List<Utterance> utterances
+        List<Utterance> utterances,
+        AiWindowEvidence window
 ) {
     private static final int SUPPORTED_SCHEMA_VERSION = 1;
 
     public AiTranscript {
         utterances = List.copyOf(utterances);
+    }
+
+    public AiTranscript(
+            int schemaVersion,
+            String rawWhisperJson,
+            List<Utterance> utterances
+    ) {
+        this(
+                schemaVersion,
+                rawWhisperJson,
+                utterances,
+                null
+        );
     }
 
     public List<TranscriptUtterance> toUtterances() {

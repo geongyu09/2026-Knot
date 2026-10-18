@@ -1,9 +1,10 @@
 package com.knot.backend.recording.infrastructure.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.recording.domain.model.TranscriptSegment;
+import com.knot.backend.recording.domain.model.TranscriptUtterance;
 import com.knot.backend.recording.domain.repository.TranscriptSegmentRepository;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import jakarta.persistence.EntityManager;
@@ -26,7 +27,6 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 @DataJpaTest
 @Import({TestcontainersConfiguration.class, TranscriptSegmentRepositoryAdapter.class})
 class TranscriptSegmentRepositoryIntegrationTest {
-
     @Autowired
     private TranscriptSegmentRepository transcriptSegmentRepository;
     @Autowired
@@ -182,8 +182,14 @@ class TranscriptSegmentRepositoryIntegrationTest {
     @Test
     @DisplayName("없는 원문의 구간 조회는 빈 목록이다")
     void findAllByTranscriptId_success_absent() {
-        // when & then
-        assertThat(transcriptSegmentRepository.findAllByTranscriptId(Long.MAX_VALUE)).isEmpty();
+        // given
+        long missingTranscriptId = Long.MAX_VALUE;
+
+        // when
+        List<TranscriptSegment> segments = transcriptSegmentRepository.findAllByTranscriptId(missingTranscriptId);
+
+        // then
+        assertThat(segments).isEmpty();
     }
 
     @ParameterizedTest
@@ -194,19 +200,22 @@ class TranscriptSegmentRepositoryIntegrationTest {
             ":id, 0, 0, NULL, NULL, U&'\\2003'"})
     @DisplayName("Entity를 우회한 잘못된 구간도 DB가 거절한다")
     void saveAll_failure_databaseConstraints(String values) {
-        // when & then
-        assertThatThrownBy(
-                () -> jdbc.sql(
-                        "INSERT INTO transcript_segments "
-                                + "(transcript_id, position, start_millis, end_millis, speaker_number, text) VALUES ("
-                                + values + ")"
-                )
+        // given
+        String statement = "INSERT INTO transcript_segments "
+                + "(transcript_id, position, start_millis, end_millis, speaker_number, text) VALUES (" + values + ")";
+
+        // when
+        Throwable failure = catchThrowable(
+                () -> jdbc.sql(statement)
                         .param(
                                 "id",
                                 transcriptId
                         )
                         .update()
-        ).isInstanceOf(DataIntegrityViolationException.class);
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
@@ -227,8 +236,8 @@ class TranscriptSegmentRepositoryIntegrationTest {
         );
         entityManager.flush();
 
-        // when & then
-        assertThatThrownBy(
+        // when
+        Throwable failure = catchThrowable(
                 () -> jdbc
                         .sql(
                                 "INSERT INTO transcript_segments (transcript_id, position, start_millis, text) "
@@ -239,27 +248,30 @@ class TranscriptSegmentRepositoryIntegrationTest {
                                 transcriptId
                         )
                         .update()
-        ).isInstanceOf(DataIntegrityViolationException.class);
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
     @DisplayName("없는 원문을 참조하는 구간을 DB가 거절한다")
     void saveAll_failure_missingTranscript() {
-        // when & then
-        assertThatThrownBy(
-                () -> transcriptSegmentRepository.saveAll(
-                        List.of(
-                                TranscriptSegment.create(
-                                        Long.MAX_VALUE,
-                                        0,
-                                        0,
-                                        null,
-                                        null,
-                                        "발언"
-                                )
-                        )
-                )
-        ).isInstanceOf(DataIntegrityViolationException.class);
+        // given
+        TranscriptSegment segment = TranscriptSegment.create(
+                Long.MAX_VALUE,
+                0,
+                0,
+                null,
+                null,
+                "발언"
+        );
+
+        // when
+        Throwable failure = catchThrowable(() -> transcriptSegmentRepository.saveAll(List.of(segment)));
+
+        // then
+        assertThat(failure).isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
@@ -280,14 +292,58 @@ class TranscriptSegmentRepositoryIntegrationTest {
         );
         entityManager.flush();
 
-        // when & then
-        assertThatThrownBy(
+        // when
+        Throwable failure = catchThrowable(
                 () -> jdbc.sql("DELETE FROM transcripts WHERE id = :id")
                         .param(
                                 "id",
                                 transcriptId
                         )
                         .update()
-        ).isInstanceOf(DataIntegrityViolationException.class);
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @DisplayName("구간 전사의 미확정 화자는 DB에서도 null 번호와 원문으로 보존한다")
+    void saveAll_success_preservesUnknownSpeakerAsNull() {
+        // given
+        List<TranscriptSegment> segments = TranscriptSegment.createAll(
+                transcriptId,
+                List.of(
+                        new TranscriptUtterance(
+                                "UNKNOWN_0_local",
+                                0,
+                                1,
+                                "누군가 말한 내용"
+                        ),
+                        new TranscriptUtterance(
+                                "SPEAKER_0",
+                                1,
+                                2,
+                                "알려진 화자의 내용"
+                        )
+                )
+        );
+
+        // when
+        transcriptSegmentRepository.saveAll(segments);
+
+        // then
+        entityManager.flush();
+        entityManager.clear();
+        List<TranscriptSegment> restored = transcriptSegmentRepository.findAllByTranscriptId(transcriptId);
+        assertThat(restored).extracting(TranscriptSegment::getSpeakerNumber)
+                .containsExactly(
+                        null,
+                        1
+                );
+        assertThat(restored).extracting(TranscriptSegment::getText)
+                .containsExactly(
+                        "누군가 말한 내용",
+                        "알려진 화자의 내용"
+                );
     }
 }
