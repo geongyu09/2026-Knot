@@ -18,6 +18,7 @@ public class TranscriptionJobService {
 
     private final TranscriptionEngine engine;
     private JobSnapshot current;
+    private CreateTranscriptionCommand currentRequest;
     private Thread worker;
     private boolean accepting = true;
 
@@ -31,6 +32,17 @@ public class TranscriptionJobService {
         }
         if (current != null && current.attemptId()
                 .equals(request.attemptId())) {
+            boolean sameWindow = Objects.equals(
+                    currentRequest.window(),
+                    request.window()
+            );
+            boolean sameSpeakerCount = request.window() == null || Objects.equals(
+                    currentRequest.speakerCount(),
+                    request.speakerCount()
+            );
+            if (!sameWindow || !sameSpeakerCount) {
+                throw new TranscriptionException(TranscriptionErrorCode.ATTEMPT_CONFLICT);
+            }
             return current;
         }
         if (worker != null) {
@@ -39,6 +51,7 @@ public class TranscriptionJobService {
         if (!engine.isReady()) {
             throw new TranscriptionException(TranscriptionErrorCode.NOT_READY);
         }
+        currentRequest = request;
         current = new JobSnapshot(
                 request.attemptId(),
                 JobSnapshot.Status.PROCESSING,

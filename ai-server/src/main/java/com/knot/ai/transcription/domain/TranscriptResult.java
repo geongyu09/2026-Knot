@@ -5,13 +5,27 @@ import java.util.List;
 public record TranscriptResult(
         int schemaVersion,
         String rawWhisperJson,
-        List<Utterance> utterances
+        List<Utterance> utterances,
+        WindowEvidence window
 ) {
     private static final int SCHEMA_VERSION = 1;
 
+    public TranscriptResult(
+            int schemaVersion,
+            String rawWhisperJson,
+            List<Utterance> utterances
+    ) {
+        this(
+                schemaVersion,
+                rawWhisperJson,
+                utterances,
+                null
+        );
+    }
+
     public TranscriptResult {
         if (schemaVersion != SCHEMA_VERSION || rawWhisperJson == null || rawWhisperJson.isBlank() || utterances == null
-                || utterances.isEmpty()) {
+                || (utterances.isEmpty() && window == null)) {
             throw new TranscriptionException(TranscriptionErrorCode.INVALID_RESULT);
         }
         double previousStart = -1;

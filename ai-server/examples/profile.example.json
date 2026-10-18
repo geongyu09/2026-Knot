@@ -6,5 +6,7 @@
   "segmentationModel": "/absolute/path/sherpa-onnx-pyannote-segmentation-3-0.onnx",
   "embeddingModel": "/absolute/path/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx",
   "sttThreads": 4,
-  "diarizeThreads": 4
+  "diarizeThreads": 4,
+  "sherpaLibrary": "/absolute/path/libsherpa-onnx-c-api.dylib",
+  "pythonBinary": "/absolute/path/python3"
 }

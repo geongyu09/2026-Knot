@@ -283,3 +283,31 @@ for (const failedStage of ['STT_FAILED', 'DIARIZATION_FAILED'] as const) {
     }
   })
 }
+
+import { assembleWindowResult, validWindow } from './windowResult'
+const windowInput = {pipelineVersion:'pcm-v1',inputManifestSha256:'a'.repeat(64),inputStartFrame:16000,inputEndFrame:48000}
+const evidence = {modelVersion:'model-1',speakers:[{speakerId:'speaker_0',embedding:Array(512).fill(0.1),voicedFrames:32000}],segments:[{start:0,end:2,speaker:'speaker_0'}]}
+test('window requires actual word timestamps instead of segment midpoint fallback', () => {
+  const raw=Buffer.from(JSON.stringify({transcription:[{offsets:{from:0,to:1000},text:' hello'}]}))
+  assert.throws(()=>assembleWindowResult(raw,evidence,windowInput),/WORD_TIMESTAMPS_REQUIRED/)
+})
+test('window preserves local word frames and real speaker evidence',()=>{
+  const raw=Buffer.from(JSON.stringify({transcription:[{offsets:{from:0,to:1000},text:' hello',tokens:[{text:' hello',offsets:{from:0,to:1000}}]}]}))
+  const result=assembleWindowResult(raw,evidence,windowInput)
+  assert.deepEqual(result.window.tokens,[{startFrame:0,endFrame:16000,text:'hello',speakerId:'speaker_0'}])
+  assert.equal(result.window.speakers[0].embedding.length,512)
+  assert.equal(result.window.inputStartFrame,16000)
+})
+test('silent window is valid and nonfinite or wrong-sized speaker vectors are rejected',()=>{
+  const raw=Buffer.from('{"transcription":[]}')
+  assert.equal(assembleWindowResult(raw,{modelVersion:'model',speakers:[],segments:[]},windowInput).utterances.length,0)
+  assert.throws(()=>assembleWindowResult(raw,{...evidence,speakers:[{...evidence.speakers[0],embedding:[NaN]}]},windowInput),/INVALID_RESULT/)
+  assert.equal(validWindow({...windowInput,inputEndFrame:2000000}),false)
+})
+
+test('window clips measured word timestamps to audio bounds and discards wholly outside words',()=>{
+  const raw=Buffer.from(JSON.stringify({transcription:[{offsets:{from:0,to:2020},text:' first outside',tokens:[{text:' first',offsets:{from:0,to:1000}},{text:' outside',offsets:{from:2000,to:2020}}]}]}))
+  const result=assembleWindowResult(raw,evidence,windowInput)
+  assert.equal(result.window.tokens.length,1)
+  assert.ok(result.window.tokens[0].endFrame<=32000)
+})
