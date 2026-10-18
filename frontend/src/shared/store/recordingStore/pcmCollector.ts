@@ -102,6 +102,11 @@ export default class PcmCollector {
     node.addEventListener("processorerror", lose);
   }
 
+  /** 마이크 트랙이 끝나거나 컨텍스트가 멈추거나 processor가 죽어 더는 모으지 못하면 `false`예요 */
+  get isLive() {
+    return !this.isLost && !this.isClosed;
+  }
+
   start() {
     this.node.port.postMessage("start");
   }
