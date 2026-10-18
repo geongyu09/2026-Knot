@@ -16,11 +16,20 @@ import service_config as config
 EVENTS = {'recording.transcription.' + name for name in
           ['accept', 'execute', 'download', 'decode', 'model', 'result_check', 'cleanup']}
 OUTCOMES = {'started', 'accepted', 'replayed', 'rejected', 'completed', 'failed'}
-ERRORS = {'BUSY', 'NOT_READY', 'EXECUTOR_REJECTED', 'CANCELED', 'DECODE_FAILED',
+ERRORS = {'BUSY', 'NOT_READY', 'JOB_NOT_FOUND', 'EXECUTOR_REJECTED', 'CANCELED', 'DECODE_FAILED',
           'DECODE_TIMEOUT', 'DOWNLOAD_FAILED', 'DOWNLOAD_TIMEOUT', 'INFERENCE_FAILED',
           'INFERENCE_TIMEOUT', 'STT_FAILED', 'DIARIZATION_FAILED', 'INVALID_RESULT',
-          'OUTPUT_LIMIT', 'PROCESS_CLEANUP_FAILED', 'INVALID_AUDIO_FORMAT'}
+          'OUTPUT_LIMIT', 'PROCESS_CLEANUP_FAILED', 'INVALID_AUDIO_FORMAT',
+          'AUDIO_DURATION_EXCEEDED', 'INVALID_PROFILE', 'MISSING_RUNTIME',
+          'UNOWNED_WORK_DIRECTORY', 'AUDIO_TOO_LARGE', 'INCOMPLETE_DOWNLOAD',
+          'INVALID_AUDIO_METADATA', 'INVALID_DOWNLOAD_URL', 'DIARIZATION_EMPTY',
+          'INVALID_MANIFEST', 'INVALID_ARGUMENTS', 'RUNNER_FAILED'}
 LOG_LIMIT = 2 * 1024 * 1024
+STOP_TIMEOUT = 20
+
+
+class _StopRequested(Exception):
+    """Leave a blocking pipe read so owned-child cleanup can enforce its bound."""
 
 
 def append(path, record):
@@ -38,6 +47,8 @@ def append(path, record):
 
 
 def safe_event(line):
+    # Wrapper observation time, independent of timestamps supplied by the child.
+    observed_at_ms = time.time_ns() // 1_000_000
     start = line.find('{"event":')
     if start < 0:
         return None
@@ -52,7 +63,7 @@ def safe_event(line):
         if type(elapsed) is not int or not 0 <= elapsed <= 2**63 - 1:
             return None
         result = {'event': fields['event'], 'outcome': fields['outcome'],
-                  'attemptId': attempt, 'elapsedMs': elapsed}
+                  'attemptId': attempt, 'elapsedMs': elapsed, 'observedAtMs': observed_at_ms}
         if fields.get('errorCode') is not None:
             result['errorCode'] = fields['errorCode'] if fields['errorCode'] in ERRORS else 'UNKNOWN_FAILURE'
         return result
@@ -74,10 +85,16 @@ def execute(kind, args, environment, cwd, root):
         child = subprocess.Popen(args, cwd=cwd, env=environment, stdin=subprocess.DEVNULL,
                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         previous = {}
+        stopping = False
 
         def stop(signum, _frame):
+            nonlocal stopping
+            if stopping:
+                return
+            stopping = True
             if child.poll() is None:
                 child.send_signal(signum)
+            raise _StopRequested()
 
         try:
             append(log, {'event': 'service.child.started', 'service': kind,
@@ -92,18 +109,21 @@ def execute(kind, args, environment, cwd, root):
                     if record:
                         append(log, record)
                 discard = not ending
-            code = child.wait()
+            child.wait()
+        except _StopRequested:
+            pass
         finally:
             if child.poll() is None:
                 child.terminate()
                 try:
-                    child.wait(timeout=20)
+                    child.wait(timeout=STOP_TIMEOUT)
                 except subprocess.TimeoutExpired:
                     child.kill()
                     child.wait(timeout=5)
             child.stdout.close()
             for signum, handler in previous.items():
                 signal.signal(signum, handler)
+        code = child.returncode
         state_path = root / (kind + '-state.json')
         state = config.read_private(state_path) if state_path.exists() else {}
         if not isinstance(state, dict) or not isinstance(state.get('failures', []), list):

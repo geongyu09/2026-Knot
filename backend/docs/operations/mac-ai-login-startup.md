@@ -103,7 +103,14 @@ python3 ops/observability/mac/service/install_service.py status
 `logs/ai.log`, `logs/tunnel.log`는 0600이며 각각 2MiB와 회전본 1개를 보존한다.
 원문 stdout/stderr는 저장하지 않는다. 고정된 시작·종료·오류 분류와 검증한 전사 JSON의
 event/outcome/attemptId/elapsedMs/안전 errorCode만 재구성한다. 요청·전사 원문과 임의 필드는 폐기한다.
+단계 레코드의 `observedAtMs`는 wrapper가 읽은 시점의 UTC Unix epoch 밀리초다.
+자식이 제공한 timestamp는 사용하지 않으며 Grafana 표시 시간대로 변환해 표본과 대조한다.
+호스트 시계 보정의 영향을 받는 관측 시각이므로 실행 시간 계산에는 `elapsedMs`를 사용한다.
+오류 코드는 현재 AI의 고정 enum 29개를 보존하고 임의 문자열은 `UNKNOWN_FAILURE`로 바꾼다.
 원래 콘솔 전체를 보존하는 로그와 다르며 예외 메시지나 일반 startup 출력은 조회할 수 없다.
+
+종료 신호를 받으면 출력 읽기에서 빠져나와 소유한 자식을 정리한다. 20초 정상 종료 대기 후
+응답하지 않으면 해당 자식만 강제 종료하고 최대 5초 동안 회수한다.
 
 5분 안의 자식 실패 3회 이상은 `RESTART_LOOP`로 기록한다.
 자식 시작 전 설정 오류도 launchctl의 runs와 마지막 비정상 종료로 `REPEATED_START_FAILURE`를 진단한다.

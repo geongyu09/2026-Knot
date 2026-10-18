@@ -4,6 +4,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import socket
 import subprocess
@@ -238,8 +239,10 @@ class ServiceRuntimeTest(unittest.TestCase):
         # then
         self.assertEqual(code, 0)
         self.assertEqual(len(records), 3)
-        self.assertEqual(records[1], {key: event[key] for key in
-                         ['event', 'outcome', 'attemptId', 'elapsedMs', 'errorCode']})
+        expected = {key: event[key] for key in
+                    ['event', 'outcome', 'attemptId', 'elapsedMs', 'errorCode']}
+        self.assertIs(type(records[1]['observedAtMs']), int)
+        self.assertEqual(records[1], dict(expected, observedAtMs=records[1]['observedAtMs']))
         persisted = (self.root / 'logs/tunnel.log').read_text()
         for secret in ['fixture-secret-token', 'fixture-private-transcript', 'fixture-private-unknown']:
             self.assertNotIn(secret, persisted)
@@ -301,7 +304,8 @@ class ServiceRuntimeTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(marker.read_text(), 'finished')
         records = self.records()
-        self.assertEqual(records[1], normal)
+        self.assertIs(type(records[1]['observedAtMs']), int)
+        self.assertEqual(records[1], dict(normal, observedAtMs=records[1]['observedAtMs']))
         self.assertEqual(len(records), 3)
         self.assertEqual(records[-1]['exitCode'], 0)
         state = json.loads((self.root / 'tunnel-state.json').read_text())
@@ -344,6 +348,77 @@ class ServiceRuntimeTest(unittest.TestCase):
         self.assertEqual(len(state['failures']), 3)
         self.assertEqual(self.records()[-1]['diagnostic'], 'RESTART_LOOP')
         self.assertEqual((self.root / 'tunnel-state.json').stat().st_mode & 0o777, 0o600)
+
+    def test_stage_observation_timestamp_comes_from_wrapper_clock(self):
+        # given
+        event = {'event': 'recording.transcription.execute', 'outcome': 'completed',
+                 'attemptId': str(uuid.uuid4()), 'elapsedMs': 5,
+                 'observedAtMs': 'fixture-untrusted-timestamp', 'timestamp': 'fixture-private-timestamp'}
+        # when
+        with patch.object(run_service.time, 'time_ns', return_value=1792310000123456789):
+            record = run_service.safe_event(json.dumps(event))
+        # then
+        self.assertEqual(record['observedAtMs'], 1792310000123)
+        self.assertNotIn('timestamp', record)
+        self.assertNotIn('fixture-private-timestamp', json.dumps(record))
+
+    def test_error_allowlist_matches_actual_ai_enum_and_rejects_arbitrary_text(self):
+        # given
+        source = (Path(__file__).resolve().parents[5] / 'ai-server/src/main/java/com/knot/ai/'
+                  'transcription/domain/TranscriptionErrorCode.java')
+        codes = set(re.findall(r'^    ([A-Z][A-Z_]+)\(', source.read_text(), re.M))
+        event = {'event': 'recording.transcription.execute', 'outcome': 'failed',
+                 'attemptId': str(uuid.uuid4()), 'elapsedMs': 5}
+        self.assertTrue(codes)
+        # when
+        preserved = {code: run_service.safe_event(json.dumps(dict(event, errorCode=code)))['errorCode']
+                     for code in codes}
+        unknown = run_service.safe_event(json.dumps(dict(event, errorCode='fixture-private-error')))
+        # then
+        self.assertEqual(run_service.ERRORS, codes)
+        self.assertEqual(preserved, {code: code for code in codes})
+        self.assertEqual(unknown['errorCode'], 'UNKNOWN_FAILURE')
+
+    def test_sigterm_reaps_term_ignoring_child_with_open_pipe_within_bound(self):
+        # given
+        ready = self.root / 'ignoring-child-ready'
+        module = str(Path(run_service.__file__).parent)
+        child_source = ('import os,signal,sys,time\nfrom pathlib import Path\n'
+                        'signal.signal(signal.SIGTERM,signal.SIG_IGN)\n'
+                        'Path(' + repr(str(ready)) + ').write_text(str(os.getpid()))\n'
+                        'sys.stdout.write("fixture-open-pipe");sys.stdout.flush()\ntime.sleep(30)\n')
+        wrapper_source = ('import sys\nfrom pathlib import Path\nsys.path.insert(0,' + repr(module) + ')\n'
+                          'import run_service\nrun_service.STOP_TIMEOUT=0.15\n'
+                          'run_service.execute("tunnel",[sys.executable,"-u","-c",'
+                          + repr(child_source) + '],{},Path(' + repr(str(self.root)) + '),Path('
+                          + repr(str(self.root)) + '))\n')
+        wrapper = subprocess.Popen([sys.executable, '-u', '-c', wrapper_source],
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   start_new_session=True)
+        try:
+            deadline = time.monotonic() + 3
+            while not ready.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertTrue(ready.exists())
+            child_pid = int(ready.read_text())
+            # when
+            started = time.monotonic()
+            wrapper.send_signal(signal.SIGTERM)
+            stdout, stderr = wrapper.communicate(timeout=2)
+            # then
+            self.assertLess(time.monotonic() - started, 2)
+            self.assertEqual((wrapper.returncode, stdout, stderr), (0, b'', b''))
+            with self.assertRaises(ProcessLookupError):
+                os.kill(child_pid, 0)
+            state = json.loads((self.root / 'tunnel-state.json').read_text())
+            self.assertEqual(state['last_exit_code'], -signal.SIGKILL)
+        finally:
+            # Only the fresh fixture process group belongs to this test.
+            try:
+                os.killpg(wrapper.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            wrapper.communicate(timeout=3)
 
     def test_real_fcntl_singleton_contention_blocks_child_start(self):
         # given

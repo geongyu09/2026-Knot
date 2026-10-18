@@ -14,7 +14,7 @@ python3 -W error::ResourceWarning -m unittest discover \
   -s ops/observability/mac/service -p 'test_*.py' -v
 ```
 
-39건 통과, 2.139초, ResourceWarning 오류 없음.
+후속 리뷰 보완 후 42건 통과, 1.977초, ResourceWarning 오류 없음.
 
 - 실제 private 파일·부모 권한·symlink 우회·환경 주입·고정 포트 검사.
 - 실제 HTTP fixture에서 인증·redirect 차단, 임시 OS 포트 점유 검사.
@@ -35,6 +35,15 @@ EC2 단절과 원격 forward 점유는 도구의 오류 경로와 고정 옵션�
 순수 함수·실제 child의 네 회귀가 RED였고 수정 후 정상 이벤트·후속 marker·종료 코드 0과
 비밀값 폐기가 유지됐다. Python 3.14 C decoder는 깊은 배열을 허용하므로 중첩 오류 경계는
 표준 라이브러리의 재귀 reference decoder에서도 시험했다. 수정 후 독립 리뷰는 APPROVE다.
+
+후속 리뷰에서 TERM을 무시하고 stdout을 열어 둔 자식 때문에 wrapper가 readline에서
+계속 대기하는 결함을 확인했다. 종료 신호에서 읽기를 벗어나 finally의 20초 대기·5초
+강제 종료 회수를 실행하도록 수정했다. 새 fixture 전용 그룹에서 TERM 무시·열린 pipe를
+재현했고 시험의 정상 종료 대기를 0.15초로 줄여 2초 안의 wrapper 종료·자식 회수를 검증했다.
+별도 격리 fixture는 기본 20초를 유지한 채 20.031초에 wrapper 종료·자식 회수를 확인했다.
+wrapper 관측 시각 `observedAtMs`를 단계마다 추가하고 입력 timestamp를 무시하는 회귀,
+실제 AI enum 29개의 보존·임의 오류 문자열 폐기·enum 일치 회귀도 추가했다.
+후속 변경도 독립 리뷰 APPROVE를 받았으며 시험 중 운영 launchctl은 호출하지 않았다.
 
 ## 기존 코드 회귀
 
