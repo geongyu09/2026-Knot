@@ -49,24 +49,46 @@ public class RecordingTranscriptionStateService {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void registerAutomatic(long recordingId) {
-        if (recordingTranscriptionRepository.findByRecordingSessionId(recordingId)
-                .isPresent()) {
-            return;
-        }
-        RecordingAudioUpload upload = recordingAudioUploadRepository.findByRecordingId(recordingId)
-                .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
-        validateAvailableUpload(upload);
-        RecordingTranscription transcription = RecordingTranscription.queued(
+        RecordingLog.Scope trace = RecordingLog.begin(
+                "recording.transcription.accept",
+                recordingSessionRepository.findById(recordingId)
+                        .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND))
+                        .getWorkspaceId(),
                 recordingId,
-                UUID.randomUUID(),
-                now(),
-                upload.getStorageKey(),
-                upload.getStorageVersionId(),
-                upload.getContentType(),
-                upload.getContentLength(),
+                null,
                 null
         );
-        recordingTranscriptionRepository.saveAndFlush(transcription);
+        trace.call(() -> {
+            Optional<RecordingTranscription> existing = recordingTranscriptionRepository
+                    .findByRecordingSessionId(recordingId);
+            if (existing.isPresent()) {
+                trace.attempt(
+                        existing.orElseThrow()
+                                .getAttemptId()
+                )
+                        .outcome("replayed");
+                return null;
+            }
+            RecordingAudioUpload upload = recordingAudioUploadRepository.findByRecordingId(recordingId)
+                    .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
+            trace.upload(upload.getId());
+            validateAvailableUpload(upload);
+            RecordingTranscription transcription = RecordingTranscription.queued(
+                    recordingId,
+                    UUID.randomUUID(),
+                    now(),
+                    upload.getStorageKey(),
+                    upload.getStorageVersionId(),
+                    upload.getContentType(),
+                    upload.getContentLength(),
+                    null
+            );
+            trace.attempt(transcription.getAttemptId())
+                    .outcome("accepted");
+            recordingTranscriptionRepository.saveAndFlush(transcription);
+
+            return null;
+        });
     }
 
     @Transactional
@@ -75,31 +97,44 @@ public class RecordingTranscriptionStateService {
             long memberId,
             long recordingId
     ) {
-        recordingAccess.loadOwnedForUpdate(
+        RecordingLog.Scope trace = RecordingLog.begin(
+                "recording.transcription.retry_reserve",
                 workspaceId,
-                memberId,
-                recordingId
-        )
-                .validateEnded();
-        RecordingAudioUpload upload = recordingAudioUploadRepository.findByRecordingId(recordingId)
-                .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
-        validateAvailableUpload(upload);
-        RecordingTranscription transcription = recordingTranscriptionRepository
-                .findByRecordingSessionIdForUpdate(recordingId)
-                .orElseThrow(() -> new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED));
-        transcription.validateRetryable();
-        if (transcription.isOutcomeUncertain()) {
-            throw new RecordingException(RecordingErrorCode.AI_OUTCOME_UNKNOWN);
-        }
-        transcription.enqueueRetry(
-                UUID.randomUUID(),
-                now()
-        );
-        return new RecordingTranscriptionRetryResult(
                 recordingId,
-                transcription.getAttemptId(),
-                transcription.getStatus()
+                null,
+                null
         );
+        return trace.call(() -> {
+            recordingAccess.loadOwnedForUpdate(
+                    workspaceId,
+                    memberId,
+                    recordingId
+            )
+                    .validateEnded();
+            RecordingAudioUpload upload = recordingAudioUploadRepository.findByRecordingId(recordingId)
+                    .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
+            trace.upload(upload.getId());
+            validateAvailableUpload(upload);
+            RecordingTranscription transcription = recordingTranscriptionRepository
+                    .findByRecordingSessionIdForUpdate(recordingId)
+                    .orElseThrow(() -> new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED));
+            trace.attempt(transcription.getAttemptId());
+            transcription.validateRetryable();
+            if (transcription.isOutcomeUncertain()) {
+                throw new RecordingException(RecordingErrorCode.AI_OUTCOME_UNKNOWN);
+            }
+            transcription.enqueueRetry(
+                    UUID.randomUUID(),
+                    now()
+            );
+            trace.attempt(transcription.getAttemptId())
+                    .outcome("accepted");
+            return new RecordingTranscriptionRetryResult(
+                    recordingId,
+                    transcription.getAttemptId(),
+                    transcription.getStatus()
+            );
+        });
     }
 
     @Transactional(readOnly = true)
@@ -126,42 +161,57 @@ public class RecordingTranscriptionStateService {
             RecordingTranscriptionExecution executionContext,
             AiTranscript result
     ) {
-        boolean workspaceAvailable = workspaceRepository.findByIdForUpdate(executionContext.workspaceId())
-                .isPresent();
-        boolean recordingAvailable = recordingSessionRepository.findByIdForUpdate(executionContext.recordingId())
-                .filter(value -> value.isTranscribableIn(executionContext.workspaceId()))
-                .filter(
-                        value -> workspaceMemberRepository.existsByWorkspaceIdAndMemberId(
-                                executionContext.workspaceId(),
-                                value.getMemberId()
-                        )
-                )
-                .isPresent();
-        Optional<RecordingTranscription> processingAttempt = recordingTranscriptionRepository
-                .findByRecordingSessionIdForUpdate(executionContext.recordingId())
-                .filter(
-                        value -> owns(
-                                value,
-                                executionContext
-                        )
-                );
-        if (processingAttempt.isEmpty()) {
-            return;
-        }
-        RecordingTranscription transcription = processingAttempt.orElseThrow();
-        if (!workspaceAvailable || !recordingAvailable || !hasAvailableUpload(executionContext.recordingId())) {
-            transcription.fail(
-                    executionContext.attemptId(),
-                    "RECORDING_UNAVAILABLE"
-            );
-            return;
-        }
-        persistTranscript(
+        RecordingLog.Scope trace = RecordingLog.begin(
+                "recording.transcription.persist",
                 executionContext.workspaceId(),
                 executionContext.recordingId(),
-                transcription,
-                result
+                null,
+                executionContext.attemptId()
         );
+        trace.call(() -> {
+            boolean workspaceAvailable = workspaceRepository.findByIdForUpdate(executionContext.workspaceId())
+                    .isPresent();
+            boolean recordingAvailable = recordingSessionRepository.findByIdForUpdate(executionContext.recordingId())
+                    .filter(value -> value.isTranscribableIn(executionContext.workspaceId()))
+                    .filter(
+                            value -> workspaceMemberRepository.existsByWorkspaceIdAndMemberId(
+                                    executionContext.workspaceId(),
+                                    value.getMemberId()
+                            )
+                    )
+                    .isPresent();
+            Optional<RecordingTranscription> processingAttempt = recordingTranscriptionRepository
+                    .findByRecordingSessionIdForUpdate(executionContext.recordingId())
+                    .filter(
+                            value -> owns(
+                                    value,
+                                    executionContext
+                            )
+                    );
+            if (processingAttempt.isEmpty()) {
+                trace.outcome("ignored");
+                return null;
+            }
+            RecordingTranscription transcription = processingAttempt.orElseThrow();
+            if (!workspaceAvailable || !recordingAvailable || !hasAvailableUpload(executionContext.recordingId())) {
+                transcription.fail(
+                        executionContext.attemptId(),
+                        "RECORDING_UNAVAILABLE"
+                );
+                trace.outcome("failed")
+                        .error("RECORDING_UNAVAILABLE");
+                return null;
+            }
+            persistTranscript(
+                    executionContext.workspaceId(),
+                    executionContext.recordingId(),
+                    transcription,
+                    result
+            );
+
+            trace.outcome("completed");
+            return null;
+        });
     }
 
     private void persistTranscript(
@@ -199,20 +249,34 @@ public class RecordingTranscriptionStateService {
             RecordingTranscriptionExecution executionContext,
             String failureCode
     ) {
-        workspaceRepository.findIncludingDeletedByIdForUpdate(executionContext.workspaceId());
-        recordingSessionRepository.findByIdForUpdate(executionContext.recordingId());
-        recordingTranscriptionRepository.findByRecordingSessionIdForUpdate(executionContext.recordingId())
-                .ifPresent(value -> {
-                    if (owns(
-                            value,
-                            executionContext
-                    )) {
-                        value.fail(
-                                executionContext.attemptId(),
-                                failureCode
-                        );
-                    }
-                });
+        RecordingLog.Scope trace = RecordingLog.begin(
+                "recording.transcription.persist",
+                executionContext.workspaceId(),
+                executionContext.recordingId(),
+                null,
+                executionContext.attemptId()
+        );
+        trace.outcome("ignored");
+        trace.call(() -> {
+            workspaceRepository.findIncludingDeletedByIdForUpdate(executionContext.workspaceId());
+            recordingSessionRepository.findByIdForUpdate(executionContext.recordingId());
+            recordingTranscriptionRepository.findByRecordingSessionIdForUpdate(executionContext.recordingId())
+                    .ifPresent(value -> {
+                        if (owns(
+                                value,
+                                executionContext
+                        )) {
+                            trace.outcome("failed")
+                                    .error(failureCode);
+                            value.fail(
+                                    executionContext.attemptId(),
+                                    failureCode
+                            );
+                        }
+                    });
+
+            return null;
+        });
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -283,10 +347,22 @@ public class RecordingTranscriptionStateService {
         if (!workspaceAvailable || !recordingAvailable || !hasAvailableUpload(execution.recordingId())
                 || row.getSourceStorageKey() == null || row.getSourceVersionId() == null
                 || "null".equals(row.getSourceVersionId())) {
-            row.fail(
-                    execution.attemptId(),
-                    "RECORDING_UNAVAILABLE"
+            RecordingLog.Scope trace = RecordingLog.begin(
+                    "recording.transcription.persist",
+                    execution.workspaceId(),
+                    execution.recordingId(),
+                    null,
+                    execution.attemptId()
             );
+            trace.call(() -> {
+                row.fail(
+                        execution.attemptId(),
+                        "RECORDING_UNAVAILABLE"
+                );
+                trace.outcome("failed")
+                        .error("RECORDING_UNAVAILABLE");
+                return null;
+            });
             return Optional.empty();
         }
         return Optional.of(createExecutionContext(row));
@@ -347,10 +423,22 @@ public class RecordingTranscriptionStateService {
                     now(),
                     maximumWait
             )) {
-                row.fail(
-                        execution.attemptId(),
-                        "AI_UNAVAILABLE"
+                RecordingLog.Scope trace = RecordingLog.begin(
+                        "recording.transcription.persist",
+                        execution.workspaceId(),
+                        execution.recordingId(),
+                        null,
+                        execution.attemptId()
                 );
+                trace.call(() -> {
+                    row.fail(
+                            execution.attemptId(),
+                            "AI_UNAVAILABLE"
+                    );
+                    trace.outcome("failed")
+                            .error("AI_UNAVAILABLE");
+                    return null;
+                });
             }
         });
     }
@@ -386,39 +474,52 @@ public class RecordingTranscriptionStateService {
             RecordingTranscriptionExecution previous,
             boolean resumeExisting
     ) {
-        recordingAccess.loadOwnedForUpdate(
+        RecordingLog.Scope trace = RecordingLog.begin(
+                "recording.transcription.retry_reserve",
                 workspaceId,
-                memberId,
-                previous.recordingId()
-        )
-                .validateEnded();
-        RecordingAudioUpload upload = recordingAudioUploadRepository.findByRecordingId(previous.recordingId())
-                .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
-        validateAvailableUpload(upload);
-        RecordingTranscription row = recordingTranscriptionRepository
-                .findByRecordingSessionIdForUpdate(previous.recordingId())
-                .orElseThrow(() -> new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED));
-        if (!row.isOutcomeUncertain() || !row.getAttemptId()
-                .equals(previous.attemptId())) {
-            throw new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED);
-        }
-        if (resumeExisting) {
-            row.resumeUncertain(now());
+                previous.recordingId(),
+                null,
+                previous.attemptId()
+        );
+        return trace.call(() -> {
+            recordingAccess.loadOwnedForUpdate(
+                    workspaceId,
+                    memberId,
+                    previous.recordingId()
+            )
+                    .validateEnded();
+            RecordingAudioUpload upload = recordingAudioUploadRepository.findByRecordingId(previous.recordingId())
+                    .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
+            validateAvailableUpload(upload);
+            RecordingTranscription row = recordingTranscriptionRepository
+                    .findByRecordingSessionIdForUpdate(previous.recordingId())
+                    .orElseThrow(() -> new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED));
+            if (!row.isOutcomeUncertain() || !row.getAttemptId()
+                    .equals(previous.attemptId())) {
+                throw new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED);
+            }
+            if (resumeExisting) {
+                row.resumeUncertain(now());
+                trace.attempt(row.getAttemptId())
+                        .outcome("accepted");
+                return new RecordingTranscriptionRetryResult(
+                        previous.recordingId(),
+                        row.getAttemptId(),
+                        row.getStatus()
+                );
+            }
+            row.enqueueRetry(
+                    UUID.randomUUID(),
+                    now()
+            );
+            trace.attempt(row.getAttemptId())
+                    .outcome("accepted");
             return new RecordingTranscriptionRetryResult(
                     previous.recordingId(),
                     row.getAttemptId(),
                     row.getStatus()
             );
-        }
-        row.enqueueRetry(
-                UUID.randomUUID(),
-                now()
-        );
-        return new RecordingTranscriptionRetryResult(
-                previous.recordingId(),
-                row.getAttemptId(),
-                row.getStatus()
-        );
+        });
     }
 
     @Transactional
@@ -428,49 +529,59 @@ public class RecordingTranscriptionStateService {
             RecordingTranscriptionExecution previous,
             AiTranscript result
     ) {
-        recordingAccess.loadOwnedForUpdate(
-                workspaceId,
-                memberId,
-                previous.recordingId()
-        )
-                .validateEnded();
-        RecordingAudioUpload upload = recordingAudioUploadRepository.findByRecordingId(previous.recordingId())
-                .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
-        validateAvailableUpload(upload);
-        RecordingTranscription row = recordingTranscriptionRepository
-                .findByRecordingSessionIdForUpdate(previous.recordingId())
-                .orElseThrow(() -> new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED));
-        if (!row.isOutcomeUncertain() || !row.getAttemptId()
-                .equals(previous.attemptId())) {
-            throw new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED);
-        }
-        // 이미 받은 성공 결과만 채택한다. 원격 실행이나 PROCESSING 행을 새로 접수하지 않는다.
-        row.resumeUncertain(now());
-        UUID adoptionOwner = UUID.randomUUID();
-        row.claim(
-                adoptionOwner,
-                now(),
-                Duration.ofSeconds(60)
-        );
-        if (!row.isOwnedBy(
-                previous.attemptId(),
-                adoptionOwner,
-                row.getClaimEpoch(),
-                now()
-        )) {
-            throw new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED);
-        }
-        persistTranscript(
+        RecordingLog.Scope trace = RecordingLog.begin(
+                "recording.transcription.persist",
                 workspaceId,
                 previous.recordingId(),
-                row,
-                result
+                null,
+                previous.attemptId()
         );
-        return new RecordingTranscriptionRetryResult(
-                previous.recordingId(),
-                row.getAttemptId(),
-                row.getStatus()
-        );
+        return trace.call(() -> {
+            recordingAccess.loadOwnedForUpdate(
+                    workspaceId,
+                    memberId,
+                    previous.recordingId()
+            )
+                    .validateEnded();
+            RecordingAudioUpload upload = recordingAudioUploadRepository.findByRecordingId(previous.recordingId())
+                    .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
+            validateAvailableUpload(upload);
+            RecordingTranscription row = recordingTranscriptionRepository
+                    .findByRecordingSessionIdForUpdate(previous.recordingId())
+                    .orElseThrow(() -> new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED));
+            if (!row.isOutcomeUncertain() || !row.getAttemptId()
+                    .equals(previous.attemptId())) {
+                throw new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED);
+            }
+            // 이미 받은 성공 결과만 채택한다. 원격 실행이나 PROCESSING 행을 새로 접수하지 않는다.
+            row.resumeUncertain(now());
+            UUID adoptionOwner = UUID.randomUUID();
+            row.claim(
+                    adoptionOwner,
+                    now(),
+                    Duration.ofSeconds(60)
+            );
+            if (!row.isOwnedBy(
+                    previous.attemptId(),
+                    adoptionOwner,
+                    row.getClaimEpoch(),
+                    now()
+            )) {
+                throw new RecordingException(RecordingErrorCode.TRANSCRIPTION_RETRY_NOT_ALLOWED);
+            }
+            persistTranscript(
+                    workspaceId,
+                    previous.recordingId(),
+                    row,
+                    result
+            );
+            trace.outcome("completed");
+            return new RecordingTranscriptionRetryResult(
+                    previous.recordingId(),
+                    row.getAttemptId(),
+                    row.getStatus()
+            );
+        });
     }
 
     private Optional<RecordingTranscription> owned(RecordingTranscriptionExecution execution) {
