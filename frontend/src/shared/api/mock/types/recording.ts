@@ -125,3 +125,22 @@ export interface RecordingAudioUploadCompleteResponse {
   /** ISO 8601 */
   completedAt: string;
 }
+
+/** PCM 조각 상태 */
+export type RecordingAudioChunkStatus = "RESERVED" | "VERIFIED";
+
+/** 조각 예약 요청에서 mock이 읽는 필드. 요청한 번호를 응답에 되돌려 줘요 */
+export interface RecordingAudioChunkReserveRequest {
+  sequence: number;
+}
+
+export interface RecordingAudioChunkReserveResponse {
+  sequence: number;
+  status: RecordingAudioChunkStatus;
+  /** 객체 저장소에 직접 PUT할 절대 URL. VERIFIED면 null */
+  uploadUrl: string | null;
+  /** ISO 8601. VERIFIED면 null */
+  expiresAt: string | null;
+  /** PUT에 그대로 실을 헤더. VERIFIED면 빈 객체 */
+  requiredHeaders: Record<string, string>;
+}

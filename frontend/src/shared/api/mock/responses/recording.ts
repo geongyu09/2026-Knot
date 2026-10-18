@@ -8,6 +8,7 @@ import {
 } from "@api/mock/responses/documentGenerationJob";
 import type {
   CurrentRecordingResponse,
+  RecordingAudioChunkReserveResponse,
   RecordingAudioUploadCompleteResponse,
   RecordingAudioUploadUrlResponse,
   RecordingDetailEntry,
@@ -201,3 +202,18 @@ export const recordingAudioUploadCompleteResponse = {
   uploadStatus: "COMPLETED",
   completedAt: fromNow(0),
 } satisfies RecordingAudioUploadCompleteResponse;
+
+// 5초 무음 PCM(값이 0인 160,000바이트)의 SHA-256. BE 문서의 예시 조각과 같아요
+const SILENT_CHUNK_CHECKSUM = "uc4WTTDkEBsAn+S+dloHBZPPvdSPiXhT3hWajBd/q+g=";
+
+export const recordingAudioChunkReserveResponse = {
+  sequence: 1,
+  status: "RESERVED",
+  uploadUrl: `${MOCK_AUDIO_STORAGE_ORIGIN}/recordings/10/audio-chunks/1`,
+  expiresAt: fromNow(5 * MINUTE),
+  requiredHeaders: {
+    "content-type": "application/octet-stream",
+    "if-none-match": "*",
+    "x-amz-checksum-sha256": SILENT_CHUNK_CHECKSUM,
+  },
+} satisfies RecordingAudioChunkReserveResponse;
