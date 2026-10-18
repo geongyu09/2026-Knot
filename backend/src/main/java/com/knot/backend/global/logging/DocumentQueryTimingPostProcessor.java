@@ -26,7 +26,7 @@ public final class DocumentQueryTimingPostProcessor implements BeanPostProcessor
             return bean;
         }
         ProxyFactory proxy = new ProxyFactory(bean);
-        proxy.setProxyTargetClass(false);
+        proxy.setProxyTargetClass(true);
         proxy.addAdvice(
                 (MethodInterceptor) invocation -> measureQuery(
                         invocation,

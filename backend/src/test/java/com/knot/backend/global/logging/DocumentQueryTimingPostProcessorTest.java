@@ -9,6 +9,8 @@ import com.knot.backend.document.application.DocumentDetailQuery;
 import com.knot.backend.document.application.DocumentListQuery;
 import com.knot.backend.document.application.dto.query.DocumentListParameters;
 import com.knot.backend.document.application.dto.result.DocumentTopicResult;
+import com.knot.backend.document.infrastructure.persistence.DocumentDetailQueryAdapter;
+import com.knot.backend.document.infrastructure.persistence.DocumentListQueryAdapter;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.DisplayName;
@@ -17,11 +19,11 @@ import org.junit.jupiter.api.Test;
 class DocumentQueryTimingPostProcessorTest {
 
     @Test
-    @DisplayName("목록 조회와 결과 DTO 매핑을 포함한 어댑터 호출을 기록하고 반환값을 보존한다")
+    @DisplayName("목록 조회 계측은 구현 클래스 타입과 반환값을 보존한다")
     void postProcessor_success_preservesQueryResult() {
         // given
         AtomicLong clock = new AtomicLong();
-        DocumentListQuery target = mock(DocumentListQuery.class);
+        DocumentListQueryAdapter target = mock(DocumentListQueryAdapter.class);
         DocumentListParameters parameters = DocumentListParameters.of(
                 null,
                 100,
@@ -47,6 +49,8 @@ class DocumentQueryTimingPostProcessorTest {
         );
         RequestJdbcTiming timing = new RequestJdbcTiming(0);
 
+        assertThat(proxy).isInstanceOf(DocumentListQueryAdapter.class);
+
         // when & then
         try (RequestJdbcTimingContext ignored = RequestJdbcTimingContext.open(timing)) {
             assertThat(
@@ -70,7 +74,7 @@ class DocumentQueryTimingPostProcessorTest {
     @DisplayName("상세 조회 실패는 예외와 인자를 노출하지 않고 원래 예외를 전달한다")
     void postProcessor_failure_preservesQueryException() {
         // given
-        DocumentDetailQuery target = mock(DocumentDetailQuery.class);
+        DocumentDetailQueryAdapter target = mock(DocumentDetailQueryAdapter.class);
         IllegalStateException failure = new IllegalStateException("private document");
         when(
                 target.find(
@@ -86,6 +90,8 @@ class DocumentQueryTimingPostProcessorTest {
                 )
         );
         RequestJdbcTiming timing = new RequestJdbcTiming(System.nanoTime());
+
+        assertThat(proxy).isInstanceOf(DocumentDetailQueryAdapter.class);
 
         // when & then
         try (RequestJdbcTimingContext ignored = RequestJdbcTimingContext.open(timing)) {
