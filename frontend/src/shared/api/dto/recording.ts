@@ -16,6 +16,12 @@
 export type RecordingSessionStatus =
   "RECORDING" | "PAUSED" | "ENDED" | "DISCARDED";
 
+/**
+ * 오디오 저장 방식. `FINAL_WEBM_V1`은 종료 뒤 최종 WebM 파일을 한 번에 올리는 기존 방식,
+ * `PCM16_CHUNKS_V1`은 녹음 중 PCM 조각을 바로 저장하는 방식이에요. 시작한 뒤에는 바꿀 수 없어요
+ */
+export type RecordingAudioMode = "FINAL_WEBM_V1" | "PCM16_CHUNKS_V1";
+
 // GET /api/v1/workspaces/{workspaceId}/recordings/current
 
 /**
@@ -62,6 +68,7 @@ export interface PostRecordingRequestInput {
   requestId: string;
   tabId: string;
   controlToken: string;
+  audioMode?: RecordingAudioMode;
 }
 
 /** 녹음 시작 요청 본문 */
@@ -72,11 +79,19 @@ export class PostRecordingRequestDto {
   tabId: string;
   /** 32바이트 난수를 패딩 없는 Base64URL로 쓴 43자 제어 증명. 일시정지·재개에 그대로 다시 보내요 */
   controlToken: string;
+  /** 오디오 저장 방식. 생략하면 본문에 실리지 않아 서버가 `FINAL_WEBM_V1`로 봐요. 같은 시작 요청의 재시도에도 같은 값을 보내요 */
+  audioMode?: RecordingAudioMode;
 
-  constructor({ requestId, tabId, controlToken }: PostRecordingRequestInput) {
+  constructor({
+    requestId,
+    tabId,
+    controlToken,
+    audioMode,
+  }: PostRecordingRequestInput) {
     this.requestId = requestId;
     this.tabId = tabId;
     this.controlToken = controlToken;
+    this.audioMode = audioMode;
   }
 }
 
