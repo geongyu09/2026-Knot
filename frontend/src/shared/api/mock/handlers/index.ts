@@ -29,6 +29,7 @@ import { workspaceSearchAnswerRetryHandlers } from "./api/v1/workspaces/[workspa
 import { recordingAudioChunksHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioChunks";
 import { recordingAudioChunkCompleteHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioChunks/[sequence]/complete";
 import { recordingAudioSaveHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioSave";
+import { recordingAudioSaveRetryHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioSave/retry";
 import { recordingAudioUploadCompleteHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioUploadComplete";
 import { recordingAudioUploadUrlHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioUploadUrl";
 import { recordingEndHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]/end";
@@ -64,6 +65,7 @@ export const handlers = [
   ...recordingAudioChunksHandlers,
   ...recordingAudioChunkCompleteHandlers,
   ...recordingAudioSaveHandlers,
+  ...recordingAudioSaveRetryHandlers,
   ...documentGenerationJobRetryHandlers,
   ...documentsHandlers,
   ...documentHandlers,
