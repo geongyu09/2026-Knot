@@ -95,7 +95,8 @@ class RecordingControlServiceTest {
                 streams,
                 new RecordingAudioChunksProperties(false),
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository.class),
-                finalizations
+                finalizations,
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository.class)
         );
     }
 

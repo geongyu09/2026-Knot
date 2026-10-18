@@ -8,6 +8,7 @@ import com.knot.backend.recording.application.dto.command.RecordingAudioSealComm
 import com.knot.backend.recording.application.dto.result.RecordingAudioSealSummary;
 import com.knot.backend.global.config.RecordingAudioChunksProperties;
 import com.knot.backend.member.domain.MemberRepository;
+import com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository;
 import com.knot.backend.recording.domain.model.RecordingAudioMode;
 import com.knot.backend.recording.domain.model.RecordingAudioStream;
 import com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository;
@@ -45,6 +46,7 @@ public class RecordingService {
     private final RecordingAudioChunksProperties audioChunksProperties;
     private final RecordingAudioChunkRepository chunks;
     private final RecordingAudioFinalizationRepository finalizations;
+    private final RecordingAudioCleanupRepository audioCleanup;
 
     @Transactional
     public RecordingStartResult start(
@@ -89,6 +91,10 @@ public class RecordingService {
         RecordingSession saved = recordingSessionRepository.save(session);
         if (saved.getAudioMode() == RecordingAudioMode.PCM16_CHUNKS_V1) {
             recordingAudioStreamRepository.save(RecordingAudioStream.create(saved.getId()));
+            audioCleanup.track(
+                    saved.getId(),
+                    now()
+            );
         }
         return RecordingStartResult.from(
                 saved,

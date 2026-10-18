@@ -70,7 +70,8 @@ class RecordingCurrentServiceTest {
                 mock(RecordingAudioStreamRepository.class),
                 new RecordingAudioChunksProperties(false),
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository.class),
-                mock(com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository.class)
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository.class),
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository.class)
         );
     }
 
@@ -171,7 +172,8 @@ class RecordingCurrentServiceTest {
                 mock(RecordingAudioStreamRepository.class),
                 new RecordingAudioChunksProperties(false),
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository.class),
-                mock(com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository.class)
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository.class),
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository.class)
         );
 
         // when

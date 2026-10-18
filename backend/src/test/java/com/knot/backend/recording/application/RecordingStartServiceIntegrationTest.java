@@ -56,7 +56,7 @@ class RecordingStartServiceIntegrationTest {
     @BeforeEach
     void clearTables() {
         jdbcClient.sql("""
-                TRUNCATE TABLE recording_sessions, workspace_members, workspaces,
+                TRUNCATE TABLE recording_audio_cleanup, recording_sessions, workspace_members, workspaces,
                     oauth_identities, members
                 RESTART IDENTITY CASCADE
                 """)
@@ -351,6 +351,22 @@ class RecordingStartServiceIntegrationTest {
                         .param(
                                 "id",
                                 first.recordingId()
+                        )
+                        .query(Integer.class)
+                        .single()
+        ).isEqualTo(1);
+        assertThat(
+                jdbcClient.sql("""
+                        SELECT COUNT(*) FROM recording_audio_cleanup
+                        WHERE recording_id = :id AND scope = 'DORMANT' AND storage_prefix = :prefix
+                        """)
+                        .param(
+                                "id",
+                                first.recordingId()
+                        )
+                        .param(
+                                "prefix",
+                                "recordings/" + first.recordingId() + "/"
                         )
                         .query(Integer.class)
                         .single()
