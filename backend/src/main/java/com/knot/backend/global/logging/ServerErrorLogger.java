@@ -175,6 +175,14 @@ public final class ServerErrorLogger {
         );
     }
 
+    public static String safeFailureCode(Throwable exception) {
+        String failureCode = code(exception);
+        if (failureCode.isBlank()) {
+            return "UNCLASSIFIED";
+        }
+        return failureCode;
+    }
+
     public static boolean isInternalFailure(Throwable exception) {
         if (isKnownConflict(exception)) {
             return false;

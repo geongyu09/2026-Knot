@@ -5,7 +5,13 @@ import com.knot.backend.member.domain.MemberRepository;
 import com.knot.backend.recording.domain.model.RecordingAudioMode;
 import com.knot.backend.recording.domain.model.RecordingAudioStream;
 import com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository;
+import com.knot.backend.recording.application.dto.command.RecordingControlCommand;
 import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
+import com.knot.backend.recording.application.dto.result.RecordingCurrentResult;
+import com.knot.backend.recording.application.dto.result.RecordingEndResult;
+import com.knot.backend.recording.application.dto.result.RecordingHeartbeatResult;
+import com.knot.backend.recording.application.dto.result.RecordingPauseResult;
+import com.knot.backend.recording.application.dto.result.RecordingResumeResult;
 import com.knot.backend.recording.application.dto.result.RecordingStartResult;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
@@ -21,7 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-public class RecordingStartService {
+public class RecordingService {
     private final RecordingAccess recordingAccess;
     private final MemberRepository memberRepository;
     private final RecordingSessionRepository recordingSessionRepository;
@@ -77,6 +83,100 @@ public class RecordingStartService {
         return RecordingStartResult.from(
                 saved,
                 true
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<RecordingCurrentResult> findCurrent(
+            long workspaceId,
+            long memberId
+    ) {
+        recordingAccess.validateMember(
+                workspaceId,
+                memberId
+        );
+        Optional<RecordingSession> activeSession = recordingSessionRepository.findActiveByWorkspaceIdAndMemberId(
+                workspaceId,
+                memberId
+        );
+        Instant now = clock.instant();
+        return activeSession.map(
+                session -> RecordingCurrentResult.of(
+                        session,
+                        now
+                )
+        );
+    }
+
+    @Transactional(noRollbackFor = RecordingException.class)
+    public RecordingPauseResult pause(
+            long workspaceId,
+            long memberId,
+            long recordingId,
+            RecordingControlCommand command
+    ) {
+        RecordingSession session = recordingAccess.loadControlledForUpdate(
+                workspaceId,
+                memberId,
+                recordingId,
+                command
+        );
+        session.pause(now());
+        return RecordingPauseResult.from(recordingSessionRepository.save(session));
+    }
+
+    @Transactional(noRollbackFor = RecordingException.class)
+    public RecordingResumeResult resume(
+            long workspaceId,
+            long memberId,
+            long recordingId,
+            RecordingControlCommand command
+    ) {
+        RecordingSession session = recordingAccess.loadControlledForUpdate(
+                workspaceId,
+                memberId,
+                recordingId,
+                command
+        );
+        session.resume(now());
+        return RecordingResumeResult.from(recordingSessionRepository.save(session));
+    }
+
+    @Transactional
+    public RecordingEndResult end(
+            long workspaceId,
+            long memberId,
+            long recordingId,
+            RecordingControlCommand command
+    ) {
+        RecordingSession session = recordingAccess.loadControlledForUpdate(
+                workspaceId,
+                memberId,
+                recordingId,
+                command
+        );
+        session.end(now());
+        return RecordingEndResult.from(recordingSessionRepository.save(session));
+    }
+
+    @Transactional
+    public RecordingHeartbeatResult heartbeat(
+            long workspaceId,
+            long memberId,
+            long recordingId,
+            RecordingControlCommand command
+    ) {
+        RecordingSession session = recordingAccess.loadControlledForUpdate(
+                workspaceId,
+                memberId,
+                recordingId,
+                command
+        );
+        Instant now = now();
+        session.recordHeartbeat(now);
+        return RecordingHeartbeatResult.of(
+                recordingSessionRepository.save(session),
+                now
         );
     }
 
