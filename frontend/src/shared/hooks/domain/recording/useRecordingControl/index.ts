@@ -1,13 +1,17 @@
 import { HTTP_ERROR_TYPE, isHttpError } from "@api/httpClient/error";
+import useCompleteRecordingAudioChunkMutation from "@api/mutations/useCompleteRecordingAudioChunkMutation";
 import useCompleteRecordingAudioUploadMutation from "@api/mutations/useCompleteRecordingAudioUploadMutation";
 import useEndRecordingMutation from "@api/mutations/useEndRecordingMutation";
 import useIssueRecordingAudioUploadUrlMutation from "@api/mutations/useIssueRecordingAudioUploadUrlMutation";
 import usePauseRecordingMutation from "@api/mutations/usePauseRecordingMutation";
+import useReserveRecordingAudioChunkMutation from "@api/mutations/useReserveRecordingAudioChunkMutation";
 import useResumeRecordingMutation from "@api/mutations/useResumeRecordingMutation";
 import useSendRecordingHeartbeatMutation from "@api/mutations/useSendRecordingHeartbeatMutation";
 import useStartRecordingMutation from "@api/mutations/useStartRecordingMutation";
+import useUploadRecordingAudioChunkMutation from "@api/mutations/useUploadRecordingAudioChunkMutation";
 import useUploadRecordingAudioMutation from "@api/mutations/useUploadRecordingAudioMutation";
 import { recordingKeys } from "@api/queryKey/recording";
+import { RECORDING_AUDIO_MODE } from "@constants/recording";
 import useNavigateToRecordingDocuments from "@hooks/domain/recording/useNavigateToRecordingDocuments";
 import useNavigateToWorkspaceHome from "@hooks/domain/workspace/useNavigateToWorkspaceHome";
 import { useRecordingStore } from "@store/recordingStore";
@@ -46,6 +50,7 @@ interface UploadRecordedAudioParams {
  * - 시작: 마이크 권한 → 시작 요청이 성공해야 브라우저 녹음을 시작해요. 시작 요청이 실패하면 마이크를 꺼요.
  *   서버가 409로 거절하거나, 남아 있던 증명의 녹음을 돌려주면(200) 이어받지 않고 거절로 돌려줘요.
  *   돌려준 녹음이 이미 끝났거나 버려졌으면 새 증명으로 한 번만 다시 보내요. 시작 중에 다시 불러도 겹쳐 보내지 않아요.
+ *   저장 방식이 PCM이면 시작 요청에 `audioMode`를 싣고, 조각 예약·PUT·저장 확인 요청에 세션과 최초 탭 증명을 묶어 저장소에 넘겨요.
  * - 일시정지·이어서 녹음: 브라우저 녹음을 먼저 바꾸고 서버에 알려요. 서버 요청이 실패해도 다시 보내지 않고
  *   사용자가 누른 대로 둬요.
  * - 끝내기: 확인 창에서 [녹음 끝내기]를 고르면 종료 요청 → 업로드 URL 발급 → 오디오 PUT → 업로드 완료 확인 → 녹음 비우기 → 그 녹음의 문서 정리 화면.
@@ -77,6 +82,12 @@ const useRecordingControl = () => {
   const { mutateAsync: uploadAudio } = useUploadRecordingAudioMutation();
   const { mutateAsync: completeAudioUpload } =
     useCompleteRecordingAudioUploadMutation();
+  const { mutateAsync: reserveAudioChunk } =
+    useReserveRecordingAudioChunkMutation();
+  const { mutateAsync: uploadAudioChunk } =
+    useUploadRecordingAudioChunkMutation();
+  const { mutateAsync: completeAudioChunk } =
+    useCompleteRecordingAudioChunkMutation();
   const { openEndRecordingDialog } = useEndRecordingDialog();
   const queryClient = useQueryClient();
   const isStartingRef = useRef(false);
@@ -206,19 +217,29 @@ const useRecordingControl = () => {
   const connectAndStartRecording = useCallback(
     async (workspaceId: number) => {
       const store = useRecordingStore.getState();
+      const isPcm = RECORDING_AUDIO_MODE === "PCM16_CHUNKS_V1";
 
       try {
-        const isConnected = await store.connectMicrophone();
+        const isConnected = await store.connectMicrophone({
+          audioMode: RECORDING_AUDIO_MODE,
+        });
         if (!isConnected) return "microphoneUnavailable";
       } catch (error) {
-        // 서버가 받는 형식으로 녹음할 수 없는 브라우저예요. 안내는 다른 실패와 함께 정해요(#465)
+        // 서버가 받는 형식으로 녹음할 수 없는 브라우저예요. 안내는 다른 실패와 함께 정해요(#465).
+        // PCM 수집기를 만들지 못했을 때 WebM으로 다시 시작하는 일은 #799에서 붙여요
         logRequestError("녹음 시작", error);
+        useRecordingStore.getState().discardRecording();
 
         return "failed";
       }
 
       const requestStart = () =>
-        startRecordingSession({ workspaceId, ...getRecordingStartProof() });
+        startRecordingSession({
+          workspaceId,
+          ...getRecordingStartProof(),
+          // WebM일 때는 보내지 않아 PCM 켜기(#799) 전까지 지금과 같은 요청이 나가요
+          audioMode: isPcm ? RECORDING_AUDIO_MODE : undefined,
+        });
 
       try {
         let session = await requestStart();
@@ -233,9 +254,31 @@ const useRecordingControl = () => {
           return "refused";
         }
 
-        useRecordingStore
-          .getState()
-          .startRecording({ workspaceId, recordingId: session.recordingId });
+        const sessionIds = { workspaceId, recordingId: session.recordingId };
+        const { tabId, controlToken } = getRecordingStartProof();
+        useRecordingStore.getState().startRecording({
+          ...sessionIds,
+          // 조각 큐는 React 밖에서 돌아 뮤테이션을 직접 쓰지 못하므로, 세션과 최초 탭 증명을 묶은 요청 함수를 넘겨요
+          chunkRequests: isPcm
+            ? {
+                reserve: (descriptor) =>
+                  reserveAudioChunk({
+                    ...sessionIds,
+                    tabId,
+                    controlToken,
+                    ...descriptor,
+                  }),
+                upload: uploadAudioChunk,
+                complete: (sequence) =>
+                  completeAudioChunk({
+                    ...sessionIds,
+                    tabId,
+                    controlToken,
+                    sequence,
+                  }),
+              }
+            : undefined,
+        });
 
         return "started";
       } catch (error) {
@@ -248,7 +291,12 @@ const useRecordingControl = () => {
           : "failed";
       }
     },
-    [startRecordingSession],
+    [
+      completeAudioChunk,
+      reserveAudioChunk,
+      startRecordingSession,
+      uploadAudioChunk,
+    ],
   );
 
   /**
