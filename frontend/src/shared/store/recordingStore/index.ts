@@ -1,10 +1,16 @@
 import { create } from "zustand";
 
+import type { RecordingAudioMode } from "@/shared/types/recording";
+
 import Microphone from "./microphone";
 import {
   isRecordingAudioTypeSupported,
   UnsupportedRecordingAudioTypeError,
 } from "./microphoneConnection";
+import PcmChunkUploadQueue, {
+  type PcmChunkUploadQueueParams,
+} from "./pcmChunkUploadQueue";
+import PcmCollector from "./pcmCollector";
 import RecordedAudio from "./recordedAudio";
 
 /** 녹음이 없는 상태·녹음 중·일시정지. 한 번에 하나만 녹음해요. */
@@ -14,6 +20,20 @@ export type RecordingStatus = "idle" | "recording" | "paused";
 export interface RecordingSession {
   workspaceId: number;
   recordingId: number;
+  /** 오디오 저장 방식. PCM이면 녹음 중 조각을 바로 올리고, WebM이면 끝낸 뒤 파일 하나를 올려요 */
+  audioMode: RecordingAudioMode;
+}
+
+interface ConnectMicrophoneParams {
+  /** 녹음할 오디오 저장 방식. PCM이면 16kHz 수집기까지 만들어요. 기본은 WebM이에요 */
+  audioMode?: RecordingAudioMode;
+}
+
+interface StartRecordingParams {
+  workspaceId: number;
+  recordingId: number;
+  /** PCM 조각의 예약·PUT·저장 확인 요청. 도메인 훅이 세션과 최초 탭 증명을 묶어 넘겨요. PCM으로 마이크를 받았을 때만 써요 */
+  chunkRequests?: PcmChunkUploadQueueParams;
 }
 
 interface RecordingState {
@@ -35,12 +55,19 @@ interface RecordingState {
 interface RecordingActions {
   /**
    * 녹음을 시작하기 전에 마이크를 받아요. 받지 못하면 `false`를 돌려주고 아무것도 바꾸지 않아요.
-   * 브라우저가 서버가 받는 형식으로 녹음할 수 없으면 권한을 묻지 않고 `UnsupportedRecordingAudioTypeError`를 던져요
+   * 브라우저가 서버가 받는 형식으로 녹음할 수 없으면 권한을 묻지 않고 `UnsupportedRecordingAudioTypeError`를 던져요.
+   * PCM이면 받은 마이크로 16kHz 수집기를 만들고, 만들지 못하면 마이크는 둔 채 `UnsupportedPcmCollectorError`를 던져요
    */
-  connectMicrophone: () => Promise<boolean>;
+  connectMicrophone: (params?: ConnectMicrophoneParams) => Promise<boolean>;
   /** 받아 둔 마이크로 녹음을 시작해요. 서버에 녹음을 연 뒤에 불러요 */
-  startRecording: (session: RecordingSession) => void;
-  pauseRecording: () => void;
+  startRecording: (params: StartRecordingParams) => void;
+  /** 수집을 멈춰요. PCM이면 남은 소리를 마지막 조각으로 봉인해 큐에 넣을 때까지 기다려요 */
+  pauseRecording: () => Promise<void>;
+  /**
+   * 끊긴 마이크나 멈춘 PCM 수집기를 다시 받아요. 받지 못하면 `false`를 돌려주고 상태는 바꾸지 않아요.
+   * PCM 녹음은 서버 재개가 성공한 뒤에 수집을 이어 가므로, 서버에 알리기 전에 따로 불러요
+   */
+  ensureMicrophone: () => Promise<boolean>;
   /** 이어서 녹음해요. 마이크가 끊겼다면 다시 받고, 받지 못하면 `false`를 돌려주고 일시정지를 유지해요 */
   resumeRecording: () => Promise<boolean>;
   /** 종료 요청을 보내기 전에 끝내는 중으로 표시해 끝내기가 겹치지 않게 해요. 수집과 시간은 그대로 둬요 */
@@ -86,7 +113,10 @@ const freezeElapsed = ({
  * 한곳에 두고 함께 읽어요.
  *
  * 마이크 권한은 녹음 화면에 들어가기 전에 받아요. 받지 못하면 상태를 바꾸지 않아, 부른 쪽이 그 자리에서
- * 안내를 띄울 수 있어요. 녹음 중에 마이크가 빠지면 저절로 일시정지하고 `isMicrophoneLost`로 알려요.
+ * 안내를 띄울 수 있어요. 녹음 중에 마이크가 빠지거나 PCM 수집기가 멈추면 저절로 일시정지하고 `isMicrophoneLost`로 알려요.
+ *
+ * WebM 녹음은 녹음기의 조각을 모아 뒀다가 끝낼 때 파일 하나로 묶어요. PCM 녹음은 수집기가 봉인한 5초 조각을
+ * 전송 큐가 바로 올리고, 일시정지하면 남은 소리를 마지막 조각으로 봉인해요.
  *
  * 여기는 브라우저 안의 녹음만 다루고, 서버 녹음 세션 요청은 `@hooks/domain/recording/useRecordingControl`이 맡아요.
  * 화면은 도메인 훅으로 읽고, 테스트는 녹음이 테스트끼리 새지 않도록 여기서 직접 초기화해요.
@@ -96,65 +126,114 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
   get,
 ) => {
   const recordedAudio = new RecordedAudio();
+  let pcmCollector: PcmCollector | null = null;
+  let chunkQueue: PcmChunkUploadQueue | null = null;
+  /** 마지막 일시정지의 봉인. 수집기를 바꾸기 전에 기다려 마지막 조각을 잃지 않아요 */
+  let pcmFlushed: Promise<void> = Promise.resolve();
+
+  const handleLost = () => {
+    void get().pauseRecording();
+    set({ analyser: null, isMicrophoneLost: true });
+  };
 
   const microphone = new Microphone({
     onData: (chunk) => recordedAudio.append(chunk),
-    onLost: () => {
-      get().pauseRecording();
-      set({ analyser: null, isMicrophoneLost: true });
-    },
+    onLost: handleLost,
   });
+
+  /** 받아 둔 마이크로 PCM 수집기를 만들어요. 봉인한 조각은 큐로 넘겨요 */
+  const createPcmCollector = (stream: MediaStream) =>
+    PcmCollector.create({
+      stream,
+      // 올리지 못한 조각은 큐가 들고 있다가 drain으로 알려 주므로 여기선 삼켜요. 복구는 #794에서 붙여요
+      onChunk: (pcm) => void chunkQueue?.enqueue(pcm).catch(() => undefined),
+      onLost: handleLost,
+    });
 
   return {
     ...IDLE_STATE,
 
-    connectMicrophone: async () => {
+    connectMicrophone: async ({ audioMode = "FINAL_WEBM_V1" } = {}) => {
       if (!isRecordingAudioTypeSupported()) {
         throw new UnsupportedRecordingAudioTypeError();
       }
 
-      const analyser = await microphone.connect();
-      if (!analyser) return false;
+      const connection = await microphone.connect();
+      if (!connection) return false;
 
-      set({ analyser });
+      if (audioMode === "PCM16_CHUNKS_V1") {
+        pcmCollector?.close();
+        pcmCollector = await createPcmCollector(connection.stream);
+      }
+      set({ analyser: connection.analyser });
 
       return true;
     },
 
     // 이미 녹음이 있으면 새로 시작하지 않는다.
-    startRecording: (session) => {
+    startRecording: ({ workspaceId, recordingId, chunkRequests }) => {
       if (get().status !== "idle") return;
 
       recordedAudio.clear();
-      microphone.start();
+      if (pcmCollector && chunkRequests) {
+        chunkQueue = new PcmChunkUploadQueue(chunkRequests);
+        pcmCollector.start();
+      } else {
+        microphone.start();
+      }
       set({
         status: "recording",
-        session,
+        session: {
+          workspaceId,
+          recordingId,
+          audioMode: chunkQueue ? "PCM16_CHUNKS_V1" : "FINAL_WEBM_V1",
+        },
         accumulatedMs: 0,
         resumedAt: Date.now(),
       });
     },
 
-    pauseRecording: () => {
+    pauseRecording: async () => {
       const { status, resumedAt } = get();
       if (status !== "recording" || resumedAt === null) return;
 
       microphone.pause();
-
       set({ status: "paused", ...freezeElapsed(get()) });
+
+      if (pcmCollector) {
+        // 봉인한 뒤 다시 시작하기 전까지 들어온 소리는 수집기가 버려요
+        pcmFlushed = pcmCollector.flush();
+        await pcmFlushed;
+      }
+    },
+
+    ensureMicrophone: async () => {
+      if (microphone.isLive() && (pcmCollector?.isLive ?? true)) return true;
+
+      const connection = await microphone.connect();
+      if (!connection) return false;
+
+      if (pcmCollector) {
+        // 멈춘 수집기의 마지막 봉인이 끝난 뒤에 닫아야 그 조각을 잃지 않아요
+        await pcmFlushed;
+        pcmCollector.close();
+        pcmCollector = await createPcmCollector(connection.stream);
+      } else {
+        microphone.start();
+      }
+      set({ analyser: connection.analyser });
+
+      return true;
     },
 
     resumeRecording: async () => {
       if (get().status !== "paused") return get().status === "recording";
 
-      if (microphone.isLive()) microphone.resume();
-      else {
-        const analyser = await microphone.connect();
-        if (!analyser) return false;
+      const isReady = await get().ensureMicrophone();
+      if (!isReady) return false;
 
-        microphone.start();
-        set({ analyser });
-      }
+      if (pcmCollector) pcmCollector.start();
+      else microphone.resume();
 
       set({
         status: "recording",
@@ -183,6 +262,8 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
     stopRecording: async () => {
       set({ isEnding: true, ...freezeElapsed(get()) });
 
+      // shortcut: PCM은 남은 소리만 봉인하고 종료 봉인(audioSeal)은 보내지 않아요, #796에서 끝내기에 연결해요
+      await pcmCollector?.flush();
       await microphone.stop();
       set({ analyser: null });
 
@@ -191,6 +272,9 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
 
     discardRecording: () => {
       microphone.disconnect();
+      pcmCollector?.close();
+      pcmCollector = null;
+      chunkQueue = null;
       recordedAudio.clear();
       set(IDLE_STATE);
     },
