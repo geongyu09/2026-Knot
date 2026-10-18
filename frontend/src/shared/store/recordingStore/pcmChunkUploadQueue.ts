@@ -1,4 +1,5 @@
 import { HTTP_ERROR_TYPE, isHttpError } from "@api/httpClient/error";
+import { captureCaughtError } from "@provider/sentry";
 import axios from "axios";
 
 /** PUT과 저장 확인을 동시에 진행하는 조각 수의 상한 */
@@ -114,6 +115,7 @@ const isUploadPossiblyStored = (error: unknown) =>
  *   다시 PUT할 일이 생기면 같은 descriptor로 재예약해 새 URL로 보내요
  * - 요청을 고쳐야 하는 실패(충돌, 권한 거절 같은 4xx)는 그 조각을 멈추고, 앞 조각의 예약이 멈추면 뒤 조각의 예약도 보내지 않아요
  * - `setAcceptUntil`의 시한이 지나거나 `clear`하면 남은 조각을 모두 멈추고 바이트를 놓아요
+ * - 멈춘 조각의 이유는 Sentry로 보내요. 시한이 지나 버린 조각은 남은 수를 담아 한 건으로 보내고, `clear`는 의도한 중단(AbortError)이라 보고 기준에서 빠져요
  * - `seal()`은 종료 요청에 담을 마지막 번호와 예약 응답을 아직 받지 못한 조각을 줘요. 종료 뒤에도 그 조각은 평소대로 예약부터 올려요
  * - 서버 요청은 밖에서 받아요. 이 저장소는 브라우저 안의 녹음만 다루고 API 호출은 도메인 훅이 맡아요
  */
@@ -173,8 +175,11 @@ export default class PcmChunkUploadQueue {
       this.inflight.delete(task);
     });
     this.inflight.add(task);
-    // 호출자가 결과를 받지 않아도 멈춘 조각이 unhandled rejection이 되지 않게 해요
-    task.catch(() => undefined);
+    // 호출자가 결과를 받지 않아도 멈춘 조각이 unhandled rejection이 되지 않게 해요.
+    // 뒤 조각은 앞 조각과 같은 오류 객체로 멈추므로 SDK가 한 번만 보내요
+    task.catch((error: unknown) => {
+      captureCaughtError({ error, feature: "recording" });
+    });
 
     return task;
   }
@@ -207,14 +212,27 @@ export default class PcmChunkUploadQueue {
   setAcceptUntil(acceptUntil: string) {
     clearTimeout(this.acceptUntilTimer);
     this.acceptUntilTimer = setTimeout(
-      () => this.stopAll(new Error("조각 접수 시한이 지났어요")),
+      () => {
+        const lostChunkCount = this.pending.size;
+        const reason = new Error("조각 접수 시한이 지났어요");
+        this.stopAll(reason);
+        // 조각들의 거부보다 먼저 보내 남은 조각 수를 실어요. 조각들은 같은 오류 객체로 멈춰 다시 보내지 않아요
+        if (lostChunkCount > 0) {
+          captureCaughtError({
+            error: reason,
+            feature: "recording",
+            extra: { lostChunkCount },
+          });
+        }
+      },
       Math.max(0, new Date(acceptUntil).getTime() - Date.now()),
     );
   }
 
   /** 모든 조각을 멈추고 들고 있던 바이트를 놓아요. 그 뒤로는 요청을 보내지 않아요 */
   clear() {
-    this.stopAll(new Error("전송 큐를 비웠어요"));
+    // 의도한 중단이라 취소(AbortError)로 멈춰 Sentry 보고 기준에서 빠져요
+    this.stopAll(new DOMException("전송 큐를 비웠어요", "AbortError"));
   }
 
   private stopAll(reason: Error) {
@@ -241,6 +259,8 @@ export default class PcmChunkUploadQueue {
       checksumSha256,
     }));
     this.unreserved.set(descriptor.sequence, described);
+    // 앞 조각이 멈춰 이 조각의 예약을 보내지 않으면 해시 실패를 기다리는 곳이 없어 unhandled rejection이 돼요
+    described.catch(() => undefined);
     const nextDelay = createBackoff();
     const reserveChunk = async () => this.reserve(await described);
 

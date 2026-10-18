@@ -18,6 +18,8 @@ import {
   recordingAudioChunkReserveResponse,
 } from "@api/mock/responses/recording";
 import { mockServer } from "@api/mock/server";
+import { captureRequestError } from "@provider/sentry";
+import { setupSentryEvents } from "@provider/sentry/mock";
 import type { RecordingAudioChunkReserveRequest } from "@api/mock/types/recording";
 
 import PcmChunkUploadQueue, {
@@ -463,6 +465,99 @@ describe("PcmChunkUploadQueue", () => {
       await vi.advanceTimersByTimeAsync(10_000);
       expect(calls).toHaveLength(1);
       expect(queue.pendingSequences).toEqual([]);
+    });
+
+    // 버린 조각은 녹음 일부가 서버에 남지 않아 문서에서 빠져요. Sentry는 타이머를 쓰므로 진짜 타이머로 돌린 뒤 모은 이벤트를 봐요
+    describe("조각 유실 보고", () => {
+      const { flushEvents } = setupSentryEvents();
+
+      const flushRealEvents = () => {
+        vi.useRealTimers();
+
+        return flushEvents();
+      };
+
+      it("시한이 지나 남은 조각을 버리면 남은 조각 수를 담아 한 번만 보고한다", async () => {
+        const { queue, reserve } = createFakeQueue();
+        reserve.mockRejectedValue(apiError(HTTP_ERROR_TYPE.serverError));
+
+        void queue.enqueue(silentPcm(CHUNK_FRAMES));
+        void queue.enqueue(silentPcm(CHUNK_FRAMES));
+        queue.setAcceptUntil(new Date(2_500).toISOString());
+        const drained = expect(queue.drain()).rejects.toThrow(
+          "조각 접수 시한이 지났어요",
+        );
+        await vi.advanceTimersByTimeAsync(2_500);
+        await drained;
+
+        const events = await flushRealEvents();
+        expect(events).toHaveLength(1);
+        expect(events[0].tags).toMatchObject({ feature: "recording" });
+        expect(events[0].extra).toEqual({ lostChunkCount: 2 });
+        expect(events[0].exception?.values?.[0]?.value).toBe(
+          "조각 접수 시한이 지났어요",
+        );
+      });
+
+      it("시한 전에 모든 조각을 올렸으면 시한이 지나도 보고하지 않는다", async () => {
+        const { queue } = createFakeQueue();
+
+        await queue.enqueue(silentPcm(CHUNK_FRAMES));
+        queue.setAcceptUntil(new Date(2_500).toISOString());
+        await vi.advanceTimersByTimeAsync(2_500);
+
+        expect(await flushRealEvents()).toHaveLength(0);
+      });
+
+      it("의도해 비운 큐의 조각은 보고하지 않는다", async () => {
+        const { queue, reserve } = createFakeQueue();
+        reserve.mockRejectedValue(apiError(HTTP_ERROR_TYPE.serverError));
+
+        const tasks = [
+          queue.enqueue(silentPcm(CHUNK_FRAMES)),
+          queue.enqueue(silentPcm(CHUNK_FRAMES)),
+        ].map((task) => task.catch(() => undefined));
+        await vi.advanceTimersByTimeAsync(0);
+        queue.clear();
+        await Promise.all(tasks);
+
+        expect(await flushRealEvents()).toHaveLength(0);
+      });
+
+      it("해시를 계산하지 못하면 그 조각과 뒤 조각이 함께 멈추고, 그 오류를 한 번만 보고한다", async () => {
+        const { queue, reserve } = createFakeQueue();
+        vi.spyOn(crypto.subtle, "digest").mockImplementation(async () => {
+          throw new DOMException("해시를 계산하지 못했어요", "OperationError");
+        });
+
+        const first = queue.enqueue(silentPcm(CHUNK_FRAMES));
+        const second = queue.enqueue(silentPcm(CHUNK_FRAMES));
+        await expect(first).rejects.toThrow("해시를 계산하지 못했어요");
+        await expect(second).rejects.toThrow("해시를 계산하지 못했어요");
+
+        expect(reserve).not.toHaveBeenCalled();
+        const events = await flushRealEvents();
+        expect(events).toHaveLength(1);
+        expect(events[0].tags).toMatchObject({ feature: "recording" });
+      });
+
+      // 앱에서는 조각 요청이 뮤테이션이라 실패가 MutationCache로 먼저 보고돼요
+      it("요청 실패로 멈춘 조각은 react-query가 보낸 같은 오류라 다시 보고하지 않는다", async () => {
+        const { queue, complete } = createFakeQueue();
+        const error = apiError(HTTP_ERROR_TYPE.forbidden);
+        complete.mockImplementation(async () => {
+          captureRequestError({ error, source: "mutation" });
+          throw error;
+        });
+
+        await expect(queue.enqueue(silentPcm(CHUNK_FRAMES))).rejects.toBe(
+          error,
+        );
+
+        const events = await flushRealEvents();
+        expect(events).toHaveLength(1);
+        expect(events[0].tags).toMatchObject({ source: "mutation" });
+      });
     });
   });
 });

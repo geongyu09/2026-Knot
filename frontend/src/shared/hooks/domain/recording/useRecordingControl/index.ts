@@ -203,7 +203,11 @@ const useRecordingControl = () => {
             continue;
           }
 
-          logRequestError("녹음 파일 업로드", error);
+          logRequestError({
+            feature: "recording",
+            action: "녹음 파일 업로드",
+            error,
+          });
 
           return false;
         }
@@ -251,7 +255,11 @@ const useRecordingControl = () => {
         useRecordingStore.getState().syncElapsedTime(elapsedMillis);
       }
     } catch (error) {
-      logRequestError("녹음 생존 신호", error);
+      logRequestError({
+        feature: "recording",
+        action: "녹음 생존 신호",
+        error,
+      });
       if (!isLateResponse() && isUnreachableRecordingError(error)) {
         closeRecording(session.workspaceId);
       }
@@ -260,7 +268,7 @@ const useRecordingControl = () => {
 
   const handleControlError = useCallback(
     ({ action, error, workspaceId }: HandleControlErrorParams) => {
-      logRequestError(action, error);
+      logRequestError({ feature: "recording", action, error });
 
       // 서버가 끝낸 녹음은 오디오를 올려야 해서 버리지 않고, 생존 신호의 응답으로 마저 처리해요
       if (isHttpError(error) && error.code === "RECORDING_ALREADY_ENDED") {
@@ -292,7 +300,7 @@ const useRecordingControl = () => {
       } catch (error) {
         if (!(error instanceof UnsupportedPcmCollectorError)) {
           // 서버가 받는 형식으로 녹음할 수 없는 브라우저예요. 안내는 다른 실패와 함께 정해요(#465)
-          logRequestError("녹음 시작", error);
+          logRequestError({ feature: "recording", action: "녹음 시작", error });
           useRecordingStore.getState().discardRecording();
 
           return "failed";
@@ -377,7 +385,7 @@ const useRecordingControl = () => {
         return "started";
       } catch (error) {
         // 응답을 못 받았거나 거절됐어도 서버엔 열렸을 수 있어, 다음 시작이 같은 요청으로 가도록 증명은 남겨요
-        logRequestError("녹음 시작", error);
+        logRequestError({ feature: "recording", action: "녹음 시작", error });
         useRecordingStore.getState().discardRecording();
 
         return isHttpError(error, HTTP_ERROR_TYPE.conflict)
@@ -462,7 +470,7 @@ const useRecordingControl = () => {
       if (!isReady) return false;
     } catch (error) {
       // 새 마이크로 수집기를 만들지 못했어요. 마이크를 받지 못한 것처럼 안내해 다시 시도하게 해요
-      logRequestError("이어서 녹음", error);
+      logRequestError({ feature: "recording", action: "이어서 녹음", error });
 
       return false;
     }
@@ -539,7 +547,7 @@ const useRecordingControl = () => {
 
           return "uploaded";
         } catch (error) {
-          logRequestError("녹음 종료", error);
+          logRequestError({ feature: "recording", action: "녹음 종료", error });
 
           if (isTransientApiError(error)) {
             // 끝내는 중 생존 신호를 보내지 않아 30초가 넘으면 서버가 먼저 끝내고 409로 알려요
@@ -586,7 +594,7 @@ const useRecordingControl = () => {
     try {
       await endRecordingSession({ ...session, ...proof });
     } catch (error) {
-      logRequestError("녹음 종료", error);
+      logRequestError({ feature: "recording", action: "녹음 종료", error });
 
       // 서버에서 이미 끝났거나 버려진 녹음이면 올릴 곳이 없어 오디오를 버리고 끝낸 것으로 봐요
       if (isClosedRecordingError(error)) {
