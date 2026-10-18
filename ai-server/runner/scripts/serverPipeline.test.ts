@@ -311,3 +311,20 @@ test('window clips measured word timestamps to audio bounds and discards wholly 
   assert.equal(result.window.tokens.length,1)
   assert.ok(result.window.tokens[0].endFrame<=32000)
 })
+
+test('window discards zero-duration words beyond Opus-decoded tail before duration validation',()=>{
+  const raw=Buffer.from(JSON.stringify({transcription:[
+    {offsets:{from:0,to:1000},text:' kept',tokens:[{text:' kept',offsets:{from:0,to:1000}}]},
+    {offsets:{from:15000,to:15000},text:' boundary',tokens:[{text:' boundary',offsets:{from:15000,to:15000}}]},
+    {offsets:{from:15010,to:15010},text:' outside',tokens:[{text:' outside',offsets:{from:15010,to:15010}}]}
+  ]}))
+  const result=assembleWindowResult(raw,evidence,{...windowInput,inputStartFrame:0,inputEndFrame:240000})
+  assert.deepEqual(result.window.tokens.map(t=>t.text),['kept'])
+})
+
+test('window still rejects negative or zero-duration timestamps inside audio',()=>{
+  for (const offsets of [{from:-100,to:100},{from:500,to:500}]) {
+    const raw=Buffer.from(JSON.stringify({transcription:[{offsets,text:' invalid',tokens:[{text:' invalid',offsets}]}]}))
+    assert.throws(()=>assembleWindowResult(raw,evidence,windowInput),/INVALID_RESULT/)
+  }
+})

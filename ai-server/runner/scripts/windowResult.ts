@@ -40,8 +40,11 @@ export const assembleWindowResult = (raw:Buffer, evidence:Evidence, window:Windo
     return (s.words??[]).flatMap(w => {
       const rawStart=Math.round(w.start*16000), rawEnd=Math.round(w.end*16000)
       const startFrame=Math.max(0,rawStart), endFrame=Math.min(frames,rawEnd)
-      if (!Number.isSafeInteger(rawStart)||!Number.isSafeInteger(rawEnd)||rawEnd<=rawStart)
+      if (!Number.isSafeInteger(rawStart)||!Number.isSafeInteger(rawEnd)||rawStart<0||rawEnd<0||rawEnd<rawStart)
         throw new Error('INVALID_RESULT')
+      // Whisper may emit zero-duration words wholly after the actual WAV end.
+      if (rawStart>=frames||rawEnd<=0) return []
+      if (rawEnd===rawStart) throw new Error('INVALID_RESULT')
       if (endFrame<=startFrame) return []
       const ranked=evidence.segments.map(s=>({speaker:s.speaker,
         overlap:Math.max(0,Math.min(w.end,s.end)-Math.max(w.start,s.start))}))
