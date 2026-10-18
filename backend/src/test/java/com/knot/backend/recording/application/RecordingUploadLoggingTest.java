@@ -27,14 +27,14 @@ class RecordingUploadLoggingTest {
     private static final long UPLOAD_ID = 30L;
     private static final String STORAGE_KEY = "private-object-key";
 
-    private RecordingAudioUploadCompletionTransaction completionTransaction;
+    private RecordingAudioUploadService completionTransaction;
     private RecordingAudioStorage storage;
     private RecordingTranscriptionService transcriptionService;
     private RecordingAudioUploadCompletionService service;
 
     @BeforeEach
     void setUp() {
-        completionTransaction = mock(RecordingAudioUploadCompletionTransaction.class);
+        completionTransaction = mock(RecordingAudioUploadService.class);
         storage = mock(RecordingAudioStorage.class);
         transcriptionService = mock(RecordingTranscriptionService.class);
         service = new RecordingAudioUploadCompletionService(

@@ -39,11 +39,13 @@ class RecordingLegacyAudioModeTest {
                         7L
                 )
         ).thenReturn(pcmSession());
-        RecordingAudioUploadUrlService service = new RecordingAudioUploadUrlService(
+        RecordingAudioUploadService service = new RecordingAudioUploadService(
                 access,
                 uploads,
                 storage,
-                Clock.systemUTC()
+                Clock.systemUTC(),
+                transcriptions,
+                mock(TranscriptionProperties.class)
         );
 
         // when
@@ -81,9 +83,10 @@ class RecordingLegacyAudioModeTest {
                         7L
                 )
         ).thenReturn(pcmSession());
-        RecordingAudioUploadCompletionTransaction transaction = new RecordingAudioUploadCompletionTransaction(
+        RecordingAudioUploadService transaction = new RecordingAudioUploadService(
                 access,
                 uploads,
+                storage,
                 Clock.systemUTC(),
                 transcriptions,
                 mock(TranscriptionProperties.class)
