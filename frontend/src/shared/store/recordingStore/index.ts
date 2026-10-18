@@ -91,6 +91,8 @@ interface RecordingActions {
   stopRecording: () => Promise<Blob>;
   /** PCM 수집을 멈추고 마지막 조각을 봉인한 뒤 종료 요청에 담을 `audioSeal`을 돌려줘요. 녹음은 비우지 않아요 */
   sealRecording: () => Promise<PcmAudioSeal>;
+  /** PCM 수집기만 닫고 마이크는 둬요. 서버가 조각 저장을 꺼 뒀을 때 받아 둔 마이크로 WebM 녹음을 시작하려고 써요 */
+  closePcmCollector: () => void;
   /** 녹음을 버리고 마이크를 꺼요. PCM 큐는 `acceptUntil`을 주면 남겨 끝까지 올리고, 없으면 함께 비워요 */
   discardRecording: (params?: DiscardRecordingParams) => void;
   /** 마이크가 끊겼다는 표시(`isMicrophoneLost`)를 지워요 */
@@ -175,12 +177,13 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
 
       const connection = await microphone.connect();
       if (!connection) return false;
+      // 수집기를 만들지 못해도 받아 둔 마이크로 WebM 녹음을 할 수 있게 파형은 먼저 둬요
+      set({ analyser: connection.analyser });
 
       if (audioMode === "PCM16_CHUNKS_V1") {
         pcmCollector?.close();
         pcmCollector = await createPcmCollector(connection.stream);
       }
-      set({ analyser: connection.analyser });
 
       return true;
     },
@@ -295,6 +298,11 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
           pendingDescriptors: [],
         }
       );
+    },
+
+    closePcmCollector: () => {
+      pcmCollector?.close();
+      pcmCollector = null;
     },
 
     discardRecording: ({ acceptUntil } = {}) => {
