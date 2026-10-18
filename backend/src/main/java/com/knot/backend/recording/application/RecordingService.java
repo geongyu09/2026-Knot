@@ -1,50 +1,120 @@
 package com.knot.backend.recording.application;
 
-import java.util.Optional;
-
-import com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository;
-
 import com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository;
-
-import com.knot.backend.recording.domain.model.RecordingAudioStream;
-
 import com.knot.backend.recording.domain.model.RecordingAudioSealKind;
-
-import com.knot.backend.recording.domain.model.RecordingAudioMode;
-
 import com.knot.backend.recording.domain.model.RecordingAudioChunk;
-
 import com.knot.backend.recording.domain.model.AudioChunkDescriptor;
-
-import com.knot.backend.recording.domain.RecordingErrorCode;
-
 import com.knot.backend.recording.application.dto.command.RecordingAudioSealCommand;
-
-import com.knot.backend.recording.application.dto.command.RecordingControlCommand;
-import com.knot.backend.recording.application.dto.result.RecordingEndResult;
 import com.knot.backend.recording.application.dto.result.RecordingAudioSealSummary;
+import com.knot.backend.global.config.RecordingAudioChunksProperties;
+import com.knot.backend.member.domain.MemberRepository;
+import com.knot.backend.recording.domain.model.RecordingAudioMode;
+import com.knot.backend.recording.domain.model.RecordingAudioStream;
+import com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository;
+import com.knot.backend.recording.application.dto.command.RecordingControlCommand;
+import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
+import com.knot.backend.recording.application.dto.result.RecordingCurrentResult;
+import com.knot.backend.recording.application.dto.result.RecordingEndResult;
 import com.knot.backend.recording.application.dto.result.RecordingHeartbeatResult;
 import com.knot.backend.recording.application.dto.result.RecordingPauseResult;
 import com.knot.backend.recording.application.dto.result.RecordingResumeResult;
+import com.knot.backend.recording.application.dto.result.RecordingStartResult;
+import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
 import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-public class RecordingControlService {
+public class RecordingService {
     private final RecordingAccess recordingAccess;
+    private final MemberRepository memberRepository;
     private final RecordingSessionRepository recordingSessionRepository;
+    private final RecordingControlTokenHasher recordingControlTokenHasher;
     private final Clock clock;
     private final RecordingAudioSealing audioSealing;
-    private final RecordingAudioStreamRepository streams;
+    private final RecordingAudioStreamRepository recordingAudioStreamRepository;
+    private final RecordingAudioChunksProperties audioChunksProperties;
     private final RecordingAudioChunkRepository chunks;
+
+    @Transactional
+    public RecordingStartResult start(
+            long workspaceId,
+            long memberId,
+            RecordingStartCommand command
+    ) {
+        recordingAccess.lockMember(
+                workspaceId,
+                memberId
+        );
+        memberRepository.findByIdForUpdate(memberId)
+                .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_MEMBER_NOT_FOUND));
+
+        String controlTokenHash = recordingControlTokenHasher.hash(command.controlToken());
+        Optional<RecordingSession> existing = recordingSessionRepository.findByMemberIdAndRequestIdForUpdate(
+                memberId,
+                command.requestId()
+        );
+        if (existing.isPresent()) {
+            return replay(
+                    existing.orElseThrow(),
+                    workspaceId,
+                    command,
+                    controlTokenHash
+            );
+        }
+        if (command.audioMode() == RecordingAudioMode.PCM16_CHUNKS_V1 && !audioChunksProperties.enabled()) {
+            throw new RecordingException(RecordingErrorCode.AUDIO_MODE_DISABLED);
+        }
+        releaseActiveRecordings(memberId);
+
+        RecordingSession session = RecordingSession.start(
+                workspaceId,
+                memberId,
+                command.requestId(),
+                command.tabId(),
+                controlTokenHash,
+                now(),
+                command.audioMode()
+        );
+        RecordingSession saved = recordingSessionRepository.save(session);
+        if (saved.getAudioMode() == RecordingAudioMode.PCM16_CHUNKS_V1) {
+            recordingAudioStreamRepository.save(RecordingAudioStream.create(saved.getId()));
+        }
+        return RecordingStartResult.from(
+                saved,
+                true
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<RecordingCurrentResult> findCurrent(
+            long workspaceId,
+            long memberId
+    ) {
+        recordingAccess.validateMember(
+                workspaceId,
+                memberId
+        );
+        Optional<RecordingSession> activeSession = recordingSessionRepository.findActiveByWorkspaceIdAndMemberId(
+                workspaceId,
+                memberId
+        );
+        Instant now = clock.instant();
+        return activeSession.map(
+                session -> RecordingCurrentResult.of(
+                        session,
+                        now
+                )
+        );
+    }
 
     @Transactional(noRollbackFor = RecordingException.class)
     public RecordingPauseResult pause(
@@ -139,7 +209,7 @@ public class RecordingControlService {
         if (session.getAudioMode() != RecordingAudioMode.PCM16_CHUNKS_V1) {
             return RecordingEndResult.from(session);
         }
-        RecordingAudioStream stream = streams.findByRecordingIdForUpdate(recordingId)
+        RecordingAudioStream stream = recordingAudioStreamRepository.findByRecordingIdForUpdate(recordingId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND));
         return new RecordingEndResult(
                 session.getId(),
@@ -161,7 +231,7 @@ public class RecordingControlService {
             Instant endedAt
     ) {
         session.validateNotDiscarded();
-        RecordingAudioStream stream = streams.findByRecordingIdForUpdate(session.getId())
+        RecordingAudioStream stream = recordingAudioStreamRepository.findByRecordingIdForUpdate(session.getId())
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.RECORDING_NOT_FOUND));
         if (stream.isSealed()) {
             stream.validateNormalSeal(
@@ -195,7 +265,7 @@ public class RecordingControlService {
                 RecordingAudioSealKind.NORMAL,
                 session.getEndedAt()
         );
-        streams.save(stream);
+        recordingAudioStreamRepository.save(stream);
     }
 
     private RecordingSession loadForEnd(
@@ -299,6 +369,37 @@ public class RecordingControlService {
                 recordingSessionRepository.save(session),
                 now
         );
+    }
+
+    private RecordingStartResult replay(
+            RecordingSession session,
+            long workspaceId,
+            RecordingStartCommand command,
+            String controlTokenHash
+    ) {
+        session.validateStartRetry(
+                workspaceId,
+                command.tabId(),
+                controlTokenHash,
+                command.audioMode()
+        );
+        if (session.expireIfDue(now())) {
+            audioSealing.sealEnded(session);
+            recordingSessionRepository.save(session);
+        }
+        return RecordingStartResult.from(
+                session,
+                false
+        );
+    }
+
+    private void releaseActiveRecordings(long memberId) {
+        Instant now = now();
+        for (RecordingSession active : recordingSessionRepository.findAllActiveByMemberIdForUpdate(memberId)) {
+            active.releaseForNewRecording(now);
+            audioSealing.sealEnded(active);
+            recordingSessionRepository.save(active);
+        }
     }
 
     private Instant now() {

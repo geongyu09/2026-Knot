@@ -17,6 +17,7 @@ import com.knot.backend.search.application.SearchToolScope;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
 import com.knot.backend.search.domain.SearchToolException;
 import com.knot.backend.search.infrastructure.mcp.SearchMcpClient;
+import com.knot.backend.testsupport.LogCapture;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -707,6 +708,130 @@ class SearchMcpDocumentRetrieverTest {
     }
 
     @Test
+    @DisplayName("탐색 회차와 도구 결과 개수만 기록하고 질문과 도구 인자는 남기지 않는다")
+    void retrieve_success_logsToolFlowWithoutInput() {
+        when(
+                llm.complete(
+                        eq(scope),
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                turn(
+                        "t1",
+                        "list_documents",
+                        "{\"topic\":\"private-topic\"}"
+                ),
+                turn(
+                        "t2",
+                        "search_documents",
+                        "{\"query\":\"private-query\"}"
+                ),
+                mapper.readTree("{\"role\":\"assistant\",\"content\":\"private-model-output\",\"tool_calls\":[]}")
+        );
+        when(
+                mcp.call(
+                        eq(scope),
+                        eq("list_documents"),
+                        any()
+                )
+        ).thenReturn(mapper.readTree("{\"items\":[{\"documentId\":1,\"title\":\"private-title\"}]}"));
+        when(
+                mcp.call(
+                        eq(scope),
+                        eq("search_documents"),
+                        any()
+                )
+        ).thenReturn(mapper.readTree("{\"items\":[]}"));
+
+        try (LogCapture logs = new LogCapture(SearchMcpDocumentRetriever.class)) {
+            SearchRetrievalResult result = retriever.retrieve(
+                    scope,
+                    "private-question"
+            );
+
+            assertThat(result.documents()).isEmpty();
+            assertThat(logs.events()).filteredOn(
+                    event -> event.getFormattedMessage()
+                            .contains("Search exploration tool_call")
+            )
+                    .hasSize(2)
+                    .anySatisfy(
+                            event -> assertThat(event.getFormattedMessage()).contains(
+                                    "round=1",
+                                    "toolCallIndex=1",
+                                    "toolName=list_documents",
+                                    "repeated=false",
+                                    "resultCount=1",
+                                    "outcome=success"
+                            )
+                    )
+                    .anySatisfy(
+                            event -> assertThat(event.getFormattedMessage()).contains(
+                                    "round=2",
+                                    "toolCallIndex=2",
+                                    "toolName=search_documents",
+                                    "repeated=false",
+                                    "resultCount=0",
+                                    "outcome=success"
+                            )
+                    )
+                    .allSatisfy(
+                            event -> assertThat(event.getFormattedMessage()).doesNotContain(
+                                    "private-question",
+                                    "private-topic",
+                                    "private-query",
+                                    "private-title",
+                                    "private-model-output"
+                            )
+                    );
+        }
+    }
+
+    @Test
+    @DisplayName("LLM 탐색 호출 실패는 실패한 회차와 안전한 오류 코드만 기록한다")
+    void retrieve_failure_logsExplorationRound() {
+        when(
+                llm.complete(
+                        eq(scope),
+                        any(),
+                        any()
+                )
+        ).thenThrow(
+                new SearchToolException(
+                        "LLM_TIMEOUT",
+                        new IllegalStateException("private-provider-message")
+                )
+        );
+
+        try (LogCapture logs = new LogCapture(SearchMcpDocumentRetriever.class)) {
+            assertThatThrownBy(
+                    () -> retriever.retrieve(
+                            scope,
+                            "private-question"
+                    )
+            ).hasMessage("LLM_TIMEOUT");
+
+            assertThat(logs.events()).filteredOn(
+                    event -> event.getFormattedMessage()
+                            .contains("Search exploration llm_round")
+            )
+                    .singleElement()
+                    .satisfies(
+                            event -> assertThat(event.getFormattedMessage()).contains(
+                                    "round=1",
+                                    "outcome=failure",
+                                    "failureCode=LLM_TIMEOUT"
+                            )
+                                    .doesNotContain(
+                                            "private-question",
+                                            "private-provider-message"
+                                    )
+                    );
+        }
+    }
+
+    @Test
     @DisplayName("같은 도구 입력을 반복하면 모델에 입력 변경 또는 탐색 종료를 안내한다")
     void retrieve_success_repeatedToolCallReturnsGuidance() {
         org.mockito.ArgumentCaptor<List<Map<String, Object>>> messages = org.mockito.ArgumentCaptor.captor();
@@ -737,10 +862,38 @@ class SearchMcpDocumentRetrieverTest {
                 )
         ).thenReturn(mapper.readTree("{\"items\":[]}"));
 
-        SearchRetrievalResult result = retriever.retrieve(
-                scope,
-                "질문"
-        );
+        SearchRetrievalResult result;
+        try (LogCapture logs = new LogCapture(SearchMcpDocumentRetriever.class)) {
+            result = retriever.retrieve(
+                    scope,
+                    "질문"
+            );
+            assertThat(logs.events()).filteredOn(
+                    event -> event.getFormattedMessage()
+                            .contains("Search exploration tool_call")
+            )
+                    .hasSize(2)
+                    .anySatisfy(
+                            event -> assertThat(event.getFormattedMessage()).contains(
+                                    "round=1",
+                                    "toolCallIndex=1",
+                                    "toolName=list_documents",
+                                    "repeated=false",
+                                    "resultCount=0",
+                                    "outcome=success"
+                            )
+                    )
+                    .anySatisfy(
+                            event -> assertThat(event.getFormattedMessage()).contains(
+                                    "round=2",
+                                    "toolCallIndex=2",
+                                    "toolName=list_documents",
+                                    "repeated=true",
+                                    "resultCount=0",
+                                    "outcome=repeated"
+                            )
+                    );
+        }
 
         assertThat(result.documents()).isEmpty();
         verify(

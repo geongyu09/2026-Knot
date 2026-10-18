@@ -12,6 +12,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.knot.backend.global.config.RecordingAudioChunksProperties;
+import com.knot.backend.member.domain.MemberRepository;
 import com.knot.backend.recording.application.dto.command.RecordingControlCommand;
 import com.knot.backend.recording.application.dto.result.RecordingEndResult;
 import com.knot.backend.recording.application.dto.result.RecordingHeartbeatResult;
@@ -55,7 +57,7 @@ class RecordingControlServiceTest {
     private WorkspaceMemberRepository workspaceMemberRepository;
     private RecordingSessionRepository recordingSessionRepository;
     private RecordingControlTokenHasher hasher;
-    private RecordingControlService service;
+    private RecordingService service;
 
     @BeforeEach
     void setUp() {
@@ -65,20 +67,23 @@ class RecordingControlServiceTest {
         hasher = mock(RecordingControlTokenHasher.class);
         when(hasher.hash(CONTROL_TOKEN)).thenReturn(HASH);
         when(hasher.hash(OTHER_CONTROL_TOKEN)).thenReturn(OTHER_HASH);
-        service = new RecordingControlService(
+        service = new RecordingService(
                 new RecordingAccess(
                         workspaceRepository,
                         workspaceMemberRepository,
                         recordingSessionRepository,
                         hasher
                 ),
+                mock(MemberRepository.class),
                 recordingSessionRepository,
+                hasher,
                 Clock.fixed(
                         NOW,
                         ZoneOffset.UTC
                 ),
                 mock(RecordingAudioSealing.class),
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository.class),
+                new RecordingAudioChunksProperties(false),
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository.class)
         );
     }

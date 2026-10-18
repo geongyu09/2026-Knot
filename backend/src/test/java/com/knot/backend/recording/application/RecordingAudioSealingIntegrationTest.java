@@ -51,7 +51,7 @@ class RecordingAudioSealingIntegrationTest {
     @Autowired
     private RecordingAudioChunkService service;
     @Autowired
-    private RecordingControlService controls;
+    private RecordingService controls;
     @Autowired
     private RecordingConnectionExpiryTransaction expiry;
     @Autowired
