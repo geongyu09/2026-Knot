@@ -144,3 +144,10 @@ export interface RecordingAudioChunkReserveResponse {
   /** PUT에 그대로 실을 헤더. VERIFIED면 빈 객체 */
   requiredHeaders: Record<string, string>;
 }
+
+export interface RecordingAudioChunkCompleteResponse {
+  sequence: number;
+  status: RecordingAudioChunkStatus;
+  /** 첫 조각부터 빈틈없이 확인된 끝 프레임(제외) */
+  verifiedThroughFrame: number;
+}

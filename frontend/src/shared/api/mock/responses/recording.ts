@@ -8,6 +8,7 @@ import {
 } from "@api/mock/responses/documentGenerationJob";
 import type {
   CurrentRecordingResponse,
+  RecordingAudioChunkCompleteResponse,
   RecordingAudioChunkReserveResponse,
   RecordingAudioUploadCompleteResponse,
   RecordingAudioUploadUrlResponse,
@@ -217,3 +218,9 @@ export const recordingAudioChunkReserveResponse = {
     "x-amz-checksum-sha256": SILENT_CHUNK_CHECKSUM,
   },
 } satisfies RecordingAudioChunkReserveResponse;
+
+export const recordingAudioChunkCompleteResponse = {
+  sequence: 1,
+  status: "VERIFIED",
+  verifiedThroughFrame: 80000,
+} satisfies RecordingAudioChunkCompleteResponse;
