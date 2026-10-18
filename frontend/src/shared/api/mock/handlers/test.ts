@@ -9,6 +9,7 @@ import {
 } from "@api/dto/document";
 import {
   GetCurrentRecordingResponseDto,
+  GetRecordingAudioSaveResponseDto,
   GetRecordingResponseDto,
   PostRecordingAudioChunkCompleteResponseDto,
   PostRecordingAudioChunkResponseDto,
@@ -81,6 +82,7 @@ import { startRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/re
 import { getRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]";
 import { reserveRecordingAudioChunkApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioChunks";
 import { completeRecordingAudioChunkApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioChunks/[sequence]/complete";
+import { getRecordingAudioSaveApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioSave";
 import { completeRecordingAudioUploadApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioUploadComplete";
 import {
   issueRecordingAudioUploadUrlApi,
@@ -104,6 +106,7 @@ import {
   currentRecordingResponse,
   recordingAudioChunkCompleteResponse,
   recordingAudioChunkReserveResponse,
+  recordingAudioSaveResponse,
   recordingAudioUploadCompleteResponse,
   recordingAudioUploadUrlResponse,
   recordingDetailsResponse,
@@ -897,6 +900,17 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
           ...recordingAudioChunkCompleteResponse,
           sequence,
         }),
+      );
+    });
+
+    it("GET .../recordings/:recordingId/audio-save는 recordingAudioSaveResponse를 돌려준다", async () => {
+      await expect(
+        getRecordingAudioSaveApi({
+          workspaceId: WORKSPACE_ID,
+          recordingId: RECORDING_ID,
+        }),
+      ).resolves.toEqual(
+        new GetRecordingAudioSaveResponseDto(recordingAudioSaveResponse),
       );
     });
 

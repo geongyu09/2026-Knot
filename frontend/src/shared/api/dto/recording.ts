@@ -12,6 +12,7 @@
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-upload-complete
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-chunks
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-chunks/{sequence}/complete
+ * - GET  /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-save
  */
 
 /** 녹음 세션 상태. 시작·일시정지·재개·종료 응답과 녹음 상세 조회가 공유하는 서버 값. `DISCARDED`는 서버가 버린 녹음이에요 */
@@ -741,5 +742,30 @@ export class PostRecordingAudioChunkCompleteResponseDto {
     this.sequence = raw.sequence;
     this.status = raw.status;
     this.verifiedThroughFrame = raw.verifiedThroughFrame;
+  }
+}
+
+// GET /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-save
+
+/** 저장 상태 조회의 서버 응답 모양. 확인 범위·누락 범위·품질·재시도 가능 여부 필드는 화면에서 쓰지 않아 담지 않아요 */
+export interface GetRecordingAudioSaveResponseRaw {
+  audioSaveStatus: RecordingAudioSaveStatus;
+  failureCode: string | null;
+  acceptUntil: string | null;
+}
+
+/** PCM 조각 녹음의 저장 상태 조회 응답. 조회해도 생존 신호는 갱신되지 않아요 */
+export class GetRecordingAudioSaveResponseDto {
+  /** 저장 상태 */
+  audioSaveStatus: RecordingAudioSaveStatus;
+  /** `FAILED`일 때의 실패 이유 코드(예: `AUDIO_NO_CONTENT`). 실패가 아니면 null */
+  failureCode: string | null;
+  /** 종료 뒤 남은 조각을 받아 주는 시한(ISO 8601). 종료 전이면 null */
+  acceptUntil: string | null;
+
+  constructor(raw: GetRecordingAudioSaveResponseRaw) {
+    this.audioSaveStatus = raw.audioSaveStatus;
+    this.failureCode = raw.failureCode;
+    this.acceptUntil = raw.acceptUntil;
   }
 }
