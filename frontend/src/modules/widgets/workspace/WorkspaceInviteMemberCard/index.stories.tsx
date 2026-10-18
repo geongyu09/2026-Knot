@@ -22,7 +22,7 @@ const HOME_PATH = getRouterPath({
  * - 「초대 코드 복사」를 누르면 6자 코드를 복사하고, 글자가 2초 동안 「복사됨」으로 바뀌어요.
  * - 복사 결과를 알림창으로 띄우지 않아요. 클립보드에 쓰지 못하면 화면 변화 없이 넘어가요.
  * - 초대를 받아 오기 전에는 두 버튼을 모두 막아 빈 값이 복사되지 않게 해요.
- * - 초대를 받아 오지 못해도 카드는 그대로 두고 버튼만 막아요. 다른 화면으로 보낼지는 워크스페이스 화면 전체가 정해요.
+ * - 초대를 받아 오지 못하면 제목은 두고 링크 칸과 「초대 코드 복사」 자리에 실패 안내와 「다시 시도」를 둬요. 「다시 시도」는 이 카드의 초대만 다시 받아 와요. 다른 화면으로 보낼지는 워크스페이스 화면 전체가 정해요.
  */
 const meta = {
   title: "Workspace/WorkspaceInviteMemberCard",
@@ -80,6 +80,25 @@ export const Loading: Story = {
           },
         ),
       },
+    },
+  },
+};
+
+/** 초대를 받아 오지 못했을 때예요. 예: 홈에 들어왔는데 서버가 잠시 답하지 못한 경우 */
+export const LoadFailed: Story = {
+  parameters: {
+    docs: { story: { inline: false, iframeHeight: 240 } },
+    msw: {
+      handlers: {
+        workspaceInvitations: http.post(
+          `*${WORKSPACE_INVITATIONS_API_PATH(WORKSPACE_ID)}`,
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      },
+    },
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3892-15614",
     },
   },
 };

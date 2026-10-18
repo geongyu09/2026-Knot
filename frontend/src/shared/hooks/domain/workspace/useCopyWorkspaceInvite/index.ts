@@ -18,6 +18,7 @@ interface CopyInviteParams {
  * 코드와 링크 토큰은 활성 초대 조회(`useWorkspaceInvitationQuery`)의 응답에서 와요.
  * 아직 응답이 없으면 `inviteCode`·`inviteLink`·`displayInviteLink`는 `undefined`이고 복사 함수는 아무것도 하지 않아요.
  * 조회 실패는 여기서 판정하지 않고 `error`로 돌려주니, 이동이 필요하면 쓰는 쪽에서 `useWorkspaceAccessGuard`에 넘기세요.
+ * 실패 안내에서 다시 받으려면 `retryInvitation`을 불러요. 활성 초대 조회만 다시 보내요.
  *
  * 복사 뒤의 피드백(`복사됨` 표시 등)은 화면마다 다르므로 여기서 정하지 않고
  * `onCopySuccess`로 쓰는 쪽에 맡깁니다. 클립보드에 쓰지 못하면 조용히 넘어가요.
@@ -30,6 +31,7 @@ const useCopyWorkspaceInvite = ({
     data: invitation,
     isPending,
     error,
+    refetch,
   } = useWorkspaceInvitationQuery({ workspaceId });
 
   const inviteCode = invitation?.code;
@@ -55,6 +57,9 @@ const useCopyWorkspaceInvite = ({
     displayInviteLink,
     isLoading: isPending,
     error,
+    retryInvitation: () => {
+      refetch();
+    },
     copyInviteCode,
     copyInviteLink,
   };
