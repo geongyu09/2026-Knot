@@ -8,11 +8,13 @@ import com.knot.backend.recording.domain.model.AudioManifestPart;
 import com.knot.backend.recording.domain.model.StoredAudioChunk;
 import java.io.InputStream;
 import java.nio.file.Path;
+import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.ChecksumMode;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
@@ -64,6 +66,75 @@ public class S3RecordingAudioFinalStorage implements RecordingAudioFinalStorage 
                     RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE,
                     exception
             );
+        }
+    }
+
+    @Override
+    public InputStream openFinalRange(
+            String storageKey,
+            String versionId,
+            long firstByte,
+            long byteLength
+    ) {
+        if (versionId == null || versionId.isBlank() || "null".equals(versionId) || firstByte < 0 || byteLength <= 0
+                || firstByte > Long.MAX_VALUE - byteLength) {
+            throw new RecordingException(RecordingErrorCode.AUDIO_CHUNK_MISMATCH);
+        }
+        long lastByte = firstByte + byteLength - 1;
+        try {
+            ResponseInputStream<GetObjectResponse> response = client.getObject(
+                    GetObjectRequest.builder()
+                            .bucket(bucket)
+                            .key(keyPrefix + storageKey)
+                            .versionId(versionId)
+                            .range("bytes=" + firstByte + "-" + lastByte)
+                            .build()
+            );
+            String contentRange = response.response()
+                    .contentRange();
+            String expectedPrefix = "bytes " + firstByte + "-" + lastByte + "/";
+            if (response.response()
+                    .contentLength() == null
+                    || response.response()
+                            .contentLength() != byteLength
+                    || contentRange == null || !contentRange.startsWith(expectedPrefix)
+                    || !validRangeTotal(
+                            contentRange.substring(expectedPrefix.length()),
+                            lastByte
+                    ) || response.response()
+                            .versionId() == null
+                    || !versionId.equals(
+                            response.response()
+                                    .versionId()
+                    )) {
+                response.abort();
+                throw new RecordingException(RecordingErrorCode.AUDIO_CHUNK_MISMATCH);
+            }
+            return response;
+        } catch (S3Exception exception) {
+            if (exception.statusCode() == 403 || exception.statusCode() == 401) {
+                throw new AudioStorageAccessDeniedException(exception);
+            }
+            throw new RecordingException(
+                    RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE,
+                    exception
+            );
+        } catch (SdkException exception) {
+            throw new RecordingException(
+                    RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE,
+                    exception
+            );
+        }
+    }
+
+    private boolean validRangeTotal(
+            String value,
+            long lastByte
+    ) {
+        try {
+            return value.matches("[1-9][0-9]*") && Long.parseLong(value) > lastByte;
+        } catch (NumberFormatException exception) {
+            return false;
         }
     }
 

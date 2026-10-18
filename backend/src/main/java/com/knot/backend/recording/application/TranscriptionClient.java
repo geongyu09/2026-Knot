@@ -21,4 +21,12 @@ public interface TranscriptionClient {
             Integer speakerCount
     );
     AiTranscriptionJob get(UUID attemptId);
+
+    default AiTranscriptionJob submitWindow(
+            UUID attemptId,
+            String downloadUrl,
+            com.knot.backend.recording.application.dto.command.AiWindowInput window
+    ) {
+        throw new UnsupportedOperationException("구간 전사를 지원하지 않는 클라이언트입니다.");
+    }
 }

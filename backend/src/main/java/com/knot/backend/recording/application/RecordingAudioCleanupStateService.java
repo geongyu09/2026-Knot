@@ -12,6 +12,8 @@ import com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRe
 import com.knot.backend.recording.domain.repository.RecordingAudioStreamRepository;
 import com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository;
 import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
+import com.knot.backend.recording.domain.repository.RecordingTranscriptionWindowRepository;
+import com.knot.backend.recording.domain.repository.RecordingTranscriptionInputRepository;
 import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.time.Clock;
 import java.time.Instant;
@@ -31,6 +33,8 @@ public class RecordingAudioCleanupStateService {
     private final WorkspaceRepository workspaces;
     private final RecordingAudioStreamRepository streams;
     private final RecordingAudioFinalizationRepository finalizations;
+    private final RecordingTranscriptionWindowRepository windows;
+    private final RecordingTranscriptionInputRepository transcriptionInputs;
     private final RetentionCleanupProperties properties;
     private final Clock clock;
 
@@ -72,6 +76,8 @@ public class RecordingAudioCleanupStateService {
             return;
         }
         if (policy.scope() == RecordingAudioCleanupScope.ALL) {
+            windows.cancelAllByRecordingId(recordingId);
+            transcriptionInputs.cancelByRecordingId(recordingId);
             upload.ifPresent(value -> value.revoke(now));
             streams.findByRecordingIdForUpdate(recordingId)
                     .ifPresent(stream -> stream.freeze());

@@ -103,6 +103,10 @@ public class RecordingService {
                     now(),
                     command.audioMode()
             );
+            if (session.getAudioMode() == RecordingAudioMode.PCM16_CHUNKS_V1
+                    && audioChunksProperties.incrementalEnabled()) {
+                session.enableIncrementalTranscription("pcm-window-v1-30-5");
+            }
             RecordingSession saved = recordingSessionRepository.save(session);
             if (saved.getAudioMode() == RecordingAudioMode.PCM16_CHUNKS_V1) {
                 recordingAudioStreamRepository.save(RecordingAudioStream.create(saved.getId()));

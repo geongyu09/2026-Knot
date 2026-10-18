@@ -57,6 +57,9 @@ public class RecordingSession {
     @Column(name = "audio_mode", nullable = false, updatable = false, length = 30)
     private RecordingAudioMode audioMode;
 
+    @Column(length = 64, updatable = false)
+    private String incrementalPipelineVersion;
+
     @Column(name = "started_at", nullable = false, updatable = false)
     private Instant startedAt;
 
@@ -81,6 +84,14 @@ public class RecordingSession {
     private long accumulatedRecordingMillis;
 
     protected RecordingSession() {}
+
+    public void enableIncrementalTranscription(String pipelineVersion) {
+        if (id != null || audioMode != RecordingAudioMode.PCM16_CHUNKS_V1 || pipelineVersion == null
+                || pipelineVersion.isBlank() || pipelineVersion.length() > 64 || incrementalPipelineVersion != null) {
+            throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
+        }
+        incrementalPipelineVersion = pipelineVersion;
+    }
 
     private RecordingSession(
             Long workspaceId,

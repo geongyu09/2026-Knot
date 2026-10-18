@@ -256,6 +256,73 @@ class S3RecordingAudioFinalStorageTest {
         assertThat(failure).isInstanceOf(com.knot.backend.recording.domain.AudioStorageAccessDeniedException.class);
     }
 
+    @Test
+    void openFinalRange_requestsExactVersionAndByteRange() throws Exception {
+        // given
+        ResponseInputStream<GetObjectResponse> response = new ResponseInputStream<>(
+                GetObjectResponse.builder()
+                        .contentLength(4L)
+                        .contentRange("bytes 46-49/52")
+                        .versionId("final-v1")
+                        .build(),
+                AbortableInputStream.create(new java.io.ByteArrayInputStream(new byte[4]))
+        );
+        when(client.getObject(any(GetObjectRequest.class))).thenReturn(response);
+
+        // when
+        java.io.InputStream result = storage.openFinalRange(
+                "final.wav",
+                "final-v1",
+                46,
+                4
+        );
+
+        // then
+        try (result) {
+            assertThat(result.readAllBytes()).hasSize(4);
+        }
+        ArgumentCaptor<GetObjectRequest> request = ArgumentCaptor.forClass(GetObjectRequest.class);
+        verify(client).getObject(request.capture());
+        assertThat(
+                request.getValue()
+                        .range()
+        ).isEqualTo("bytes=46-49");
+        assertThat(
+                request.getValue()
+                        .versionId()
+        ).isEqualTo("final-v1");
+        assertThat(
+                request.getValue()
+                        .key()
+        ).isEqualTo("prefix/final.wav");
+    }
+
+    @Test
+    void openFinalRange_rejectsIgnoredRange() {
+        // given
+        ResponseInputStream<GetObjectResponse> response = new ResponseInputStream<>(
+                GetObjectResponse.builder()
+                        .contentLength(52L)
+                        .versionId("final-v1")
+                        .build(),
+                AbortableInputStream.create(new java.io.ByteArrayInputStream(new byte[52]))
+        );
+        when(client.getObject(any(GetObjectRequest.class))).thenReturn(response);
+
+        // when
+        Throwable failure = catchThrowable(
+                () -> storage.openFinalRange(
+                        "final.wav",
+                        "final-v1",
+                        46,
+                        4
+                )
+        );
+
+        // then
+        assertThat(failure).isInstanceOf(RecordingException.class);
+    }
+
     private HeadObjectResponse head() {
         return HeadObjectResponse.builder()
                 .contentLength(44L)
