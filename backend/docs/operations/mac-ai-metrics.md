@@ -4,6 +4,8 @@ AI 앱의 인증된 localhost 지표를 기존 Mac Alloy가 5초마다 수집한
 옵트인 설치와 복구를 다룬다. 앱 구현은 상위 [Issue #775](https://github.com/woowacourse-teams/2026-knot/issues/775),
 수집·화면 연결은 [Issue #779](https://github.com/woowacourse-teams/2026-knot/issues/779) 범위다.
 [Mac 호스트 수집](mac-host-metrics.md)과 [중앙 EC2 운영](mac-monitoring-ec2.md)이 먼저 준비되어야 한다.
+운영 앱 연결은 [service 연결·복구 절차](mac-ai-service.md)를 먼저 따른다.
+아래 수동 설치 예제는 별도 검증 앱을 연결할 때 사용한다.
 
 ## 관측 대상과 의미
 
@@ -14,7 +16,8 @@ AI 앱의 인증된 localhost 지표를 기존 Mac Alloy가 5초마다 수집한
 - `job=mac-ai`, `instance=knot-ai-macmini`, `ai_scope=validation|service`로 대상을 구분한다.
   `project=knot`, `env=shared`, `host_role=ai`는 기존 remote_write의 external_labels를 유지한다.
 - 모듈 기본 scope는 `service`다. 검증 설치에서는 주소와 scope를 모두 명시한다.
-  Grafana의 관측 대상 기본값은 `validation`이며 서비스 운영 상태로 해석하지 않는다.
+  Grafana의 관측 대상 기본값은 `service`다. 검증 앱을 볼 때는 `validation`을 직접 선택한다.
+  기본값 변경만으로 운영 앱에 수집기가 연결되는 것은 아니다.
 - `up`은 지표 수집 성공이다. 앱 준비 상태와 작업 진행 여부는 서로 다른 지표다.
   준비 상태가 1이어도 이미 작업 중일 수 있다.
 - 호스트 자원은 기존 `Mac AI 서버 자원` 대시보드에서 같은 시각을 확인한다. 호스트 전체의
@@ -46,10 +49,12 @@ AI 앱의 인증된 localhost 지표를 기존 Mac Alloy가 5초마다 수집한
 - `KNOT_ALLOY_BINARY`: 현재 LaunchAgent가 사용하는 Alloy 바이너리
 - `KNOT_MAC_CONFIG_DIR`: `~/Library/Application Support/Knot/observability`
 - `KNOT_INGEST_BASE_URL`: 현재 중앙 HTTPS 주소
-- `KNOT_AI_METRICS_TOKEN_FILE`: AI 앱과 Alloy가 읽는 전용 토큰 파일의 절대 경로
+- `KNOT_AI_METRICS_TOKEN_FILE`: 기존 AI 앱 토큰을 보관한 비공개 파일의 절대 경로
 
 토큰은 앱의 인증 설정과 일치해야 한다. 기존 비공개 토큰을 파일로 준비하고 값은 터미널 인자·
-셸 이력·저장소에 넣지 않는다. 파일 소유자는 AI 실행 계정, 권한은 `0600`, 부모 디렉터리는
+셸 이력·저장소에 넣지 않는다. 현재 앱의 `AI_APP_TOKEN`을 재사용하며, 지표 전용 읽기 권한이
+새로 생기는 것은 아니다. 이 토큰으로 AI 작업 API에도 접근할 수 있으므로 같은 실행 계정에서만 보관한다.
+파일 소유자는 AI 실행 계정, 권한은 `0600`, 부모 디렉터리는
 `0700`으로 둔다. root로 준비했다면 실행 계정 소유로 넘긴다. `root:0600` 상태의 파일은 일반
 사용자의 Alloy가 읽을 수 없다. 인증서 키나 Grafana 비밀번호를 지표 토큰으로 재사용하지 않는다.
 
@@ -130,7 +135,7 @@ fi
 [중앙 runbook](mac-monitoring-ec2.md)을 따른다. 이 파일만 추가하는 데 중앙 앱 재배포나
 새로운 포트가 필요하지 않다. 파일 provider의 갱신 주기 이후 `Mac AI 전사 진행` 화면을 연다.
 
-SSH 터널로 접속한 Grafana에서 관측 대상이 `validation`인지 확인하고 다음을 대조한다.
+Grafana에서 검증 앱의 관측 대상을 `validation`으로 선택하고 다음을 대조한다.
 
 1. `up{job="mac-ai",ai_scope="validation"}`의 최신 표본이 5초 간격으로 두 번 이상 갱신된다.
 2. 기존 `up{job="mac-host"}`도 계속 갱신되고 project/env/instance가 의도한 값이다.
