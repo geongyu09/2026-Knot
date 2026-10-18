@@ -17,8 +17,8 @@ import { expect, test, type Page } from "@playwright/test";
 /**
  * 워크스페이스 홈 화면(`/workspace/:workspaceId`) E2E.
  *
- * 홈 진입, 사이드바 열고 닫기, 문서 목록의 폴더 펼침·접힘과 문서 이동, 초대 링크·코드 복사,
- * 하단 Dock으로 탐색 이동까지 홈 화면 위에서 사용자가 밟는 플로우를 페이지 단위로 확인해요.
+ * 홈 진입, 사이드바 열고 닫기, 문서 목록의 폴더 펼침·접힘과 문서 이동, 초대 링크·코드 복사까지
+ * 홈 화면 위에서 사용자가 밟는 플로우를 페이지 단위로 확인해요.
  * 회원·워크스페이스·초대·최근 문서·사이드바 문서 목록은 dev 서버의 msw mock 응답(`API_MOCKING`)에서 오므로
  * 기대값도 같은 응답을 DTO로 변환해 가져와요.
  */
@@ -39,7 +39,6 @@ const FOLDER_DOCUMENTS = expectedDocuments.items.filter(
 const WORKSPACE_ID = new GetWorkspacesResponseDto(workspacesResponse)
   .workspaces[0].id;
 const HOME_PATH = `/workspace/${WORKSPACE_ID}`;
-const CHAT_PATH = `${HOME_PATH}/chat`;
 
 const GREETING = `반가워요, ${expectedMe.nickname} 님`;
 // 최근 추가된 문서 카드는 최신순 문서 가운데 앞의 세 개를 보여 줘요
@@ -76,9 +75,6 @@ const getFolderRow = ({ page, name }: GetFolderRowParams) =>
     name: new RegExp(`^${escapeRegExp(name)}\\s*\\d+$`),
   });
 
-const getDock = (page: Page) =>
-  page.getByRole("navigation", { name: "주요 화면 이동" });
-
 interface GetCardParams {
   page: Page;
   title: string;
@@ -101,7 +97,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe("홈 진입", () => {
-  test("인사말, 카드 세 개, 하단 Dock을 보여주고 사이드바는 닫혀 있다", async ({
+  test("인사말과 카드 세 개를 보여주고 사이드바는 닫혀 있다", async ({
     page,
   }) => {
     await expect(page.getByRole("heading", { name: GREETING })).toBeVisible();
@@ -133,27 +129,11 @@ test.describe("홈 진입", () => {
       inviteCard.getByRole("button", { name: "초대 코드 복사" }),
     ).toBeVisible();
 
-    const dock = getDock(page);
-    await expect(dock.getByRole("button", { name: "홈" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
-    await expect(
-      dock.getByRole("button", { name: /^탐색/ }),
-    ).not.toHaveAttribute("aria-current");
-
     await expect(getSidebarToggle(page)).toHaveAttribute(
       "aria-expanded",
       "false",
     );
     await expect(getSidebar(page)).toBeHidden();
-  });
-
-  test("홈에서 Dock의 홈을 눌러도 화면이 바뀌지 않는다", async ({ page }) => {
-    await getDock(page).getByRole("button", { name: "홈" }).click();
-
-    await expect(page).toHaveURL(HOME_PATH);
-    await expect(page.getByRole("heading", { name: GREETING })).toBeVisible();
   });
 });
 
@@ -298,45 +278,5 @@ test.describe("팀원 초대 카드", () => {
 
     // 2초 뒤 원래 `초대 코드 복사`로 돌아와요
     await expect(copyCodeButton).toBeVisible();
-  });
-});
-
-test.describe("하단 Dock", () => {
-  test("탐색을 누르면 탐색 화면으로 이동하고, 뒤로 가기로 홈에 돌아온다", async ({
-    page,
-  }) => {
-    await getDock(page).getByRole("button", { name: /^탐색/ }).click();
-
-    await expect(page).toHaveURL(CHAT_PATH);
-    await expect(
-      page.getByRole("textbox", { name: "무엇이든 요청하세요" }),
-    ).toBeVisible();
-
-    await page.goBack();
-
-    await expect(page).toHaveURL(HOME_PATH);
-    await expect(page.getByRole("heading", { name: GREETING })).toBeVisible();
-    await expect(
-      getDock(page).getByRole("button", { name: "홈" }),
-    ).toHaveAttribute("aria-current", "page");
-  });
-
-  test("열어 둔 사이드바는 탐색 화면으로 넘어가도 열린 채로 유지된다", async ({
-    page,
-  }) => {
-    await getSidebarToggle(page).click();
-    await expect(getSidebar(page)).toBeVisible();
-
-    await getDock(page).getByRole("button", { name: /^탐색/ }).click();
-
-    await expect(page).toHaveURL(CHAT_PATH);
-    await expect(getSidebar(page)).toBeVisible();
-    await expect(getSidebarToggle(page)).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
-    await expect(
-      getSidebar(page).getByText(expectedWorkspace.name),
-    ).toBeVisible();
   });
 });
