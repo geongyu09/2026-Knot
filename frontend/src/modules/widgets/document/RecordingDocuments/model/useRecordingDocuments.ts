@@ -42,7 +42,9 @@ const isRetryRejectedError = (error: unknown) =>
  *   서버가 버린 녹음처럼 정리 상태를 정할 수 없는 응답은 보여 줄 화면이 없어 `loadFailed`예요.
  *   `failed`에서 다시 시도할 수 있으면 `retryGeneration`이 있어요.
  *
- * 전사가 실패했으면(`transcriptionStatus`가 `FAILED`) 문서 만들기가 접수되지 않아 다시 시도할 작업이 없고,
+ * 전사가 실패했으면(`transcriptionStatus`가 `FAILED`) `failed`와 함께 `isTranscriptionFailed`가 `true`예요.
+ * 화면은 이 값으로 전사 실패와 문서 생성 실패를 제목으로 나눠요(STT-R22).
+ * 전사가 실패했으면 문서 만들기가 접수되지 않아 다시 시도할 작업이 없고,
  * 대신 실패 코드와 녹음 방식(PCM · WebM)에 관계없이 `retryGeneration`이 전사부터 다시 접수해요.
  * 접수되면 녹음 상태를 다시 받아 전사 중, 곧 정리 중으로 돌아가요. 그 조회가 끝날 때까지 다시 시도 중(`isRetrying`)이에요.
  * 거절(409 · 404 · 5xx · 네트워크)은 종류를 가리지 않고 콘솔에 오류 코드만 남기고 버튼을 유지해요. 화면은 그 뒤의 녹음 조회 결과를 따라요.
@@ -219,6 +221,7 @@ export const useRecordingDocuments = ({
 
   return {
     viewStatus,
+    isTranscriptionFailed,
     retryLoad,
     retryGeneration: isTranscriptionFailed
       ? retryTranscription

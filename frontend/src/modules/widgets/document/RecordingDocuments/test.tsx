@@ -76,6 +76,7 @@ const acceptRetry = (jobId: number) =>
 
 const ORGANIZING_TITLE = "회의 내용을 바탕으로 문서를 정리하고 있어요";
 const FAILED_TITLE = "문서를 만들지 못했어요";
+const TRANSCRIPTION_FAILED_TITLE = "녹음을 글로 옮기지 못했어요";
 const NO_CONTENT_TITLE = "문서로 만들 내용이 없었어요";
 const LOAD_FAILED_TITLE = "문서를 불러오지 못했어요";
 const RECORDING_KEPT_NOTICE = "녹음은 보관해 두었어요.";
@@ -1172,7 +1173,7 @@ describe("RecordingDocuments", () => {
         },
       },
     ] satisfies { reason: string; detail: RecordingDetailResponse }[])(
-      "전사에 실패했으면($reason) 녹음을 보관했다고 알리고 다시 시도 버튼을 보여준다",
+      "전사에 실패했으면($reason) 녹음을 글로 옮기지 못했다고 알리고, 녹음을 보관했다는 설명과 다시 시도 버튼을 보여준다",
       async ({ detail }) => {
         mockServer.use(
           http.get(RECORDING_REQUEST, () => HttpResponse.json(detail)),
@@ -1180,7 +1181,10 @@ describe("RecordingDocuments", () => {
         renderRecordingDocuments(transcriptionFailedRecording.recordingId);
 
         expect(
-          await screen.findByRole("heading", { level: 2, name: FAILED_TITLE }),
+          await screen.findByRole("heading", {
+            level: 2,
+            name: TRANSCRIPTION_FAILED_TITLE,
+          }),
         ).toBeInTheDocument();
         expect(screen.getByText(RECORDING_KEPT_NOTICE)).toBeInTheDocument();
         expect(
