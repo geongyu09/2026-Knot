@@ -2,7 +2,6 @@ package com.knot.backend.recording.infrastructure.transcription;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
-
 import com.knot.backend.global.config.TranscriptionConfig;
 import com.knot.backend.global.config.TranscriptionProperties;
 import com.knot.backend.recording.application.dto.result.AiTranscript;
@@ -29,7 +28,7 @@ class AiTranscriptionHttpClientTest {
     private static final String PATH = "/api/v1/transcription-jobs";
     private static final UUID ID = UUID.fromString("019bbbc0-51ae-7000-8000-000000000001");
 
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
     @DisplayName("접수에 필요한 두 필드와 인증 헤더를 전송하며 HTTP 202와 작업 상태를 구분한다")
@@ -62,7 +61,7 @@ class AiTranscriptionHttpClientTest {
             ).hasSize(1);
             assertThat(method.get()).isEqualTo("POST");
             assertThat(server.authorization()).isEqualTo("Bearer test-secret");
-            JsonNode request = mapper.readTree(server.requestBody());
+            JsonNode request = objectMapper.readTree(server.requestBody());
             assertThat(request.size()).isEqualTo(2);
             assertThat(
                     request.path("attemptId")
@@ -179,8 +178,8 @@ class AiTranscriptionHttpClientTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"401, AI_AUTHENTICATION_FAILED", "403, AI_AUTHENTICATION_FAILED", "404, AI_JOB_NOT_FOUND",
-            "409, AI_BUSY", "503, AI_NOT_READY", "500, AI_UNAVAILABLE", "400, AI_INVALID_RESPONSE",
+    @CsvSource({"401, AI_AUTHENTICATION_FAILED", "403, AI_AUTHENTICATION_FAILED", "404, AI_INVALID_RESPONSE",
+            "409, AI_INVALID_RESPONSE", "503, AI_UNAVAILABLE", "500, AI_UNAVAILABLE", "400, AI_INVALID_RESPONSE",
             "302, AI_INVALID_RESPONSE", "202, AI_INVALID_RESPONSE"})
     @DisplayName("HTTP 오류를 구분하고 자동 재시도나 리다이렉트 없이 정적 오류를 반환한다")
     void get_failure_status(
@@ -381,7 +380,7 @@ class AiTranscriptionHttpClientTest {
     }
 
     private String succeeded() {
-        return mapper.writeValueAsString(
+        return objectMapper.writeValueAsString(
                 new AiTranscriptionJob(
                         ID,
                         AiTranscriptionJob.Status.SUCCEEDED,
@@ -406,7 +405,7 @@ class AiTranscriptionHttpClientTest {
             String status,
             String failureCode
     ) {
-        return mapper.writeValueAsString(
+        return objectMapper.writeValueAsString(
                 new AiTranscriptionJob(
                         ID,
                         AiTranscriptionJob.Status.valueOf(status),
@@ -415,6 +414,33 @@ class AiTranscriptionHttpClientTest {
                 )
         );
     }
+    @ParameterizedTest
+    @CsvSource({"404, JOB_NOT_FOUND, AI_JOB_NOT_FOUND", "409, BUSY, AI_BUSY", "503, NOT_READY, AI_NOT_READY"})
+    @DisplayName("명시한 원격 오류 코드만 작업 소실과 접수 거절로 해석한다")
+    void get_failure_confirmedRemoteCode(
+            int status,
+            String code,
+            RecordingErrorCode expected
+    ) throws Exception {
+        // given
+        try (LlmHttpServer server = new LlmHttpServer()) {
+            respond(
+                    server,
+                    status,
+                    "{\"code\":\"" + code + "\"}",
+                    new AtomicReference<>()
+            );
+            AiTranscriptionHttpClient client = client(
+                    server,
+                    Duration.ofSeconds(2)
+            );
+            // when
+            Throwable failure = catchThrowable(() -> client.get(ID));
+            // then
+            assertThat(failure).hasMessage(expected.getMessage());
+        }
+    }
+
     private void respond(
             LlmHttpServer server,
             int status,
@@ -444,7 +470,7 @@ class AiTranscriptionHttpClientTest {
             LlmHttpServer server,
             Duration timeout
     ) {
-        TranscriptionProperties properties = new TranscriptionProperties(
+        TranscriptionProperties transcriptionProperties = new TranscriptionProperties(
                 true,
                 server.baseUrl(),
                 "test-secret",
@@ -454,8 +480,8 @@ class AiTranscriptionHttpClientTest {
                 Duration.ofHours(12)
         );
         return (AiTranscriptionHttpClient) new TranscriptionConfig().transcriptionClient(
-                properties,
-                mapper
+                transcriptionProperties,
+                objectMapper
         );
     }
 }

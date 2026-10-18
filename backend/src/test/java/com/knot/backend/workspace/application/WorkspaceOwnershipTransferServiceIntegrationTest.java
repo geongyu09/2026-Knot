@@ -2,17 +2,16 @@ package com.knot.backend.workspace.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
-
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationResult;
-import com.knot.backend.workspace.domain.Workspace;
+import com.knot.backend.workspace.domain.model.Workspace;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
-import com.knot.backend.workspace.domain.WorkspaceMember;
-import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
-import com.knot.backend.workspace.domain.WorkspaceMemberRole;
-import com.knot.backend.workspace.domain.WorkspaceRepository;
+import com.knot.backend.workspace.domain.model.WorkspaceMember;
+import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.model.WorkspaceMemberRole;
+import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.List;
@@ -121,7 +120,7 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
         MembershipState targetBefore = membership(fixture.targetMembershipId());
 
         // when
-        leaveService.transferOwnership(
+        leaveService.transferOwnershipAndLeave(
                 fixture.ownerId(),
                 fixture.workspaceId(),
                 fixture.targetId()
@@ -230,7 +229,7 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
 
         // when
         Throwable thrown = catchThrowable(() -> transactionTemplate.executeWithoutResult(status -> {
-            leaveService.transferOwnership(
+            leaveService.transferOwnershipAndLeave(
                     fixture.ownerId(),
                     fixture.workspaceId(),
                     fixture.targetId()
@@ -262,7 +261,7 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
         try {
             // when
             Throwable thrown = catchThrowable(
-                    () -> leaveService.transferOwnership(
+                    () -> leaveService.transferOwnershipAndLeave(
                             fixture.ownerId(),
                             fixture.workspaceId(),
                             fixture.targetId()
@@ -295,7 +294,7 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
 
         // when
         Throwable thrown = catchThrowable(
-                () -> leaveService.transferOwnership(
+                () -> leaveService.transferOwnershipAndLeave(
                         fixture.ownerId(),
                         fixture.workspaceId(),
                         otherId
@@ -366,7 +365,7 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
         // when
         RaceResult result = race(
                 () -> transfer(fixture),
-                () -> leaveService.transferOwnership(
+                () -> leaveService.transferOwnershipAndLeave(
                         fixture.ownerId(),
                         fixture.workspaceId(),
                         otherId
@@ -549,7 +548,7 @@ class WorkspaceOwnershipTransferServiceIntegrationTest {
     }
 
     private void transfer(Fixture fixture) {
-        leaveService.transferOwnership(
+        leaveService.transferOwnershipAndLeave(
                 fixture.ownerId(),
                 fixture.workspaceId(),
                 fixture.targetId()

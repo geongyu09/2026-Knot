@@ -4,7 +4,7 @@ import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.search.application.dto.result.SearchAnswerWorkResult;
 import com.knot.backend.search.application.dto.result.SearchDocumentResult;
 import com.knot.backend.search.application.dto.result.SearchRetrievalResult;
-import com.knot.backend.search.domain.SearchIntent;
+import com.knot.backend.search.domain.model.SearchIntent;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -49,8 +49,9 @@ public class SearchAnswerWorker {
         )
                 .toMillis();
         log.info(
-                "Search latency phase=queue_wait workspaceId={} answerId={} elapsedMs={} outcome=success",
+                "Search latency phase=queue_wait workspaceId={} questionId={} answerId={} elapsedMs={} outcome=success",
                 work.workspaceId(),
+                work.questionId(),
                 answerId,
                 Math.max(
                         0,
@@ -68,8 +69,9 @@ public class SearchAnswerWorker {
         } catch (RuntimeException exception) {
             ServerErrorLogger.recordTaskFailure(
                     log,
-                    "Search generation failed workspaceId=" + work.workspaceId() + " answerId=" + answerId
-                            + " conversationId=" + work.conversationId() + " phase=generation",
+                    "Search generation failed workspaceId=" + work.workspaceId() + " questionId=" + work.questionId()
+                            + " answerId=" + answerId + " conversationId=" + work.conversationId()
+                            + " phase=generation failureCode=" + ServerErrorLogger.safeFailureCode(exception),
                     exception
             );
             executions.fail(
@@ -79,8 +81,9 @@ public class SearchAnswerWorker {
             );
         } finally {
             log.info(
-                    "Search latency phase=content_persistence workspaceId={} answerId={} count={} elapsedMs={}",
+                    "Search latency phase=content_persistence workspaceId={} questionId={} answerId={} count={} elapsedMs={}",
                     work.workspaceId(),
+                    work.questionId(),
                     answerId,
                     persistenceCount.get(),
                     persistenceNanos.get() / 1_000_000
@@ -108,8 +111,9 @@ public class SearchAnswerWorker {
                             work.question()
                     );
             log.info(
-                    "Search latency phase=intent_classification workspaceId={} answerId={} elapsedMs={} inputChars={} outcome=success intent={}",
+                    "Search latency phase=intent_classification workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} outcome=success intent={}",
                     work.workspaceId(),
+                    work.questionId(),
                     work.answerId(),
                     (System.nanoTime() - classificationStarted) / 1_000_000,
                     work.question()
@@ -118,12 +122,14 @@ public class SearchAnswerWorker {
             );
         } catch (RuntimeException exception) {
             log.info(
-                    "Search latency phase=intent_classification workspaceId={} answerId={} elapsedMs={} inputChars={} outcome=failure",
+                    "Search latency phase=intent_classification workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} outcome=failure failureCode={}",
                     work.workspaceId(),
+                    work.questionId(),
                     work.answerId(),
                     (System.nanoTime() - classificationStarted) / 1_000_000,
                     work.question()
-                            .length()
+                            .length(),
+                    ServerErrorLogger.safeFailureCode(exception)
             );
             throw exception;
         }
@@ -145,8 +151,9 @@ public class SearchAnswerWorker {
                     work.question()
             );
             log.info(
-                    "Search latency phase=document_retrieval workspaceId={} answerId={} elapsedMs={} inputChars={} candidates={} excludedDocuments={} outcome=success",
+                    "Search latency phase=document_retrieval workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} candidates={} excludedDocuments={} outcome=success",
                     work.workspaceId(),
+                    work.questionId(),
                     work.answerId(),
                     (System.nanoTime() - retrievalStarted) / 1_000_000,
                     work.question()
@@ -157,12 +164,14 @@ public class SearchAnswerWorker {
             );
         } catch (RuntimeException exception) {
             log.info(
-                    "Search latency phase=document_retrieval workspaceId={} answerId={} elapsedMs={} inputChars={} outcome=failure",
+                    "Search latency phase=document_retrieval workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} outcome=failure failureCode={}",
                     work.workspaceId(),
+                    work.questionId(),
                     work.answerId(),
                     (System.nanoTime() - retrievalStarted) / 1_000_000,
                     work.question()
-                            .length()
+                            .length(),
+                    ServerErrorLogger.safeFailureCode(exception)
             );
             throw exception;
         }
@@ -209,8 +218,9 @@ public class SearchAnswerWorker {
                         content
                 );
                 log.info(
-                        "Search latency phase=answer_generation workspaceId={} answerId={} elapsedMs={} inputChars={} documentCount={} outcome=success",
+                        "Search latency phase=answer_generation workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} documentCount={} outcome=success",
                         work.workspaceId(),
+                        work.questionId(),
                         work.answerId(),
                         (System.nanoTime() - generationStarted) / 1_000_000,
                         work.question()
@@ -219,13 +229,15 @@ public class SearchAnswerWorker {
                 );
             } catch (RuntimeException exception) {
                 log.info(
-                        "Search latency phase=answer_generation workspaceId={} answerId={} elapsedMs={} inputChars={} documentCount={} outcome=failure",
+                        "Search latency phase=answer_generation workspaceId={} questionId={} answerId={} elapsedMs={} inputChars={} documentCount={} outcome=failure failureCode={}",
                         work.workspaceId(),
+                        work.questionId(),
                         work.answerId(),
                         (System.nanoTime() - generationStarted) / 1_000_000,
                         work.question()
                                 .length(),
-                        documents.size()
+                        documents.size(),
+                        ServerErrorLogger.safeFailureCode(exception)
                 );
                 throw exception;
             }

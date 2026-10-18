@@ -3,7 +3,7 @@ package com.knot.backend.document.application;
 import com.knot.backend.document.application.dto.query.DocumentListParameters;
 import com.knot.backend.document.application.dto.result.DocumentCardResult;
 import com.knot.backend.document.application.dto.result.DocumentTopicResult;
-import com.knot.backend.document.domain.DocumentCursor;
+import com.knot.backend.document.domain.model.DocumentCursor;
 import java.util.List;
 
 public interface DocumentListQuery {

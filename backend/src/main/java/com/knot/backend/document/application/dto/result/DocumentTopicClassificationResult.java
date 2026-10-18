@@ -1,6 +1,6 @@
 package com.knot.backend.document.application.dto.result;
 
-import com.knot.backend.document.domain.DocumentTopic;
+import com.knot.backend.document.domain.model.DocumentTopic;
 import java.util.List;
 
 public record DocumentTopicClassificationResult(List<DocumentTopic> topics) {

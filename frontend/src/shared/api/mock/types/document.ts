@@ -1,3 +1,5 @@
+import type { RecordingSourceAudio } from "@api/mock/types/recording";
+
 export interface DocumentConfirmationSummary {
   confirmedCount: number;
   pendingCount: number;
@@ -54,6 +56,8 @@ export interface DocumentDetailResponse {
   sourceTranscriptId: number;
   myConfirmationState: MyConfirmationState;
   confirmationSummary: DocumentConfirmationSummary;
+  /** 문서를 만든 녹음이 WebM 녹음이면 null. PCM 조각 저장 전의 서버는 주지 않음 */
+  sourceAudio?: RecordingSourceAudio | null;
 }
 
 export interface DocumentConfirmationItem {

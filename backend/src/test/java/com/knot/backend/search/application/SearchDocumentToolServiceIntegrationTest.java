@@ -1,14 +1,14 @@
 package com.knot.backend.search.application;
 
-import com.knot.backend.search.infrastructure.SearchQwenIntentClassifier;
-import com.knot.backend.search.infrastructure.SearchTransportCancellation;
+import com.knot.backend.search.infrastructure.llm.SearchQwenIntentClassifier;
+import com.knot.backend.search.infrastructure.llm.SearchTransportCancellation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 import com.knot.backend.document.DocumentFixtures;
-import com.knot.backend.document.domain.DocumentStatus;
+import com.knot.backend.document.domain.model.DocumentStatus;
 import com.knot.backend.global.config.SearchAgentProperties;
 import com.knot.backend.search.SearchMessageFixtures;
 import com.knot.backend.search.application.dto.command.SearchQuestionCommand;
@@ -18,8 +18,8 @@ import com.knot.backend.search.application.dto.result.SearchQuestionAcceptedResu
 import com.knot.backend.search.application.dto.result.SearchDocumentPage;
 import com.knot.backend.search.application.dto.result.SearchDocumentCard;
 import com.knot.backend.search.application.dto.result.SearchDocumentSlice;
-import com.knot.backend.search.infrastructure.SearchDocumentQueryAdapter;
-import com.knot.backend.search.infrastructure.SearchAnswerPrompt;
+import com.knot.backend.search.infrastructure.persistence.SearchDocumentQueryAdapter;
+import com.knot.backend.search.infrastructure.llm.SearchAnswerPrompt;
 import com.knot.backend.search.infrastructure.mcp.SearchToolTokenCodec;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
@@ -80,7 +80,7 @@ class SearchDocumentToolServiceIntegrationTest {
     @org.springframework.boot.test.web.server.LocalServerPort
     private int port;
     @Autowired
-    private com.knot.backend.search.infrastructure.SearchHistoryQuery history;
+    private com.knot.backend.search.infrastructure.persistence.SearchHistoryQuery history;
 
     @BeforeEach
     void setUp() {
@@ -1064,7 +1064,7 @@ class SearchDocumentToolServiceIntegrationTest {
                         access,
                         java.time.Duration.ofMillis(250)
                 );
-                com.knot.backend.search.infrastructure.SearchAgentHttp transport = new com.knot.backend.search.infrastructure.SearchAgentHttp(
+                com.knot.backend.search.infrastructure.llm.SearchAgentHttp transport = new com.knot.backend.search.infrastructure.llm.SearchAgentHttp(
                         java.net.http.HttpClient.newHttpClient(),
                         mapper,
                         clock,
@@ -1095,7 +1095,7 @@ class SearchDocumentToolServiceIntegrationTest {
             llmProperties.setBaseUrl(server.baseUrl());
             llmProperties.setApiToken("test-token");
             llmProperties.setModel("test-model");
-            com.knot.backend.search.infrastructure.SearchLlmClient llm = new com.knot.backend.search.infrastructure.SearchLlmClient(
+            com.knot.backend.search.infrastructure.llm.SearchLlmClient llm = new com.knot.backend.search.infrastructure.llm.SearchLlmClient(
                     transport,
                     llmProperties
             );
@@ -1112,7 +1112,7 @@ class SearchDocumentToolServiceIntegrationTest {
             org.springframework.beans.factory.support.StaticListableBeanFactory adapters = new org.springframework.beans.factory.support.StaticListableBeanFactory();
             adapters.addBean(
                     "retriever",
-                    new com.knot.backend.search.infrastructure.SearchMcpDocumentRetriever(
+                    new com.knot.backend.search.infrastructure.llm.SearchMcpDocumentRetriever(
                             llm,
                             mcp,
                             history,
@@ -1123,7 +1123,7 @@ class SearchDocumentToolServiceIntegrationTest {
             );
             adapters.addBean(
                     "generator",
-                    new com.knot.backend.search.infrastructure.SearchStreamingAnswerGenerator(
+                    new com.knot.backend.search.infrastructure.llm.SearchStreamingAnswerGenerator(
                             llm,
                             history,
                             access,

@@ -1,6 +1,6 @@
 package com.knot.backend.recording.application.dto.result;
 
-import com.knot.backend.recording.domain.TranscriptionStatus;
+import com.knot.backend.recording.domain.model.TranscriptionStatus;
 import java.util.UUID;
 
 public record RecordingTranscriptionSnapshot(

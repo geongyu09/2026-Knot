@@ -9,7 +9,7 @@ import com.knot.backend.auth.application.AuthRefreshService;
 import com.knot.backend.auth.application.dto.command.CompleteNicknameCommand;
 import com.knot.backend.auth.application.dto.result.AuthLoginResult;
 import com.knot.backend.auth.application.dto.result.AuthRefreshResult;
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.auth.presentation.dto.request.CompleteNicknameRequest;
 import com.knot.backend.auth.presentation.dto.response.AuthenticatedMemberResponse;
 import com.knot.backend.global.config.JwtProperties;

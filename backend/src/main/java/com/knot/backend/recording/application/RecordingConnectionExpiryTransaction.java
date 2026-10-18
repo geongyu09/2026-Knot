@@ -1,7 +1,7 @@
 package com.knot.backend.recording.application;
 
-import com.knot.backend.recording.domain.RecordingSession;
-import com.knot.backend.recording.domain.RecordingSessionRepository;
+import com.knot.backend.recording.domain.model.RecordingSession;
+import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
@@ -14,9 +14,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class RecordingConnectionExpiryTransaction {
     private final RecordingSessionRepository recordingSessionRepository;
     private final Clock clock;
+    private final RecordingAudioSealing audioSealing;
+    private final com.knot.backend.workspace.domain.repository.WorkspaceRepository workspaces;
 
     @Transactional
     public boolean expire(long recordingId) {
+        Optional<Long> workspaceId = recordingSessionRepository.findWorkspaceIdById(recordingId);
+        if (workspaceId.isEmpty() || workspaces.findByIdForUpdate(workspaceId.orElseThrow())
+                .isEmpty()) {
+            return false;
+        }
         Optional<RecordingSession> found = recordingSessionRepository.findByIdForUpdate(recordingId);
         if (found.isEmpty()) {
             return false;
@@ -28,6 +35,7 @@ public class RecordingConnectionExpiryTransaction {
         )) {
             return false;
         }
+        audioSealing.sealEnded(session);
         recordingSessionRepository.save(session);
         RecordingLog.committed(
                 "recording.auto_end",

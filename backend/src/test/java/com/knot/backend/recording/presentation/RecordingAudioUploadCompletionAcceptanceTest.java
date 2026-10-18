@@ -9,14 +9,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 import com.knot.backend.auth.domain.AuthTokenProvider;
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.recording.application.RecordingAudioStorage;
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
-import com.knot.backend.recording.domain.StoredAudioObject;
+import com.knot.backend.recording.domain.model.StoredAudioObject;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import jakarta.servlet.http.Cookie;
@@ -66,7 +65,7 @@ class RecordingAudioUploadCompletionAcceptanceTest {
     private final JdbcClient jdbcClient;
     private final Clock clock;
     @MockitoBean
-    private RecordingAudioStorage audioStorage;
+    private RecordingAudioStorage recordingAudioStorage;
 
     RecordingAudioUploadCompletionAcceptanceTest(
             MockMvc mockMvc,
@@ -95,7 +94,7 @@ class RecordingAudioUploadCompletionAcceptanceTest {
     @BeforeEach
     void stubPresign() {
         when(
-                audioStorage.presignUpload(
+                recordingAudioStorage.presignUpload(
                         anyString(),
                         anyString(),
                         anyLong()
@@ -143,7 +142,7 @@ class RecordingAudioUploadCompletionAcceptanceTest {
     void complete_failure_notUploaded() throws Exception {
         // given
         UploadFixture fixture = reservedUpload();
-        when(audioStorage.findStoredObject(anyString())).thenReturn(StoredAudioObject.missing());
+        when(recordingAudioStorage.findStoredObject(anyString())).thenReturn(StoredAudioObject.missing());
 
         // when
         ResultActions result = complete(
@@ -223,7 +222,7 @@ class RecordingAudioUploadCompletionAcceptanceTest {
     void complete_failure_storageUnavailable() throws Exception {
         // given
         UploadFixture fixture = reservedUpload();
-        when(audioStorage.findStoredObject(anyString()))
+        when(recordingAudioStorage.findStoredObject(anyString()))
                 .thenThrow(new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE));
 
         // when
@@ -390,7 +389,7 @@ class RecordingAudioUploadCompletionAcceptanceTest {
     }
 
     private void stubStoredObject(long contentLength) {
-        when(audioStorage.findStoredObject(anyString())).thenReturn(
+        when(recordingAudioStorage.findStoredObject(anyString())).thenReturn(
                 StoredAudioObject.of(
                         contentLength,
                         "audio/webm",

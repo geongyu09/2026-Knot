@@ -56,6 +56,8 @@ export interface RecordingDetailResponse {
   transcriptionFailureCode: string | null;
   /** 문서 생성이 접수되기 전이면 null */
   documentGeneration: RecordingDocumentGenerationResponse | null;
+  /** WebM 녹음이면 null. PCM 조각 저장 전의 서버는 주지 않음 */
+  sourceAudio?: RecordingSourceAudio | null;
 }
 
 /** 녹음 상세 mock 하나. 서버 응답에는 녹음 ID가 없어서, 어느 녹음의 응답인지 함께 적어요 */
@@ -82,11 +84,23 @@ export interface RecordingResumeResponse {
   elapsedMillis: number;
 }
 
+/** PCM 조각 녹음의 종료 봉인 요약 */
+export interface RecordingEndAudioSave {
+  audioSaveStatus: RecordingAudioSaveStatus;
+  expectedLastSequence: number;
+  totalFrameCount: number;
+  tailUnknown: boolean;
+  /** ISO 8601 */
+  acceptUntil: string;
+}
+
 export interface RecordingEndResponse {
   recordingId: number;
   status: RecordingSessionStatus;
   /** ISO 8601 */
   endedAt: string;
+  /** WebM 녹음이면 키가 없음 */
+  audioSave?: RecordingEndAudioSave;
 }
 
 export interface RecordingHeartbeatResponse {
@@ -124,4 +138,77 @@ export interface RecordingAudioUploadCompleteResponse {
   uploadStatus: RecordingAudioUploadStatus;
   /** ISO 8601 */
   completedAt: string;
+}
+
+/** PCM 조각 상태 */
+export type RecordingAudioChunkStatus = "RESERVED" | "VERIFIED";
+
+/** 조각 예약 요청에서 mock이 읽는 필드. 요청한 번호를 응답에 되돌려 줘요 */
+export interface RecordingAudioChunkReserveRequest {
+  sequence: number;
+}
+
+export interface RecordingAudioChunkReserveResponse {
+  sequence: number;
+  status: RecordingAudioChunkStatus;
+  /** 객체 저장소에 직접 PUT할 절대 URL. VERIFIED면 null */
+  uploadUrl: string | null;
+  /** ISO 8601. VERIFIED면 null */
+  expiresAt: string | null;
+  /** PUT에 그대로 실을 헤더. VERIFIED면 빈 객체 */
+  requiredHeaders: Record<string, string>;
+}
+
+export interface RecordingAudioChunkCompleteResponse {
+  sequence: number;
+  status: RecordingAudioChunkStatus;
+  /** 첫 조각부터 빈틈없이 확인된 마지막 조각 번호 */
+  verifiedThroughSequence: number;
+  /** 첫 조각부터 빈틈없이 확인된 끝 프레임(제외) */
+  verifiedThroughFrame: number;
+  /** verifiedThroughFrame을 ms로 바꾼 값 */
+  verifiedAudioMillis: number;
+  /** ISO 8601 */
+  confirmedAt: string;
+}
+
+/** PCM 조각 녹음의 저장 상태 */
+export type RecordingAudioSaveStatus =
+  "CAPTURING" | "DRAINING" | "FINALIZING" | "READY" | "FAILED" | "DISCARDED";
+
+/** 프레임 구간. end는 포함하지 않음 */
+export interface RecordingAudioFrameRange {
+  start: number;
+  endExclusive: number;
+}
+
+/** 최종 WAV의 품질. 누락 구간이 있으면 PARTIAL */
+export type RecordingAudioQuality = "COMPLETE" | "PARTIAL";
+
+export interface RecordingAudioSaveResponse {
+  audioSaveStatus: RecordingAudioSaveStatus;
+  verifiedThroughSequence: number;
+  verifiedThroughFrame: number;
+  verifiedAudioMillis: number;
+  verifiedRanges: RecordingAudioFrameRange[];
+  missingRanges: RecordingAudioFrameRange[];
+  tailUnknown: boolean;
+  /** 종료 봉인 전이면 null */
+  expectedLastSequence: number | null;
+  /** ISO 8601. 종료 전이면 null */
+  acceptUntil: string | null;
+  /** FAILED가 아니면 null */
+  failureCode: string | null;
+  canRetry: boolean;
+  /** 최종화 작업이 없으면 null */
+  jobId: number | null;
+  /** 최종화 전이면 null */
+  quality: RecordingAudioQuality | null;
+}
+
+/** 녹음 상세·문서 상세의 원본 오디오 품질. PCM 조각 녹음에만 있어요 */
+export interface RecordingSourceAudio {
+  quality: RecordingAudioQuality;
+  missingRanges: RecordingAudioFrameRange[];
+  tailUnknown: boolean;
 }

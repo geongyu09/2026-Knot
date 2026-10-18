@@ -1,11 +1,11 @@
 package com.knot.backend.search.application;
 
-import com.knot.backend.search.domain.SearchAnswerExecution;
-import com.knot.backend.search.domain.SearchConversation;
-import com.knot.backend.search.domain.SearchRepository;
+import com.knot.backend.search.domain.model.SearchAnswerExecution;
+import com.knot.backend.search.domain.model.SearchConversation;
+import com.knot.backend.search.domain.repository.SearchRepository;
 import com.knot.backend.search.domain.SearchToolException;
-import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
-import com.knot.backend.workspace.domain.WorkspaceRepository;
+import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.time.Clock;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

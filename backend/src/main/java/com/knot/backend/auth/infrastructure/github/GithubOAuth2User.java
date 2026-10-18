@@ -1,6 +1,6 @@
 package com.knot.backend.auth.infrastructure.github;
 
-import com.knot.backend.auth.domain.OAuthUser;
+import com.knot.backend.auth.domain.model.OAuthUser;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;

@@ -1,7 +1,7 @@
 package com.knot.backend.search.application;
 
 import static org.mockito.Mockito.when;
-import com.knot.backend.search.domain.SearchIntent;
+import com.knot.backend.search.domain.model.SearchIntent;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -11,8 +11,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.search.application.dto.command.SearchQuestionCommand;
 import com.knot.backend.search.application.dto.result.SearchQuestionAcceptedResult;
-import com.knot.backend.search.domain.SearchRepository;
-import com.knot.backend.search.domain.SearchAnswerExecution;
+import com.knot.backend.search.domain.repository.SearchRepository;
+import com.knot.backend.search.domain.model.SearchAnswerExecution;
 import com.knot.backend.search.domain.SearchException;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;

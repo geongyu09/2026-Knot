@@ -1,8 +1,8 @@
 package com.knot.backend.document.infrastructure.llm;
 
-import com.knot.backend.document.domain.DocumentText;
-import com.knot.backend.document.domain.DocumentGenerationInput;
-import com.knot.backend.document.domain.DocumentTopic;
+import com.knot.backend.document.domain.model.DocumentText;
+import com.knot.backend.document.domain.model.DocumentGenerationInput;
+import com.knot.backend.document.domain.model.DocumentTopic;
 import com.knot.backend.global.exception.LlmErrorCode;
 import com.knot.backend.global.exception.LlmException;
 import com.knot.backend.global.infrastructure.llm.LlmCompletionRequest;

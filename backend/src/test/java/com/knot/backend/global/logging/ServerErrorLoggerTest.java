@@ -21,6 +21,21 @@ import org.springframework.security.oauth2.jwt.BadJwtException;
 class ServerErrorLoggerTest {
 
     @Test
+    @DisplayName("로그 상관용 오류 코드는 고정 코드만 반환하고 알 수 없는 예외는 분류되지 않은 코드로 처리한다")
+    void safeFailureCode_success_knownAndUnknown() {
+        assertThat(
+                ServerErrorLogger.safeFailureCode(
+                        new SearchToolException(
+                                "SEARCH_TOOL_LIMIT_EXCEEDED",
+                                new IllegalStateException("private-provider-message")
+                        )
+                )
+        ).isEqualTo("SEARCH_TOOL_LIMIT_EXCEEDED");
+        assertThat(ServerErrorLogger.safeFailureCode(new IllegalStateException("private-provider-message")))
+                .isEqualTo("UNCLASSIFIED");
+    }
+
+    @Test
     @DisplayName("DB와 외부 연결의 Broken pipe를 클라이언트 SSE 종료로 오분류하지 않는다")
     void record_failure_disconnectPhraseInServerCause() {
         try (LogCapture logs = new LogCapture(ServerErrorLoggerTest.class)) {

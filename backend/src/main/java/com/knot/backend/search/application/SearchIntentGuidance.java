@@ -1,6 +1,6 @@
 package com.knot.backend.search.application;
 
-import com.knot.backend.search.domain.SearchIntent;
+import com.knot.backend.search.domain.model.SearchIntent;
 import com.knot.backend.search.domain.SearchToolException;
 
 public final class SearchIntentGuidance {

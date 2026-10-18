@@ -11,7 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.auth.domain.AuthTokenProvider;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
@@ -53,23 +53,23 @@ import tools.jackson.databind.ObjectMapper;
 @TestConstructor(autowireMode = TestConstructor.AutowireMode.ALL)
 class WorkspaceMultipleInvitationAcceptanceTest {
     @MockitoSpyBean
-    private WorkspaceInvitationSecretGenerator secretGenerator;
+    private WorkspaceInvitationSecretGenerator workspaceInvitationSecretGenerator;
     private final MockMvc mvc;
     private final JdbcClient jdbc;
-    private final ObjectMapper mapper;
+    private final ObjectMapper objectMapper;
     private final AuthTokenProvider tokens;
     private final WorkspaceInvitationService service;
 
     WorkspaceMultipleInvitationAcceptanceTest(
             MockMvc mvc,
             JdbcClient jdbc,
-            ObjectMapper mapper,
+            ObjectMapper objectMapper,
             AuthTokenProvider tokens,
             WorkspaceInvitationService service
     ) {
         this.mvc = mvc;
         this.jdbc = jdbc;
-        this.mapper = mapper;
+        this.objectMapper = objectMapper;
         this.tokens = tokens;
         this.service = service;
     }
@@ -296,7 +296,7 @@ class WorkspaceMultipleInvitationAcceptanceTest {
                         "IOIOIO",
                         "new-link-token-for-retry"
                 )
-        ).when(secretGenerator)
+        ).when(workspaceInvitationSecretGenerator)
                 .generate();
         List<String> before = rows(fixture.workspaceId());
 
@@ -333,7 +333,7 @@ class WorkspaceMultipleInvitationAcceptanceTest {
                         first.code(),
                         first.linkToken()
                 )
-        ).when(secretGenerator)
+        ).when(workspaceInvitationSecretGenerator)
                 .generate();
         List<String> before = rows(fixture.workspaceId());
 
@@ -419,7 +419,7 @@ class WorkspaceMultipleInvitationAcceptanceTest {
     }
 
     private JsonNode body(ResultActions result) throws Exception {
-        return mapper.readTree(
+        return objectMapper.readTree(
                 result.andReturn()
                         .getResponse()
                         .getContentAsString()

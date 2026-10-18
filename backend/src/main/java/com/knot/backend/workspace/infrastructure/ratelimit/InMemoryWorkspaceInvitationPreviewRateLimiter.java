@@ -8,6 +8,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -21,7 +22,7 @@ public class InMemoryWorkspaceInvitationPreviewRateLimiter implements WorkspaceI
     private static final String UNKNOWN_ADDRESS_KEY = "<unknown>";
     private static final String OVERFLOW_KEY = "<overflow>";
 
-    private final WindowCounters counters = new WindowCounters();
+    private final Map<String, WindowCounter> counters = new HashMap<>();
     private final Clock clock;
     private final int maxTrackedAddresses;
     private Instant nextCleanupAt = Instant.MIN;
@@ -52,10 +53,10 @@ public class InMemoryWorkspaceInvitationPreviewRateLimiter implements WorkspaceI
     public synchronized void consume(String remoteAddress) {
         Instant now = Instant.now(clock);
         cleanupExpiredCounters(now);
-        String key = admittedKey(remoteAddress);
+        String key = resolveCounterKey(remoteAddress);
         counters.put(
                 key,
-                consumedCounter(
+                consumeOrStartWindow(
                         counters.get(key),
                         now
                 )
@@ -74,7 +75,7 @@ public class InMemoryWorkspaceInvitationPreviewRateLimiter implements WorkspaceI
         nextCleanupAt = now.plus(WINDOW);
     }
 
-    private String admittedKey(String remoteAddress) {
+    private String resolveCounterKey(String remoteAddress) {
         String requestedKey = remoteAddress == null || remoteAddress.isBlank() ? UNKNOWN_ADDRESS_KEY : remoteAddress;
         if (counters.containsKey(requestedKey)) {
             return requestedKey;
@@ -85,7 +86,7 @@ public class InMemoryWorkspaceInvitationPreviewRateLimiter implements WorkspaceI
         return requestedKey;
     }
 
-    private WindowCounter consumedCounter(
+    private WindowCounter consumeOrStartWindow(
             WindowCounter counter,
             Instant now
     ) {
@@ -133,9 +134,5 @@ public class InMemoryWorkspaceInvitationPreviewRateLimiter implements WorkspaceI
                     seconds
             );
         }
-    }
-
-    private static final class WindowCounters extends HashMap<String, WindowCounter> {
-        private static final long serialVersionUID = 1L;
     }
 }

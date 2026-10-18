@@ -11,7 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.mockito.Mockito.when;
 
 import com.knot.backend.auth.domain.AuthTokenProvider;
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.document.DocumentFixtures;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;

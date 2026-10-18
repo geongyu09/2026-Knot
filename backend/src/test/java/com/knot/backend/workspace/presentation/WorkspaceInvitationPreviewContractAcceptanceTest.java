@@ -6,12 +6,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import com.knot.backend.workspace.application.WorkspaceInvitationSecretGenerator;
 import com.knot.backend.workspace.application.WorkspaceInvitationSecretKind;
-import com.knot.backend.workspace.application.WorkspaceInvitationSecretProtector;
+import com.knot.backend.workspace.application.WorkspaceInvitationSecretHasher;
 import com.knot.backend.workspace.application.WorkspaceInvitationService;
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationResult;
 import java.time.Clock;
@@ -57,23 +56,23 @@ class WorkspaceInvitationPreviewContractAcceptanceTest {
 
     private final MockMvc mvc;
     private final JdbcClient jdbc;
-    private final ObjectMapper mapper;
-    private final WorkspaceInvitationSecretProtector protector;
+    private final ObjectMapper objectMapper;
+    private final WorkspaceInvitationSecretHasher workspaceInvitationSecretHasher;
     private final WorkspaceInvitationSecretGenerator generator;
     private final WorkspaceInvitationService service;
 
     WorkspaceInvitationPreviewContractAcceptanceTest(
             MockMvc mvc,
             JdbcClient jdbc,
-            ObjectMapper mapper,
-            WorkspaceInvitationSecretProtector protector,
+            ObjectMapper objectMapper,
+            WorkspaceInvitationSecretHasher workspaceInvitationSecretHasher,
             WorkspaceInvitationSecretGenerator generator,
             WorkspaceInvitationService service
     ) {
         this.mvc = mvc;
         this.jdbc = jdbc;
-        this.mapper = mapper;
-        this.protector = protector;
+        this.objectMapper = objectMapper;
+        this.workspaceInvitationSecretHasher = workspaceInvitationSecretHasher;
         this.generator = generator;
         this.service = service;
     }
@@ -298,14 +297,14 @@ class WorkspaceInvitationPreviewContractAcceptanceTest {
                 """)
                 .param(
                         "hash",
-                        protector.hash(
+                        workspaceInvitationSecretHasher.hash(
                                 WorkspaceInvitationSecretKind.INVITE_CODE,
                                 legacy
                         )
                 )
                 .param(
                         "link",
-                        protector.hash(
+                        workspaceInvitationSecretHasher.hash(
                                 WorkspaceInvitationSecretKind.LINK_TOKEN,
                                 credential.link()
                         )
@@ -570,14 +569,14 @@ class WorkspaceInvitationPreviewContractAcceptanceTest {
                 )
                 .param(
                         "linkHash",
-                        protector.hash(
+                        workspaceInvitationSecretHasher.hash(
                                 WorkspaceInvitationSecretKind.LINK_TOKEN,
                                 link
                         )
                 )
                 .param(
                         "codeHash",
-                        protector.hash(
+                        workspaceInvitationSecretHasher.hash(
                                 WorkspaceInvitationSecretKind.INVITE_CODE,
                                 code
                         )
@@ -669,7 +668,7 @@ class WorkspaceInvitationPreviewContractAcceptanceTest {
     }
 
     private JsonNode body(ResultActions response) throws Exception {
-        return mapper.readTree(
+        return objectMapper.readTree(
                 response.andReturn()
                         .getResponse()
                         .getContentAsString()

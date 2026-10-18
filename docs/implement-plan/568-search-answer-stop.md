@@ -230,7 +230,7 @@ transport 제안은 `sendAsync`의 취소 가능한 future를 유지하고, 응�
 `backend/`에서 아래 순서로 실행한다. Gradle의 단위/통합/인수 task와 tag 분리를 확인했다. 새 테스트 클래스명은 구현하면서 확정한다.
 
 ```bash
-./gradlew test --tests 'com.knot.backend.search.domain.SearchMessageTest' --tests 'com.knot.backend.search.domain.SearchAnswerExecutionTest'
+./gradlew test --tests 'com.knot.backend.search.domain.model.SearchMessageTest' --tests 'com.knot.backend.search.domain.model.SearchAnswerExecutionTest'
 ./gradlew test --tests 'com.knot.backend.search.*'
 ./gradlew integrationTest --tests 'com.knot.backend.search.*'
 ./gradlew acceptanceTest --tests 'com.knot.backend.search.*'

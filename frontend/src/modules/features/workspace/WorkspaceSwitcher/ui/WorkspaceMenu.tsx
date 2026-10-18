@@ -1,4 +1,5 @@
 import styled from "@emotion/styled";
+import Unfold from "@primitives/animation/Unfold";
 import Avatar from "@primitives/ui/Avatar";
 import Divider from "@primitives/ui/Divider";
 
@@ -16,6 +17,8 @@ interface WorkspaceMenuProps {
   onSelectWorkspace: (workspaceId: number) => void;
   onCreateWorkspace: () => void;
   onLeaveWorkspace: () => void;
+  /** 닫혀서 접히는 중인지. 이 동안에는 접히며 사라지고 눌리지 않아요 */
+  isClosing: boolean;
 }
 
 /**
@@ -23,6 +26,7 @@ interface WorkspaceMenuProps {
  *
  * 내 워크스페이스 목록, 새 워크스페이스 만들기, 워크스페이스 나가기를 차례로 둬요.
  * 지금 워크스페이스는 체크 아이콘 없이 배경과 글자색으로만 구분해요.
+ * 열릴 때는 위쪽 끝에서 펼쳐지고, 닫힐 때는 다시 접히며 사라져요.
  */
 export default function WorkspaceMenu({
   id,
@@ -31,9 +35,16 @@ export default function WorkspaceMenu({
   onSelectWorkspace,
   onCreateWorkspace,
   onLeaveWorkspace,
+  isClosing,
 }: WorkspaceMenuProps) {
   return (
-    <Container id={id} aria-label="워크스페이스 메뉴">
+    <Container
+      as="section"
+      id={id}
+      aria-label="워크스페이스 메뉴"
+      data-overlay-state={isClosing ? "closing" : "open"}
+      inert={isClosing}
+    >
       <SectionLabel>워크스페이스</SectionLabel>
 
       <WorkspaceList>
@@ -78,7 +89,7 @@ export default function WorkspaceMenu({
   );
 }
 
-const Container = styled.section`
+const Container = styled(Unfold)`
   position: absolute;
   top: calc(100% + 0.25rem); /* 4px */
   left: 0;

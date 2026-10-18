@@ -14,26 +14,27 @@ import com.knot.backend.document.application.DocumentGenerationIntakeService;
 import com.knot.backend.document.application.DocumentClassificationResultService;
 import com.knot.backend.document.application.DocumentRetentionCleanupService;
 import com.knot.backend.document.application.dto.result.DocumentTopicClassificationResult;
-import com.knot.backend.document.domain.DocumentGenerationJobRepository;
+import com.knot.backend.document.domain.repository.DocumentGenerationJobRepository;
 import com.knot.backend.recording.application.dto.result.AiTranscript;
 import com.knot.backend.recording.application.dto.result.RecordingTranscriptionExecution;
 import com.knot.backend.recording.application.dto.result.RecordingTranscriptionRetryResult;
-import com.knot.backend.recording.domain.RecordingAudioUpload;
-import com.knot.backend.recording.domain.RecordingAudioUploadRepository;
+import com.knot.backend.recording.domain.model.RecordingAudioUpload;
+import com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository;
 import com.knot.backend.recording.domain.RecordingException;
-import com.knot.backend.recording.domain.RecordingSession;
-import com.knot.backend.recording.domain.RecordingSessionRepository;
-import com.knot.backend.recording.domain.RecordingTranscription;
-import com.knot.backend.recording.domain.RecordingTranscriptionRepository;
-import com.knot.backend.recording.domain.StoredAudioObject;
-import com.knot.backend.recording.domain.TranscriptionStatus;
+import com.knot.backend.recording.domain.model.RecordingSession;
+import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
+import com.knot.backend.recording.domain.model.RecordingTranscription;
+import com.knot.backend.recording.domain.repository.RecordingTranscriptionRepository;
+import com.knot.backend.recording.domain.model.StoredAudioObject;
+import com.knot.backend.recording.domain.model.TranscriptionStatus;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
-import com.knot.backend.workspace.domain.WorkspaceRepository;
+import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
@@ -56,6 +57,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Tag("integration")
 @ActiveProfiles("dev")
@@ -66,21 +70,21 @@ class RecordingTranscriptionStateIntegrationTest {
     private static final Instant NOW = DocumentFixtures.CREATED_AT.plusSeconds(120);
 
     @Autowired
-    private RecordingTranscriptionStateService state;
+    private RecordingTranscriptionStateService recordingTranscriptionStateService;
     @Autowired
     private DocumentClassificationResultService classifications;
     @Autowired
     private DocumentRetentionCleanupService retention;
     @Autowired
-    private DocumentGenerationJobRepository generationJobs;
+    private DocumentGenerationJobRepository documentGenerationJobRepository;
     @Autowired
-    private RecordingSessionRepository recordings;
+    private RecordingSessionRepository recordingSessionRepository;
     @Autowired
-    private RecordingAudioUploadRepository uploads;
+    private RecordingAudioUploadRepository recordingAudioUploadRepository;
     @Autowired
-    private RecordingTranscriptionRepository transcriptions;
+    private RecordingTranscriptionRepository recordingTranscriptionRepository;
     @Autowired
-    private WorkspaceRepository workspaces;
+    private WorkspaceRepository workspaceRepository;
     @Autowired
     private TransactionTemplate transactions;
     @Autowired
@@ -120,7 +124,7 @@ class RecordingTranscriptionStateIntegrationTest {
                 workspaceId,
                 recordingId
         );
-        UUID attempt = state.find(recordingId)
+        UUID attempt = recordingTranscriptionStateService.findSnapshot(recordingId)
                 .attemptId();
         // when
         register(
@@ -130,10 +134,13 @@ class RecordingTranscriptionStateIntegrationTest {
         // then
         assertThat(count("recording_transcriptions")).isEqualTo(1);
         assertThat(
-                state.find(recordingId)
+                recordingTranscriptionStateService.findSnapshot(recordingId)
                         .attemptId()
         ).isEqualTo(attempt);
-        assertThat(state.findProcessing()).isPresent();
+        assertThat(
+                recordingTranscriptionStateService.findSnapshot(recordingId)
+                        .status()
+        ).isEqualTo(TranscriptionStatus.QUEUED);
     }
 
     @Test
@@ -144,15 +151,14 @@ class RecordingTranscriptionStateIntegrationTest {
                 workspaceId,
                 recordingId
         );
-        RecordingTranscriptionExecution execution = state.findProcessing()
-                .orElseThrow();
+        RecordingTranscriptionExecution execution = currentExecution();
         AiTranscript result = transcript();
         // when
-        state.complete(
+        recordingTranscriptionStateService.complete(
                 execution,
                 result
         );
-        state.complete(
+        recordingTranscriptionStateService.complete(
                 execution,
                 result
         );
@@ -162,7 +168,7 @@ class RecordingTranscriptionStateIntegrationTest {
         assertThat(count("document_generation_batches")).isEqualTo(1);
         assertThat(count("document_generation_jobs")).isEqualTo(1);
         assertThat(
-                state.find(recordingId)
+                recordingTranscriptionStateService.findSnapshot(recordingId)
                         .status()
         ).isEqualTo(TranscriptionStatus.SUCCEEDED);
         assertThat(
@@ -198,8 +204,7 @@ class RecordingTranscriptionStateIntegrationTest {
                 workspaceId,
                 recordingId
         );
-        RecordingTranscriptionExecution execution = state.findProcessing()
-                .orElseThrow();
+        RecordingTranscriptionExecution execution = currentExecution();
         transactions.executeWithoutResult(
                 status -> doThrow(new IllegalStateException("intake unavailable")).when(intake)
                         .acceptCompletedTranscript(
@@ -210,7 +215,7 @@ class RecordingTranscriptionStateIntegrationTest {
         );
         // when
         Throwable failure = catchThrowable(
-                () -> state.complete(
+                () -> recordingTranscriptionStateService.complete(
                         execution,
                         transcript()
                 )
@@ -221,7 +226,7 @@ class RecordingTranscriptionStateIntegrationTest {
         assertThat(count("transcript_segments")).isZero();
         assertThat(count("document_generation_batches")).isZero();
         assertThat(
-                state.find(recordingId)
+                recordingTranscriptionStateService.findSnapshot(recordingId)
                         .status()
         ).isEqualTo(TranscriptionStatus.PROCESSING);
     }
@@ -234,41 +239,40 @@ class RecordingTranscriptionStateIntegrationTest {
                 workspaceId,
                 recordingId
         );
-        RecordingTranscriptionExecution previous = state.findProcessing()
-                .orElseThrow();
-        state.fail(
+        RecordingTranscriptionExecution previous = currentExecution();
+        recordingTranscriptionStateService.fail(
                 previous,
                 "AI_TIMEOUT"
         );
         // when
-        RecordingTranscriptionRetryResult retry = state.retry(
+        RecordingTranscriptionRetryResult retry = recordingTranscriptionStateService.retry(
                 workspaceId,
                 memberId,
                 recordingId
         );
-        state.complete(
+        recordingTranscriptionStateService.complete(
                 previous,
                 transcript()
         );
-        state.fail(
+        recordingTranscriptionStateService.fail(
                 previous,
                 "LATE_FAILURE"
         );
         // then
         assertThat(retry.attemptId()).isNotEqualTo(previous.attemptId());
         assertThat(
-                state.find(recordingId)
+                recordingTranscriptionStateService.findSnapshot(recordingId)
                         .status()
-        ).isEqualTo(TranscriptionStatus.PROCESSING);
+        ).isEqualTo(TranscriptionStatus.QUEUED);
         assertThat(
-                state.find(recordingId)
+                recordingTranscriptionStateService.findSnapshot(recordingId)
                         .attemptId()
         ).isEqualTo(retry.attemptId());
         assertThat(count("transcripts")).isZero();
     }
 
     @Test
-    @DisplayName("다른 워크스페이스의 동시 등록도 하나만 실행하고 나머지는 BUSY로 기록한다")
+    @DisplayName("다른 워크스페이스의 동시 등록을 모두 대기열에 보존한다")
     void registerAutomatic_success_globalAdmission() throws Exception {
         // given
         long otherWorkspace = fixtures.saveWorkspace();
@@ -312,19 +316,14 @@ class RecordingTranscriptionStateIntegrationTest {
                 jdbc.sql("SELECT status FROM recording_transcriptions ORDER BY id")
                         .query(String.class)
                         .list()
-        ).containsExactlyInAnyOrder(
-                "PROCESSING",
-                "FAILED"
+        ).containsExactly(
+                "QUEUED",
+                "QUEUED"
         );
-        assertThat(
-                jdbc.sql("SELECT failure_code FROM recording_transcriptions WHERE status = 'FAILED'")
-                        .query(String.class)
-                        .single()
-        ).isEqualTo("BUSY");
     }
 
     @Test
-    @DisplayName("다른 작업 실행 중 재시도는 현재 실패 시도를 유지하며 거부한다")
+    @DisplayName("대기 중인 작업은 새 시도로 재접수하지 않는다")
     void retry_failure_busyPreservesAttempt() {
         // given
         register(
@@ -339,11 +338,11 @@ class RecordingTranscriptionStateIntegrationTest {
                 workspaceId,
                 nextRecording
         );
-        UUID failedAttempt = state.find(nextRecording)
+        UUID failedAttempt = recordingTranscriptionStateService.findSnapshot(nextRecording)
                 .attemptId();
         // when
         Throwable failure = catchThrowable(
-                () -> state.retry(
+                () -> recordingTranscriptionStateService.retry(
                         workspaceId,
                         memberId,
                         nextRecording
@@ -352,13 +351,13 @@ class RecordingTranscriptionStateIntegrationTest {
         // then
         assertThat(failure).isInstanceOf(RecordingException.class);
         assertThat(
-                state.find(nextRecording)
+                recordingTranscriptionStateService.findSnapshot(nextRecording)
                         .attemptId()
         ).isEqualTo(failedAttempt);
         assertThat(
-                state.find(nextRecording)
+                recordingTranscriptionStateService.findSnapshot(nextRecording)
                         .status()
-        ).isEqualTo(TranscriptionStatus.FAILED);
+        ).isEqualTo(TranscriptionStatus.QUEUED);
     }
 
     @Test
@@ -369,14 +368,13 @@ class RecordingTranscriptionStateIntegrationTest {
                 workspaceId,
                 recordingId
         );
-        state.complete(
-                state.findProcessing()
-                        .orElseThrow(),
+        recordingTranscriptionStateService.complete(
+                currentExecution(),
                 transcript()
         );
         // when
         Throwable failure = catchThrowable(
-                () -> state.retry(
+                () -> recordingTranscriptionStateService.retry(
                         workspaceId,
                         memberId,
                         recordingId
@@ -395,9 +393,8 @@ class RecordingTranscriptionStateIntegrationTest {
                 workspaceId,
                 recordingId
         );
-        state.fail(
-                state.findProcessing()
-                        .orElseThrow(),
+        recordingTranscriptionStateService.fail(
+                currentExecution(),
                 "AI_TIMEOUT"
         );
         long otherMember = fixtures.saveMember("다른 회원");
@@ -407,7 +404,7 @@ class RecordingTranscriptionStateIntegrationTest {
         );
         // when
         Throwable failure = catchThrowable(
-                () -> state.retry(
+                () -> recordingTranscriptionStateService.retry(
                         workspaceId,
                         otherMember,
                         recordingId
@@ -416,7 +413,7 @@ class RecordingTranscriptionStateIntegrationTest {
         // then
         assertThat(failure).isInstanceOf(RecordingException.class);
         assertThat(
-                state.find(recordingId)
+                recordingTranscriptionStateService.findSnapshot(recordingId)
                         .status()
         ).isEqualTo(TranscriptionStatus.FAILED);
     }
@@ -429,8 +426,7 @@ class RecordingTranscriptionStateIntegrationTest {
                 workspaceId,
                 recordingId
         );
-        RecordingTranscriptionExecution execution = state.findProcessing()
-                .orElseThrow();
+        RecordingTranscriptionExecution execution = currentExecution();
         jdbc.sql("UPDATE workspaces SET deleted_at = :now WHERE id = :id")
                 .param(
                         "now",
@@ -442,7 +438,7 @@ class RecordingTranscriptionStateIntegrationTest {
                 )
                 .update();
         // when
-        state.complete(
+        recordingTranscriptionStateService.complete(
                 execution,
                 transcript()
         );
@@ -450,38 +446,36 @@ class RecordingTranscriptionStateIntegrationTest {
         assertThat(count("transcripts")).isZero();
         assertThat(count("document_generation_batches")).isZero();
         assertThat(
-                state.find(recordingId)
+                recordingTranscriptionStateService.findSnapshot(recordingId)
                         .failureCode()
         ).isEqualTo("RECORDING_UNAVAILABLE");
     }
 
     @Test
-    @DisplayName("재시작 복구는 실행 작업을 실패 처리하고 자동으로 재접수하지 않는다")
+    @DisplayName("재시작은 대기 작업과 시도 식별자를 보존한다")
     void recoverProcessing_success_explicitRetryOnly() {
         // given
         register(
                 workspaceId,
                 recordingId
         );
-        UUID attempt = state.find(recordingId)
+        UUID attempt = recordingTranscriptionStateService.findSnapshot(recordingId)
                 .attemptId();
         // when
-        state.recoverProcessing();
-        state.recoverProcessing();
         register(
                 workspaceId,
                 recordingId
         );
         // then
-        assertThat(state.findProcessing()).isEmpty();
+        assertThat(recordingTranscriptionStateService.findProcessing()).isEmpty();
         assertThat(
-                state.find(recordingId)
+                recordingTranscriptionStateService.findSnapshot(recordingId)
                         .attemptId()
         ).isEqualTo(attempt);
         assertThat(
-                state.find(recordingId)
+                recordingTranscriptionStateService.findSnapshot(recordingId)
                         .failureCode()
-        ).isEqualTo("SERVER_RESTARTED");
+        ).isNull();
         assertThat(count("recording_transcriptions")).isEqualTo(1);
     }
 
@@ -493,6 +487,7 @@ class RecordingTranscriptionStateIntegrationTest {
                 workspaceId,
                 recordingId
         );
+        currentExecution();
         long otherRecording = completedRecording(
                 workspaceId,
                 memberId
@@ -500,7 +495,7 @@ class RecordingTranscriptionStateIntegrationTest {
         // when
         Throwable failure = catchThrowable(
                 () -> transactions.executeWithoutResult(
-                        status -> transcriptions.saveAndFlush(
+                        status -> recordingTranscriptionRepository.saveAndFlush(
                                 RecordingTranscription.processing(
                                         otherRecording,
                                         UUID.randomUUID(),
@@ -522,8 +517,7 @@ class RecordingTranscriptionStateIntegrationTest {
                 workspaceId,
                 recordingId
         );
-        RecordingTranscriptionExecution execution = state.findProcessing()
-                .orElseThrow();
+        RecordingTranscriptionExecution execution = currentExecution();
         jdbc.sql("UPDATE recording_sessions SET status = 'DISCARDED' WHERE id = :id")
                 .param(
                         "id",
@@ -531,14 +525,14 @@ class RecordingTranscriptionStateIntegrationTest {
                 )
                 .update();
         // when
-        state.complete(
+        recordingTranscriptionStateService.complete(
                 execution,
                 transcript()
         );
         // then
         assertThat(count("transcripts")).isZero();
         assertThat(
-                state.find(recordingId)
+                recordingTranscriptionStateService.findSnapshot(recordingId)
                         .failureCode()
         ).isEqualTo("RECORDING_UNAVAILABLE");
     }
@@ -566,9 +560,9 @@ class RecordingTranscriptionStateIntegrationTest {
         // then
         assertThat(failure).isInstanceOf(DataIntegrityViolationException.class);
         assertThat(
-                state.find(recordingId)
+                recordingTranscriptionStateService.findSnapshot(recordingId)
                         .status()
-        ).isEqualTo(TranscriptionStatus.PROCESSING);
+        ).isEqualTo(TranscriptionStatus.QUEUED);
     }
 
     @Test
@@ -579,9 +573,8 @@ class RecordingTranscriptionStateIntegrationTest {
                 workspaceId,
                 recordingId
         );
-        state.complete(
-                state.findProcessing()
-                        .orElseThrow(),
+        recordingTranscriptionStateService.complete(
+                currentExecution(),
                 transcript()
         );
         long jobId = jdbc.sql("SELECT id FROM document_generation_jobs")
@@ -591,7 +584,7 @@ class RecordingTranscriptionStateIntegrationTest {
                 .query(Long.class)
                 .single();
         transactions.executeWithoutResult(
-                status -> generationJobs.findByWorkspaceIdAndIdForUpdate(
+                status -> documentGenerationJobRepository.findByWorkspaceIdAndIdForUpdate(
                         workspaceId,
                         jobId
                 )
@@ -614,7 +607,7 @@ class RecordingTranscriptionStateIntegrationTest {
         assertThat(count("transcripts")).isZero();
         assertThat(count("transcript_segments")).isZero();
         assertThat(
-                state.find(recordingId)
+                recordingTranscriptionStateService.findSnapshot(recordingId)
                         .status()
         ).isEqualTo(TranscriptionStatus.SUCCEEDED);
     }
@@ -628,11 +621,10 @@ class RecordingTranscriptionStateIntegrationTest {
                 workspaceId,
                 recordingId
         );
-        RecordingTranscriptionExecution execution = state.findProcessing()
-                .orElseThrow();
+        RecordingTranscriptionExecution execution = currentExecution();
         // when
         Throwable failure = catchThrowable(
-                () -> state.complete(
+                () -> recordingTranscriptionStateService.complete(
                         execution,
                         invalid
                 )
@@ -643,9 +635,564 @@ class RecordingTranscriptionStateIntegrationTest {
         assertThat(count("transcript_segments")).isZero();
         assertThat(count("document_generation_batches")).isZero();
         assertThat(
-                state.find(recordingId)
+                recordingTranscriptionStateService.findSnapshot(recordingId)
                         .status()
         ).isEqualTo(TranscriptionStatus.PROCESSING);
+    }
+
+    @Test
+    @DisplayName("대기열은 접수 시각과 ID 순서로 한 건만 선점하고 앞 실패 후 다음을 실행한다")
+    void claimNext_success_fifoAfterFailure() {
+        // given
+        long second = completedRecording(
+                workspaceId,
+                memberId
+        );
+        register(
+                workspaceId,
+                recordingId
+        );
+        register(
+                workspaceId,
+                second
+        );
+        UUID owner = UUID.randomUUID();
+        // when
+        RecordingTranscriptionExecution first = recordingTranscriptionStateService.claimNext(
+                owner,
+                java.time.Duration.ofSeconds(60)
+        )
+                .orElseThrow();
+        // then
+        assertThat(first.recordingId()).isEqualTo(recordingId);
+        assertThat(
+                recordingTranscriptionStateService.claimNext(
+                        UUID.randomUUID(),
+                        java.time.Duration.ofSeconds(60)
+                )
+        ).isEmpty();
+        recordingTranscriptionStateService.fail(
+                first,
+                "INFERENCE_FAILED"
+        );
+        assertThat(
+                recordingTranscriptionStateService.claimNext(
+                        owner,
+                        java.time.Duration.ofSeconds(60)
+                )
+                        .orElseThrow()
+                        .recordingId()
+        ).isEqualTo(second);
+    }
+
+    @Test
+    @DisplayName("두 JVM의 동시 선점도 PostgreSQL admission 잠금 아래 실행 한 건만 만든다")
+    void claimNext_success_concurrentOwners() throws Exception {
+        // given
+        long second = completedRecording(
+                workspaceId,
+                memberId
+        );
+        register(
+                workspaceId,
+                recordingId
+        );
+        register(
+                workspaceId,
+                second
+        );
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        java.util.concurrent.Callable<Optional<RecordingTranscriptionExecution>> claim = () -> {
+            barrier.await(
+                    5,
+                    TimeUnit.SECONDS
+            );
+            return recordingTranscriptionStateService.claimNext(
+                    UUID.randomUUID(),
+                    java.time.Duration.ofSeconds(60)
+            );
+        };
+        // when
+        List<Optional<RecordingTranscriptionExecution>> claimed;
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            Future<Optional<RecordingTranscriptionExecution>> first = executor.submit(claim);
+            Future<Optional<RecordingTranscriptionExecution>> next = executor.submit(claim);
+            claimed = List.of(
+                    first.get(
+                            10,
+                            TimeUnit.SECONDS
+                    ),
+                    next.get(
+                            10,
+                            TimeUnit.SECONDS
+                    )
+            );
+        }
+        // then
+        assertThat(
+                claimed.stream()
+                        .filter(Optional::isPresent)
+                        .count()
+        ).isEqualTo(1);
+        assertThat(
+                jdbc.sql("SELECT count(*) FROM recording_transcriptions WHERE status = 'PROCESSING'")
+                        .query(Long.class)
+                        .single()
+        ).isEqualTo(1);
+        assertThat(
+                jdbc.sql("SELECT count(*) FROM recording_transcriptions WHERE status = 'QUEUED'")
+                        .query(Long.class)
+                        .single()
+        ).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("lease 만료 재선점은 같은 attempt의 epoch를 올리고 구 owner의 모든 변경을 거절한다")
+    void claimNext_success_rejectsStaleOwner() {
+        // given
+        register(
+                workspaceId,
+                recordingId
+        );
+        RecordingTranscriptionExecution old = currentExecution();
+        when(clock.instant()).thenReturn(NOW.plusSeconds(60));
+        RecordingTranscriptionExecution current = recordingTranscriptionStateService.claimNext(
+                UUID.randomUUID(),
+                java.time.Duration.ofSeconds(60)
+        )
+                .orElseThrow();
+        // when
+        recordingTranscriptionStateService.complete(
+                old,
+                transcript()
+        );
+        // then
+        recordingTranscriptionStateService.fail(
+                old,
+                "LATE_FAILURE"
+        );
+        recordingTranscriptionStateService.requeue(
+                old,
+                java.time.Duration.ZERO
+        );
+        recordingTranscriptionStateService.observe(
+                old,
+                com.knot.backend.recording.domain.model.RemoteObservation.FAILED
+        );
+        assertThat(
+                recordingTranscriptionStateService.renew(
+                        old,
+                        java.time.Duration.ofSeconds(60)
+                )
+        ).isFalse();
+        assertThat(
+                recordingTranscriptionStateService.beginRemotePost(
+                        old,
+                        java.time.Duration.ofSeconds(30)
+                )
+        ).isEmpty();
+        assertThat(count("transcripts")).isZero();
+        assertThat(current.attemptId()).isEqualTo(old.attemptId());
+        assertThat(current.claimEpoch()).isEqualTo(old.claimEpoch() + 1);
+        assertThat(
+                recordingTranscriptionStateService.findSnapshot(recordingId)
+                        .status()
+        ).isEqualTo(TranscriptionStatus.PROCESSING);
+        recordingTranscriptionStateService.complete(
+                current,
+                transcript()
+        );
+        assertThat(count("transcripts")).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("대기 시간은 실행 budget에 포함되지 않으며 응답 유실과 재선점은 deadline을 연장하지 않는다")
+    void beginRemotePost_success_persistentDeadline() {
+        // given
+        register(
+                workspaceId,
+                recordingId
+        );
+        when(clock.instant()).thenReturn(NOW.plusSeconds(3600));
+        RecordingTranscriptionExecution first = currentExecution();
+        Instant expected = NOW.plusSeconds(3630);
+        // when
+        Instant deadline = recordingTranscriptionStateService.beginRemotePost(
+                first,
+                java.time.Duration.ofSeconds(30)
+        )
+                .orElseThrow();
+        // then
+        assertThat(deadline).isEqualTo(expected);
+        recordingTranscriptionStateService.requeue(
+                first,
+                java.time.Duration.ZERO
+        );
+        when(clock.instant()).thenReturn(NOW.plusSeconds(3601));
+        RecordingTranscriptionExecution resumed = currentExecution();
+        assertThat(resumed.executionDeadline()).isEqualTo(expected);
+        assertThat(
+                recordingTranscriptionStateService.beginRemotePost(
+                        resumed,
+                        java.time.Duration.ofHours(10)
+                )
+        ).contains(expected);
+    }
+
+    @Test
+    @DisplayName("명시적 최초 거절은 실행 시계를 취소하지만 준비 대기 시각과 backoff를 보존한다")
+    void deferReadiness_success_boundedBackoff() {
+        // given
+        register(
+                workspaceId,
+                recordingId
+        );
+        RecordingTranscriptionExecution first = currentExecution();
+        recordingTranscriptionStateService.beginRemotePost(
+                first,
+                java.time.Duration.ofSeconds(30)
+        );
+        // when
+        recordingTranscriptionStateService.deferReadiness(
+                first,
+                java.time.Duration.ofSeconds(120),
+                true
+        );
+        // then
+        assertThat(
+                recordingTranscriptionStateService.findSnapshot(recordingId)
+                        .status()
+        ).isEqualTo(TranscriptionStatus.QUEUED);
+        assertThat(
+                recordingTranscriptionStateService.claimNext(
+                        UUID.randomUUID(),
+                        java.time.Duration.ofSeconds(60)
+                )
+        ).isEmpty();
+        when(clock.instant()).thenReturn(NOW.plusSeconds(1));
+        RecordingTranscriptionExecution second = currentExecution();
+        assertThat(second.executionDeadline()).isNull();
+        assertThat(second.attemptId()).isEqualTo(first.attemptId());
+        when(clock.instant()).thenReturn(NOW.plusSeconds(120));
+        // 만료 lease는 같은 시도로 다시 선점해 준비 대기 상한을 판단한다.
+        RecordingTranscriptionExecution last = recordingTranscriptionStateService.claimNext(
+                UUID.randomUUID(),
+                java.time.Duration.ofSeconds(60)
+        )
+                .orElseThrow();
+        recordingTranscriptionStateService.deferReadiness(
+                last,
+                java.time.Duration.ofSeconds(120),
+                true
+        );
+        assertThat(
+                recordingTranscriptionStateService.findSnapshot(recordingId)
+                        .failureCode()
+        ).isEqualTo("AI_UNAVAILABLE");
+    }
+
+    @Test
+    @DisplayName("재시작은 다른 owner의 유효 lease를 초기화하지 않는다")
+    void recoverProcessing_success_preservesLiveOwner() {
+        // given
+        register(
+                workspaceId,
+                recordingId
+        );
+        RecordingTranscriptionExecution live = currentExecution();
+        // when
+        Optional<RecordingTranscriptionExecution> restarted = recordingTranscriptionStateService.claimNext(
+                UUID.randomUUID(),
+                java.time.Duration.ofSeconds(60)
+        );
+        // then
+        assertThat(restarted).isEmpty();
+        assertThat(
+                recordingTranscriptionStateService.claimNext(
+                        UUID.randomUUID(),
+                        java.time.Duration.ofSeconds(60)
+                )
+        ).isEmpty();
+        assertThat(
+                recordingTranscriptionStateService.findProcessing()
+                        .orElseThrow()
+                        .ownerToken()
+        ).isEqualTo(live.ownerToken());
+    }
+
+    @Test
+    @DisplayName("구 worker가 녹음 잠금을 기다리는 사이 새 owner가 선점해도 늦은 결과를 채택하지 않는다")
+    void complete_success_staleOwnerAtCommitBarrier() throws Exception {
+        // given
+        register(
+                workspaceId,
+                recordingId
+        );
+        RecordingTranscriptionExecution old = currentExecution();
+        java.util.concurrent.CountDownLatch locked = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            Future<?> blocker = executor.submit(() -> transactions.executeWithoutResult(status -> {
+                workspaceRepository.findByIdForUpdate(workspaceId)
+                        .orElseThrow();
+                locked.countDown();
+                awaitLatch(release);
+            }));
+            assertThat(
+                    locked.await(
+                            5,
+                            TimeUnit.SECONDS
+                    )
+            ).isTrue();
+            Future<?> late = executor.submit(
+                    () -> recordingTranscriptionStateService.complete(
+                            old,
+                            transcript()
+                    )
+            );
+            when(clock.instant()).thenReturn(NOW.plusSeconds(60));
+            // when
+            RecordingTranscriptionExecution current = recordingTranscriptionStateService.claimNext(
+                    UUID.randomUUID(),
+                    java.time.Duration.ofSeconds(60)
+            )
+                    .orElseThrow();
+            // then
+            release.countDown();
+            blocker.get(
+                    10,
+                    TimeUnit.SECONDS
+            );
+            late.get(
+                    10,
+                    TimeUnit.SECONDS
+            );
+            assertThat(count("transcripts")).isZero();
+            assertThat(current.claimEpoch()).isEqualTo(old.claimEpoch() + 1);
+            recordingTranscriptionStateService.complete(
+                    current,
+                    transcript()
+            );
+            assertThat(count("transcripts")).isEqualTo(1);
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
+    @DisplayName("lease 갱신 후에는 이전 만료 시각이 지나도 다른 owner가 선점하지 않는다")
+    void renew_success_extendsOnlyCurrentLease() {
+        // given
+        register(
+                workspaceId,
+                recordingId
+        );
+        RecordingTranscriptionExecution current = currentExecution();
+        when(clock.instant()).thenReturn(NOW.plusSeconds(59));
+        // when
+        boolean renewed = recordingTranscriptionStateService.renew(
+                current,
+                java.time.Duration.ofSeconds(60)
+        );
+        // then
+        assertThat(renewed).isTrue();
+        when(clock.instant()).thenReturn(NOW.plusSeconds(60));
+        assertThat(
+                recordingTranscriptionStateService.claimNext(
+                        UUID.randomUUID(),
+                        java.time.Duration.ofSeconds(60)
+                )
+        ).isEmpty();
+    }
+
+    private void awaitLatch(java.util.concurrent.CountDownLatch latch) {
+        try {
+            if (!latch.await(
+                    10,
+                    TimeUnit.SECONDS
+            )) {
+                throw new IllegalStateException("검증 잠금 대기 시간이 초과되었습니다");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread()
+                    .interrupt();
+            throw new IllegalStateException(
+                    "검증 스레드가 중단되었습니다",
+                    exception
+            );
+        }
+    }
+
+    @Test
+    @DisplayName("종료 후 시작자가 공유 워크스페이스에서 탈퇴하면 늦은 전사와 문서를 채택하지 않는다")
+    void complete_success_creatorLeftWorkspace() {
+        // given
+        long remaining = fixtures.saveMember("남은 회원");
+        fixtures.join(
+                workspaceId,
+                remaining
+        );
+        register(
+                workspaceId,
+                recordingId
+        );
+        RecordingTranscriptionExecution execution = currentExecution();
+        jdbc.sql("UPDATE workspace_members SET left_at = :now WHERE workspace_id = :workspace AND member_id = :member")
+                .param(
+                        "now",
+                        java.sql.Timestamp.from(NOW)
+                )
+                .param(
+                        "workspace",
+                        workspaceId
+                )
+                .param(
+                        "member",
+                        memberId
+                )
+                .update();
+        // when
+        recordingTranscriptionStateService.complete(
+                execution,
+                transcript()
+        );
+        // then
+        assertThat(count("transcripts")).isZero();
+        assertThat(count("document_generation_jobs")).isZero();
+        assertThat(
+                recordingTranscriptionStateService.findSnapshot(recordingId)
+                        .failureCode()
+        ).isEqualTo("RECORDING_UNAVAILABLE");
+    }
+
+    @Test
+    @DisplayName("원본 정리 배치 전에도 30일이 지난 음원은 전사나 문서로 채택하지 않는다")
+    void complete_success_retentionExpiredBeforeCleanup() {
+        // given
+        register(
+                workspaceId,
+                recordingId
+        );
+        RecordingTranscriptionExecution execution = currentExecution();
+        jdbc.sql(
+                "UPDATE recording_audio_uploads SET completed_at = :expired, reserved_at = :expired "
+                        + "WHERE recording_id = :id"
+        )
+                .param(
+                        "expired",
+                        java.sql.Timestamp.from(NOW.minusSeconds(30L * 86400))
+                )
+                .param(
+                        "id",
+                        recordingId
+                )
+                .update();
+        // when
+        recordingTranscriptionStateService.complete(
+                execution,
+                transcript()
+        );
+        // then
+        assertThat(count("transcripts")).isZero();
+        assertThat(count("document_generation_jobs")).isZero();
+        assertThat(
+                recordingTranscriptionStateService.findSnapshot(recordingId)
+                        .failureCode()
+        ).isEqualTo("RECORDING_UNAVAILABLE");
+    }
+
+    @Test
+    @DisplayName("미확정 시도의 확인된 성공은 다른 녹음 실행 중에도 같은 결과를 원자적으로 채택한다")
+    void adoptUncertainResult_success_preservesOtherProcessing() {
+        // given
+        register(
+                workspaceId,
+                recordingId
+        );
+        RecordingTranscriptionExecution previous = currentExecution();
+        recordingTranscriptionStateService.fail(
+                previous,
+                "AI_OUTCOME_UNKNOWN"
+        );
+        long second = completedRecording(
+                workspaceId,
+                memberId
+        );
+        register(
+                workspaceId,
+                second
+        );
+        RecordingTranscriptionExecution other = currentExecution();
+        // when
+        RecordingTranscriptionRetryResult recovered = recordingTranscriptionStateService.adoptUncertainResult(
+                workspaceId,
+                memberId,
+                previous,
+                transcript()
+        );
+        // then
+        assertThat(recovered.attemptId()).isEqualTo(previous.attemptId());
+        assertThat(recovered.status()).isEqualTo(TranscriptionStatus.SUCCEEDED);
+        assertThat(
+                recordingTranscriptionStateService.findSnapshot(second)
+                        .status()
+        ).isEqualTo(TranscriptionStatus.PROCESSING);
+        assertThat(count("transcripts")).isEqualTo(1);
+        assertThat(count("document_generation_jobs")).isEqualTo(1);
+        assertThat(
+                recordingTranscriptionStateService.findProcessing()
+                        .orElseThrow()
+                        .ownerToken()
+        ).isEqualTo(other.ownerToken());
+    }
+
+    @Test
+    @DisplayName("업로드 채택 커밋 콜백의 전사 선점도 독립 트랜잭션에 확정되고 다른 owner를 막는다")
+    void claimNext_success_commitsFromAfterCommitCallback() {
+        // given
+        UUID owner = UUID.randomUUID();
+        AtomicReference<RecordingTranscriptionExecution> claimed = new AtomicReference<>();
+        // when
+        transactions.executeWithoutResult(status -> {
+            workspaceRepository.findByIdForUpdate(workspaceId)
+                    .orElseThrow();
+            recordingSessionRepository.findByIdForUpdate(recordingId)
+                    .orElseThrow();
+            recordingTranscriptionStateService.registerAutomatic(recordingId);
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    claimed.set(
+                            recordingTranscriptionStateService.claimNext(
+                                    owner,
+                                    java.time.Duration.ofSeconds(60)
+                            )
+                                    .orElseThrow()
+                    );
+                }
+            });
+        });
+        // then
+        assertThat(claimed.get()).isNotNull();
+        RecordingTranscriptionExecution persisted = transactions.execute(
+                status -> recordingTranscriptionStateService.findProcessing()
+                        .orElseThrow()
+        );
+        assertThat(persisted.ownerToken()).isEqualTo(owner);
+        assertThat(persisted.claimEpoch()).isEqualTo(
+                claimed.get()
+                        .claimEpoch()
+        );
+        assertThat(
+                recordingTranscriptionStateService.findSnapshot(recordingId)
+                        .status()
+        ).isEqualTo(TranscriptionStatus.PROCESSING);
+        assertThat(
+                recordingTranscriptionStateService.claimNext(
+                        UUID.randomUUID(),
+                        java.time.Duration.ofSeconds(60)
+                )
+        ).isEmpty();
     }
 
     private static Stream<AiTranscript> invalidTranscripts() {
@@ -800,7 +1347,7 @@ class RecordingTranscriptionStateIntegrationTest {
             );
 
             // then
-            UUID attempt = state.find(recordingId)
+            UUID attempt = recordingTranscriptionStateService.findSnapshot(recordingId)
                     .attemptId();
             assertThat(logs.events()).filteredOn(
                     event -> hasLogField(
@@ -837,8 +1384,8 @@ class RecordingTranscriptionStateIntegrationTest {
     }
 
     @Test
-    @DisplayName("자동 접수의 BUSY는 실제 실패 상태와 접수 거절 로그를 함께 남긴다")
-    void logging_accept_busyRejected() {
+    @DisplayName("다른 전사가 있어도 자동 접수는 대기열에 저장하고 accepted를 기록한다")
+    void logging_accept_queuedAlongsideExistingAttempt() {
         // given
         register(
                 workspaceId,
@@ -857,18 +1404,18 @@ class RecordingTranscriptionStateIntegrationTest {
 
             // then
             assertThat(
-                    state.find(otherRecording)
+                    recordingTranscriptionStateService.findSnapshot(otherRecording)
                             .status()
-            ).isEqualTo(TranscriptionStatus.FAILED);
+            ).isEqualTo(TranscriptionStatus.QUEUED);
             assertThat(
-                    state.find(otherRecording)
+                    recordingTranscriptionStateService.findSnapshot(otherRecording)
                             .failureCode()
-            ).isEqualTo("BUSY");
+            ).isNull();
             assertThat(logs.events()).filteredOn(
                     event -> hasLogField(
                             event,
                             "outcome",
-                            "rejected"
+                            "accepted"
                     )
             )
                     .singleElement()
@@ -876,8 +1423,9 @@ class RecordingTranscriptionStateIntegrationTest {
                         assertThat(
                                 hasLogField(
                                         event,
-                                        "errorCode",
-                                        "BUSY"
+                                        "attemptId",
+                                        recordingTranscriptionStateService.findSnapshot(otherRecording)
+                                                .attemptId()
                                 )
                         ).isTrue();
                         assertThat(event.getLevel()).isEqualTo(Level.INFO);
@@ -886,7 +1434,7 @@ class RecordingTranscriptionStateIntegrationTest {
                     event -> hasLogField(
                             event,
                             "outcome",
-                            "accepted"
+                            "rejected"
                     )
             );
         }
@@ -900,7 +1448,7 @@ class RecordingTranscriptionStateIntegrationTest {
                 workspaceId,
                 recordingId
         );
-        UUID attempt = state.find(recordingId)
+        UUID attempt = recordingTranscriptionStateService.findSnapshot(recordingId)
                 .attemptId();
         try (LogCapture logs = new LogCapture(RecordingLog.class)) {
             // when
@@ -938,18 +1486,17 @@ class RecordingTranscriptionStateIntegrationTest {
                 workspaceId,
                 recordingId
         );
-        RecordingTranscriptionExecution execution = state.findProcessing()
-                .orElseThrow();
+        RecordingTranscriptionExecution execution = currentExecution();
         try (LogCapture logs = new LogCapture(RecordingLog.class)) {
             // when
-            state.complete(
+            recordingTranscriptionStateService.complete(
                     execution,
                     transcript()
             );
 
             // then
             assertThat(
-                    state.find(recordingId)
+                    recordingTranscriptionStateService.findSnapshot(recordingId)
                             .status()
             ).isEqualTo(TranscriptionStatus.SUCCEEDED);
             assertThat(logs.events()).filteredOn(
@@ -993,8 +1540,7 @@ class RecordingTranscriptionStateIntegrationTest {
                 workspaceId,
                 recordingId
         );
-        RecordingTranscriptionExecution execution = state.findProcessing()
-                .orElseThrow();
+        RecordingTranscriptionExecution execution = currentExecution();
         transactions.executeWithoutResult(
                 status -> doThrow(new IllegalStateException("private-intake-body")).when(intake)
                         .acceptCompletedTranscript(
@@ -1006,7 +1552,7 @@ class RecordingTranscriptionStateIntegrationTest {
         try (LogCapture logs = new LogCapture(RecordingLog.class)) {
             // when
             Throwable failure = catchThrowable(
-                    () -> state.complete(
+                    () -> recordingTranscriptionStateService.complete(
                             execution,
                             transcript()
                     )
@@ -1015,7 +1561,7 @@ class RecordingTranscriptionStateIntegrationTest {
             // then
             assertThat(failure).isInstanceOf(IllegalStateException.class);
             assertThat(
-                    state.find(recordingId)
+                    recordingTranscriptionStateService.findSnapshot(recordingId)
                             .status()
             ).isEqualTo(TranscriptionStatus.PROCESSING);
             assertThat(count("transcripts")).isZero();
@@ -1046,18 +1592,17 @@ class RecordingTranscriptionStateIntegrationTest {
                 workspaceId,
                 recordingId
         );
-        RecordingTranscriptionExecution execution = state.findProcessing()
-                .orElseThrow();
+        RecordingTranscriptionExecution execution = currentExecution();
         try (LogCapture logs = new LogCapture(RecordingLog.class)) {
             // when
-            state.fail(
+            recordingTranscriptionStateService.fail(
                     execution,
                     "STT_FAILED"
             );
 
             // then
             assertThat(
-                    state.find(recordingId)
+                    recordingTranscriptionStateService.findSnapshot(recordingId)
                             .status()
             ).isEqualTo(TranscriptionStatus.FAILED);
             assertThat(logs.events()).filteredOn(
@@ -1095,29 +1640,28 @@ class RecordingTranscriptionStateIntegrationTest {
                 workspaceId,
                 recordingId
         );
-        RecordingTranscriptionExecution previous = state.findProcessing()
-                .orElseThrow();
-        state.fail(
+        RecordingTranscriptionExecution previous = currentExecution();
+        recordingTranscriptionStateService.fail(
                 previous,
                 "STT_FAILED"
         );
-        state.retry(
+        recordingTranscriptionStateService.retry(
                 workspaceId,
                 memberId,
                 recordingId
         );
         try (LogCapture logs = new LogCapture(RecordingLog.class)) {
             // when
-            state.complete(
+            recordingTranscriptionStateService.complete(
                     previous,
                     transcript()
             );
 
             // then
             assertThat(
-                    state.find(recordingId)
+                    recordingTranscriptionStateService.findSnapshot(recordingId)
                             .status()
-            ).isEqualTo(TranscriptionStatus.PROCESSING);
+            ).isEqualTo(TranscriptionStatus.QUEUED);
             assertThat(count("transcripts")).isZero();
             assertThat(logs.events()).filteredOn(
                     event -> hasLogField(
@@ -1154,22 +1698,21 @@ class RecordingTranscriptionStateIntegrationTest {
                 workspaceId,
                 recordingId
         );
-        RecordingTranscriptionExecution execution = state.findProcessing()
-                .orElseThrow();
-        state.complete(
+        RecordingTranscriptionExecution execution = currentExecution();
+        recordingTranscriptionStateService.complete(
                 execution,
                 transcript()
         );
         try (LogCapture logs = new LogCapture(RecordingLog.class)) {
             // when
-            state.fail(
+            recordingTranscriptionStateService.fail(
                     execution,
                     "STT_FAILED"
             );
 
             // then
             assertThat(
-                    state.find(recordingId)
+                    recordingTranscriptionStateService.findSnapshot(recordingId)
                             .status()
             ).isEqualTo(TranscriptionStatus.SUCCEEDED);
             assertThat(logs.events()).filteredOn(
@@ -1198,15 +1741,14 @@ class RecordingTranscriptionStateIntegrationTest {
                 workspaceId,
                 recordingId
         );
-        RecordingTranscriptionExecution previous = state.findProcessing()
-                .orElseThrow();
-        state.fail(
+        RecordingTranscriptionExecution previous = currentExecution();
+        recordingTranscriptionStateService.fail(
                 previous,
                 "STT_FAILED"
         );
         try (LogCapture logs = new LogCapture(RecordingLog.class)) {
             // when
-            RecordingTranscriptionRetryResult result = state.retry(
+            RecordingTranscriptionRetryResult result = recordingTranscriptionStateService.retry(
                     workspaceId,
                     memberId,
                     recordingId
@@ -1249,8 +1791,7 @@ class RecordingTranscriptionStateIntegrationTest {
                 workspaceId,
                 recordingId
         );
-        RecordingTranscriptionExecution execution = state.findProcessing()
-                .orElseThrow();
+        RecordingTranscriptionExecution execution = currentExecution();
         jdbc.sql("DELETE FROM recording_transcriptions WHERE recording_session_id = :id")
                 .param(
                         "id",
@@ -1259,13 +1800,13 @@ class RecordingTranscriptionStateIntegrationTest {
                 .update();
         try (LogCapture logs = new LogCapture(RecordingLog.class)) {
             // when
-            state.fail(
+            recordingTranscriptionStateService.fail(
                     execution,
                     "STT_FAILED"
             );
 
             // then
-            assertThat(state.find(recordingId)).isNull();
+            assertThat(recordingTranscriptionStateService.findSnapshot(recordingId)).isNull();
             assertThat(logs.events()).filteredOn(
                     event -> hasLogField(
                             event,
@@ -1322,7 +1863,7 @@ class RecordingTranscriptionStateIntegrationTest {
                     ),
                     NOW.minusSeconds(5)
             );
-            uploads.save(upload);
+            recordingAudioUploadRepository.save(upload);
         });
         return id;
     }
@@ -1332,14 +1873,11 @@ class RecordingTranscriptionStateIntegrationTest {
             long recordingId
     ) {
         transactions.executeWithoutResult(status -> {
-            workspaces.findByIdForUpdate(workspace)
+            workspaceRepository.findByIdForUpdate(workspace)
                     .orElseThrow();
-            RecordingSession recording = recordings.findByIdForUpdate(recordingId)
+            RecordingSession recording = recordingSessionRepository.findByIdForUpdate(recordingId)
                     .orElseThrow();
-            state.registerAutomatic(
-                    workspace,
-                    recording.getId()
-            );
+            recordingTranscriptionStateService.registerAutomatic(recording.getId());
         });
     }
 
@@ -1397,4 +1935,15 @@ class RecordingTranscriptionStateIntegrationTest {
                 )
         );
     }
+    private RecordingTranscriptionExecution currentExecution() {
+        return recordingTranscriptionStateService.findProcessing()
+                .orElseGet(
+                        () -> recordingTranscriptionStateService.claimNext(
+                                UUID.randomUUID(),
+                                java.time.Duration.ofSeconds(60)
+                        )
+                                .orElseThrow()
+                );
+    }
+
 }

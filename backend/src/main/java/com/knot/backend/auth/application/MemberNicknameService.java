@@ -2,8 +2,8 @@ package com.knot.backend.auth.application;
 
 import com.knot.backend.auth.domain.AuthErrorCode;
 import com.knot.backend.auth.domain.AuthException;
-import com.knot.backend.auth.domain.OAuthIdentity;
-import com.knot.backend.auth.domain.OAuthUser;
+import com.knot.backend.auth.domain.model.OAuthIdentity;
+import com.knot.backend.auth.domain.model.OAuthUser;
 import com.knot.backend.member.application.MemberService;
 import com.knot.backend.member.domain.Member;
 import lombok.RequiredArgsConstructor;

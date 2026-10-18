@@ -1,0 +1,38 @@
+package com.knot.backend.recording.domain.model;
+
+public record StoredAudioObject(
+        boolean exists,
+        long contentLength,
+        String contentType,
+        String versionId
+) {
+
+    public static StoredAudioObject missing() {
+        return new StoredAudioObject(
+                false,
+                0L,
+                null,
+                null
+        );
+    }
+
+    public static StoredAudioObject of(
+            long contentLength,
+            String contentType,
+            String versionId
+    ) {
+        return new StoredAudioObject(
+                true,
+                contentLength,
+                contentType,
+                versionId
+        );
+    }
+
+    public boolean matches(
+            String expectedContentType,
+            long expectedContentLength
+    ) {
+        return exists && contentLength == expectedContentLength && expectedContentType.equals(contentType);
+    }
+}

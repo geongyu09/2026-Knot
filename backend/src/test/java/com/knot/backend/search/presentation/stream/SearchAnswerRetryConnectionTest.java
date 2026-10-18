@@ -11,7 +11,7 @@ import ch.qos.logback.classic.Level;
 import com.knot.backend.global.config.SearchWorkerProperties;
 import com.knot.backend.search.application.SearchAnswerSnapshotService;
 import com.knot.backend.search.application.dto.result.SearchAnswerSnapshotResult;
-import com.knot.backend.search.domain.SearchMessageStatus;
+import com.knot.backend.search.domain.model.SearchMessageStatus;
 import com.knot.backend.testsupport.LogCapture;
 import java.time.Duration;
 import java.time.Instant;

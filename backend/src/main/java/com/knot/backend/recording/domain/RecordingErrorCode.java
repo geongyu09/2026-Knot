@@ -6,6 +6,90 @@ import lombok.Getter;
 
 @Getter
 public enum RecordingErrorCode implements ErrorCode {
+    AUDIO_SAVE_OWNERSHIP_LOST(
+            ErrorCategory.CONFLICT,
+            "AUDIO_SAVE_OWNERSHIP_LOST",
+            "오디오 저장 작업의 실행 권한이 만료되었습니다"
+    ),
+    AUDIO_SAVE_RETRY_NOT_ALLOWED(
+            ErrorCategory.CONFLICT,
+            "AUDIO_SAVE_RETRY_NOT_ALLOWED",
+            "현재 오디오 저장 작업은 다시 시도할 수 없습니다"
+    ),
+    AI_OUTCOME_UNKNOWN(
+            ErrorCategory.INTERNAL_SERVER_ERROR,
+            "AI_OUTCOME_UNKNOWN",
+            "AI 실행 결과를 확인하지 못했습니다"
+    ),
+    INVALID_AUDIO_SEAL(
+            ErrorCategory.INVALID_INPUT,
+            "INVALID_AUDIO_SEAL",
+            "오디오 종료 명세가 올바르지 않습니다"
+    ),
+    AUDIO_SEAL_CONFLICT(
+            ErrorCategory.CONFLICT,
+            "AUDIO_SEAL_CONFLICT",
+            "이미 확정한 오디오 종료 명세와 다릅니다"
+    ),
+    AUDIO_ACCEPTANCE_CLOSED(
+            ErrorCategory.CONFLICT,
+            "AUDIO_ACCEPTANCE_CLOSED",
+            "오디오 저장 확인 유예 시간이 끝났습니다"
+    ),
+    AUDIO_MODE_DISABLED(
+            ErrorCategory.CONFLICT,
+            "AUDIO_MODE_DISABLED",
+            "녹음 중 오디오 저장 기능이 활성화되지 않았습니다"
+    ),
+
+    AUDIO_MODE_CONFLICT(
+            ErrorCategory.CONFLICT,
+            "AUDIO_MODE_CONFLICT",
+            "녹음 오디오 모드가 기존 요청과 다릅니다"
+    ),
+
+    INVALID_AUDIO_CHUNK(
+            ErrorCategory.INVALID_INPUT,
+            "INVALID_AUDIO_CHUNK",
+            "오디오 조각의 형식이나 크기가 올바르지 않습니다"
+    ),
+
+    AUDIO_CHUNK_CONFLICT(
+            ErrorCategory.CONFLICT,
+            "AUDIO_CHUNK_CONFLICT",
+            "오디오 조각이 기존 예약과 다릅니다"
+    ),
+
+    AUDIO_SEQUENCE_GAP(
+            ErrorCategory.CONFLICT,
+            "AUDIO_SEQUENCE_GAP",
+            "다음 오디오 조각 번호가 올바르지 않습니다"
+    ),
+
+    AUDIO_CHUNK_NOT_FOUND(
+            ErrorCategory.NOT_FOUND,
+            "AUDIO_CHUNK_NOT_FOUND",
+            "오디오 조각 예약을 찾을 수 없습니다"
+    ),
+
+    AUDIO_CHUNK_NOT_STORED(
+            ErrorCategory.CONFLICT,
+            "AUDIO_CHUNK_NOT_STORED",
+            "오디오 조각이 저장소에 올라가지 않았습니다"
+    ),
+
+    AUDIO_CHUNK_MISMATCH(
+            ErrorCategory.CONFLICT,
+            "AUDIO_CHUNK_MISMATCH",
+            "저장된 오디오 조각의 무결성을 확인할 수 없습니다"
+    ),
+
+    AUDIO_SAVE_FROZEN(
+            ErrorCategory.CONFLICT,
+            "AUDIO_SAVE_FROZEN",
+            "오디오 저장 범위가 이미 확정되었습니다"
+    ),
+
     TRANSCRIPTION_DISABLED(
             ErrorCategory.CONFLICT,
             "TRANSCRIPTION_DISABLED",

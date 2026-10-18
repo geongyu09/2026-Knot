@@ -4,7 +4,7 @@ import com.knot.backend.recording.application.RecordingAudioStorage;
 import com.knot.backend.recording.application.dto.result.PresignedAudioUpload;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
-import com.knot.backend.recording.domain.StoredAudioObject;
+import com.knot.backend.recording.domain.model.StoredAudioObject;
 
 public class UnconfiguredRecordingAudioStorage implements RecordingAudioStorage {
 
@@ -20,6 +20,11 @@ public class UnconfiguredRecordingAudioStorage implements RecordingAudioStorage 
 
     @Override
     public void deleteStoredObject(String storageKey) {
+        throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
+    }
+
+    @Override
+    public void deleteRecordingPrefix(String storagePrefix) {
         throw new RecordingException(RecordingErrorCode.AUDIO_STORAGE_UNAVAILABLE);
     }
 
