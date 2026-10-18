@@ -227,10 +227,6 @@ public class RecordingSession {
         return belongsTo(workspaceId) && status == RecordingStatus.ENDED;
     }
 
-    public void validateAudioUploadable() {
-        validateEnded();
-    }
-
     public void validateNotDiscarded() {
         ensureNotDiscarded();
     }
