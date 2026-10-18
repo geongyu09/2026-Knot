@@ -50,8 +50,24 @@ class MacInstallTest(unittest.TestCase):
         (self.tls / 'ca.crt').write_bytes((self.tls / 'client.crt').read_bytes())
 
     def install(self, apply=False):
+        native_run = subprocess.run
+        self.launch_calls = []
+
+        def isolated_run(command, *args, **kwargs):
+            if Path(command[0]).name == 'launchctl':
+                self.launch_calls.append(command)
+                return subprocess.CompletedProcess(command, 0, stdout='', stderr='')
+            return native_run(command, *args, **kwargs)
+
+        class FixtureSocket(installer.socket.socket):
+            def bind(self, address):
+                # A unit test must not depend on or reserve the operating collector port.
+                return super().bind(('127.0.0.1', 0) if address == ('127.0.0.1', 12346) else address)
+
         with patch.object(installer.sys, 'platform', 'darwin'), \
-                patch.object(installer.os, 'getuid', return_value=501):
+                patch.object(installer.os, 'getuid', return_value=501), \
+                patch.object(installer.subprocess, 'run', side_effect=isolated_run), \
+                patch.object(installer.socket, 'socket', FixtureSocket):
             installer.install(self.binary, 'https://fixture.invalid', self.tls,
                               self.destination, self.agents, apply)
 
@@ -118,6 +134,7 @@ class MacInstallTest(unittest.TestCase):
         ])
 
     def test_bootstrap_failure_removes_only_new_plist_and_preserves_diagnostics(self):
+        # given
         original = installer.checked
 
         def checked(command, step, **kwargs):
@@ -127,15 +144,18 @@ class MacInstallTest(unittest.TestCase):
                 raise ValueError('synthetic bootstrap failure')
             return original(command, step, **kwargs)
 
+        # when
         with patch.object(installer, 'checked', side_effect=checked), \
                 patch.object(installer.subprocess, 'run', wraps=subprocess.run) as commands:
             with self.assertRaisesRegex(ValueError, 'bootstrap'):
                 self.install(apply=True)
+        # then
         self.assertFalse((self.agents / (installer.LABEL + '.plist')).exists())
         self.assertTrue((self.destination / 'config.alloy').exists())
-        self.assertTrue(any(call.args[0] == [
+        self.assertIn([
             'launchctl', 'bootout', 'gui/501/kr.knot.mac-metrics',
-        ] for call in commands.call_args_list))
+        ], self.launch_calls)
+        self.assertFalse(any(Path(call.args[0][0]).name == 'launchctl' for call in commands.call_args_list))
 
     def test_launch_agent_has_no_public_listener_or_secret_contents(self):
         agent = installer.launch_agent(self.destination, self.binary, 'https://fixture.invalid')
