@@ -186,6 +186,123 @@ class InstallServiceTest(unittest.TestCase):
         self.assertFalse(any(self.query(label)['loaded'] for label in config.LABELS.values()))
         self.assert_preserved()
 
+    def assert_partial_write_does_not_block_reinstall(self, failed_write):
+        # given
+        fdopen = os.fdopen
+        files = installer.assets(self.root, self.agents, self.values)
+        opened = []
+        bootstrap_count = self.bootstrap_count
+
+        class PartialWrite:
+            def __init__(self, stream):
+                self.stream = stream
+
+            def __enter__(self):
+                self.stream.__enter__()
+                return self
+
+            def write(self, body):
+                self.stream.write(body[:8])
+                self.stream.flush()
+                raise OSError('fixture partial write')
+
+            def __exit__(self, *args):
+                return self.stream.__exit__(*args)
+
+        def fail_selected_write(*args, **kwargs):
+            stream = fdopen(*args, **kwargs)
+            if args[1] != 'wb':
+                return stream
+            opened.append(True)
+            return PartialWrite(stream) if len(opened) == failed_write else stream
+
+        # when
+        with self.subTest(stage=failed_write):
+            with patch.object(installer.os, 'fdopen', fail_selected_write):
+                with self.assertRaisesRegex(ValueError, 'INSTALL_FAILED_RESTORED'):
+                    self.install()
+            # then
+            self.assertFalse(any(path.exists() for path in files))
+            self.assertFalse((self.root / 'receipt.json').exists())
+            self.assertFalse(any(path.name.endswith('.tmp') for path in self.root.rglob('*')))
+            for receipt in (self.root / 'backups').glob('*/receipt.json'):
+                self.assertIsInstance(json.loads(receipt.read_text()), dict)
+            self.assertEqual(self.bootstrap_count, bootstrap_count)
+            self.assertEqual(len(opened), failed_write)
+            installed = self.install()
+            self.assertEqual(installed['status'], 'installed')
+            installer.restore(self.home, Path(installed['backup']), apply=True)
+            self.assert_preserved()
+
+    def test_partial_backup_receipt_never_blocks_reinstall(self):
+        self.assert_partial_write_does_not_block_reinstall(1)
+
+    def test_partial_active_receipt_never_blocks_reinstall(self):
+        self.assert_partial_write_does_not_block_reinstall(2)
+
+    def test_partial_asset_never_blocks_reinstall(self):
+        self.assert_partial_write_does_not_block_reinstall(3)
+
+    def test_atomic_publication_race_preserves_existing_target_and_removes_temporary(self):
+        # given
+        target = self.root / 'fixture-target'
+        link = os.link
+
+        def publish_competitor(source, destination, **kwargs):
+            Path(destination).write_bytes(b'fixture user edit')
+            return link(source, destination, **kwargs)
+
+        # when
+        with patch.object(installer.os, 'link', publish_competitor):
+            with self.assertRaises(FileExistsError):
+                installer.write_new(target, b'installer content')
+        # then
+        self.assertEqual(target.read_bytes(), b'fixture user edit')
+        self.assertEqual(list(self.root.glob('*.tmp')), [])
+
+    def test_active_receipt_publication_race_preserves_competing_receipt(self):
+        # given
+        receipt = self.root / 'receipt.json'
+        link = os.link
+
+        def publish_competitor(source, destination, **kwargs):
+            if destination == receipt:
+                self.write(receipt, {'fixture': 'user receipt'})
+            return link(source, destination, **kwargs)
+
+        # when
+        with patch.object(installer.os, 'link', publish_competitor):
+            with self.assertRaisesRegex(ValueError, 'INSTALL_FAILED_RESTORED'):
+                self.install()
+        # then
+        self.assertEqual(json.loads(receipt.read_text()), {'fixture': 'user receipt'})
+        self.assertFalse(any(path.exists() for path in installer.assets(self.root, self.agents, self.values)))
+        self.assertFalse(any(path.name.endswith('.tmp') for path in self.root.rglob('*')))
+        self.assertEqual(self.bootstrap_count, 0)
+        self.assert_preserved()
+
+    def test_asset_publication_race_preserves_competing_user_edit(self):
+        # given
+        edited = self.root / 'run_service.py'
+        link = os.link
+
+        def publish_competitor(source, destination, **kwargs):
+            if destination == edited:
+                edited.write_bytes(b'# fixture concurrent user edit\n')
+                edited.chmod(0o600)
+            return link(source, destination, **kwargs)
+
+        # when
+        with patch.object(installer.os, 'link', publish_competitor):
+            with self.assertRaisesRegex(ValueError, 'RECOVERY_CONFLICT'):
+                self.install()
+        # then
+        self.assertEqual(edited.read_bytes(), b'# fixture concurrent user edit\n')
+        self.assertTrue((self.root / 'receipt.json').exists())
+        self.assertEqual(self.bootstrap_count, 0)
+        self.assertFalse(any(path.name.endswith('.tmp') for path in self.root.rglob('*')))
+        self.assert_preserved()
+
     def test_existing_port_or_target_label_is_refused_before_writes(self):
         # given
         before = self.snapshot()

@@ -111,9 +111,15 @@ def prerequisites(home):
 
 
 def write_new(path, body):
-    fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, 'wb') as stream:
-        stream.write(body)
+    temporary = path.with_name('.' + path.name + '.' + uuid.uuid4().hex + '.tmp')
+    fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(body)
+        # Same-directory link publishes the completed inode without replacing another writer.
+        os.link(temporary, path, follow_symlinks=False)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def validate_manifest(root, agents, backup):
@@ -208,16 +214,19 @@ def install(home, input_file, apply=False):
                     'labels': list(config.LABELS.values()),
                     'files': {str(p): hashlib.sha256(b).hexdigest() for p, b in files.items()}}
         body = (json.dumps(manifest, sort_keys=True) + '\n').encode()
-        write_new(backup / 'receipt.json', body)
-        write_new(receipt, body)
+        recorded = False
         try:
+            write_new(backup / 'receipt.json', body)
+            write_new(receipt, body)
+            recorded = True
             for path, content in files.items():
                 write_new(path, content)
             for label in config.LABELS.values():
                 config.checked(['launchctl', 'bootstrap', f'gui/{os.getuid()}', str(agents / (label + '.plist'))])
             ready(values, environment)
         except BaseException:
-            restore(home, backup, apply=True, _locked=True)
+            if recorded:
+                restore(home, backup, apply=True, _locked=True)
             raise ValueError('INSTALL_FAILED_RESTORED: 신규 등록과 파일을 원복했습니다') from None
         return {'status': 'installed', 'backup': str(backup)}
 
