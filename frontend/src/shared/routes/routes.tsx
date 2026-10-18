@@ -4,6 +4,7 @@ import InvitePage from "@pages/invite/[token]";
 import JoinErrorPage from "@pages/join-error";
 import LandingPage from "@pages/landing";
 import LoginPage from "@pages/login";
+import NotFoundPage from "@pages/not-found";
 import OnboardingPage from "@pages/onboarding";
 import OnboardingCompletePage from "@pages/onboarding/complete";
 import WorkspacePage from "@pages/workspace";
@@ -160,5 +161,11 @@ export const routes: RouteObject[] = [
         element: <DocumentPage />,
       },
     ],
+  },
+
+  // 어느 라우트에도 맞지 않는 주소 — 빈 화면 대신 ERR-01. 맞는 라우트가 하나라도 있으면 그쪽이 먼저예요
+  {
+    path: "*",
+    element: <NotFoundPage />,
   },
 ];
