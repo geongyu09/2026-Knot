@@ -21,14 +21,14 @@ export default class Microphone {
   /** 끊을 때마다 1씩 늘어요. 권한을 받는 사이 끊겼는지 알아보는 데 써요 */
   private generation = 0;
 
-  private pendingConnect: Promise<AnalyserNode | null> | null = null;
+  private pendingConnect: Promise<MicrophoneConnection | null> | null = null;
 
   constructor({ onData, onLost }: MicrophoneParams) {
     this.onData = onData;
     this.onLost = onLost;
   }
 
-  /** 마이크를 받아 연결하고 분석기를 돌려줘요. 받지 못하면 `null`이에요 */
+  /** 마이크를 받아 연결하고 그 연결(분석기·마이크)을 돌려줘요. 받지 못하면 `null`이에요 */
   connect() {
     this.pendingConnect ??= this.open().finally(() => {
       this.pendingConnect = null;
@@ -83,7 +83,7 @@ export default class Microphone {
         onLost: this.onLost,
       });
 
-      return this.connection.analyser;
+      return this.connection;
     } catch {
       // 권한 거부나 장치 없음은 연결하지 않고 `null`만 돌려줘요
       return null;

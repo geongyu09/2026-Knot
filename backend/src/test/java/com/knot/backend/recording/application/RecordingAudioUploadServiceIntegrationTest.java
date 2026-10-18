@@ -43,21 +43,18 @@ class RecordingAudioUploadServiceIntegrationTest {
     private static final String CONTROL_TOKEN = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefA";
 
     private final RecordingAudioUploadService recordingAudioUploadService;
-    private final RecordingStartService recordingStartService;
-    private final RecordingControlService recordingControlService;
+    private final RecordingService recordingService;
     private final TransactionTemplate transactionTemplate;
     private final JdbcClient jdbcClient;
 
     RecordingAudioUploadServiceIntegrationTest(
             RecordingAudioUploadService recordingAudioUploadService,
-            RecordingStartService recordingStartService,
-            RecordingControlService recordingControlService,
+            RecordingService recordingService,
             TransactionTemplate transactionTemplate,
             JdbcClient jdbcClient
     ) {
         this.recordingAudioUploadService = recordingAudioUploadService;
-        this.recordingStartService = recordingStartService;
-        this.recordingControlService = recordingControlService;
+        this.recordingService = recordingService;
         this.transactionTemplate = transactionTemplate;
         this.jdbcClient = jdbcClient;
     }
@@ -282,7 +279,7 @@ class RecordingAudioUploadServiceIntegrationTest {
                 memberId,
                 tabId
         );
-        recordingControlService.end(
+        recordingService.end(
                 workspaceId,
                 memberId,
                 recordingId,
@@ -416,7 +413,7 @@ class RecordingAudioUploadServiceIntegrationTest {
             long memberId,
             UUID tabId
     ) {
-        return recordingStartService.start(
+        return recordingService.start(
                 workspaceId,
                 memberId,
                 command(tabId)

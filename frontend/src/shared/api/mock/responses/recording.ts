@@ -8,6 +8,9 @@ import {
 } from "@api/mock/responses/documentGenerationJob";
 import type {
   CurrentRecordingResponse,
+  RecordingAudioChunkCompleteResponse,
+  RecordingAudioChunkReserveResponse,
+  RecordingAudioSaveResponse,
   RecordingAudioUploadCompleteResponse,
   RecordingAudioUploadUrlResponse,
   RecordingDetailEntry,
@@ -17,6 +20,7 @@ import type {
   RecordingPauseResponse,
   RecordingResumeResponse,
   RecordingStartResponse,
+  RecordingTranscriptionRetryResponse,
 } from "@api/mock/types/recording";
 
 const MINUTE = 60 * 1000;
@@ -85,6 +89,8 @@ const endedRecording = {
 } satisfies Partial<RecordingDetailResponse>;
 
 const TRANSCRIPTION_ATTEMPT_ID = "d0a03c18-1687-4512-8f79-1df67a8e56ef";
+// 전사에 실패한 녹음의 ID. 전사 다시 시도 mock 응답이 가리키는 녹음이에요
+const TRANSCRIPTION_FAILED_RECORDING_ID = 13;
 
 // 전사까지 끝나 문서 생성이 접수된 뒤의 공통 값이에요
 const transcribedRecording = {
@@ -139,7 +145,7 @@ export const recordingDetailsResponse = [
     },
   },
   {
-    recordingId: 13,
+    recordingId: TRANSCRIPTION_FAILED_RECORDING_ID,
     detail: {
       ...endedRecording,
       transcriptionAttemptId: TRANSCRIPTION_ATTEMPT_ID,
@@ -189,6 +195,13 @@ export const recordingDetailsResponse = [
   },
 ] satisfies RecordingDetailEntry[];
 
+// 전사에 실패한 녹음의 전사를 다시 접수했을 때의 응답이에요. 새 시도라 녹음 상세의 시도 ID와 달라요
+export const recordingTranscriptionRetryResponse = {
+  recordingId: TRANSCRIPTION_FAILED_RECORDING_ID,
+  attemptId: "6f2b9c44-3d1e-4b7a-9f0c-2a8e5d7c1b33",
+  transcriptionStatus: "PROCESSING",
+} satisfies RecordingTranscriptionRetryResponse;
+
 export const recordingAudioUploadUrlResponse = {
   uploadId: 300,
   uploadUrl: `${MOCK_AUDIO_STORAGE_ORIGIN}/recordings/10/audio`,
@@ -201,3 +214,45 @@ export const recordingAudioUploadCompleteResponse = {
   uploadStatus: "COMPLETED",
   completedAt: fromNow(0),
 } satisfies RecordingAudioUploadCompleteResponse;
+
+// 5초 무음 PCM(값이 0인 160,000바이트)의 SHA-256. BE 문서의 예시 조각과 같아요
+const SILENT_CHUNK_CHECKSUM = "uc4WTTDkEBsAn+S+dloHBZPPvdSPiXhT3hWajBd/q+g=";
+
+export const recordingAudioChunkReserveResponse = {
+  sequence: 1,
+  status: "RESERVED",
+  uploadUrl: `${MOCK_AUDIO_STORAGE_ORIGIN}/recordings/10/audio-chunks/1`,
+  expiresAt: fromNow(5 * MINUTE),
+  requiredHeaders: {
+    "content-type": "application/octet-stream",
+    "if-none-match": "*",
+    "x-amz-checksum-sha256": SILENT_CHUNK_CHECKSUM,
+  },
+} satisfies RecordingAudioChunkReserveResponse;
+
+export const recordingAudioChunkCompleteResponse = {
+  sequence: 1,
+  status: "VERIFIED",
+  verifiedThroughSequence: 1,
+  verifiedThroughFrame: 80000,
+  verifiedAudioMillis: 5000,
+  confirmedAt: fromNow(0),
+} satisfies RecordingAudioChunkCompleteResponse;
+
+// 녹음 상세 mock처럼 8분 전에 끝난 녹음이라, 받아 주는 시한(종료 + 2분)도 이미 지났어요.
+// 5초 조각 뒤에 1,600프레임 tail까지 모두 확인돼 최종 WAV를 채택한 상태예요
+export const recordingAudioSaveResponse = {
+  audioSaveStatus: "READY",
+  verifiedThroughSequence: 2,
+  verifiedThroughFrame: 81600,
+  verifiedAudioMillis: 5100,
+  verifiedRanges: [{ start: 0, endExclusive: 81600 }],
+  missingRanges: [],
+  tailUnknown: false,
+  expectedLastSequence: 2,
+  acceptUntil: fromNow(-6 * MINUTE),
+  failureCode: null,
+  canRetry: false,
+  jobId: 1,
+  quality: "COMPLETE",
+} satisfies RecordingAudioSaveResponse;

@@ -3,6 +3,7 @@ package com.knot.backend.search.infrastructure.llm;
 import com.knot.backend.search.infrastructure.persistence.SearchHistoryQuery;
 
 import com.knot.backend.global.config.SearchAgentProperties;
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.search.application.SearchDocumentRetriever;
 import com.knot.backend.search.application.SearchToolAccess;
 import com.knot.backend.search.application.SearchToolScope;
@@ -16,10 +17,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @RequiredArgsConstructor
+@Slf4j
 public class SearchMcpDocumentRetriever implements SearchDocumentRetriever {
     private static final int PAGE_SIZE_LIMIT = 20;
     private static final String INSTRUCTIONS = """
@@ -76,16 +79,39 @@ public class SearchMcpDocumentRetriever implements SearchDocumentRetriever {
         Set<String> repeated = new HashSet<>();
         Set<String> callIds = new HashSet<>();
         int count = 0;
+        int round = 0;
         while (count <= properties.getToolCallLimit()) {
+            round++;
             access.validate(scope);
             context.validate(messages);
-            JsonNode response = llm.complete(
-                    scope,
-                    messages,
-                    tools
+            JsonNode response;
+            JsonNode calls;
+            boolean finished;
+            try {
+                response = llm.complete(
+                        scope,
+                        messages,
+                        tools
+                );
+                calls = response.path("tool_calls");
+                finished = hasNoToolCalls(calls);
+            } catch (RuntimeException exception) {
+                log.info(
+                        "Search exploration llm_round workspaceId={} answerId={} round={} outcome=failure failureCode={}",
+                        scope.workspaceId(),
+                        scope.answerId(),
+                        round,
+                        ServerErrorLogger.safeFailureCode(exception)
+                );
+                throw exception;
+            }
+            log.info(
+                    "Search exploration llm_round workspaceId={} answerId={} round={} toolCallCount={} outcome=success",
+                    scope.workspaceId(),
+                    scope.answerId(),
+                    round,
+                    calls.size()
             );
-            JsonNode calls = response.path("tool_calls");
-            boolean finished = hasNoToolCalls(calls);
             if (finished) {
                 return new SearchRetrievalResult(
                         exploration.finish(),
@@ -97,7 +123,8 @@ public class SearchMcpDocumentRetriever implements SearchDocumentRetriever {
                     response
             );
             for (JsonNode call : calls) {
-                if (++count > properties.getToolCallLimit()) {
+                count++;
+                if (count > properties.getToolCallLimit()) {
                     throw new SearchToolException("SEARCH_TOOL_LIMIT_EXCEEDED");
                 }
                 recordCall(
@@ -106,7 +133,9 @@ public class SearchMcpDocumentRetriever implements SearchDocumentRetriever {
                         messages,
                         exploration,
                         repeated,
-                        callIds
+                        callIds,
+                        round,
+                        count
                 );
                 context.validate(messages);
             }
@@ -178,7 +207,9 @@ public class SearchMcpDocumentRetriever implements SearchDocumentRetriever {
             List<Map<String, Object>> messages,
             SearchExploration exploration,
             Set<String> repeated,
-            Set<String> callIds
+            Set<String> callIds,
+            int round,
+            int toolCallIndex
     ) {
         String id = call.path("id")
                 .asString();
@@ -219,13 +250,28 @@ public class SearchMcpDocumentRetriever implements SearchDocumentRetriever {
         );
         String signature = name + mapper.writeValueAsString(new TreeMap<>(values));
         if (!repeated.add(signature)) {
-            throw new SearchToolException("REPEATED_TOOL_CALL");
+            logToolCall(
+                    scope,
+                    round,
+                    toolCallIndex,
+                    name,
+                    true,
+                    0,
+                    "repeated"
+            );
+            appendRepeatedCallNotice(
+                    messages,
+                    id
+            );
+            return;
         }
         access.validate(scope);
-        JsonNode result = mcp.call(
+        JsonNode result = callTool(
                 scope,
                 name,
-                values
+                values,
+                round,
+                toolCallIndex
         );
         exploration.record(
                 name,
@@ -239,6 +285,101 @@ public class SearchMcpDocumentRetriever implements SearchDocumentRetriever {
                         id,
                         "content",
                         mapper.writeValueAsString(result)
+                )
+        );
+    }
+
+    private JsonNode callTool(
+            SearchToolScope scope,
+            String name,
+            Map<String, Object> values,
+            int round,
+            int toolCallIndex
+    ) {
+        JsonNode result;
+        try {
+            result = mcp.call(
+                    scope,
+                    name,
+                    values
+            );
+        } catch (RuntimeException exception) {
+            log.info(
+                    "Search exploration tool_call workspaceId={} answerId={} round={} toolCallIndex={} toolName={} repeated=false resultCount=0 outcome=failure failureCode={}",
+                    scope.workspaceId(),
+                    scope.answerId(),
+                    round,
+                    toolCallIndex,
+                    name,
+                    ServerErrorLogger.safeFailureCode(exception)
+            );
+            throw exception;
+        }
+        logToolCall(
+                scope,
+                round,
+                toolCallIndex,
+                name,
+                false,
+                resultCount(result),
+                "success"
+        );
+        return result;
+    }
+
+    private void logToolCall(
+            SearchToolScope scope,
+            int round,
+            int toolCallIndex,
+            String name,
+            boolean wasRepeated,
+            int resultCount,
+            String outcome
+    ) {
+        log.info(
+                "Search exploration tool_call workspaceId={} answerId={} round={} toolCallIndex={} toolName={} repeated={} resultCount={} outcome={}",
+                scope.workspaceId(),
+                scope.answerId(),
+                round,
+                toolCallIndex,
+                name,
+                wasRepeated,
+                resultCount,
+                outcome
+        );
+    }
+
+    private int resultCount(JsonNode result) {
+        JsonNode items = result.path("items");
+        if (items.isArray()) {
+            return items.size();
+        }
+        if (result.path("document")
+                .isObject()) {
+            return 1;
+        }
+        return 0;
+    }
+
+    private void appendRepeatedCallNotice(
+            List<Map<String, Object>> messages,
+            String id
+    ) {
+        messages.add(
+                Map.of(
+                        "role",
+                        "tool",
+                        "tool_call_id",
+                        id,
+                        "content",
+                        mapper.writeValueAsString(
+                                Map.of(
+                                        "error",
+                                        "REPEATED_TOOL_CALL",
+                                        "message",
+                                        "This exact tool request has already been executed. Change its input or finish the exploration."
+                                )
+                        )
                 )
         );
     }

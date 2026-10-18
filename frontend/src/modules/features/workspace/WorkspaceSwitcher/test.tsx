@@ -227,7 +227,7 @@ describe("WorkspaceSwitcher", () => {
 
     it("일시정지 중이어도 묻는다", async () => {
       await startRecording();
-      act(() => useRecordingStore.getState().pauseRecording());
+      await act(() => useRecordingStore.getState().pauseRecording());
       renderSwitcher();
       await openMenu();
 
@@ -610,7 +610,7 @@ describe("WorkspaceSwitcher", () => {
       it("일시정지 중이어도 녹음을 버린다", async () => {
         respondWorkspace({ myRole: "MEMBER" });
         await startRecording();
-        act(() => useRecordingStore.getState().pauseRecording());
+        await act(() => useRecordingStore.getState().pauseRecording());
         renderSwitcher();
         await clickLeave();
 

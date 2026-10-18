@@ -53,6 +53,9 @@ public class RecordingAudioUpload {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
+    @Column(name = "revoked_at")
+    private Instant revokedAt;
+
     @Column(name = "storage_version_id")
     private String storageVersionId;
 
@@ -96,6 +99,32 @@ public class RecordingAudioUpload {
         );
     }
 
+    public static RecordingAudioUpload adoptServerWav(
+            RecordingSession session,
+            String storageKey,
+            StoredAudioChunk stored,
+            Instant now
+    ) {
+        if (session.getAudioMode() != RecordingAudioMode.PCM16_CHUNKS_V1 || session.getStatus() != RecordingStatus.ENDED
+                || storageKey == null || storageKey.isBlank() || !stored.exists()
+                || !"audio/wav".equals(stored.contentType()) || stored.byteLength() < 44
+                || stored.byteLength() > 230400044L || stored.versionId() == null || stored.versionId()
+                        .isBlank()
+                || "null".equals(stored.versionId()) || now == null || now.isBefore(session.getEndedAt())) {
+            throw new RecordingException(RecordingErrorCode.AUDIO_CHUNK_MISMATCH);
+        }
+        RecordingAudioUpload upload = new RecordingAudioUpload();
+        upload.recordingId = session.getId();
+        upload.storageKey = storageKey;
+        upload.contentType = "audio/wav";
+        upload.contentLength = stored.byteLength();
+        upload.reservedAt = now;
+        upload.completedAt = now;
+        upload.storageVersionId = stored.versionId();
+        upload.status = RecordingAudioUploadStatus.COMPLETED;
+        return upload;
+    }
+
     public void validateReissuable(
             String contentType,
             long contentLength
@@ -126,7 +155,7 @@ public class RecordingAudioUpload {
     }
 
     public boolean isAudioAvailable() {
-        return isCompleted() && deletedAt == null;
+        return isCompleted() && deletedAt == null && revokedAt == null;
     }
 
     public void validateAudioAvailable() {
@@ -141,6 +170,13 @@ public class RecordingAudioUpload {
             return false;
         }
         return !now.isBefore(completedAt.plus(AUDIO_RETENTION));
+    }
+
+    public void revoke(Instant revokedAt) {
+        validateTimeNotBeforeReservation(revokedAt);
+        if (this.revokedAt == null) {
+            this.revokedAt = revokedAt;
+        }
     }
 
     public void recordDeleted(Instant deletedAt) {

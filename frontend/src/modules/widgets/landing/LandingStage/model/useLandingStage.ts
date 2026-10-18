@@ -20,6 +20,7 @@ const useLandingStage = () => {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const scrollCueRef = useRef<HTMLDivElement>(null);
   const documentsRef = useRef<HTMLDivElement>(null);
   const confirmationRef = useRef<HTMLDivElement>(null);
   const questionInputRef = useRef<HTMLDivElement>(null);
@@ -36,16 +37,17 @@ const useLandingStage = () => {
     const scroller = scrollerRef.current;
     const stage = stageRef.current;
     const canvas = canvasRef.current;
+    const scrollCue = scrollCueRef.current;
     const documents = documentsRef.current;
     const confirmation = confirmationRef.current;
     const questionInput = questionInputRef.current;
-    if (!scroller || !stage || !canvas || !documents || !confirmation || !questionInput) return;
+    if (!scroller || !stage || !canvas || !scrollCue || !documents || !confirmation || !questionInput) return;
 
     const ink = hexToRgb(theme.neutral[800]);
     const strong = hexToRgb(theme.neutral[900]);
     const accent = hexToRgb(theme.sub.accent[500]);
     const engine = createLandingEngine({
-      elements: { scroller, stage, canvas, documents, confirmation, questionInput },
+      elements: { scroller, stage, canvas, scrollCue, documents, confirmation, questionInput },
       listeners: {
         onSceneChange: setScene,
         onSettledChange: setIsSettled,
@@ -105,7 +107,7 @@ const useLandingStage = () => {
   };
 
   return {
-    refs: { scrollerRef, stageRef, canvasRef, documentsRef, confirmationRef, questionInputRef },
+    refs: { scrollerRef, stageRef, canvasRef, scrollCueRef, documentsRef, confirmationRef, questionInputRef },
     scene,
     isSettled,
     recordingSeconds,

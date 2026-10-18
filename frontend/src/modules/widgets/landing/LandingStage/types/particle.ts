@@ -13,8 +13,8 @@ export interface ParticleTarget {
   /** 제자리에서 흔들리는 자리의 기준 위치 */
   baseX?: number;
   baseY?: number;
-  /** 매 프레임 자리가 바뀌는 방식. 1은 녹음 파형, 9는 떠다니는 말 조각이에요. */
-  motion?: 1 | 9;
+  /** 매 프레임 자리가 바뀌는 방식. 1은 녹음 파형, 2는 스크롤 안내의 휠 점, 3은 스크롤 안내의 마우스 윤곽, 9는 떠다니는 말 조각이에요. */
+  motion?: 1 | 2 | 3 | 9;
   /** 파형의 몇 번째 막대인지 */
   column?: number;
   /** 파형 막대 안에서의 세로 위치(-1~1) */
@@ -24,6 +24,8 @@ export interface ParticleTarget {
   amplitudeScale?: number;
   /** 말 조각이 흔들리는 박자를 서로 엇갈리게 하는 번호 */
   group?: number;
+  /** 스크롤 안내의 휠 점이 한 번에 굴러 내려가는 거리(px) */
+  travel?: number;
 }
 
 /** 화면 위를 움직이는 입자 하나의 현재 상태 */

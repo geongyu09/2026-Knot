@@ -15,6 +15,10 @@ import {
   PutDocumentConfirmationResponseDto,
 } from "./document";
 import {
+  RecordingAudioFrameRangeDto,
+  RecordingSourceAudioDto,
+} from "./recording";
+import {
   GetOwnershipTransferCandidatesResponseDto,
   GetWorkspacesResponseDto,
   OwnershipTransferCandidateDto,
@@ -159,7 +163,7 @@ describe("DTO 생성자 변환", () => {
       expect(dto).toEqual(raw);
     });
 
-    it("상세 응답의 확인 집계를 ConfirmationSummaryDto로 감싸고 나머지 필드는 그대로 옮긴다", () => {
+    it("상세 응답의 확인 집계를 ConfirmationSummaryDto로 감싸고 나머지 필드는 그대로 옮기며, sourceAudio를 주지 않는 서버면 null로 맞춘다", () => {
       const raw = {
         id: 101,
         recordingSessionId: 42,
@@ -183,7 +187,42 @@ describe("DTO 생성자 변환", () => {
       const dto = new GetDocumentResponseDto(raw);
 
       expect(dto.confirmationSummary).toBeInstanceOf(ConfirmationSummaryDto);
-      expect(dto).toEqual(raw);
+      expect(dto).toEqual({ ...raw, sourceAudio: null });
+    });
+
+    it("상세 응답의 원본 오디오 품질을 RecordingSourceAudioDto로, 누락 구간을 RecordingAudioFrameRangeDto로 감싼다", () => {
+      const sourceAudio = {
+        quality: "PARTIAL" as const,
+        missingRanges: [{ start: 80000, endExclusive: 160000 }],
+        tailUnknown: false,
+      };
+
+      const dto = new GetDocumentResponseDto({
+        id: 101,
+        recordingSessionId: 42,
+        topic: "회원",
+        title: "회원 탈퇴 정책",
+        summary: null,
+        content: "## 결정\n탈퇴한 사용자의 게시글은 유지해요.",
+        status: "DRAFT",
+        createdAt: "2026-09-15T03:00:00.000Z",
+        archivedAt: null,
+        recordingDurationSeconds: 1920,
+        sourceTranscriptId: 81,
+        myConfirmationState: "PENDING",
+        confirmationSummary: {
+          confirmedCount: 2,
+          pendingCount: 2,
+          excludedCount: 0,
+        },
+        sourceAudio,
+      });
+
+      expect(dto.sourceAudio).toBeInstanceOf(RecordingSourceAudioDto);
+      expect(dto.sourceAudio?.missingRanges[0]).toBeInstanceOf(
+        RecordingAudioFrameRangeDto,
+      );
+      expect(dto.sourceAudio).toEqual(sourceAudio);
     });
 
     it("확인 대상 조회 응답의 대상을 DocumentConfirmationItemDto로 감싸고, 집계 세 값은 ConfirmationSummaryDto로 묶고, confirmedByMe는 옮기지 않는다", () => {

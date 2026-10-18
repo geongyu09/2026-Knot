@@ -11,7 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
-import com.knot.backend.recording.application.RecordingControlService;
+import com.knot.backend.recording.application.RecordingService;
 import com.knot.backend.recording.application.dto.command.RecordingControlCommand;
 import com.knot.backend.recording.application.dto.result.RecordingEndResult;
 import com.knot.backend.recording.domain.RecordingErrorCode;
@@ -44,13 +44,13 @@ class RecordingEndControllerTest {
             {"tabId":"22222222-2222-2222-2222-222222222222","controlToken":"%s"}
             """.formatted(CONTROL_TOKEN);
 
-    private RecordingControlService recordingControlService;
+    private RecordingService recordingService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        recordingControlService = mock(RecordingControlService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new RecordingEndController(recordingControlService))
+        recordingService = mock(RecordingService.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(new RecordingEndController(recordingService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                 .build();
@@ -68,7 +68,7 @@ class RecordingEndControllerTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
         when(
-                recordingControlService.end(
+                recordingService.end(
                         WORKSPACE_ID,
                         MEMBER_ID,
                         RECORDING_ID,
@@ -109,7 +109,7 @@ class RecordingEndControllerTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
         when(
-                recordingControlService.end(
+                recordingService.end(
                         eq(WORKSPACE_ID),
                         eq(MEMBER_ID),
                         eq(RECORDING_ID),
@@ -151,7 +151,7 @@ class RecordingEndControllerTest {
 
         // then
         result.andExpect(status().isBadRequest());
-        verifyNoInteractions(recordingControlService);
+        verifyNoInteractions(recordingService);
     }
 
     @Test
@@ -177,16 +177,29 @@ class RecordingEndControllerTest {
         result.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("controlToken"));
-        verifyNoInteractions(recordingControlService);
+        verifyNoInteractions(recordingService);
     }
 
     @Test
-    @DisplayName("요청 본문이 없으면 INVALID_REQUEST_BODY 400을 반환하고 서비스를 호출하지 않는다")
-    void end_failure_missingBody() throws Exception {
+    @DisplayName("요청 본문 없이 본인 녹음을 원격 종료한다")
+    void end_success_remoteWithoutBody() throws Exception {
         // given
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
-
+        when(
+                recordingService.end(
+                        WORKSPACE_ID,
+                        MEMBER_ID,
+                        RECORDING_ID,
+                        null
+                )
+        ).thenReturn(
+                new RecordingEndResult(
+                        RECORDING_ID,
+                        RecordingStatus.ENDED,
+                        ENDED_AT
+                )
+        );
         // when
         ResultActions result = mockMvc.perform(
                 post(
@@ -195,11 +208,59 @@ class RecordingEndControllerTest {
                         RECORDING_ID
                 )
         );
-
         // then
-        result.andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_REQUEST_BODY"));
-        verifyNoInteractions(recordingControlService);
+        result.andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ENDED"));
+    }
+
+    @Test
+    void end_success_optionalAudioSeal() throws Exception {
+        // given
+        SecurityContextHolder.getContext()
+                .setAuthentication(memberAuthentication());
+        when(
+                recordingService.end(
+                        eq(WORKSPACE_ID),
+                        eq(MEMBER_ID),
+                        eq(RECORDING_ID),
+                        any(),
+                        any()
+                )
+        ).thenReturn(
+                new RecordingEndResult(
+                        RECORDING_ID,
+                        RecordingStatus.ENDED,
+                        ENDED_AT,
+                        new com.knot.backend.recording.application.dto.result.RecordingAudioSealSummary(
+                                "DRAINING",
+                                0,
+                                0,
+                                false,
+                                ENDED_AT.plusSeconds(120)
+                        )
+                )
+        );
+        // when
+        ResultActions result = mockMvc.perform(
+                post(
+                        "/api/v1/workspaces/{workspaceId}/recordings/{recordingId}/end",
+                        WORKSPACE_ID,
+                        RECORDING_ID
+                ).contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                """
+                                        {"tabId":"%s","controlToken":"%s",
+                                         "audioSeal":{"lastSequence":0,"totalFrameCount":0,"pendingDescriptors":[]}}
+                                        """.formatted(
+                                        TAB_ID,
+                                        CONTROL_TOKEN
+                                )
+                        )
+        );
+        // then
+        result.andExpect(status().isOk())
+                .andExpect(jsonPath("$.audioSave.expectedLastSequence").value(0))
+                .andExpect(jsonPath("$.audioSave.tailUnknown").value(false));
     }
 
     private UsernamePasswordAuthenticationToken memberAuthentication() {

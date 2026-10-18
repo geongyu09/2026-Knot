@@ -27,13 +27,12 @@ public class DocumentListQueryAdapter implements DocumentListQuery {
             long memberId,
             DocumentListParameters parameters
     ) {
-        return documents.findTopics(
+        List<DocumentTopicRow> topics = findTopicRows(
                 workspaceId,
                 memberId,
-                parameters.recordingSessionId(),
-                confirmationFilter(parameters.myConfirmation())
-        )
-                .stream()
+                parameters
+        );
+        return topics.stream()
                 .map(
                         row -> new DocumentTopicResult(
                                 row.topic(),
@@ -43,6 +42,26 @@ public class DocumentListQueryAdapter implements DocumentListQuery {
                 .toList();
     }
 
+    private List<DocumentTopicRow> findTopicRows(
+            long workspaceId,
+            long memberId,
+            DocumentListParameters parameters
+    ) {
+        if (parameters.myConfirmation() == MyConfirmationState.PENDING) {
+            return documents.findPendingTopics(
+                    workspaceId,
+                    memberId,
+                    parameters.recordingSessionId()
+            );
+        }
+        return documents.findTopics(
+                workspaceId,
+                memberId,
+                parameters.recordingSessionId(),
+                confirmationFilter(parameters.myConfirmation())
+        );
+    }
+
     @Override
     public List<DocumentCardResult> findPage(
             long workspaceId,
@@ -50,18 +69,11 @@ public class DocumentListQueryAdapter implements DocumentListQuery {
             DocumentListParameters parameters,
             DocumentCursor cursor
     ) {
-        List<DocumentCardRow> cards = documents.findPage(
+        List<DocumentCardRow> cards = findCards(
                 workspaceId,
                 memberId,
-                parameters.recordingSessionId(),
-                confirmationFilter(parameters.myConfirmation()),
-                cursor != null,
-                cursorTime(cursor),
-                cursorId(cursor),
-                PageRequest.of(
-                        0,
-                        parameters.size() + 1
-                )
+                parameters,
+                cursor
         );
         if (cards.isEmpty()) {
             return List.of();
@@ -88,6 +100,38 @@ public class DocumentListQueryAdapter implements DocumentListQuery {
                         )
                 )
                 .toList();
+    }
+
+    private List<DocumentCardRow> findCards(
+            long workspaceId,
+            long memberId,
+            DocumentListParameters parameters,
+            DocumentCursor cursor
+    ) {
+        if (parameters.myConfirmation() == MyConfirmationState.PENDING) {
+            return documents.findPendingPage(
+                    workspaceId,
+                    memberId,
+                    parameters.recordingSessionId(),
+                    cursor != null,
+                    cursorTime(cursor),
+                    cursorId(cursor),
+                    parameters.size() + 1
+            );
+        }
+        return documents.findPage(
+                workspaceId,
+                memberId,
+                parameters.recordingSessionId(),
+                confirmationFilter(parameters.myConfirmation()),
+                cursor != null,
+                cursorTime(cursor),
+                cursorId(cursor),
+                PageRequest.of(
+                        0,
+                        parameters.size() + 1
+                )
+        );
     }
 
     private String confirmationFilter(MyConfirmationState state) {

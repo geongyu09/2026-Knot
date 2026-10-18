@@ -2,6 +2,7 @@ package com.knot.backend.recording.application;
 
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadCompletionResult;
 import com.knot.backend.recording.domain.model.StoredAudioObject;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -18,13 +19,37 @@ public class RecordingAudioUploadCompletionService {
             long recordingId,
             long uploadId
     ) {
-        StoredAudioObject storedObject = recordingAudioUploadService.findStorageKeyToConfirm(
+        RecordingLog.Scope prepare = RecordingLog.begin(
+                "recording.upload.prepare",
                 workspaceId,
-                memberId,
                 recordingId,
-                uploadId
-        )
-                .map(recordingAudioStorage::findStoredObject)
+                uploadId,
+                null
+        );
+        Optional<String> storageKey = prepare.call(() -> {
+            Optional<String> found = recordingAudioUploadService.findStorageKeyToConfirm(
+                    workspaceId,
+                    memberId,
+                    recordingId,
+                    uploadId
+            );
+            prepare.outcome(found.isPresent() ? "prepared" : "replayed");
+            return found;
+        });
+        StoredAudioObject storedObject = storageKey.map(key -> {
+            RecordingLog.Scope verification = RecordingLog.begin(
+                    "recording.upload.verify",
+                    workspaceId,
+                    recordingId,
+                    uploadId,
+                    null
+            );
+            return verification.call(() -> {
+                StoredAudioObject found = recordingAudioStorage.findStoredObject(key);
+                verification.outcome(found.exists() ? "found" : "missing");
+                return found;
+            });
+        })
                 .orElseGet(StoredAudioObject::missing);
         RecordingAudioUploadCompletionResult result = recordingAudioUploadService.complete(
                 workspaceId,
