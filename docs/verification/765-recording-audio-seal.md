@@ -46,3 +46,10 @@ V55는 seal 컬럼·정합 CHECK·sealed 후보 인덱스를 추가하고 기존
 - `python3 -m unittest discover ../.github/scripts -p 'test_*.py'`: Governance 10개 통과.
 - 컨벤션 원문 hash gate 통과. #765 변경 Java 파일의 전체 감사 진단은 0개다. 저장소 전체 감사는 기존 진단 1,281개로 실패한다. 변경 범위 기본 감사에는 기존 build 의존성 버전 2개와 기존 RecordingStartAcceptanceTest 계층 의존성 1개가 남는다. 전체 감사 통과를 주장하지 않는다.
 - `git diff --check` 통과. 실제 FE flush·강제 탭 종료와 실제 배포 전체 연결은 후속 통합 검증 대상이다.
+
+## develop 통합 후 재검증 (2026-10-18)
+
+PR #735의 `RecordingService` 통합 구조에 종료·봉인·일시정지·재개·heartbeat와 시작 재시도/기존 녹음 해제의 seal 처리를 이식했다. 분리된 `RecordingControlService`는 제거했다. 본문 없는 원격 종료와 정상 `audioSeal` 계약, 만료 후 논리적 종료 commit을 유지한다.
+
+- `compileTestJava` 및 집중 unit 57개, PostgreSQL integration 24개(봉인 17·시작 7), 종료 HTTP acceptance 16개 통과. 실패·제외 0개.
+- `spotlessCheck bootJar`, `git diff --check` 통과. 위 전체 회귀 수는 develop 병합 이전 결과이며, 병합 후에는 변경 경로의 집중 검증을 실행했다.

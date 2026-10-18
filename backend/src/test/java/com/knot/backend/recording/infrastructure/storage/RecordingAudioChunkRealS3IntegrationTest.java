@@ -2,7 +2,7 @@ package com.knot.backend.recording.infrastructure.storage;
 
 import com.knot.backend.recording.application.RecordingAudioChunkService;
 import com.knot.backend.recording.application.RecordingAudioChunkStorage;
-import com.knot.backend.recording.application.RecordingStartService;
+import com.knot.backend.recording.application.RecordingService;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -57,7 +57,7 @@ class RecordingAudioChunkRealS3IntegrationTest {
     private static final String BUCKET = requiredEnvironment("KNOT_RECORDING_TEST_BUCKET");
 
     @Autowired
-    private RecordingStartService startService;
+    private RecordingService startService;
     @Autowired
     private RecordingAudioChunkService chunkService;
     @Autowired
