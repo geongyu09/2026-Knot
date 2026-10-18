@@ -22,12 +22,12 @@ class AiMetricsContractTest(unittest.TestCase):
         self.panels = self.dashboard["panels"]
         self.queries = [t["expr"] for p in self.panels for t in p["targets"]]
 
-    def test_scope_selector_defaults_to_validation_without_all(self):
+    def test_scope_selector_defaults_to_service_without_all(self):
         # given / when
         selector, = self.dashboard["templating"]["list"]
         # then
         self.assertEqual(selector["name"], "ai_scope")
-        self.assertEqual(selector["current"]["value"], "validation")
+        self.assertEqual(selector["current"]["value"], "service")
         self.assertEqual({o["value"] for o in selector["options"]}, {"validation", "service"})
         self.assertFalse(selector["multi"])
         self.assertFalse(selector["includeAll"])
