@@ -56,6 +56,8 @@ export interface RecordingDetailResponse {
   transcriptionFailureCode: string | null;
   /** 문서 생성이 접수되기 전이면 null */
   documentGeneration: RecordingDocumentGenerationResponse | null;
+  /** WebM 녹음이면 null. PCM 조각 저장 전의 서버는 주지 않음 */
+  sourceAudio?: RecordingSourceAudio | null;
 }
 
 /** 녹음 상세 mock 하나. 서버 응답에는 녹음 ID가 없어서, 어느 녹음의 응답인지 함께 적어요 */
@@ -202,4 +204,11 @@ export interface RecordingAudioSaveResponse {
   jobId: number | null;
   /** 최종화 전이면 null */
   quality: RecordingAudioQuality | null;
+}
+
+/** 녹음 상세·문서 상세의 원본 오디오 품질. PCM 조각 녹음에만 있어요 */
+export interface RecordingSourceAudio {
+  quality: RecordingAudioQuality;
+  missingRanges: RecordingAudioFrameRange[];
+  tailUnknown: boolean;
 }

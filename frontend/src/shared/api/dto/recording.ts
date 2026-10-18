@@ -92,6 +92,31 @@ export class RecordingAudioFrameRangeDto {
   }
 }
 
+/** 원본 오디오 품질의 서버 응답 모양 */
+export interface RecordingSourceAudioRaw {
+  quality: RecordingAudioQuality;
+  missingRanges: RecordingAudioFrameRangeRaw[];
+  tailUnknown: boolean;
+}
+
+/** PCM 조각 녹음으로 만든 최종 WAV의 품질. 녹음 상세 조회와 문서 상세 조회가 공유해요 */
+export class RecordingSourceAudioDto {
+  /** 최종 WAV의 품질 */
+  quality: RecordingAudioQuality;
+  /** 저장되지 않아 무음으로 채운 구간. 없으면 빈 배열이에요. 무음은 복구된 원본이 아니에요 */
+  missingRanges: RecordingAudioFrameRangeDto[];
+  /** 다른 탭 종료나 연결 만료로 종료 봉인 없이 끝나 마지막 길이를 알 수 없으면 true. 끝부분이 빠졌을 수 있어요 */
+  tailUnknown: boolean;
+
+  constructor(raw: RecordingSourceAudioRaw) {
+    this.quality = raw.quality;
+    this.missingRanges = raw.missingRanges.map(
+      (range) => new RecordingAudioFrameRangeDto(range),
+    );
+    this.tailUnknown = raw.tailUnknown;
+  }
+}
+
 /** PCM 조각 녹음 저장 상태의 서버 응답 모양 */
 export interface RecordingAudioSaveRaw {
   audioSaveStatus: RecordingAudioSaveStatus;
@@ -319,6 +344,7 @@ export interface GetRecordingResponseRaw {
   transcriptionStatus?: RecordingTranscriptionStatus | null;
   transcriptionFailureCode?: string | null;
   documentGeneration?: RecordingDocumentGenerationRaw | null;
+  sourceAudio?: RecordingSourceAudioRaw | null;
 }
 
 /** 녹음 상세 조회 응답. 녹음을 끝낸 뒤 이 응답을 다시 조회해 문서 정리가 어디까지 됐는지 확인해요 */
@@ -341,6 +367,8 @@ export class GetRecordingResponseDto {
   transcriptionFailureCode: string | null;
   /** 문서 생성 결과. 문서 생성이 접수되기 전이면 null. 서버가 주지 않으면 null */
   documentGeneration: RecordingDocumentGenerationDto | null;
+  /** PCM 조각 녹음으로 만든 최종 WAV의 품질. WebM 녹음이거나 최종 WAV가 준비되기 전이면 null. 서버가 주지 않으면 null */
+  sourceAudio: RecordingSourceAudioDto | null;
 
   constructor(raw: GetRecordingResponseRaw) {
     this.sessionStatus = raw.status;
@@ -358,6 +386,9 @@ export class GetRecordingResponseDto {
       documentGeneration === null
         ? null
         : new RecordingDocumentGenerationDto(documentGeneration);
+    this.sourceAudio = raw.sourceAudio
+      ? new RecordingSourceAudioDto(raw.sourceAudio)
+      : null;
   }
 }
 
