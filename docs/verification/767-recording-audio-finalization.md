@@ -35,3 +35,9 @@
 - AI 서버 기존 검증은 120개 중 119개 통과·실제 모델 opt-in 1개 skip, Spotless·bootJar 통과다. 실제 S3 WAV를 별도 실행 AI에 전달한 사전 검증도 성공했다.
 
 통합 테스트는 S3·AI 포트를 대역으로 사용한다. 실제 모델 사전 검증과 연결 테스트는 각각의 증거이며 제품 FE·실제 배포 환경의 전체 흐름 검증을 뜻하지 않는다. 신규 PCM과 최종화 설정은 기본 비활성으로 유지하고, FE 연결·AI WAV 호환 배포·#768 정리 검증 후 활성화한다.
+
+## 최신 develop 통합 검증
+
+2026-10-18에 #766의 `adeb56db15fd3d8552cc38de51057a3505b7fff2`를 병합했다. 종료 응답의 최종화 상태 조회를 통합 `RecordingService`에 유지하고 테스트 생성자를 맞췄다. 이미 READY 또는 FAILED인 PCM 녹음을 다시 종료해도 DRAINING으로 되돌려 표시하지 않는 두 회귀를 추가했다.
+
+충돌 해결 뒤 unit 84개, PostgreSQL 최종화·파이프라인 18개, HTTP retry 4개가 모두 통과했다. Spotless와 bootJar도 통과했으며 claimNext의 REQUIRES_NEW, cutoff 재확인·lease 소유권·exact-version 규칙을 유지했다. 실제 배포는 수행하지 않았다.

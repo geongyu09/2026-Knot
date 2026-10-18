@@ -42,21 +42,21 @@ class RecordingStartServiceIntegrationTest {
     private static final String CONTROL_TOKEN = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefA";
     private static final String OTHER_CONTROL_TOKEN = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefE";
 
-    private final RecordingStartService recordingStartService;
+    private final RecordingService recordingService;
     private final JdbcClient jdbcClient;
 
     RecordingStartServiceIntegrationTest(
-            RecordingStartService recordingStartService,
+            RecordingService recordingService,
             JdbcClient jdbcClient
     ) {
-        this.recordingStartService = recordingStartService;
+        this.recordingService = recordingService;
         this.jdbcClient = jdbcClient;
     }
 
     @BeforeEach
     void clearTables() {
         jdbcClient.sql("""
-                TRUNCATE TABLE recording_sessions, workspace_members, workspaces,
+                TRUNCATE TABLE recording_audio_cleanup, recording_sessions, workspace_members, workspaces,
                     oauth_identities, members
                 RESTART IDENTITY CASCADE
                 """)
@@ -78,14 +78,14 @@ class RecordingStartServiceIntegrationTest {
                 TAB_ID,
                 CONTROL_TOKEN
         );
-        RecordingStartResult firstResult = recordingStartService.start(
+        RecordingStartResult firstResult = recordingService.start(
                 workspaceId,
                 memberId,
                 command
         );
 
         // when
-        RecordingStartResult secondResult = recordingStartService.start(
+        RecordingStartResult secondResult = recordingService.start(
                 workspaceId,
                 memberId,
                 command
@@ -200,7 +200,7 @@ class RecordingStartServiceIntegrationTest {
                 workspaceId,
                 memberId
         );
-        recordingStartService.start(
+        recordingService.start(
                 workspaceId,
                 memberId,
                 command(
@@ -217,7 +217,7 @@ class RecordingStartServiceIntegrationTest {
 
         // when
         assertThatThrownBy(
-                () -> recordingStartService.start(
+                () -> recordingService.start(
                         workspaceId,
                         memberId,
                         changedCommand
@@ -239,7 +239,7 @@ class RecordingStartServiceIntegrationTest {
 
         // when
         assertThatThrownBy(
-                () -> recordingStartService.start(
+                () -> recordingService.start(
                         workspaceId,
                         memberId,
                         command(
@@ -266,7 +266,7 @@ class RecordingStartServiceIntegrationTest {
                     TimeUnit.SECONDS
             );
             try {
-                RecordingStartResult result = recordingStartService.start(
+                RecordingStartResult result = recordingService.start(
                         workspaceId,
                         memberId,
                         command
@@ -320,14 +320,14 @@ class RecordingStartServiceIntegrationTest {
                 CONTROL_TOKEN,
                 RecordingAudioMode.PCM16_CHUNKS_V1
         );
-        RecordingStartResult first = recordingStartService.start(
+        RecordingStartResult first = recordingService.start(
                 workspaceId,
                 memberId,
                 pcm
         );
 
         // when
-        RecordingStartResult replay = recordingStartService.start(
+        RecordingStartResult replay = recordingService.start(
                 workspaceId,
                 memberId,
                 pcm
@@ -355,6 +355,21 @@ class RecordingStartServiceIntegrationTest {
                         .query(Integer.class)
                         .single()
         ).isEqualTo(1);
+        assertThat(
+                jdbcClient.sql(
+                        "SELECT COUNT(*) FROM recording_audio_cleanup WHERE recording_id = :id AND scope = 'DORMANT' AND storage_prefix = :prefix"
+                )
+                        .param(
+                                "id",
+                                first.recordingId()
+                        )
+                        .param(
+                                "prefix",
+                                "recordings/" + first.recordingId() + "/"
+                        )
+                        .query(Integer.class)
+                        .single()
+        ).isEqualTo(1);
     }
 
     @Test
@@ -367,7 +382,7 @@ class RecordingStartServiceIntegrationTest {
                 workspaceId,
                 memberId
         );
-        RecordingStartResult first = recordingStartService.start(
+        RecordingStartResult first = recordingService.start(
                 workspaceId,
                 memberId,
                 new RecordingStartCommand(
@@ -380,7 +395,7 @@ class RecordingStartServiceIntegrationTest {
 
         // when
         Throwable failure = org.assertj.core.api.Assertions.catchThrowable(
-                () -> recordingStartService.start(
+                () -> recordingService.start(
                         workspaceId,
                         memberId,
                         command(

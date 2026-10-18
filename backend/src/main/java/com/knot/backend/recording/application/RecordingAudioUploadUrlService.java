@@ -37,7 +37,7 @@ public class RecordingAudioUploadUrlService {
                 recordingId
         );
         session.validateLegacyAudioMode();
-        session.validateAudioUploadable();
+        session.validateEnded();
 
         Optional<RecordingAudioUpload> existing = recordingAudioUploadRepository.findByRecordingId(recordingId);
         existing.ifPresent(

@@ -51,7 +51,7 @@ class RecordingStartServiceTest {
     private RecordingSessionRepository recordingSessionRepository;
     private RecordingControlTokenHasher hasher;
     private RecordingAudioStreamRepository streamRepository;
-    private RecordingStartService service;
+    private RecordingService service;
     private RecordingStartCommand command;
 
     @BeforeEach
@@ -516,8 +516,8 @@ class RecordingStartServiceTest {
         );
     }
 
-    private RecordingStartService serviceWithFlag(boolean enabled) {
-        return new RecordingStartService(
+    private RecordingService serviceWithFlag(boolean enabled) {
+        return new RecordingService(
                 new RecordingAccess(
                         workspaceRepository,
                         workspaceMemberRepository,
@@ -534,6 +534,8 @@ class RecordingStartServiceTest {
                 mock(RecordingAudioSealing.class),
                 streamRepository,
                 new RecordingAudioChunksProperties(enabled),
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository.class),
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository.class),
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository.class)
         );
     }
