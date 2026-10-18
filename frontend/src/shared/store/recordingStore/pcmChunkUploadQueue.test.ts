@@ -389,7 +389,7 @@ describe("PcmChunkUploadQueue", () => {
           "upload",
           "complete",
         ]);
-        // 어느 조각을 버릴지는 #796이 정하므로 바이트는 들고 있어요
+        // 멈춘 조각의 바이트는 시한이 지나거나 큐를 비울 때까지 들고 있어요
         expect(queue.pendingSequences).toEqual([1]);
       },
     );

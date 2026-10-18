@@ -27,6 +27,16 @@ export interface PcmChunkDescriptor {
   checksumSha256: string;
 }
 
+/** 종료 요청의 `audioSeal`. 서버 DTO의 `RecordingAudioSealInput`과 같은 모양이에요 */
+export interface PcmAudioSeal {
+  /** 마지막 조각 번호. 조각이 없으면 0 */
+  lastSequence: number;
+  /** 전체 프레임 수. 일시정지 시간은 빠지고, 조각이 없으면 0 */
+  totalFrameCount: number;
+  /** 예약 응답을 아직 받지 못한 조각. 응답을 기다리는 조각도 들어가요 */
+  pendingDescriptors: PcmChunkDescriptor[];
+}
+
 interface ReserveResult {
   status: PcmChunkStatus;
   uploadUrl: string | null;
@@ -74,16 +84,16 @@ export const sha256Base64 = async (bytes: ArrayBuffer) => {
   return btoa(String.fromCharCode(...new Uint8Array(hash)));
 };
 
-/** 부를 때마다 다음 재시도 간격을 줘요. 1, 2, 4초 뒤로는 4초를 계속 줘요 */
-const createBackoff = () => {
+/** 부를 때마다 다음 재시도 간격을 줘요. 1, 2, 4초 뒤로는 4초를 계속 줘요. 종료 요청의 재전송도 같은 간격을 써요 */
+export const createBackoff = () => {
   let failures = 0;
 
   return () =>
     RETRY_DELAYS_MS[Math.min(failures++, RETRY_DELAYS_MS.length - 1)];
 };
 
-/** 예약·저장 확인의 일시 실패. 응답을 못 받았거나 5xx, 429면 같은 요청을 다시 보내요 */
-const isTransientApiError = (error: unknown) =>
+/** 예약·저장 확인·종료의 일시 실패. 응답을 못 받았거나 5xx, 429면 같은 요청을 다시 보내요 */
+export const isTransientApiError = (error: unknown) =>
   isHttpError(error, HTTP_ERROR_TYPE.network) ||
   isHttpError(error, HTTP_ERROR_TYPE.serverError) ||
   isHttpError(error, HTTP_ERROR_TYPE.tooManyRequests);
@@ -104,6 +114,7 @@ const isUploadPossiblyStored = (error: unknown) =>
  *   다시 PUT할 일이 생기면 같은 descriptor로 재예약해 새 URL로 보내요
  * - 요청을 고쳐야 하는 실패(충돌, 권한 거절 같은 4xx)는 그 조각을 멈추고, 앞 조각의 예약이 멈추면 뒤 조각의 예약도 보내지 않아요
  * - `setAcceptUntil`의 시한이 지나거나 `clear`하면 남은 조각을 모두 멈추고 바이트를 놓아요
+ * - `seal()`은 종료 요청에 담을 마지막 번호와 예약 응답을 아직 받지 못한 조각을 줘요. 종료 뒤에도 그 조각은 평소대로 예약부터 올려요
  * - 서버 요청은 밖에서 받아요. 이 저장소는 브라우저 안의 녹음만 다루고 API 호출은 도메인 훅이 맡아요
  */
 export default class PcmChunkUploadQueue {
@@ -115,6 +126,8 @@ export default class PcmChunkUploadQueue {
   private nextSampleOffset = 0;
   /** 저장 확인 전까지 들고 있는 조각 */
   private readonly pending = new Map<number, ArrayBuffer>();
+  /** 예약 응답을 아직 받지 못한 조각의 descriptor. 해시를 전송 직전에 계산해 붙이므로 Promise로 들고 있어요 */
+  private readonly unreserved = new Map<number, Promise<PcmChunkDescriptor>>();
   /** 예약을 순서대로 하나씩 보내는 사슬. 앞 예약이 멈추면 거부된 채 남아 뒤 예약도 함께 멈춰요 */
   private reserveChain: Promise<unknown> = Promise.resolve();
   private readonly inflight = new Set<Promise<void>>();
@@ -181,6 +194,15 @@ export default class PcmChunkUploadQueue {
     if (failure) throw failure.reason;
   }
 
+  /** 종료 요청의 `audioSeal`. 응답을 기다리는 조각도 담아요. 서버는 이미 예약한 같은 descriptor를 통과시켜요 */
+  async seal(): Promise<PcmAudioSeal> {
+    return {
+      lastSequence: this.nextSequence - 1,
+      totalFrameCount: this.nextSampleOffset,
+      pendingDescriptors: await Promise.all(this.unreserved.values()),
+    };
+  }
+
   /** 종료 뒤 서버가 조각을 받아 주는 시한(ISO 8601). 지나면 남은 조각의 재시도를 멈추고 바이트를 놓아요 */
   setAcceptUntil(acceptUntil: string) {
     clearTimeout(this.acceptUntilTimer);
@@ -198,6 +220,7 @@ export default class PcmChunkUploadQueue {
   private stopAll(reason: Error) {
     clearTimeout(this.acceptUntilTimer);
     this.pending.clear();
+    this.unreserved.clear();
     this.stop.abort(reason);
   }
 
@@ -213,17 +236,26 @@ export default class PcmChunkUploadQueue {
 
   private async transfer(chunk: SealedPcmChunk) {
     const { pcm, ...descriptor } = chunk;
-    const checksum = sha256Base64(pcm);
+    const described = sha256Base64(pcm).then((checksumSha256) => ({
+      ...descriptor,
+      checksumSha256,
+    }));
+    this.unreserved.set(descriptor.sequence, described);
     const nextDelay = createBackoff();
-    const reserveChunk = async () =>
-      this.reserve({ ...descriptor, checksumSha256: await checksum });
+    const reserveChunk = async () => this.reserve(await described);
 
     // 첫 예약은 앞 조각의 예약이 끝난 뒤에만 보내요. 재예약은 이미 번호가 잡혀 있어 사슬을 타지 않아요
     const firstReservation = this.reserveChain.then(() =>
       this.retrying(reserveChunk, nextDelay),
     );
     this.reserveChain = firstReservation;
-    let reservation = await firstReservation;
+    let reservation: ReserveResult;
+    try {
+      reservation = await firstReservation;
+    } finally {
+      // 응답을 받았거나 멈춘 조각은 더는 봉인에 담지 않아요
+      this.unreserved.delete(descriptor.sequence);
+    }
     // `VERIFIED` 예약은 URL이 없어 PUT을 건너뛰고 저장 확인만 보내요
     let uploadUrl = reservation.uploadUrl;
 
