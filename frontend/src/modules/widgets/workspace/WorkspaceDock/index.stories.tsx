@@ -278,14 +278,15 @@ export const PausedInOtherTab: Story = {
 };
 
 /**
- * 회의 녹음을 눌렀지만 마이크 권한을 받지 못한 상태예요. 모달로 알리고 지금 화면에 남아요.
+ * 회의 녹음을 눌렀지만 마이크 권한을 받지 못한 상태예요. 권한을 허용하는 방법을 알림으로 알리고 지금 화면에 남아요.
+ * 「확인」은 알림만 닫고, 마이크는 마이크 버튼을 다시 누를 때 다시 받아요.
  * 예: 주소창에서 마이크 권한을 꺼 둔 사용자
  */
 export const MicrophoneUnavailable: Story = {
   parameters: {
     design: {
       type: "figma",
-      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2167-24736",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-35624",
     },
   },
   beforeEach: denyMicrophone,
