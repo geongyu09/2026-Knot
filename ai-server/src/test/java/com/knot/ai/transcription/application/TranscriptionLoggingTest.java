@@ -8,6 +8,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.AppenderBase;
 import com.knot.ai.transcription.application.command.CreateTranscriptionCommand;
 import com.knot.ai.transcription.domain.TranscriptResult;
+import com.knot.ai.transcription.domain.WindowInput;
 import com.knot.ai.transcription.domain.TranscriptionErrorCode;
 import com.knot.ai.transcription.domain.TranscriptionException;
 import java.util.List;
@@ -52,6 +53,84 @@ class TranscriptionLoggingTest {
         service.close();
         logger.detachAppender(appender);
         appender.stop();
+    }
+
+    @Test
+    void create_logsWindowConflictAsRejectionAndPreservesReplay() throws Exception {
+        // given
+        UUID id = UUID.randomUUID();
+        WindowInput window = new WindowInput(
+                "window-v1",
+                "a".repeat(64),
+                0,
+                16000
+        );
+        service.create(
+                new CreateTranscriptionCommand(
+                        id,
+                        "https://first-private-url",
+                        null,
+                        window
+                )
+        );
+        assertThat(
+                engine.cleaning.await(
+                        2,
+                        TimeUnit.SECONDS
+                )
+        ).isTrue();
+        service.create(
+                new CreateTranscriptionCommand(
+                        id,
+                        "https://refreshed-private-url",
+                        null,
+                        window
+                )
+        );
+
+        // when
+        TranscriptionException failure = assertThrows(
+                TranscriptionException.class,
+                () -> service.create(
+                        new CreateTranscriptionCommand(
+                                id,
+                                "https://conflicting-private-url",
+                                null,
+                                new WindowInput(
+                                        "window-v1",
+                                        "b".repeat(64),
+                                        0,
+                                        16000
+                                )
+                        )
+                )
+        );
+
+        // then
+        assertThat(failure.getCode()).isEqualTo("ATTEMPT_CONFLICT");
+        assertThat(fields()).anySatisfy(
+                fields -> assertThat(fields).containsEntry(
+                        "outcome",
+                        "replayed"
+                )
+        );
+        assertThat(fields()).anySatisfy(
+                fields -> assertThat(fields).containsEntry(
+                        "outcome",
+                        "rejected"
+                )
+                        .containsEntry(
+                                "errorCode",
+                                "ATTEMPT_CONFLICT"
+                        )
+        );
+        assertThat(events).allSatisfy(
+                event -> assertThat(event.getFormattedMessage()).doesNotContain(
+                        "private-url",
+                        "a".repeat(64),
+                        "b".repeat(64)
+                )
+        );
     }
 
     @Test

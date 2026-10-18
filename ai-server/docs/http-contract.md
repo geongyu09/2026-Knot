@@ -88,3 +88,66 @@ Python supervisor는 제한 시간과 부모 JVM 생존 여부를 감시하고 �
 ```
 
 인증 실패는 401 `{"code":"UNAUTHORIZED","message":"앱 인증이 필요합니다"}`를 반환합니다. 토큰·서명 URL·녹음·발화 원문은 로그에 출력하지 않습니다.
+
+### 구간 전사 (내부 계약)
+
+기존 요청에 선택 필드 `window`를 추가한다. 생략하면 전체 파일 전사 동작을 유지한다.
+
+```json
+{"window":{"pipelineVersion":"pcm-window-v1","inputManifestSha256":"64자리 소문자 SHA256","inputStartFrame":0,"inputEndFrame":560000}}
+```
+
+입력은 서버가 조립한 16 kHz mono PCM16 WAV이며 최대 60초다. frame 범위와 실제 WAV 길이가 같아야 한다.
+같은 attemptId에서 URL 재발급은 허용하지만 구간 메타데이터 또는 화자 수를 바꾸면 409 ATTEMPT_CONFLICT다.
+결과의 선택 필드 `window`에는 schemaVersion=1, 요청 메타데이터, modelVersion,
+`tokens[{startFrame,endFrame,text,speakerId}]`, `speakers[{speakerId,embedding,voicedFrames}]`가 담긴다.
+토큰 시간은 입력 WAV의 시작을 0으로 삼는 frame이다. 실제 단어 시간이 없는 유음 결과는 실패한다.
+각 화자 벡터는 실제 음성으로 계산한 512차원 유한수 목록이며 샘플이 부족하면 빈 목록이다.
+화자 ID는 해당 구간 내부에서만 유효하다. 텍스트가 있으나 겹치는 화자 구간이 없는 단어는 unknown으로 보존한다.
+무음 구간은 빈 토큰·발화로 성공할 수 있다. 전체 결과의 UTF-8 크기는 1 MiB 이하로 제한한다.
+
+구간 실행에는 프로필에 절대 경로 `sherpaLibrary`, `pythonBinary`가 필요하다.
+현재 ctypes 구조체는 실제 검증한 sherpa-onnx 1.13.6 ABI만 허용한다.
+기존 전체 전사 준비 상태 확인은 이 선택 설정에 영향받지 않는다.
+벡터와 원문은 작업 디렉터리의 비공개 파일에만 기록하며 애플리케이션 로그에 출력하지 않는다.
+
+Whisper의 실제 단어 시간이 WAV 끝을 소폭 넘을 수 있으므로 겹치는 시간만 입력 frame 범위로 자른다.
+입력 범위와 전혀 겹치지 않는 단어는 제외한다. 구간 중앙 시각으로 단어 시간을 추정하지 않는다.
+
+입력 안에서 길이가 0인 단어는 같은 Whisper segment의 인접한 양의 길이 단어와 묶어 텍스트를 보존한다.
+선행 단어가 있으면 그 단어 뒤에 붙이고, segment의 맨 앞에서 연속되면 다음 양의 길이 단어 앞에 붙인다.
+묶음의 시작·끝은 원래 단어 시각들의 최솟값·최댓값이며 입력 frame 범위로 자른다.
+해당 토큰의 `text`에는 여러 단어가 들어갈 수 있고, 묶인 단어만의 독립 시각을 제공하지 않는다.
+양의 길이 단어가 전혀 없는 segment는 `INVALID_RESULT`로 실패한다.
+음수·역전·비정상 시각은 계속 거절하며, 다른 segment의 시간을 빌리거나 임의 길이를 만들지 않는다.
+
+## 음성 변환 준비
+
+전체 파일을 모델 실행 슬롯에서 분리하기 위한 내부 API다. 인증은 기존 Bearer 토큰을 적용한다.
+다운로드 URL은 기존 S3 호스트·경로 검증을 그대로 적용한다.
+
+- `POST /api/v1/audio-preparations` — `{attemptId,downloadUrl}`, HTTP 202.
+- `GET /api/v1/audio-preparations/{attemptId}` — HTTP 200 작업 snapshot.
+- `GET /api/v1/audio-preparations/{attemptId}/audio` — 성공한 WAV, HTTP 200 `audio/wav`와 정확한 Content-Length.
+
+```json
+{"attemptId":"UUID","status":"SUCCEEDED","failureCode":null,"result":{"schemaVersion":1,"normalizationVersion":"pcm16le-16k-mono-v1","totalFrames":160000,"byteLength":320044,"checksumSha256":"Base64 SHA256"}}
+```
+
+상태는 PROCESSING/SUCCEEDED/FAILED다. 성공 전에는 result가 없으며 실패는 정적 failureCode를 반환한다.
+오디오는 44바이트 canonical RIFF/WAV 헤더와 16 kHz mono PCM16LE 본문으로 구성한다.
+최대 2시간, 230,400,044바이트이며 SHA256은 헤더를 포함한 전체 파일 기준이다.
+`normalizationVersion`은 형식 변환 버전이며 음량 정규화를 뜻하지 않는다.
+
+준비 작업은 독립된 단일 worker에서 다운로드·FFmpeg(디코딩 threads=1)만 실행한다.
+Whisper/sherpa의 단일 추론 슬롯과 별도로 동작한다. 같은 attempt는 URL 갱신에도 현재 결과를 재생한다.
+다른 attempt가 진행 중이거나 현재 오디오를 전송 중이면 BUSY다.
+성공·실패 snapshot과 준비 WAV의 캐시 유효 기간은 완료 후 15분이다. 다음 준비 요청을 먼저 수락하면 이전 캐시를 제거한다.
+만료된 GET·audio 요청은 JOB_NOT_FOUND를 반환한다. 1분 주기의 정리 작업은 worker와 활성 reader가 없을 때 파일을 제거한다.
+이미 시작한 파일 전송은 만료 후에도 종료까지 파일을 고정하며, 마지막 reader가 닫힐 때 만료 파일을 정리한다.
+만료된 같은 attempt는 갱신된 downloadUrl로 다시 생성할 수 있다. 정리 실패 시 새 작업 접수를 막는다.
+
+임시 저장소는 `ai.work-directory`의 형제 디렉터리 `<work-directory 이름>-preparations`다.
+권한 0700의 루트 아래 UUID 작업 디렉터리를 사용하며 추론 작업 저장소와 섞지 않는다.
+재시작 시 기존 supervisor의 프로세스 소유권 검사를 거쳐 이전 준비 작업·부분 파일을 제거한다.
+심볼릭 링크나 UUID가 아닌 항목이 발견되면 시작을 중단한다.

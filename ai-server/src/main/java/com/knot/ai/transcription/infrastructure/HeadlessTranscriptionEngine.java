@@ -111,7 +111,9 @@ public class HeadlessTranscriptionEngine implements TranscriptionEngine {
                                     "-c:a",
                                     "pcm_s16le",
                                     "-t",
-                                    Integer.toString(AudioInspector.MAXIMUM_DURATION_SECONDS),
+                                    Integer.toString(
+                                            request.window() == null ? AudioInspector.MAXIMUM_DURATION_SECONDS : 61
+                                    ),
                                     "-fs",
                                     "231448576",
                                     wav.toString()
@@ -119,7 +121,16 @@ public class HeadlessTranscriptionEngine implements TranscriptionEngine {
                             directory,
                             properties.conversionTimeout()
                     );
-                    return audioInspector.readPcmDuration(wav);
+                    double decodedDuration = audioInspector.readPcmDuration(wav);
+                    if (request.window() != null && (decodedDuration > 60 || Math.abs(
+                            decodedDuration * 16000 - (request.window()
+                                    .inputEndFrame()
+                                    - request.window()
+                                            .inputStartFrame())
+                    ) > 1)) {
+                        throw new TranscriptionException(TranscriptionErrorCode.INVALID_WINDOW);
+                    }
+                    return decodedDuration;
                 }
         );
         metrics.stage(
@@ -144,6 +155,12 @@ public class HeadlessTranscriptionEngine implements TranscriptionEngine {
                         manifest.put(
                                 "speakerCount",
                                 request.speakerCount()
+                        );
+                    }
+                    if (request.window() != null) {
+                        manifest.put(
+                                "window",
+                                request.window()
                         );
                     }
                     Path input = directory.resolve("input.json");
@@ -172,17 +189,20 @@ public class HeadlessTranscriptionEngine implements TranscriptionEngine {
                 TranscriptionErrorCode.INVALID_RESULT,
                 () -> readResult(
                         directory,
-                        duration
+                        duration,
+                        request
                 )
         );
     }
 
     private TranscriptResult readResult(
             Path directory,
-            double duration
+            double duration,
+            CreateTranscriptionCommand request
     ) throws IOException {
         Path resultFile = directory.resolve("result.json");
-        if (!Files.isRegularFile(resultFile) || Files.size(resultFile) > MAXIMUM_RESULT_BYTES) {
+        if (!Files.isRegularFile(resultFile)
+                || Files.size(resultFile) > (request.window() == null ? MAXIMUM_RESULT_BYTES : 1048576)) {
             throw new TranscriptionException(TranscriptionErrorCode.INVALID_RESULT);
         }
         try {
@@ -190,6 +210,27 @@ public class HeadlessTranscriptionEngine implements TranscriptionEngine {
                     resultFile.toFile(),
                     TranscriptResult.class
             );
+            if ((request.window() == null) != (result.window() == null)
+                    || (request.window() != null && (!request.window()
+                            .pipelineVersion()
+                            .equals(
+                                    result.window()
+                                            .pipelineVersion()
+                            )
+                            || !request.window()
+                                    .inputManifestSha256()
+                                    .equals(
+                                            result.window()
+                                                    .inputManifestSha256()
+                                    )
+                            || request.window()
+                                    .inputStartFrame() != result.window()
+                                            .inputStartFrame()
+                            || request.window()
+                                    .inputEndFrame() != result.window()
+                                            .inputEndFrame()))) {
+                throw new TranscriptionException(TranscriptionErrorCode.INVALID_RESULT);
+            }
             JsonNode raw = mapper.readTree(result.rawWhisperJson());
             if (!raw.isObject() || !raw.path("transcription")
                     .isArray()) {

@@ -11,7 +11,7 @@
     "start": "tsx scripts/serverPipeline.ts",
     "typecheck": "tsc --noEmit",
     "test:node": "tsx --test scripts/serverPipeline.test.ts",
-    "test:python": "python3 scripts/serverSupervisor.test.py",
+    "test:python": "python3 scripts/serverSupervisor.test.py && python3 scripts/windowDiarization.test.py",
     "test": "pnpm run test:node && pnpm run test:python"
   },
   "devDependencies": {

@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { assembleWindowResult, validWindow, type WindowInput } from './windowResult'
 import { assignSpeakers, mergeUtterances } from '../src/core/merge'
 import { buildDiarizeArgs, parseDiarizeOutput } from '../src/main/pipeline/diarize'
 import { normalizeWavFile } from '../src/main/pipeline/normalize'
@@ -11,7 +12,10 @@ export interface ServerManifest {
   audioPath: string
   outputDirectory: string
   speakerCount?: number
+  window?: WindowInput
   profile: {
+    sherpaLibrary?: string
+    pythonBinary?: string
     whisperBinary: string
     diarizeBinary: string
     whisperModel: string
@@ -35,6 +39,10 @@ export const validateManifest = (value: unknown): ServerManifest => {
     !positiveInteger(manifest.profile.sttThreads) ||
     !positiveInteger(manifest.profile.diarizeThreads)
   )
+    throw new Error('INVALID_MANIFEST')
+  if (manifest.window && (!validWindow(manifest.window)
+      || typeof manifest.profile.sherpaLibrary !== 'string' || !path.isAbsolute(manifest.profile.sherpaLibrary)
+      || typeof manifest.profile.pythonBinary !== 'string' || !path.isAbsolute(manifest.profile.pythonBinary)))
     throw new Error('INVALID_MANIFEST')
   const paths = [
     manifest.audioPath,
@@ -174,8 +182,11 @@ export const runServerPipeline = async (manifest: ServerManifest) => {
         false,
         'STT_FAILED'
       )
-    const diarize = () =>
-      run(
+    const evidencePath = path.join(manifest.outputDirectory, 'window-speakers.json')
+    const diarize = () => manifest.window ? run(
+      p.pythonBinary!, [path.join(path.dirname(new URL(import.meta.url).pathname), 'windowDiarization.py'),
+        path.join(manifest.outputDirectory, 'window-input.json'), evidencePath], false, 'DIARIZATION_FAILED'
+    ) : run(
         p.diarizeBinary,
         buildDiarizeArgs({
           segmentationModelPath: p.segmentationModel,
@@ -187,12 +198,17 @@ export const runServerPipeline = async (manifest: ServerManifest) => {
         true,
         'DIARIZATION_FAILED'
       )
+    if (manifest.window) {
+      await writeFile(path.join(manifest.outputDirectory, 'window-input.json'),
+        JSON.stringify({...manifest, audioPath: normalized}), {mode:0o600})
+    }
     const [, diarization] = await Promise.all([stt(), diarize()])
-    const result = assembleResult(
-      await readFile(`${prefix}.json`),
-      diarization,
-      manifest.speakerCount
-    )
+    const raw = await readFile(`${prefix}.json`)
+    const result = manifest.window ? assembleWindowResult(raw,
+      JSON.parse(await readFile(evidencePath,'utf8')), manifest.window)
+      : assembleResult(raw, diarization, manifest.speakerCount)
+    if (manifest.window && Buffer.byteLength(JSON.stringify(result),'utf8') > 1048576)
+      throw new Error('OUTPUT_LIMIT')
     if (aborted) throw new Error(abortCode)
     const temporary = path.join(manifest.outputDirectory, 'result.json.tmp')
     await writeFile(temporary, JSON.stringify(result), { encoding: 'utf8', mode: 0o600 })

@@ -1,0 +1,90 @@
+import { parseWhisperOutput } from '../src/main/pipeline/whisper'
+import type { SttWord } from '../src/core/types'
+
+export interface WindowInput {
+  pipelineVersion: string
+  inputManifestSha256: string
+  inputStartFrame: number
+  inputEndFrame: number
+}
+interface Evidence {
+  modelVersion: string
+  speakers: {speakerId:string; embedding:number[]; voicedFrames:number}[]
+  segments: {start:number; end:number; speaker:string}[]
+}
+export const validWindow = (w:WindowInput) => typeof w.pipelineVersion === 'string'
+  && w.pipelineVersion.trim().length > 0 && w.pipelineVersion.length <= 64
+  && /^[0-9a-f]{64}$/.test(w.inputManifestSha256)
+  && Number.isSafeInteger(w.inputStartFrame) && Number.isSafeInteger(w.inputEndFrame)
+  && w.inputStartFrame >= 0 && w.inputEndFrame > w.inputStartFrame && w.inputEndFrame <= 115200000
+  && w.inputEndFrame-w.inputStartFrame <= 960000
+
+const combineWords = (first: SttWord, second: SttWord): SttWord => ({
+  start: Math.min(first.start, second.start),
+  end: Math.max(first.end, second.end),
+  text: `${first.text} ${second.text}`
+})
+
+const measuredWordGroups = (words: SttWord[], frames: number): SttWord[] => {
+  const groups: SttWord[] = []
+  let leading: SttWord | undefined
+  for (const word of words) {
+    if (!Number.isFinite(word.start) || !Number.isFinite(word.end) || word.start < 0 || word.end < word.start)
+      throw new Error('INVALID_RESULT')
+    const rawStart = Math.round(word.start * 16000), rawEnd = Math.round(word.end * 16000)
+    if (!Number.isSafeInteger(rawStart) || !Number.isSafeInteger(rawEnd)) throw new Error('INVALID_RESULT')
+    // A point at frame zero belongs to the input; a point at its exclusive end does not.
+    if (rawStart >= frames || (rawEnd <= 0 && rawStart !== rawEnd)) continue
+    if (rawStart === rawEnd) {
+      const previous = groups.at(-1)
+      if (previous) {
+        groups[groups.length - 1] = combineWords(previous, word)
+        continue
+      }
+      leading = leading ? combineWords(leading, word) : word
+      continue
+    }
+    groups.push(leading ? combineWords(leading, word) : word)
+    leading = undefined
+  }
+  // A segment without a positive-duration word supplies no measured anchor for its text.
+  if (leading) throw new Error('INVALID_RESULT')
+  return groups
+}
+
+export const assembleWindowResult = (raw:Buffer, evidence:Evidence, window:WindowInput) => {
+  const frames = window.inputEndFrame-window.inputStartFrame
+  if (!validWindow(window) || !evidence.modelVersion || !Array.isArray(evidence.speakers)
+      || !Array.isArray(evidence.segments) || evidence.speakers.length > 64) throw new Error('INVALID_RESULT')
+  const ids = new Set<string>()
+  const speakers = evidence.speakers.map(s => ({...s}))
+  for (const s of speakers) {
+    if (!s.speakerId || ids.has(s.speakerId) || !Array.isArray(s.embedding)
+        || (s.embedding.length !== 0 && s.embedding.length !== 512)
+        || s.embedding.some(x => !Number.isFinite(x)) || !Number.isSafeInteger(s.voicedFrames)
+        || s.voicedFrames < 0 || s.voicedFrames > frames) throw new Error('INVALID_RESULT')
+    ids.add(s.speakerId)
+  }
+  for (const s of evidence.segments) {
+    if (!Number.isFinite(s.start) || !Number.isFinite(s.end) || s.start < 0 || s.end <= s.start
+        || Math.round(s.end*16000)>frames || !ids.has(s.speaker)) throw new Error('INVALID_RESULT')
+  }
+  const tokens = parseWhisperOutput(raw).flatMap(s => {
+    if (s.text.trim() && !s.words?.length) throw new Error('WORD_TIMESTAMPS_REQUIRED')
+    return measuredWordGroups(s.words??[], frames).map(w => {
+      const startFrame=Math.round(w.start*16000), endFrame=Math.min(frames,Math.round(w.end*16000))
+      const ranked=evidence.segments.map(s=>({speaker:s.speaker,
+        overlap:Math.max(0,Math.min(w.end,s.end)-Math.max(w.start,s.start))}))
+        .sort((a,b)=>b.overlap-a.overlap||a.speaker.localeCompare(b.speaker))
+      const speakerId=ranked[0]?.overlap>0?ranked[0].speaker:'unknown'
+      if(speakerId==='unknown'&&!ids.has(speakerId)) {
+        ids.add(speakerId);speakers.push({speakerId,embedding:[],voicedFrames:0})
+      }
+      return {startFrame,endFrame,text:w.text,speakerId}
+    })
+  }).sort((a,b)=>a.startFrame-b.startFrame||a.endFrame-b.endFrame)
+  const utterances=tokens.map((t,ord)=>({ord,speakerLabel:t.speakerId,
+    startSec:t.startFrame/16000,endSec:t.endFrame/16000,text:t.text}))
+  return {schemaVersion:1,rawWhisperJson:raw.toString('utf8'),utterances,
+    window:{schemaVersion:1,...window,modelVersion:evidence.modelVersion,tokens,speakers}}
+}

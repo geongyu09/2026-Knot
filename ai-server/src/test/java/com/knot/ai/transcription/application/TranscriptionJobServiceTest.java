@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 import com.knot.ai.transcription.application.command.CreateTranscriptionCommand;
 import com.knot.ai.transcription.domain.TranscriptResult;
+import com.knot.ai.transcription.domain.WindowInput;
 import com.knot.ai.transcription.domain.TranscriptionErrorCode;
 import com.knot.ai.transcription.domain.TranscriptionException;
 import java.util.List;
@@ -85,6 +86,60 @@ class TranscriptionJobServiceTest {
         assertEquals(
                 1,
                 engine.invocations.get()
+        );
+    }
+
+    @Test
+    void rejectsChangedWindowForSameAttemptAndAcceptsRefreshedUrl() {
+        // given
+        UUID id = UUID.randomUUID();
+        WindowInput window = new WindowInput(
+                "v1",
+                "a".repeat(64),
+                0,
+                16000
+        );
+        service.create(
+                new CreateTranscriptionCommand(
+                        id,
+                        "https://first",
+                        null,
+                        window
+                )
+        );
+        // when
+        JobSnapshot repeated = service.create(
+                new CreateTranscriptionCommand(
+                        id,
+                        "https://renewed",
+                        null,
+                        window
+                )
+        );
+        // then
+        assertEquals(
+                id,
+                repeated.attemptId()
+        );
+        TranscriptionException error = assertThrows(
+                TranscriptionException.class,
+                () -> service.create(
+                        new CreateTranscriptionCommand(
+                                id,
+                                "https://renewed",
+                                null,
+                                new com.knot.ai.transcription.domain.WindowInput(
+                                        "v1",
+                                        "b".repeat(64),
+                                        0,
+                                        16000
+                                )
+                        )
+                )
+        );
+        assertEquals(
+                "ATTEMPT_CONFLICT",
+                error.getCode()
         );
     }
 

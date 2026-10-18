@@ -4,6 +4,14 @@ import com.knot.ai.global.exception.ErrorCategory;
 import com.knot.ai.global.exception.ErrorCode;
 
 public enum TranscriptionErrorCode implements ErrorCode {
+    INVALID_WINDOW(
+            ErrorCategory.INVALID_INPUT,
+            "구간 전사 입력이 올바르지 않습니다"
+    ),
+    ATTEMPT_CONFLICT(
+            ErrorCategory.CONFLICT,
+            "동일 요청의 전사 입력이 변경되었습니다"
+    ),
     BUSY(
             ErrorCategory.CONFLICT,
             "다른 전사 작업이 실행 중입니다"

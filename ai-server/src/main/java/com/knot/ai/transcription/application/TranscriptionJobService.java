@@ -16,6 +16,7 @@ public class TranscriptionJobService {
     private final TranscriptionEngine engine;
     private final TranscriptionMetrics metrics;
     private JobSnapshot current;
+    private CreateTranscriptionCommand currentRequest;
     private Thread worker;
     private boolean accepting = true;
 
@@ -38,6 +39,21 @@ public class TranscriptionJobService {
         }
         if (current != null && current.attemptId()
                 .equals(request.attemptId())) {
+            boolean sameWindow = Objects.equals(
+                    currentRequest.window(),
+                    request.window()
+            );
+            boolean sameSpeakerCount = request.window() == null || Objects.equals(
+                    currentRequest.speakerCount(),
+                    request.speakerCount()
+            );
+            if (!sameWindow || !sameSpeakerCount) {
+                throw rejection(
+                        request.attemptId(),
+                        started,
+                        TranscriptionErrorCode.ATTEMPT_CONFLICT
+                );
+            }
             TranscriptionLog.record(
                     "recording.transcription.accept",
                     "replayed",
@@ -62,6 +78,7 @@ public class TranscriptionJobService {
                     TranscriptionErrorCode.NOT_READY
             );
         }
+        currentRequest = request;
         current = new JobSnapshot(
                 request.attemptId(),
                 JobSnapshot.Status.PROCESSING,
