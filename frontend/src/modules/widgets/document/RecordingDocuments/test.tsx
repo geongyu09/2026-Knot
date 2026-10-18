@@ -1392,6 +1392,68 @@ describe("RecordingDocuments", () => {
       vi.mocked(console.error).mockRestore();
     });
 
+    it("전사 다시 시도가 거절된 뒤 다시 조회가 서버 오류로 실패해도, 같은 제목에 설명과 다시 시도 없이 홈으로만 보여준다", async () => {
+      let recordingRequestCount = 0;
+      mockServer.use(
+        http.post(TRANSCRIPTION_RETRY_REQUEST, () =>
+          rejectTranscriptionRetry(409, "AUDIO_UPLOAD_NOT_COMPLETED"),
+        ),
+        http.get(RECORDING_REQUEST, () => {
+          recordingRequestCount += 1;
+          // 거절 뒤의 조회(두 번째 조회)만 실패해요
+          return recordingRequestCount === 2
+            ? new HttpResponse(null, { status: 500 })
+            : HttpResponse.json(transcriptionFailedRecording.detail);
+        }),
+      );
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      renderRecordingDocuments(transcriptionFailedRecording.recordingId);
+
+      fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+
+      await expectFailedScreenWithoutRetry(TRANSCRIPTION_FAILED_TITLE);
+      expect(recordingRequestCount).toBe(2);
+      vi.mocked(console.error).mockRestore();
+    });
+
+    it("전사 다시 시도가 거절됐지만 서버가 같은 시도를 이어서 돌리는 중이었다면, 그 시도가 또 실패했을 때 다시 시도 버튼을 보여준다", async () => {
+      let latestDetail: RecordingDetailResponse =
+        transcriptionFailedRecording.detail;
+      mockServer.use(
+        http.post(TRANSCRIPTION_RETRY_REQUEST, () => {
+          // 다른 곳에서 먼저 다시 시도했고, 결과를 알 수 없던 시도라 서버가 새 시도를 만들지 않고 같은 시도를 이어서 돌려요
+          latestDetail = {
+            ...transcriptionFailedRecording.detail,
+            transcriptionStatus: "PROCESSING",
+            transcriptionFailureCode: null,
+          };
+          return rejectTranscriptionRetry(
+            409,
+            "TRANSCRIPTION_RETRY_NOT_ALLOWED",
+          );
+        }),
+        http.get(RECORDING_REQUEST, () => HttpResponse.json(latestDetail)),
+      );
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      renderRecordingDocuments(transcriptionFailedRecording.recordingId);
+
+      fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+      await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE });
+
+      // 이어서 돌린 같은 시도가 또 실패했어요
+      latestDetail = transcriptionFailedRecording.detail;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+      });
+
+      expect(
+        await screen.findByRole("button", { name: "다시 시도" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText(RECORDING_KEPT_NOTICE)).toBeInTheDocument();
+      vi.mocked(console.error).mockRestore();
+    });
+
     it.each([
       { status: 500, code: "INTERNAL_SERVER_ERROR" },
       { status: 500, code: "AI_NOT_READY" },

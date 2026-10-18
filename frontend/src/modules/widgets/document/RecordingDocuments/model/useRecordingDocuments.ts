@@ -48,9 +48,10 @@ const isRetryRejectedError = (error: unknown) =>
  * 대신 실패 코드와 녹음 방식(PCM · WebM)에 관계없이 `retryGeneration`이 전사부터 다시 접수해요.
  * 접수되면 녹음 상태를 다시 받아 전사 중, 곧 정리 중으로 돌아가요. 그 조회가 끝날 때까지 다시 시도 중(`isRetrying`)이에요.
  * 거절은 종류를 가리지 않고 콘솔에 오류 코드를 남겨요.
- * 409 · 404는 더 시도할 수 없다는 응답이라(보관 기간이 지남 · 이미 전사 중 · 전사 기능 꺼짐 · 음성 없음) 녹음 상태를 다시 조회한 뒤 그 전사 시도를 거절 기록에 남기고 `retryGeneration`을 없애요.
- * 이 조회가 끝날 때까지도 다시 시도 중이에요. 서버에서 이미 전사 중이면 정리 중으로 바뀌고,
- * 다른 곳에서 다시 시도한 새 시도가 또 실패하면 거절 기록이 그 시도를 가리지 않아 다시 시도할 수 있어요.
+ * 409 · 404는 더 시도할 수 없다는 응답이라(보관 기간이 지남 · 이미 전사 중 · 전사 기능 꺼짐 · 음성 없음) 녹음 상태를 다시 조회하고,
+ * 같은 전사 시도로 여전히 실패면 그 시도를 거절 기록에 남겨 `retryGeneration`을 없애요. 조회에 실패해도 남겨요.
+ * 이 조회가 끝날 때까지도 다시 시도 중이에요. 서버에서 이미 전사 중이면 정리 중으로 바뀌고 거절 기록을 남기지 않아요.
+ * 그래서 그 전사가 또 실패하면, 새 시도든 서버가 이어서 돌린 같은 시도든 다시 시도할 수 있어요.
  * 서버 오류 · 네트워크 문제는 잠깐의 문제일 수 있어 버튼을 유지해요.
  *
  * 문서 다시 시도는 문서 만들기가 실패로 끝났고 다시 시도할 작업이 남아 있을 때만 할 수 있어요.
@@ -199,11 +200,17 @@ export const useRecordingDocuments = ({
           if (!isRetryRejectedError(retryError)) return;
 
           // 다른 곳에서 먼저 다시 시도해 서버에서는 이미 전사 중일 수 있어요. 실패 상태에서는 3초 조회가 멈춰 있어 직접 다시 조회해요.
-          // 거절 기록은 조회가 끝난 뒤에 남겨요. 먼저 남기면 조회하는 동안 「홈으로」가 보였다가 정리 중으로 바뀔 수 있어요.
-          // 조회에 실패해도 남겨요. 같은 시도로는 다시 눌러도 같은 거절을 받아요
+          // 거절 기록은 조회가 끝난 뒤에 남겨요. 먼저 남기면 조회하는 동안 「홈으로」가 보였다가 정리 중으로 바뀔 수 있어요
           setIsCheckingRejection(true);
-          await refetch();
-          setRejectedTranscriptionAttemptId(attemptId);
+          const { data: latestRecording } = await refetch();
+
+          // 같은 시도로 여전히 실패일 때만 남겨요. 결과를 알 수 없던 시도는 서버가 새 시도를 만들지 않고 같은 시도를 이어서 돌려서,
+          // 전사 중이어도 남기면 그 시도가 또 실패했을 때 「다시 시도」가 숨겨져요.
+          // 조회에 실패하면 앞서 받은 녹음이 그대로라 남아요. 같은 시도로는 다시 눌러도 같은 거절을 받아요
+          const isStillSameFailure =
+            latestRecording?.transcriptionStatus === "FAILED" &&
+            latestRecording.transcriptionAttemptId === attemptId;
+          if (isStillSameFailure) setRejectedTranscriptionAttemptId(attemptId);
           setIsCheckingRejection(false);
         },
       },
