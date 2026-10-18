@@ -1,3 +1,4 @@
+import axios from "axios";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -8,15 +9,19 @@ import {
 } from "@api/dto/recording";
 import { HTTP_ERROR_TYPE } from "@api/httpClient/error";
 import { csrfTokenResponse } from "@api/mock/responses/auth";
-import { recordingAudioChunkReserveResponse } from "@api/mock/responses/recording";
+import {
+  MOCK_AUDIO_STORAGE_ORIGIN,
+  recordingAudioChunkReserveResponse,
+} from "@api/mock/responses/recording";
 import { mockServer } from "@api/mock/server";
 
-import { reserveRecordingAudioChunkApi } from ".";
+import { reserveRecordingAudioChunkApi, uploadRecordingAudioChunkApi } from ".";
 
 const WORKSPACE_ID = 1;
 const RECORDING_ID = 10;
 const AUDIO_CHUNKS_PATH =
   "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/audio-chunks";
+const STORAGE_PATH = `${MOCK_AUDIO_STORAGE_ORIGIN}/*`;
 
 const CONTROL_PROOF = {
   tabId: "6f1c2a4e-1b2d-4c3e-9f80-1a2b3c4d5e6f",
@@ -108,5 +113,52 @@ describe("reserveRecordingAudioChunkApi", () => {
       type: HTTP_ERROR_TYPE.conflict,
       code: "AUDIO_CHUNK_CONFLICT",
     });
+  });
+});
+
+describe("uploadRecordingAudioChunkApi", () => {
+  const { uploadUrl, requiredHeaders } = recordingAudioChunkReserveResponse;
+  const pcm = new Uint8Array([0, 0, 0, 0]);
+
+  it("예약 응답의 requiredHeaders를 그대로 싣고 PCM 바이트를 본문으로 PUT하며 CSRF 헤더는 싣지 않는다", async () => {
+    const requests: Request[] = [];
+    mockServer.use(
+      http.put(STORAGE_PATH, ({ request }) => {
+        requests.push(request.clone());
+      }),
+    );
+
+    await uploadRecordingAudioChunkApi({
+      uploadUrl,
+      requiredHeaders,
+      pcm: pcm.buffer,
+    });
+
+    const [request] = requests;
+    expect(request.method).toBe("PUT");
+    expect(request.url).toBe(uploadUrl);
+    for (const [name, value] of Object.entries(requiredHeaders)) {
+      expect(request.headers.get(name)).toBe(value);
+    }
+    expect(request.headers.get("X-XSRF-TOKEN")).toBeNull();
+    expect(new Uint8Array(await request.arrayBuffer())).toEqual(pcm);
+  });
+
+  it("저장소가 이미 있는 객체라며 412로 거절하면 axios 오류를 그대로 던진다", async () => {
+    mockServer.use(
+      http.put(STORAGE_PATH, () => new HttpResponse(null, { status: 412 })),
+    );
+
+    const error = await uploadRecordingAudioChunkApi({
+      uploadUrl,
+      requiredHeaders,
+      pcm: pcm.buffer,
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(axios.isAxiosError(error)).toBe(true);
+    expect(error).toMatchObject({ response: { status: 412 } });
   });
 });
