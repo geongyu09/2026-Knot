@@ -14,7 +14,8 @@ import { useMatch, useParams } from "react-router";
  * 독의 회의 녹음(마이크) 슬롯을 다룹니다.
  *
  * 마이크를 누르면 녹음 화면에 들어가기 전에 마이크 권한을 받고 서버에 녹음을 열어 시작한 뒤 녹음 화면으로 가요.
- * 권한을 받지 못하면 [다시 시도]/[닫기] 모달을, 서버가 시작을 거절하면 [닫기]/[새로고침] 모달을 띄워요.
+ * 권한을 받지 못하면 권한을 허용하는 방법을 알리는 [확인] 알림을, 서버가 시작을 거절하면 [닫기]/[새로고침] 모달을 띄워요.
+ * 알림을 닫으면 제자리에 남고, 마이크를 다시 누르면 권한을 다시 받아요.
  * 녹음 화면에서는 갈 곳이 없어 마이크를 숨겨요.
  *
  * 녹음 화면이 아닌 곳에서 녹음이 이어지고 있으면 마이크 대신 녹음 칩을 보여줘요.
@@ -22,8 +23,8 @@ import { useMatch, useParams } from "react-router";
  * 이 탭의 녹음이 없을 때 현재 녹음 조회가 녹음 중·일시정지로 답하면 다른 탭의 녹음(`isOtherTabRecording`)으로 칩을 보여줘요.
  * 조회 중이거나 실패하면 마이크를 둬요.
  *
- * 독은 어느 화면에서나 떠 있으므로, 녹음 중에 마이크가 끊겼다는 알림도 여기서 같은 모달로 띄워요.
- * 녹음은 저장소가 이미 일시정지해 두었으므로 서버에도 일시정지를 알리고, [다시 시도]는 마이크를 다시 받아 이어 가요.
+ * 독은 어느 화면에서나 떠 있으므로, 녹음 중에 마이크가 끊겼다는 알림도 여기서 같은 알림으로 띄워요.
+ * 녹음은 저장소가 이미 일시정지해 두었으므로 서버에도 일시정지를 알리고, 마이크를 다시 받는 일은 녹음 화면의 「이어서 녹음」이 맡아요.
  */
 export const useDockRecording = () => {
   const { workspaceId } = useParams();
@@ -36,33 +37,23 @@ export const useDockRecording = () => {
   const { elapsedSeconds } = useRecordingElapsedTime();
   const { status: serverStatus, elapsedTime: serverElapsedTime } =
     useServerRecording();
-  const { startRecording, syncPause, resumeRecording, endRecording } =
-    useRecordingControl();
+  const { startRecording, syncPause, endRecording } = useRecordingControl();
 
   const isOtherTabRecording = !isRecordingActive && serverStatus !== null;
   const hasRecording = isRecordingActive || isOtherTabRecording;
 
-  // 녹음 중 마이크가 끊기면 다시 시도 모달을 띄워요
+  // 녹음 중 마이크가 끊기면 알림을 띄워요
   useEffect(() => {
     if (!isMicrophoneLost) return;
 
     // 알림은 한 번만 띄우도록 끊김 표시를 바로 지워요. 녹음은 일시정지로 남아요
     clearMicrophoneLost();
     void syncPause();
-
-    const retryResume = async () => {
-      const isResumed = await resumeRecording();
-      if (isResumed) return;
-
-      openMicrophoneUnavailableDialog({ onRetry: retryResume });
-    };
-
-    openMicrophoneUnavailableDialog({ onRetry: retryResume });
+    openMicrophoneUnavailableDialog();
   }, [
     clearMicrophoneLost,
     isMicrophoneLost,
     openMicrophoneUnavailableDialog,
-    resumeRecording,
     syncPause,
   ]);
 
@@ -71,7 +62,7 @@ export const useDockRecording = () => {
 
     const result = await startRecording(Number(workspaceId));
     if (result === "microphoneUnavailable") {
-      openMicrophoneUnavailableDialog({ onRetry: handleMicClick });
+      openMicrophoneUnavailableDialog();
       return;
     }
     if (result === "refused") {
