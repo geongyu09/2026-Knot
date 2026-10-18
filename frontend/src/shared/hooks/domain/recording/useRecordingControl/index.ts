@@ -23,6 +23,7 @@ import {
   isTransientApiError,
   type PcmAudioSeal,
 } from "@store/recordingStore/pcmChunkUploadQueue";
+import { UnsupportedPcmCollectorError } from "@store/recordingStore/pcmCollector";
 import { useQueryClient } from "@tanstack/react-query";
 import { isClosedRecordingError } from "@utils/isClosedRecordingError";
 import { isRetryableAudioUploadError } from "@utils/isRetryableAudioUploadError";
@@ -99,6 +100,7 @@ type ControlProof = NonNullable<ReturnType<typeof getRecordingControlProof>>;
  *   서버가 409로 거절하거나, 남아 있던 증명의 녹음을 돌려주면(200) 이어받지 않고 거절로 돌려줘요.
  *   돌려준 녹음이 이미 끝났거나 버려졌으면 새 증명으로 한 번만 다시 보내요. 시작 중에 다시 불러도 겹쳐 보내지 않아요.
  *   저장 방식이 PCM이면 시작 요청에 `audioMode`를 싣고, 조각 예약·PUT·저장 확인 요청에 세션과 최초 탭 증명을 묶어 저장소에 넘겨요.
+ *   16kHz 수집기를 만들 수 없는 브라우저이거나 서버가 조각 저장을 꺼 뒀으면(409 `AUDIO_MODE_DISABLED`) 안내 없이 WebM으로 시작해요.
  * - 일시정지·이어서 녹음(WebM): 브라우저 녹음을 먼저 바꾸고 서버에 알려요. 서버 요청이 실패해도 다시 보내지 않고
  *   사용자가 누른 대로 둬요.
  * - 일시정지·이어서 녹음(PCM): 일시정지는 남은 소리를 봉인해 큐에 넣은 뒤 서버에 알리고, 이어서 녹음은 서버 재개가
@@ -276,7 +278,11 @@ const useRecordingControl = () => {
   const connectAndStartRecording = useCallback(
     async (workspaceId: number) => {
       const store = useRecordingStore.getState();
-      const isPcm = RECORDING_AUDIO_MODE === "PCM16_CHUNKS_V1";
+      // WebM일 때는 시작 요청에 보내지 않아 켜기 전과 같은 요청이 나가요
+      let audioMode =
+        RECORDING_AUDIO_MODE === "PCM16_CHUNKS_V1"
+          ? RECORDING_AUDIO_MODE
+          : undefined;
 
       try {
         const isConnected = await store.connectMicrophone({
@@ -284,21 +290,50 @@ const useRecordingControl = () => {
         });
         if (!isConnected) return "microphoneUnavailable";
       } catch (error) {
-        // 서버가 받는 형식으로 녹음할 수 없는 브라우저예요. 안내는 다른 실패와 함께 정해요(#465).
-        // PCM 수집기를 만들지 못했을 때 WebM으로 다시 시작하는 일은 #799에서 붙여요
-        logRequestError("녹음 시작", error);
-        useRecordingStore.getState().discardRecording();
+        if (!(error instanceof UnsupportedPcmCollectorError)) {
+          // 서버가 받는 형식으로 녹음할 수 없는 브라우저예요. 안내는 다른 실패와 함께 정해요(#465)
+          logRequestError("녹음 시작", error);
+          useRecordingStore.getState().discardRecording();
 
-        return "failed";
+          return "failed";
+        }
+        // 16kHz 수집기를 만들 수 없는 브라우저예요. 받아 둔 마이크로 WebM 녹음을 하고, 다음 시작은 다시 PCM부터 시도해요
+        audioMode = undefined;
       }
 
-      const requestStart = () =>
-        startRecordingSession({
-          workspaceId,
-          ...getRecordingStartProof(),
-          // WebM일 때는 보내지 않아 PCM 켜기(#799) 전까지 지금과 같은 요청이 나가요
-          audioMode: isPcm ? RECORDING_AUDIO_MODE : undefined,
-        });
+      let isConflictRetried = false;
+      const requestStart = async () => {
+        for (;;) {
+          try {
+            return await startRecordingSession({
+              workspaceId,
+              ...getRecordingStartProof(),
+              audioMode,
+            });
+          } catch (error) {
+            if (
+              audioMode &&
+              isHttpError(error) &&
+              error.code === "AUDIO_MODE_DISABLED"
+            ) {
+              // 서버가 조각 저장을 꺼 뒀어요. 수집기만 닫고(마이크는 둬요) 새 증명으로 WebM 시작을 요청해요
+              audioMode = undefined;
+              useRecordingStore.getState().closePcmCollector();
+            } else if (
+              !isConflictRetried &&
+              isHttpError(error) &&
+              error.code === "AUDIO_MODE_CONFLICT"
+            ) {
+              // 켜기 전에 WebM으로 만든 증명이 남아 있어요. 새 증명으로 한 번 더 보내요.
+              // 옛 녹음이 살아 있으면 ACTIVE_RECORDING_ALREADY_EXISTS로 거절돼요
+              isConflictRetried = true;
+            } else {
+              throw error;
+            }
+            clearRecordingStartProof();
+          }
+        }
+      };
 
       try {
         let session = await requestStart();
@@ -318,7 +353,7 @@ const useRecordingControl = () => {
         useRecordingStore.getState().startRecording({
           ...sessionIds,
           // 조각 큐는 React 밖에서 돌아 뮤테이션을 직접 쓰지 못하므로, 세션과 최초 탭 증명을 묶은 요청 함수를 넘겨요
-          chunkRequests: isPcm
+          chunkRequests: audioMode
             ? {
                 reserve: (descriptor) =>
                   reserveAudioChunk({
