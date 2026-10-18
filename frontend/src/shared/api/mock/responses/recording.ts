@@ -10,6 +10,7 @@ import type {
   CurrentRecordingResponse,
   RecordingAudioChunkCompleteResponse,
   RecordingAudioChunkReserveResponse,
+  RecordingAudioSaveResponse,
   RecordingAudioUploadCompleteResponse,
   RecordingAudioUploadUrlResponse,
   RecordingDetailEntry,
@@ -224,3 +225,10 @@ export const recordingAudioChunkCompleteResponse = {
   status: "VERIFIED",
   verifiedThroughFrame: 80000,
 } satisfies RecordingAudioChunkCompleteResponse;
+
+// 녹음 상세 mock처럼 8분 전에 끝난 녹음이라, 받아 주는 시한(종료 + 2분)도 이미 지났어요
+export const recordingAudioSaveResponse = {
+  audioSaveStatus: "READY",
+  failureCode: null,
+  acceptUntil: fromNow(-6 * MINUTE),
+} satisfies RecordingAudioSaveResponse;

@@ -151,3 +151,15 @@ export interface RecordingAudioChunkCompleteResponse {
   /** 첫 조각부터 빈틈없이 확인된 끝 프레임(제외) */
   verifiedThroughFrame: number;
 }
+
+/** PCM 조각 녹음의 저장 상태 */
+export type RecordingAudioSaveStatus =
+  "CAPTURING" | "DRAINING" | "FINALIZING" | "READY" | "FAILED" | "DISCARDED";
+
+export interface RecordingAudioSaveResponse {
+  audioSaveStatus: RecordingAudioSaveStatus;
+  /** FAILED가 아니면 null */
+  failureCode: string | null;
+  /** ISO 8601. 종료 전이면 null */
+  acceptUntil: string | null;
+}
