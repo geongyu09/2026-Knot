@@ -734,26 +734,38 @@ export class PostRecordingAudioChunkCompleteRequestDto {
   }
 }
 
-/** 조각 저장 확인의 서버 응답 모양. 명세의 `verifiedThroughSequence`, `verifiedAudioMillis`, `confirmedAt`은 화면에서 쓰지 않아 담지 않아요 */
+/** 조각 저장 확인의 서버 응답 모양 */
 export interface PostRecordingAudioChunkCompleteResponseRaw {
   sequence: number;
   status: RecordingAudioChunkStatus;
+  verifiedThroughSequence: number;
   verifiedThroughFrame: number;
+  verifiedAudioMillis: number;
+  confirmedAt: string;
 }
 
-/** 조각 저장 확인 응답. 이미 확인된 조각을 다시 확인해도 200으로 같은 결과를 돌려줘요 */
+/** 조각 저장 확인 응답. 이미 확인된 조각을 다시 확인해도 200으로 같은 결과를 돌려줘요. 저장소를 확인하지 못하면 500 `AUDIO_STORAGE_UNAVAILABLE`로 실패해요 */
 export class PostRecordingAudioChunkCompleteResponseDto {
   /** 확인한 조각 번호 */
   sequence: number;
   /** 항상 `VERIFIED` */
   status: RecordingAudioChunkStatus;
+  /** 첫 조각부터 빈틈없이 확인된 마지막 조각 번호. 앞 조각이 아직 확인 전이면 0이에요 */
+  verifiedThroughSequence: number;
   /** 첫 조각부터 빈틈없이 확인된 구간의 끝 프레임(그 프레임은 제외). 앞 조각이 아직 확인 전이면 0이고, 재요청 때 늘어날 수 있어요 */
   verifiedThroughFrame: number;
+  /** `verifiedThroughFrame`을 ms로 바꾼 길이 */
+  verifiedAudioMillis: number;
+  /** 서버가 이 조각의 저장을 확인한 시각(ISO 8601). 재요청해도 처음 확인한 시각 그대로예요 */
+  confirmedAt: string;
 
   constructor(raw: PostRecordingAudioChunkCompleteResponseRaw) {
     this.sequence = raw.sequence;
     this.status = raw.status;
+    this.verifiedThroughSequence = raw.verifiedThroughSequence;
     this.verifiedThroughFrame = raw.verifiedThroughFrame;
+    this.verifiedAudioMillis = raw.verifiedAudioMillis;
+    this.confirmedAt = raw.confirmedAt;
   }
 }
 

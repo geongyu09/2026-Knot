@@ -160,8 +160,14 @@ export interface RecordingAudioChunkReserveResponse {
 export interface RecordingAudioChunkCompleteResponse {
   sequence: number;
   status: RecordingAudioChunkStatus;
+  /** 첫 조각부터 빈틈없이 확인된 마지막 조각 번호 */
+  verifiedThroughSequence: number;
   /** 첫 조각부터 빈틈없이 확인된 끝 프레임(제외) */
   verifiedThroughFrame: number;
+  /** verifiedThroughFrame을 ms로 바꾼 값 */
+  verifiedAudioMillis: number;
+  /** ISO 8601 */
+  confirmedAt: string;
 }
 
 /** PCM 조각 녹음의 저장 상태 */

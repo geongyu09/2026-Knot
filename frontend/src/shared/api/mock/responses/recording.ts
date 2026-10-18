@@ -223,7 +223,10 @@ export const recordingAudioChunkReserveResponse = {
 export const recordingAudioChunkCompleteResponse = {
   sequence: 1,
   status: "VERIFIED",
+  verifiedThroughSequence: 1,
   verifiedThroughFrame: 80000,
+  verifiedAudioMillis: 5000,
+  confirmedAt: fromNow(0),
 } satisfies RecordingAudioChunkCompleteResponse;
 
 // 녹음 상세 mock처럼 8분 전에 끝난 녹음이라, 받아 주는 시한(종료 + 2분)도 이미 지났어요
