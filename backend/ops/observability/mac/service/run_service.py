@@ -23,7 +23,8 @@ ERRORS = {'BUSY', 'NOT_READY', 'JOB_NOT_FOUND', 'EXECUTOR_REJECTED', 'CANCELED',
           'AUDIO_DURATION_EXCEEDED', 'INVALID_PROFILE', 'MISSING_RUNTIME',
           'UNOWNED_WORK_DIRECTORY', 'AUDIO_TOO_LARGE', 'INCOMPLETE_DOWNLOAD',
           'INVALID_AUDIO_METADATA', 'INVALID_DOWNLOAD_URL', 'DIARIZATION_EMPTY',
-          'INVALID_MANIFEST', 'INVALID_ARGUMENTS', 'RUNNER_FAILED'}
+          'INVALID_MANIFEST', 'INVALID_ARGUMENTS', 'RUNNER_FAILED',
+          'INVALID_WINDOW', 'ATTEMPT_CONFLICT'}
 LOG_LIMIT = 2 * 1024 * 1024
 STOP_TIMEOUT = 20
 
@@ -134,10 +135,15 @@ def execute(kind, args, environment, cwd, root):
             failures.append(now)
         state = {'last_exit_code': code, 'at': now, 'failures': failures[-20:]}
         temporary = root / (kind + '-state.tmp')
-        fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
-        with os.fdopen(fd, 'w') as stream:
-            json.dump(state, stream)
-        temporary.replace(state_path)
+        # The kind lock excludes a live writer; an interrupted older write is disposable.
+        temporary.unlink(missing_ok=True)
+        try:
+            fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(fd, 'w') as stream:
+                json.dump(state, stream)
+            temporary.replace(state_path)
+        finally:
+            temporary.unlink(missing_ok=True)
         append(log, {'event': 'service.child.exited', 'service': kind, 'exitCode': code,
                      'at': now, 'diagnostic': 'RESTART_LOOP' if len(failures) >= 3 else 'CHILD_EXIT'})
         return code

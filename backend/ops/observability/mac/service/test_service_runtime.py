@@ -349,6 +349,42 @@ class ServiceRuntimeTest(unittest.TestCase):
         self.assertEqual(self.records()[-1]['diagnostic'], 'RESTART_LOOP')
         self.assertEqual((self.root / 'tunnel-state.json').stat().st_mode & 0o777, 0o600)
 
+    def test_stale_state_temporary_does_not_block_repeated_child_exit_updates(self):
+        # given
+        temporary = self.root / 'tunnel-state.tmp'
+        self.write(temporary, {'incomplete': True})
+        # when
+        codes = [self.execute('import sys; sys.exit(7)') for _ in range(2)]
+        # then
+        self.assertEqual(codes, [7, 7])
+        state = json.loads((self.root / 'tunnel-state.json').read_text())
+        self.assertEqual(state['last_exit_code'], 7)
+        self.assertEqual(len(state['failures']), 2)
+        exited = [record for record in self.records() if record['event'] == 'service.child.exited']
+        self.assertEqual([record['exitCode'] for record in exited], [7, 7])
+        self.assertFalse(temporary.exists())
+
+    def test_failed_state_write_cleans_temporary_and_keeps_previous_state(self):
+        # given
+        state_path = self.root / 'tunnel-state.json'
+        previous = {'last_exit_code': 0, 'failures': []}
+        self.write(state_path, previous)
+
+        def partial_write(_state, stream):
+            stream.write('{"last_e')
+            stream.flush()
+            raise OSError('fixture partial state write')
+
+        # when
+        with patch.object(run_service.json, 'dump', partial_write):
+            with self.assertRaises(OSError):
+                self.execute('import sys; sys.exit(7)')
+        # then
+        self.assertEqual(json.loads(state_path.read_text()), previous)
+        self.assertFalse((self.root / 'tunnel-state.tmp').exists())
+        self.assertEqual(self.execute('import sys; sys.exit(7)'), 7)
+        self.assertEqual(json.loads(state_path.read_text())['last_exit_code'], 7)
+
     def test_stage_observation_timestamp_comes_from_wrapper_clock(self):
         # given
         event = {'event': 'recording.transcription.execute', 'outcome': 'completed',
@@ -367,6 +403,8 @@ class ServiceRuntimeTest(unittest.TestCase):
         source = (Path(__file__).resolve().parents[5] / 'ai-server/src/main/java/com/knot/ai/'
                   'transcription/domain/TranscriptionErrorCode.java')
         codes = set(re.findall(r'^    ([A-Z][A-Z_]+)\(', source.read_text(), re.M))
+        # PR #819 adds these codes; the wrapper must also run with the earlier AI JAR.
+        window_compatibility_codes = {'INVALID_WINDOW', 'ATTEMPT_CONFLICT'}
         event = {'event': 'recording.transcription.execute', 'outcome': 'failed',
                  'attemptId': str(uuid.uuid4()), 'elapsedMs': 5}
         self.assertTrue(codes)
@@ -375,9 +413,20 @@ class ServiceRuntimeTest(unittest.TestCase):
                      for code in codes}
         unknown = run_service.safe_event(json.dumps(dict(event, errorCode='fixture-private-error')))
         # then
-        self.assertEqual(run_service.ERRORS, codes)
+        self.assertEqual(run_service.ERRORS, codes | window_compatibility_codes)
         self.assertEqual(preserved, {code: code for code in codes})
         self.assertEqual(unknown['errorCode'], 'UNKNOWN_FAILURE')
+
+    def test_window_error_codes_remain_visible_with_the_earlier_ai_enum(self):
+        # given
+        event = {'event': 'recording.transcription.execute', 'outcome': 'failed',
+                 'attemptId': str(uuid.uuid4()), 'elapsedMs': 5}
+        codes = ['INVALID_WINDOW', 'ATTEMPT_CONFLICT']
+        # when
+        preserved = [run_service.safe_event(json.dumps(dict(event, errorCode=code)))['errorCode']
+                     for code in codes]
+        # then
+        self.assertEqual(preserved, codes)
 
     def test_sigterm_reaps_term_ignoring_child_with_open_pipe_within_bound(self):
         # given
