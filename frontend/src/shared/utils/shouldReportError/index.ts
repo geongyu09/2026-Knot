@@ -33,6 +33,16 @@ const REQUEST_PATH_NOT_FOUND = "REQUEST_PATH_NOT_FOUND";
 const FETCH_NETWORK_ERROR_PATTERN =
   /Failed to fetch|NetworkError|Load failed|Network request failed/;
 
+/**
+ * 녹음에서 마이크를 받지 못한 이유 중 사용자가 고칠 수 있는 것. 녹음 화면이 마이크 안내 창으로 안내해요.
+ *
+ * - `NotAllowedError`: 권한 거절
+ * - `NotFoundError`: 마이크 없음
+ *
+ * DOM 조작 실패(removeChild 등)도 `NotFoundError`라 녹음에서 잡은 실패만 빼요.
+ */
+const EXPECTED_MICROPHONE_ERROR_NAMES = ["NotAllowedError", "NotFoundError"];
+
 /** SSE 요청은 httpClient를 거치지 않아 상태 코드를 httpClient와 같은 실패 이유로 맞춰요 */
 const SSE_STATUS_ERROR_TYPE: Record<number, HttpErrorType> = {
   400: HTTP_ERROR_TYPE.badRequest,
@@ -73,6 +83,10 @@ const isAbortError = (error: unknown) =>
 const isCanceled = (error: unknown) =>
   axios.isCancel(error) || isCancelledError(error) || isAbortError(error);
 
+const isExpectedMicrophoneError = (error: unknown) =>
+  error instanceof DOMException &&
+  EXPECTED_MICROPHONE_ERROR_NAMES.includes(error.name);
+
 const isFetchNetworkError = (error: unknown) =>
   error instanceof TypeError && FETCH_NETWORK_ERROR_PATTERN.test(error.message);
 
@@ -99,6 +113,9 @@ interface ShouldReportErrorParams {
   error: unknown;
   /** 오류가 났을 때 브라우저가 온라인이었는지(`navigator.onLine`) */
   isOnline: boolean;
+
+  /** 코드가 잡고 넘어간 실패면 잡은 기능 이름(이벤트의 `feature` 태그). 예: `recording` */
+  feature?: string;
 }
 
 /**
@@ -112,6 +129,7 @@ interface ShouldReportErrorParams {
  * - 사용자 입력 검증 400, 워크스페이스 접근 거부 403
  * - 도메인 리소스가 없는 404, 상태 충돌 409, 요청 제한 429: 화면마다 안내 문구나 이동이 있어요
  * - 오프라인에서 응답을 받지 못한 요청
+ * - 녹음에서 마이크 권한 거절, 마이크 없음: 마이크 안내 창이 안내해요
  *
  * 4xx를 통째로 빼지 않아요. 요청 계약 위반 400, CSRF 재시도 뒤에도 남은 403, 없는 API 경로 404,
  * 그 밖의 4xx와 5xx, 요청과 관계없는 오류는 보고해요.
@@ -122,8 +140,10 @@ interface ShouldReportErrorParams {
 export const shouldReportError = ({
   error,
   isOnline,
+  feature,
 }: ShouldReportErrorParams) => {
   if (isCanceled(error)) return false;
+  if (feature === "recording" && isExpectedMicrophoneError(error)) return false;
 
   const failure = toRequestFailure(error);
 

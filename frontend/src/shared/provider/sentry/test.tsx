@@ -29,6 +29,7 @@ import {
 } from "vitest";
 
 import {
+  captureCaughtError,
   captureRequestError,
   getRootErrorHandlers,
   initSentry,
@@ -137,6 +138,13 @@ describe("initSentry", () => {
     expect(initSentry({ dsn: "" })).toBe(false);
     expect(Sentry.isInitialized()).toBe(false);
     expect(getRootErrorHandlers()).toEqual({});
+  });
+
+  it("DSN이 없으면 잡고 넘어간 실패도 보내지 않는다", async () => {
+    captureCaughtError({ error: new Error("꺼진 Sentry"), feature: "auth" });
+
+    await Sentry.flush();
+    expect(sendEnvelope).not.toHaveBeenCalled();
   });
 });
 
@@ -304,6 +312,78 @@ describe("Sentry 보고", () => {
       ],
       ["GET", "/api/v1/workspaces/:id/recordings", "500"],
     ]);
+  });
+
+  describe("잡고 넘어간 실패", () => {
+    it("기능 이름을 태그로 붙이고, 요청 실패는 API마다 묶음 기준을 달리해 보낸다", async () => {
+      mockServer.use(
+        http.post(
+          `*${AUTH_REFRESH_API_PATH}`,
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      );
+      const error = await httpClient
+        .post(AUTH_REFRESH_API_PATH)
+        .catch((e: unknown) => e);
+
+      captureCaughtError({ error, feature: "auth" });
+
+      const [event] = await flushEvents();
+      expect(event.tags).toMatchObject({ source: "caught", feature: "auth" });
+      expect(event.fingerprint).toEqual(["POST", AUTH_REFRESH_API_PATH, "500"]);
+      expect(event.exception?.values?.[0]?.mechanism).toMatchObject({
+        handled: true,
+      });
+    });
+
+    it("상황을 알리는 값을 함께 보낸다", async () => {
+      captureCaughtError({
+        error: new Error("조각 유실"),
+        feature: "recording",
+        extra: { lostChunkCount: 3 },
+      });
+
+      const [event] = await flushEvents();
+      expect(event.extra).toEqual({ lostChunkCount: 3 });
+    });
+
+    it("보고 기준에서 빼는 실패(409)는 보내지 않는다", async () => {
+      mockServer.use(
+        http.post(
+          `*${TEST_PATH}`,
+          () => new HttpResponse(null, { status: 409 }),
+        ),
+      );
+      const error = await httpClient.post(TEST_PATH).catch((e: unknown) => e);
+
+      captureCaughtError({ error, feature: "document" });
+
+      expect(await flushEvents()).toHaveLength(0);
+    });
+
+    it("react-query가 이미 보낸 같은 오류 객체는 다시 보내지 않는다", async () => {
+      const error = new Error("한 번만 보낼 실패");
+
+      captureRequestError({ error, source: "mutation" });
+      captureCaughtError({ error, feature: "recording" });
+
+      const events = await flushEvents();
+      expect(events).toHaveLength(1);
+      expect(events[0].tags).toMatchObject({ source: "mutation" });
+    });
+
+    // 녹음 화면은 권한 거절과 장치 없음을 마이크 안내 창으로 안내해요
+    it.each(["NotAllowedError", "NotFoundError"])(
+      "녹음에서 마이크를 받지 못한 %s는 보내지 않는다",
+      async (name) => {
+        captureCaughtError({
+          error: new DOMException("마이크 없음", name),
+          feature: "recording",
+        });
+
+        expect(await flushEvents()).toHaveLength(0);
+      },
+    );
   });
 
   it("보내는 span에서 주소의 쿼리 파라미터와 초대 토큰을 지운다", async () => {

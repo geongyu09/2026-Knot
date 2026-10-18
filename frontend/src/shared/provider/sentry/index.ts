@@ -60,12 +60,16 @@ const addReplayIntegration = async () => {
  * 같은 오류는 여러 경로로 들어와요. `throwOnError`로 넘어간 Query 오류는 QueryCache와 Boundary(`onCaughtError`)로,
  * `mutateAsync`의 처리되지 않은 실패는 MutationCache와 전역 `unhandledrejection`으로 들어와요.
  * Sentry SDK가 한 번 보낸 오류 객체에 표시(`__sentry_captured__`)를 남겨 다음 capture를 건너뛰므로 따로 거르지 않아요.
+ * 코드가 잡고 넘어간 실패(`captureCaughtError`)는 잡은 기능 이름(`feature` 태그)도 보고 기준에 넘겨요.
  */
 const beforeSend = (event: ErrorEvent, hint: EventHint) => {
+  const feature = event.tags?.feature;
+
   if (
     !shouldReportError({
       error: hint.originalException,
       isOnline: navigator.onLine,
+      feature: typeof feature === "string" ? feature : undefined,
     })
   ) {
     return null;
@@ -208,5 +212,38 @@ export const captureRequestError = ({
   Sentry.captureException(error, {
     captureContext: { tags: { source }, ...(fingerprint && { fingerprint }) },
     mechanism: { handled: true, type: `auto.tanstack.${source}_cache` },
+  });
+};
+
+/** 실패를 잡고 넘어간 기능. Sentry에서 기능별로 모아 볼 때 써요 */
+export type CaughtErrorFeature = "auth" | "recording" | "document" | "search";
+
+interface CaptureCaughtErrorParams {
+  error: unknown;
+  feature: CaughtErrorFeature;
+  /** 오류만으로는 알 수 없는 상황. 예: 버린 조각 수 */
+  extra?: Record<string, unknown>;
+}
+
+/**
+ * 코드가 잡고 넘어간 실패를 Sentry로 보내요. catch에서 실패를 안내, 상태, 결과값으로 바꿀 때 불러요.
+ *
+ * react-query가 이미 보낸 같은 오류 객체는 SDK가 건너뛰어 한 번만 남아요.
+ * 보낼지는 `beforeSend`가 정하므로 여기서는 거르지 않아요. Sentry가 꺼져 있으면 아무것도 하지 않아요.
+ */
+export const captureCaughtError = ({
+  error,
+  feature,
+  extra,
+}: CaptureCaughtErrorParams) => {
+  const fingerprint = getRequestErrorFingerprint(error);
+
+  Sentry.captureException(error, {
+    captureContext: {
+      tags: { source: "caught", feature },
+      ...(extra && { extra }),
+      ...(fingerprint && { fingerprint }),
+    },
+    mechanism: { handled: true, type: "manual.caught" },
   });
 };

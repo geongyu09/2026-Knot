@@ -154,6 +154,42 @@ describe("shouldReportError", () => {
     });
   });
 
+  describe("마이크 연결", () => {
+    const microphoneError = (name: string) =>
+      new DOMException("마이크를 받지 못했어요", name);
+
+    it.each(["NotAllowedError", "NotFoundError"])(
+      "녹음에서 마이크 권한 거절이나 장치 없음(%s)은 마이크 안내 창이 안내하는 예상 오류라 보고하지 않는다",
+      (name) => {
+        expect(
+          shouldReportError({
+            error: microphoneError(name),
+            isOnline: true,
+            feature: "recording",
+          }),
+        ).toBe(false);
+      },
+    );
+
+    it.each(["NotReadableError", "OverconstrainedError"])(
+      "녹음에서 마이크를 다른 앱이 쓰는 등 사용자가 고칠 수 없는 실패(%s)는 보고한다",
+      (name) => {
+        expect(
+          shouldReportError({
+            error: microphoneError(name),
+            isOnline: true,
+            feature: "recording",
+          }),
+        ).toBe(true);
+      },
+    );
+
+    // DOM 조작 실패(removeChild 등)도 NotFoundError라 녹음 밖에서는 빼지 않아요
+    it("녹음 밖의 NotFoundError는 보고한다", () => {
+      expect(isReported(microphoneError("NotFoundError"))).toBe(true);
+    });
+  });
+
   it("요청과 관계없는 렌더링 오류는 보고한다", () => {
     expect(isReported(new Error("렌더링 실패"))).toBe(true);
   });
