@@ -8,6 +8,7 @@ import {
 import { completeRecordingAudioChunkApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioChunks/[sequence]/complete";
 import {
   MOCK_AUDIO_STORAGE_ORIGIN,
+  recordingAudioChunkCompleteResponse,
   recordingAudioChunkReserveResponse,
 } from "@api/mock/responses/recording";
 import { mockServer } from "@api/mock/server";
@@ -107,7 +108,44 @@ describe("PcmChunkUploadQueue", () => {
     ]);
   });
 
-  it("예약 응답이 이미 VERIFIED면 PUT 없이 저장 확인만 보낸다", async () => {
+  it("뒤 조각의 저장 확인이 먼저 와도 그 조각만 놓고, watermark는 응답 중 큰 값을 따른다", async () => {
+    const firstComplete = createGate();
+    mockServer.use(
+      // 서버는 1번을 먼저 확인했지만(80,000) 그 응답이 2번 응답(160,000)보다 늦게 도착하는 상황이에요
+      http.post(COMPLETE_PATH, async ({ params }) => {
+        const sequence = Number(params.sequence);
+        if (sequence === 1) await firstComplete.opened;
+
+        return HttpResponse.json({
+          ...recordingAudioChunkCompleteResponse,
+          sequence,
+          verifiedThroughFrame:
+            sequence === 1 ? CHUNK_FRAMES : CHUNK_FRAMES * 2,
+        });
+      }),
+    );
+    const queue = createQueue();
+
+    void queue.enqueue(silentPcm(CHUNK_FRAMES));
+    const second = queue.enqueue(silentPcm(CHUNK_FRAMES));
+    let isDrained = false;
+    const drained = queue.drain().then(() => {
+      isDrained = true;
+    });
+
+    await second;
+    expect(queue.pendingSequences).toEqual([1]);
+    expect(queue.verifiedThroughFrame).toBe(CHUNK_FRAMES * 2);
+    expect(isDrained).toBe(false);
+
+    firstComplete.open();
+    await drained;
+
+    expect(queue.pendingSequences).toEqual([]);
+    expect(queue.verifiedThroughFrame).toBe(CHUNK_FRAMES * 2);
+  });
+
+  it("예약 응답이 이미 VERIFIED면 PUT 없이 저장 확인만 보내고 조각을 놓는다", async () => {
     let putCount = 0;
     let completeCount = 0;
     mockServer.use(
@@ -138,5 +176,9 @@ describe("PcmChunkUploadQueue", () => {
 
     expect(putCount).toBe(0);
     expect(completeCount).toBe(1);
+    expect(queue.pendingSequences).toEqual([]);
+    expect(queue.verifiedThroughFrame).toBe(
+      recordingAudioChunkCompleteResponse.verifiedThroughFrame,
+    );
   });
 });
