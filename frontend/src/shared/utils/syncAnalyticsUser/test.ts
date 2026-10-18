@@ -45,7 +45,8 @@ describe("syncAnalyticsUser", () => {
   afterEach(() => {
     stopSync();
     queryClient.clear();
-    vi.clearAllMocks();
+    // 테스트마다 넣은 식별 상태(get_property 구현)가 다음 테스트로 넘어가지 않게 구현까지 지워요
+    vi.resetAllMocks();
   });
 
   it("로그인 확인이 성공하면 회원 id로 식별하고 닉네임과 프로필 사진 주소를 함께 보낸다", async () => {
@@ -115,8 +116,11 @@ describe("syncAnalyticsUser", () => {
     },
     { reason: "네트워크 오류", response: () => HttpResponse.error() },
   ])(
-    "로그인 확인이 $reason로 실패하면 식별을 바꾸지 않는다",
+    "식별된 브라우저에서 로그인 확인이 $reason로 실패하면 식별을 바꾸지 않는다",
     async ({ response }) => {
+      vi.mocked(posthog.get_property).mockImplementation((name) =>
+        name === "$user_state" ? "identified" : undefined,
+      );
       mockServer.use(http.get(ME_REQUEST, response));
 
       await fetchMe(queryClient);
