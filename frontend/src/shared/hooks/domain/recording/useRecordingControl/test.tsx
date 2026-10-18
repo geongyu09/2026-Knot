@@ -8,6 +8,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import {
   clearRecordingStartProof,
   getRecordingControlProof,
+  getRecordingStartProof,
 } from "@utils/recordingControlProof";
 import { http, HttpResponse, type PathParams } from "msw";
 import type { ReactNode } from "react";
@@ -25,9 +26,13 @@ import {
   recordingHeartbeatResponse,
   recordingPauseResponse,
   recordingResumeResponse,
+  recordingStartResponse,
 } from "@api/mock/responses/recording";
 import { mockServer } from "@api/mock/server";
-import type { PcmCollectorParams } from "@store/recordingStore/pcmCollector";
+import {
+  type PcmCollectorParams,
+  UnsupportedPcmCollectorError,
+} from "@store/recordingStore/pcmCollector";
 
 import useRecordingControl from ".";
 
@@ -105,14 +110,17 @@ const hoisted = vi.hoisted(() => {
 });
 const { events, CHUNK_FRAMES, FakePcmCollector, endRecordingApi } = hoisted;
 
-// PCM 켜기(#799) 전이라 기본값은 WebM이에요. 이 파일은 PCM 경로만 보므로 PCM으로 바꿔요
+// 이 파일은 PCM 경로를 보므로 기본값과 상관없이 PCM으로 고정해요
 vi.mock("@constants/recording", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@constants/recording")>()),
   RECORDING_AUDIO_MODE: "PCM16_CHUNKS_V1",
 }));
 
 // vi.mock은 파일 맨 위로 올라가 아래 구조 분해보다 먼저 실행되므로 hoisted 객체로 읽어요
-vi.mock("@store/recordingStore/pcmCollector", () => ({
+vi.mock("@store/recordingStore/pcmCollector", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@store/recordingStore/pcmCollector")
+  >()),
   default: hoisted.FakePcmCollector,
 }));
 
@@ -123,6 +131,7 @@ vi.mock(
 
 const WORKSPACE_ID = 1;
 const RECORDING_ID = 10;
+const START_PATH = "*/api/v1/workspaces/:workspaceId/recordings";
 const RECORDING_PATH =
   "*/api/v1/workspaces/:workspaceId/recordings/:recordingId";
 const RESERVE_PATH = `${RECORDING_PATH}/audio-chunks`;
@@ -141,6 +150,7 @@ const endedRecordingError = (code: string) =>
   createHttpError({ type: HTTP_ERROR_TYPE.conflict, code });
 
 interface StartBody {
+  requestId: string;
   audioMode?: string;
 }
 
@@ -186,16 +196,23 @@ const collectRequests = () => {
 const recordStartBodies = () => {
   const bodies: StartBody[] = [];
   mockServer.use(
-    http.post<PathParams, StartBody>(
-      "*/api/v1/workspaces/:workspaceId/recordings",
-      async ({ request }) => {
-        bodies.push(await request.clone().json());
-      },
-    ),
+    http.post<PathParams, StartBody>(START_PATH, async ({ request }) => {
+      bodies.push(await request.clone().json());
+    }),
   );
 
   return bodies;
 };
+
+/** 시작 요청을 차례로 응답해요. 응답이 떨어지면 기본 mock 응답으로 돌아가요. `recordStartBodies`보다 먼저 불러요 */
+const respondStart = (...responses: (() => Response)[]) =>
+  mockServer.use(http.post(START_PATH, () => responses.shift()?.()));
+
+const conflict = (code: string) => () =>
+  HttpResponse.json({ code }, { status: 409 });
+
+const endedSession = () =>
+  HttpResponse.json({ ...recordingStartResponse, status: "ENDED" });
 
 const recordReserveBodies = () => {
   const bodies: ReserveBody[] = [];
@@ -245,6 +262,21 @@ const startRecording = async (
 
   return FakePcmCollector.instances[0];
 };
+
+/** 시작 결과(`started`, `refused` 등)를 돌려줘요 */
+const startRecordingOutcome = async (
+  result: ReturnType<typeof renderRecordingControl>,
+) => {
+  let outcome: Awaited<ReturnType<typeof result.current.startRecording>>;
+  await act(async () => {
+    outcome = await result.current.startRecording(WORKSPACE_ID);
+  });
+
+  return outcome!;
+};
+
+const getSessionAudioMode = () =>
+  useRecordingStore.getState().session?.audioMode;
 
 const pauseRecording = async (
   result: ReturnType<typeof renderRecordingControl>,
@@ -299,6 +331,117 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
     });
     expect(events).toEqual(["recordings", "start"]);
     expect(collector.isCollecting).toBe(true);
+  });
+
+  describe("WebM으로 돌아가기", () => {
+    it("서버가 조각 저장을 꺼 뒀으면(409 AUDIO_MODE_DISABLED) 거절로 보지 않고, 수집기만 닫은 채 새 증명으로 WebM 녹음을 시작한다", async () => {
+      const getUserMedia = vi.spyOn(navigator.mediaDevices, "getUserMedia");
+      respondStart(conflict("AUDIO_MODE_DISABLED"));
+      const startBodies = recordStartBodies();
+      const result = renderRecordingControl();
+
+      const outcome = await startRecordingOutcome(result);
+
+      expect(outcome).toBe("started");
+      expect(startBodies.map((body) => body.audioMode)).toEqual([
+        "PCM16_CHUNKS_V1",
+        undefined,
+      ]);
+      expect(startBodies[1].requestId).not.toBe(startBodies[0].requestId);
+      expect(getSessionAudioMode()).toBe("FINAL_WEBM_V1");
+      expect(getStatus()).toBe("recording");
+      expect(getUserMedia).toHaveBeenCalledTimes(1);
+      expect(FakePcmCollector.instances[0].isClosed).toBe(true);
+    });
+
+    it("끝난 녹음 뒤 새 증명으로 다시 보낸 시작이 AUDIO_MODE_DISABLED여도 WebM으로 시작한다", async () => {
+      getRecordingStartProof();
+      respondStart(endedSession, conflict("AUDIO_MODE_DISABLED"));
+      const startBodies = recordStartBodies();
+      const result = renderRecordingControl();
+
+      const outcome = await startRecordingOutcome(result);
+
+      expect(outcome).toBe("started");
+      expect(startBodies.map((body) => body.audioMode)).toEqual([
+        "PCM16_CHUNKS_V1",
+        "PCM16_CHUNKS_V1",
+        undefined,
+      ]);
+      expect(getSessionAudioMode()).toBe("FINAL_WEBM_V1");
+    });
+
+    it("WebM으로 다시 보낸 시작이 거절되면 지금처럼 거절로 돌려준다", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      respondStart(
+        conflict("AUDIO_MODE_DISABLED"),
+        conflict("ACTIVE_RECORDING_ALREADY_EXISTS"),
+      );
+      const result = renderRecordingControl();
+
+      expect(await startRecordingOutcome(result)).toBe("refused");
+      expect(getStatus()).toBe("idle");
+    });
+
+    it("16kHz 수집기를 만들 수 없는 브라우저면 받아 둔 마이크로 WebM 녹음을 시작하고, 다음 시작은 다시 PCM부터 시도한다", async () => {
+      vi.spyOn(FakePcmCollector, "create").mockRejectedValueOnce(
+        new UnsupportedPcmCollectorError(),
+      );
+      const getUserMedia = vi.spyOn(navigator.mediaDevices, "getUserMedia");
+      const startBodies = recordStartBodies();
+      const result = renderRecordingControl();
+
+      const outcome = await startRecordingOutcome(result);
+
+      expect(outcome).toBe("started");
+      expect(startBodies).toHaveLength(1);
+      expect(startBodies[0]).not.toHaveProperty("audioMode");
+      expect(getSessionAudioMode()).toBe("FINAL_WEBM_V1");
+      expect(getUserMedia).toHaveBeenCalledTimes(1);
+      expect(useRecordingStore.getState().analyser).not.toBeNull();
+
+      useRecordingStore.getState().discardRecording();
+      await startRecordingOutcome(result);
+
+      expect(startBodies[1]).toMatchObject({ audioMode: "PCM16_CHUNKS_V1" });
+      expect(getSessionAudioMode()).toBe("PCM16_CHUNKS_V1");
+    });
+  });
+
+  describe("켜기 전 WebM으로 만든 증명이 남은 경우", () => {
+    it("409 AUDIO_MODE_CONFLICT면 새 증명으로 한 번 더 PCM 시작을 요청한다", async () => {
+      const leftoverRequestId = getRecordingStartProof().requestId;
+      respondStart(conflict("AUDIO_MODE_CONFLICT"));
+      const startBodies = recordStartBodies();
+      const result = renderRecordingControl();
+
+      const outcome = await startRecordingOutcome(result);
+
+      expect(outcome).toBe("started");
+      expect(startBodies.map((body) => body.audioMode)).toEqual([
+        "PCM16_CHUNKS_V1",
+        "PCM16_CHUNKS_V1",
+      ]);
+      expect(startBodies[0].requestId).toBe(leftoverRequestId);
+      expect(startBodies[1].requestId).not.toBe(leftoverRequestId);
+      expect(getSessionAudioMode()).toBe("PCM16_CHUNKS_V1");
+    });
+
+    it("옛 녹음이 살아 있어 다시 보낸 시작도 409면 거절로 돌려주고 더 보내지 않는다", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      getRecordingStartProof();
+      respondStart(
+        conflict("AUDIO_MODE_CONFLICT"),
+        conflict("ACTIVE_RECORDING_ALREADY_EXISTS"),
+        conflict("AUDIO_MODE_CONFLICT"),
+      );
+      const startBodies = recordStartBodies();
+      const result = renderRecordingControl();
+
+      expect(await startRecordingOutcome(result)).toBe("refused");
+      expect(startBodies).toHaveLength(2);
+      expect(getStatus()).toBe("idle");
+    });
   });
 
   it("일시정지는 남은 소리를 봉인해 큐에 넣은 뒤 서버에 알리고, 조각은 세션과 최초 탭 증명을 실어 올린다", async () => {
