@@ -35,6 +35,16 @@ const awaitingAudioSaveDetail = {
   transcriptionStatus: null,
   documentGeneration: null,
 };
+// 실패 작업의 보존 기한이 지나 서버가 작업 ID를 비운 문서 만들기 실패예요
+const expiredFailedDetail = {
+  ...failedRecording.detail,
+  documentGeneration: {
+    ...failedRecording.detail.documentGeneration,
+    failedJobIds: [],
+  },
+};
+// 응답을 덮는 스토리는 문서 페이지에서 따로 그려요. 실패 화면이 잘리지 않는 높이예요
+const ISOLATED_DOCS = { story: { inline: false, iframeHeight: 320 } };
 // 녹음 상태는 전사 전으로 두고 저장 상태만 실패로 바꿔요
 const failAudioSave = (failureCode: string) => ({
   recording: http.get(RECORDING_REQUEST, () =>
@@ -64,7 +74,9 @@ const failAudioSave = (failureCode: string) => ({
  *   요청이 모두 끝날 때까지 버튼을 누를 수 없고, 서버 오류로 실패하면 버튼이 다시 열려요.
  * - 문서가 일부만 만들어진 실패도 같은 화면이에요. 만들어진 문서로 보내지 않고, 「다시 시도」는 실패한 작업만 다시 시도해요.
  *   일부만 만들어진 경우만의 화면은 시안이 아직 없어서 따로 두지 않았어요. 만들어진 문서는 홈과 문서 탭에서 볼 수 있어요.
- * - 전사 실패, 다시 시도할 작업이 남아 있지 않은 실패, 남은 작업의 다시 시도가 모두 거절된 경우는 설명 없이 「홈으로」만 둬요.
+ * - 전사가 실패했으면 문서 만들기 실패와 같은 화면이에요. 「다시 시도」는 실패 이유와 녹음 방식에 관계없이 전사부터 다시 접수하고, 접수되면 정리 중으로 돌아가요.
+ *   거절되면(다른 전사가 진행 중, 이미 다시 접수됨, 서버 오류) 안내 없이 콘솔에만 남기고 버튼을 그대로 둬요.
+ * - 다시 시도할 작업이 남아 있지 않은 실패, 남은 작업의 다시 시도가 모두 거절된 경우는 설명 없이 「홈으로」만 둬요.
  *   이 경우의 문구가 기획에 아직 없고, 녹음이 보관되어 있는지도 경우마다 달라서예요.
  * - 다시 시도가 409로 거절되면 녹음 상태를 다시 확인해요. 다른 곳에서 먼저 다시 시도해 서버에서는 이미 정리 중이거나 정리가 끝났을 수 있어서예요.
  *   그런 경우에는 그 상태의 화면으로 바꾸고, 그 작업이 또 실패하면 「다시 시도」를 다시 보여 줘요.
@@ -149,10 +161,29 @@ export const DocumentFailed: Story = {
   },
 };
 
-/** 다시 시도할 작업이 없는 실패일 때예요. 예: 전사 실패, 실패한 작업의 보존 기한이 지난 경우. 설명 없이 「홈으로」만 있어요. 붙인 피그마 프레임은 「다시 시도」가 있는 모습이에요. */
-export const DocumentFailedWithoutRetry: Story = {
+/** 전사가 실패했을 때예요. 문서 만들기 실패와 같은 화면이고, 「다시 시도」를 누르면 전사부터 다시 접수해 정리 중 모습으로 돌아가요. */
+export const TranscriptionFailed: Story = {
   parameters: {
     recordingId: transcriptionFailedRecording.recordingId,
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-35662",
+    },
+  },
+};
+
+/** 다시 시도할 작업이 없는 실패일 때예요. 예: 실패한 작업의 보존 기한이 지나 서버가 작업 ID를 비운 경우. 설명 없이 「홈으로」만 있어요. 붙인 피그마 프레임은 「다시 시도」가 있는 모습이에요. */
+export const DocumentFailedWithoutRetry: Story = {
+  parameters: {
+    recordingId: failedRecording.recordingId,
+    msw: {
+      handlers: {
+        recording: http.get(RECORDING_REQUEST, () =>
+          HttpResponse.json(expiredFailedDetail),
+        ),
+      },
+    },
+    docs: ISOLATED_DOCS,
     design: {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-35662",
