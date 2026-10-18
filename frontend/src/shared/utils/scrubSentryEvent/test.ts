@@ -1,11 +1,27 @@
 import type { Breadcrumb, ErrorEvent } from "@sentry/react";
 import { describe, expect, it } from "vitest";
 
-import { scrubSentryBreadcrumb, scrubSentryEvent } from ".";
+import {
+  scrubSentryBreadcrumb,
+  scrubSentryEvent,
+  scrubSentrySpan,
+  type StreamedSpan,
+} from ".";
 
 const errorEvent = (event: Partial<ErrorEvent>): ErrorEvent => ({
   type: undefined,
   ...event,
+});
+
+const streamedSpan = (
+  span: Pick<StreamedSpan, "name" | "attributes">,
+): StreamedSpan => ({
+  trace_id: "trace",
+  span_id: "span",
+  start_timestamp: 0,
+  status: "ok",
+  is_segment: false,
+  ...span,
 });
 
 describe("scrubSentryEvent", () => {
@@ -69,10 +85,89 @@ describe("scrubSentryEvent", () => {
     ]);
   });
 
+  // 성능 추적을 켜면 오류가 난 화면의 이름(transaction)이 붙어요. 라우트를 찾기 전에는 주소 그대로예요
+  it("화면 이름(transaction)에서 쿼리 파라미터와 초대 토큰을 지운다", () => {
+    const scrubbed = scrubSentryEvent(
+      errorEvent({ transaction: "/invite/secret-token?from=mail" }),
+    );
+
+    expect(scrubbed.transaction).toBe("/invite/[token]");
+  });
+
   it("원래 이벤트는 바꾸지 않는다", () => {
     scrubSentryEvent(event);
 
     expect(event.request?.cookies).toEqual({ KNOT_ACCESS: "access-token" });
+  });
+});
+
+describe("scrubSentrySpan", () => {
+  const span = streamedSpan({
+    name: "GET https://api.knoted.kr/api/v1/invitations/ABC123?code=1",
+    attributes: {
+      "url.full":
+        "https://knoted.kr/invite/secret-token?redirect=/workspace#top",
+      "url.path": "/invite/secret-token",
+      "http.target": "/api/v1/workspaces/1/search?keyword=회의록",
+      "sentry.segment.name": "/invite/secret-token",
+      "url.query": "?redirect=/workspace",
+      "url.fragment": "#top",
+      "http.query": "keyword=회의록",
+      "http.fragment": "top",
+      "sentry.op": "http.client",
+      "http.response.status_code": 200,
+      "browser.web_vital.lcp.url": {
+        value: "https://knoted.kr/invite/secret-token?x=1",
+        unit: "none",
+      },
+    },
+  });
+
+  it("이름에 든 주소의 쿼리 파라미터와 초대 토큰을 지운다", () => {
+    expect(scrubSentrySpan(span).name).toBe(
+      "GET https://api.knoted.kr/api/v1/invitations/[token]",
+    );
+  });
+
+  it("속성에 든 주소의 쿼리 파라미터, 해시, 초대 토큰을 지운다", () => {
+    expect(scrubSentrySpan(span).attributes).toMatchObject({
+      "url.full": "https://knoted.kr/invite/[token]",
+      "url.path": "/invite/[token]",
+      "http.target": "/api/v1/workspaces/1/search",
+      "sentry.segment.name": "/invite/[token]",
+      "browser.web_vital.lcp.url": {
+        value: "https://knoted.kr/invite/[token]",
+        unit: "none",
+      },
+    });
+  });
+
+  it("쿼리 파라미터와 해시만 담은 속성을 지운다", () => {
+    const { attributes } = scrubSentrySpan(span);
+
+    expect(attributes).not.toHaveProperty("url.query");
+    expect(attributes).not.toHaveProperty("url.fragment");
+    expect(attributes).not.toHaveProperty("http.query");
+    expect(attributes).not.toHaveProperty("http.fragment");
+  });
+
+  it("주소가 아닌 이름과 속성은 그대로 둔다", () => {
+    const interaction = streamedSpan({
+      name: "body > div#root > button.submit",
+      attributes: { "sentry.op": "ui.interaction.click" },
+    });
+
+    expect(scrubSentrySpan(interaction)).toEqual(interaction);
+    expect(scrubSentrySpan(span).attributes).toMatchObject({
+      "sentry.op": "http.client",
+      "http.response.status_code": 200,
+    });
+  });
+
+  it("원래 span은 바꾸지 않는다", () => {
+    scrubSentrySpan(span);
+
+    expect(span.attributes["url.path"]).toBe("/invite/secret-token");
   });
 });
 

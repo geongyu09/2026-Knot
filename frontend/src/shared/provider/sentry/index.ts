@@ -1,11 +1,41 @@
 import * as Sentry from "@sentry/react";
 import type { BrowserOptions, ErrorEvent, EventHint } from "@sentry/react";
 import {
+  reactRouterBrowserTracingIntegration,
+  wrapUseRoutes,
+} from "@sentry/react/react-router";
+import { getRequestErrorFingerprint } from "@utils/getRequestErrorFingerprint";
+import {
   scrubSentryBreadcrumb,
   scrubSentryEvent,
+  scrubSentrySpan,
 } from "@utils/scrubSentryEvent";
 import { shouldReportError } from "@utils/shouldReportError";
 import type { RootOptions } from "react-dom/client";
+import { useRoutes } from "react-router";
+
+/** production에서 성능을 측정할 페이지 로딩 · 화면 이동의 비율. 그 밖의 환경은 모두 측정해요 */
+const PRODUCTION_TRACES_SAMPLE_RATE = 0.2;
+
+/** environment를 비우면 SDK가 `production`으로 보내므로 production과 같게 다뤄요 */
+const getTracesSampleRate = (environment?: string) =>
+  !environment || environment === "production"
+    ? PRODUCTION_TRACES_SAMPLE_RATE
+    : 1;
+
+/**
+ * 세션 리플레이 통합을 첫 화면 번들과 따로 받아 붙여요. 같은 오리진의 파일이라 외부 CDN을 부르지 않아요.
+ *
+ * 파일을 받지 못하면(오프라인, 배포 중 파일 교체) 리플레이 없이 오류 보고만 해요. 받기 전에 난 오류에는 리플레이가 없어요.
+ */
+const addReplayIntegration = async () => {
+  try {
+    const { createReplayIntegration } = await import("./replay");
+    Sentry.addIntegration(createReplayIntegration());
+  } catch {
+    // 리플레이는 부가 기능이라 실패해도 화면과 오류 보고를 막지 않아요
+  }
+};
 
 /**
  * 보고 기준에 맞는 오류만 민감한 값을 지운 뒤 보내요. 모든 수집 경로가 이 함수를 지나요.
@@ -41,9 +71,12 @@ interface InitSentryParams {
 /**
  * Sentry를 켜요. DSN이 없으면 `Sentry.init`을 부르지 않고 `false`를 돌려줘요.
  *
- * 개인 정보는 모으지 않고(`dataCollection`), 성능 추적과 세션 리플레이는 켜지 않아요.
+ * 개인 정보는 모으지 않아요(`dataCollection`).
  * SDK v11에서 `sendDefaultPii`가 없어지고 `dataCollection`으로 바뀌었는데, 기본값이 모두 모으기라 끄는 값을 직접 넣어요.
  * 보낼 오류는 `shouldReportError`로 고르고, 보내기 전에 `scrubSentryEvent`로 민감한 값을 지워요.
+ *
+ * - 성능 측정: 페이지 로딩, 화면 이동(라우트 경로 패턴 이름), API 응답 시간, Web Vitals. span은 `scrubSentrySpan`으로 주소를 정리해 보내요
+ * - 세션 리플레이: 오류가 난 세션만 남겨요. 통합은 `addReplayIntegration`이 따로 받아 붙여요
  */
 export const initSentry = ({
   dsn,
@@ -65,13 +98,29 @@ export const initSentry = ({
       httpBodies: [],
       urlQueryParams: false,
     },
+    integrations: [reactRouterBrowserTracingIntegration()],
+    tracesSampleRate: getTracesSampleRate(environment),
+    // 백엔드 CORS가 `sentry-trace` · `baggage` 헤더를 허용하지 않아, 붙이면 API 요청이 모두 막혀요. 어느 요청에도 붙이지 않아요
+    tracePropagationTargets: [],
+    replaysSessionSampleRate: 0,
+    replaysOnErrorSampleRate: 1,
     beforeSend,
+    beforeSendSpan: scrubSentrySpan,
     beforeBreadcrumb: scrubSentryBreadcrumb,
     ...(transport && { transport }),
   });
 
+  void addReplayIntegration();
+
   return true;
 };
+
+/**
+ * react-router의 `useRoutes`에 Sentry 성능 측정을 붙인 훅. 페이지 로딩 · 화면 이동 이름을 주소 대신 경로 패턴(`/workspace/:workspaceId`)으로 남겨요.
+ *
+ * Sentry가 꺼져 있으면 `useRoutes`와 같아요.
+ */
+export const useSentryRoutes = wrapUseRoutes(useRoutes);
 
 /**
  * React 루트(`createRoot`)에 넘길 오류 처리. React 19가 알려 주는 오류를 Sentry로 보내요.
@@ -105,13 +154,16 @@ interface CaptureRequestErrorParams {
  * react-query의 Query · Mutation 실패를 Sentry로 보내요. `QueryCache` · `MutationCache`의 `onError`에서 불러요.
  *
  * 보낼지는 `beforeSend`가 정하므로 여기서는 거르지 않아요.
+ * httpClient 요청 실패는 API마다 다른 Issue로 묶이도록 `getRequestErrorFingerprint`로 묶음 기준을 정해요.
  */
 export const captureRequestError = ({
   error,
   source,
 }: CaptureRequestErrorParams) => {
+  const fingerprint = getRequestErrorFingerprint(error);
+
   Sentry.captureException(error, {
-    captureContext: { tags: { source } },
+    captureContext: { tags: { source }, ...(fingerprint && { fingerprint }) },
     mechanism: { handled: true, type: `auto.tanstack.${source}_cache` },
   });
 };

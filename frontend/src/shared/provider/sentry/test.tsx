@@ -7,7 +7,7 @@ import { queryClient } from "@provider/queryClient";
 import { theme } from "@provider/themeProvider";
 import { PATH_ROUTE } from "@routes/PATH_ROUTE";
 import * as Sentry from "@sentry/react";
-import type { ErrorEvent } from "@sentry/react";
+import type { BrowserOptions, ErrorEvent } from "@sentry/react";
 import {
   QueryClientProvider,
   useMutation,
@@ -28,7 +28,12 @@ import {
   vi,
 } from "vitest";
 
-import { getRootErrorHandlers, initSentry } from ".";
+import {
+  captureRequestError,
+  getRootErrorHandlers,
+  initSentry,
+  useSentryRoutes,
+} from ".";
 
 const TEST_PATH = "/__sentry-report";
 const FALLBACK_TITLE = "잠시 문제가 생겼어요";
@@ -39,20 +44,37 @@ const sentEvents: ErrorEvent[] = [];
 const textOf = (body: string | Uint8Array) =>
   typeof body === "string" ? body : new TextDecoder().decode(body);
 
-/** 봉투(envelope)의 줄 중 `event` 항목 바로 다음 줄이 이벤트 본문이에요 */
-const toErrorEvents = (body: string | Uint8Array) => {
+/** 보낸 span 하나. 속성은 `{ type, value }` 모양으로 바뀌어 나가요 */
+interface SentSpan {
+  name: string;
+  attributes: Record<string, { value: unknown }>;
+}
+
+/** Sentry가 전송하려던 span. 실제 전송 대신 여기 모아요 */
+const sentSpans: SentSpan[] = [];
+
+/** 봉투(envelope)의 줄 중 `type` 항목 바로 다음 줄이 그 항목의 본문이에요 */
+const toEnvelopeItems = (body: string | Uint8Array, type: string) => {
   const lines = textOf(body)
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line) as Record<string, unknown>);
 
   return lines.flatMap((line, index) =>
-    line.type === "event" ? [lines[index + 1] as unknown as ErrorEvent] : [],
+    line.type === type ? [lines[index + 1]] : [],
   );
 };
 
 const sendEnvelope = vi.fn(async ({ body }: { body: string | Uint8Array }) => {
-  sentEvents.push(...toErrorEvents(body));
+  sentEvents.push(
+    ...(toEnvelopeItems(body, "event") as unknown as ErrorEvent[]),
+  );
+  // span은 여러 개가 한 항목의 `items`에 묶여 와요
+  sentSpans.push(
+    ...(
+      toEnvelopeItems(body, "span") as unknown as { items: SentSpan[] }[]
+    ).flatMap(({ items }) => items),
+  );
   return {};
 });
 
@@ -60,6 +82,11 @@ const flushEvents = async () => {
   await Sentry.flush();
   return sentEvents;
 };
+
+const SENTRY_DSN = "https://public@o0.ingest.sentry.io/0";
+
+const testTransport: BrowserOptions["transport"] = (options) =>
+  Sentry.createTransport(options, sendEnvelope);
 
 function QueryContent() {
   const { data } = useQuery({
@@ -116,9 +143,9 @@ describe("initSentry", () => {
 describe("Sentry 보고", () => {
   beforeAll(() => {
     initSentry({
-      dsn: "https://public@o0.ingest.sentry.io/0",
+      dsn: SENTRY_DSN,
       environment: "test",
-      transport: (options) => Sentry.createTransport(options, sendEnvelope),
+      transport: testTransport,
     });
   });
 
@@ -128,6 +155,7 @@ describe("Sentry 보고", () => {
 
   afterEach(() => {
     sentEvents.length = 0;
+    sentSpans.length = 0;
     queryClient.clear();
   });
 
@@ -221,5 +249,141 @@ describe("Sentry 보고", () => {
 
     const [event] = await flushEvents();
     expect(event.request?.url).toBe(`${window.location.origin}/invite/[token]`);
+  });
+
+  // 백엔드 CORS가 두 헤더를 허용하지 않아, 붙으면 브라우저가 API 요청을 모두 막아요
+  it("API 요청에 추적 헤더(sentry-trace, baggage)를 붙이지 않는다", async () => {
+    mockServer.use(
+      http.get(`*${TEST_PATH}`, ({ request }) =>
+        HttpResponse.json({
+          sentryTrace: request.headers.get("sentry-trace"),
+          baggage: request.headers.get("baggage"),
+        }),
+      ),
+    );
+    const noTraceHeaders = { sentryTrace: null, baggage: null };
+
+    const { data } = await httpClient.get(TEST_PATH);
+    // SSE 요청은 httpClient 대신 fetch로 보내요
+    const response = await fetch(`${window.location.origin}${TEST_PATH}`);
+
+    expect(Sentry.getClient()?.getOptions().tracesSampleRate).toBe(1);
+    expect(data).toEqual(noTraceHeaders);
+    expect(await response.json()).toEqual(noTraceHeaders);
+  });
+
+  it("서로 다른 API의 오류는 묶음 기준(fingerprint)을 달리해 한 Issue로 합치지 않는다", async () => {
+    mockServer.use(
+      http.get("*/api/v1/workspaces/:workspaceId/documents", () =>
+        HttpResponse.json({ code: "INTERNAL_SERVER_ERROR" }, { status: 500 }),
+      ),
+      http.get(
+        "*/api/v1/workspaces/:workspaceId/recordings",
+        () => new HttpResponse(null, { status: 500 }),
+      ),
+    );
+    const requestError = (url: string) =>
+      httpClient.get(url).catch((error: unknown) => error);
+
+    captureRequestError({
+      error: await requestError("/api/v1/workspaces/1/documents"),
+      source: "query",
+    });
+    captureRequestError({
+      error: await requestError("/api/v1/workspaces/2/recordings"),
+      source: "query",
+    });
+
+    const events = await flushEvents();
+    expect(events.map(({ fingerprint }) => fingerprint)).toEqual([
+      [
+        "GET",
+        "/api/v1/workspaces/:id/documents",
+        "500",
+        "INTERNAL_SERVER_ERROR",
+      ],
+      ["GET", "/api/v1/workspaces/:id/recordings", "500"],
+    ]);
+  });
+
+  it("보내는 span에서 주소의 쿼리 파라미터와 초대 토큰을 지운다", async () => {
+    Sentry.startSpan(
+      {
+        name: "GET /api/v1/invitations/secret-token?code=1",
+        attributes: {
+          "url.full": `${window.location.origin}/invite/secret-token?from=mail#top`,
+          "url.query": "?from=mail",
+        },
+      },
+      () => {},
+    );
+
+    await flushEvents();
+    const span = sentSpans.find(({ name }) =>
+      name.startsWith("GET /api/v1/invitations"),
+    );
+    expect(span?.name).toBe("GET /api/v1/invitations/[token]");
+    expect(span?.attributes["url.full"].value).toBe(
+      `${window.location.origin}/invite/[token]`,
+    );
+    expect(span?.attributes).not.toHaveProperty("url.query");
+    expect(JSON.stringify(sentSpans)).not.toContain("secret-token");
+  });
+
+  it("화면 이름을 주소 대신 라우트 경로 패턴으로 남긴다", async () => {
+    function SentryRoutes() {
+      return useSentryRoutes([
+        { path: PATH_ROUTE.WORKSPACE_HOME, element: <p>워크스페이스 홈</p> },
+      ]);
+    }
+
+    render(
+      <MemoryRouter initialEntries={["/workspace/12"]}>
+        <SentryRoutes />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("워크스페이스 홈")).toBeInTheDocument();
+
+    Sentry.captureException(new Error("화면 이름 확인"));
+
+    const [event] = await flushEvents();
+    expect(event.transaction).toBe(PATH_ROUTE.WORKSPACE_HOME);
+  });
+
+  // 리플레이는 첫 화면 번들에서 빼고 init 뒤에 받아 붙여요. SDK가 실제로 쓰는 설정을 봐요
+  it("리플레이는 오류가 난 세션만 남기고 화면의 글자, 입력, 이미지와 네트워크 내용을 가린다", async () => {
+    const client = Sentry.getClient();
+
+    expect(client?.getOptions()).toMatchObject({
+      replaysSessionSampleRate: 0,
+      replaysOnErrorSampleRate: 1,
+    });
+    await vi.waitFor(() =>
+      expect(client?.getIntegrationByName("Replay")).toMatchObject({
+        _recordingOptions: { maskAllText: true, maskAllInputs: true },
+        _initialOptions: {
+          blockAllMedia: true,
+          networkDetailAllowUrls: [],
+          networkCaptureBodies: false,
+        },
+      }),
+    );
+  });
+});
+
+describe("성능 측정 비율", () => {
+  afterEach(async () => {
+    await Sentry.close();
+  });
+
+  // environment를 비우면 SDK가 production으로 보내므로 production과 같은 비율을 써요
+  it.each([
+    ["production", 0.2],
+    [undefined, 0.2],
+    ["development", 1],
+  ])("environment가 %s면 %s만큼 측정한다", (environment, sampleRate) => {
+    initSentry({ dsn: SENTRY_DSN, environment, transport: testTransport });
+
+    expect(Sentry.getClient()?.getOptions().tracesSampleRate).toBe(sampleRate);
   });
 });
