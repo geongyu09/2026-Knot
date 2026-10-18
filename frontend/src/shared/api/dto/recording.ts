@@ -14,6 +14,7 @@
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-chunks/{sequence}/complete
  * - GET  /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-save
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-save/retry
+ * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/transcription/retry
  */
 
 /** 녹음 세션 상태. 시작·일시정지·재개·종료 응답과 녹음 상세 조회가 공유하는 서버 값. `DISCARDED`는 서버가 버린 녹음이에요 */
@@ -908,3 +909,32 @@ export type PostRecordingAudioSaveRetryResponseRaw = RecordingAudioSaveRaw;
  * 접수 뒤의 저장 상태라 최종 WAV가 준비됐다는 뜻은 아니에요. 다시 시도할 수 없으면 409 `AUDIO_SAVE_RETRY_NOT_ALLOWED`예요
  */
 export class PostRecordingAudioSaveRetryResponseDto extends RecordingAudioSaveDto {}
+
+// POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/transcription/retry
+
+/** 전사 재시도의 서버 응답 모양 */
+export interface PostRecordingTranscriptionRetryResponseRaw {
+  recordingId: number;
+  attemptId: string;
+  transcriptionStatus: RecordingTranscriptionStatus | "QUEUED";
+}
+
+/**
+ * 전사 재시도 응답(202). 요청 본문은 없어요.
+ * 실패한 전사를 새 시도 ID로 다시 접수했다는 뜻이고 전사가 성공했다는 뜻은 아니에요. 결과는 녹음 상세 조회로 확인해요.
+ * 다시 시도할 수 없으면 409(`TRANSCRIPTION_RETRY_NOT_ALLOWED` · `TRANSCRIPTION_BUSY` · `TRANSCRIPTION_DISABLED` · `AUDIO_UPLOAD_NOT_COMPLETED`)예요
+ */
+export class PostRecordingTranscriptionRetryResponseDto {
+  /** 녹음 세션 ID. 요청한 녹음과 같아요 */
+  recordingId: number;
+  /** 접수한 새 전사 시도의 UUID. 녹음 상세의 `transcriptionAttemptId`가 이 값으로 바뀌어요 */
+  attemptId: string;
+  /** 접수한 뒤의 전사 상태. 다른 전사가 실행 중이면 `QUEUED`로 기다리고, 실패가 아니에요 */
+  transcriptionStatus: RecordingTranscriptionStatus | "QUEUED";
+
+  constructor(raw: PostRecordingTranscriptionRetryResponseRaw) {
+    this.recordingId = raw.recordingId;
+    this.attemptId = raw.attemptId;
+    this.transcriptionStatus = raw.transcriptionStatus;
+  }
+}
