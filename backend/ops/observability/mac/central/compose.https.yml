@@ -1,0 +1,8 @@
+# Opt-in public HTTPS overlay. Keep the base loopback bindings and private ingress.
+services:
+  grafana:
+    environment:
+      GF_SERVER_ROOT_URL: https://${KNOT_GRAFANA_DOMAIN:?public Grafana domain required}/
+      GF_SERVER_DOMAIN: ${KNOT_GRAFANA_DOMAIN:?public Grafana domain required}
+      GF_SERVER_ENFORCE_DOMAIN: "true"
+      GF_SECURITY_COOKIE_SECURE: "true"

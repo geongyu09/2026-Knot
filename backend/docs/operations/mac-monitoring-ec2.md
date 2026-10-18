@@ -1,7 +1,7 @@
 # Mac 관측 EC2 운영
 
 Mac의 native Alloy가 CPU·메모리·swap·디스크 지표를 30초마다 수집해 별도 EC2의
-Prometheus에 전송한다. Grafana의 `Knot-mac` 폴더, `Mac AI 서버 자원` 대시보드에서 조회한다.
+Prometheus에 전송한다. Grafana의 `Knot Mac` 폴더, `Mac AI 서버 자원` 대시보드에서 조회한다.
 2026-10-18 KST에 실제 Mac 설치·중앙 수신·Grafana 표시와 EC2 재부팅 후 서비스 복구를
 확인했다. 재부팅 후에도 약 30초 간격의 새 표본이 계속 수신됐다. [검증 결과](../verification/762-mac-host-metrics.md)에 증명 범위와 남은 검증을 기록한다.
 
@@ -12,6 +12,10 @@ Dev·Prod 운영 수신 검증으로 해석하지 않는다. AI 업무 성공·�
 
 Mac의 신규 설치·수집기 설정 갱신은 [Mac AI 호스트 자원 수집](mac-host-metrics.md)을 따른다.
 이 문서는 별도 EC2의 방화벽·앱·인증서·관리 접속과 복구를 담당한다.
+
+아래는 최초 SSH 전용 구성이다. 공개 HTTPS 활성화 후에는 [목록 복구·HTTPS 운영 절차](mac-grafana-https.md)를
+우선한다. 이 절차는 Cloudflare 80·443 예외, Compose HTTPS overlay와 `.env`, 인증서 갱신을
+포함한다. 수동 Compose에서도 HTTPS overlay가 빠지지 않도록 `.env` 연결을 유지한다.
 
 ## 이번 EC2의 구성과 접근 경계
 
@@ -127,7 +131,7 @@ ssh -i "$KNOT_SSH_KEY" -o IdentitiesOnly=yes -o ExitOnForwardFailure=yes \
 ```
 
 `http://127.0.0.1:13000`에 접속하고 비공개 비밀번호로 `knot-admin` 계정에 로그인한다.
-`Knot-mac` 폴더에서 RAM 16GiB와 최신 표본 시각을 확인한다. 데이터 없음이 `0`으로 보이거나
+`Knot Mac` 폴더에서 RAM 16GiB와 최신 표본 시각을 확인한다. 데이터 없음이 `0`으로 보이거나
 수집 중단 뒤 과거 값만 남아 있으면 완료로 판단하지 않는다.
 
 ## 중앙 설정·방화벽 변경

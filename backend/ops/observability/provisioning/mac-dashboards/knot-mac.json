@@ -3,7 +3,7 @@
   "title": "Mac AI 서버 자원",
   "description": "공유 Mac AI 호스트의 기본 자원과 마지막 수신 시각. 업무 결과·GPU·알림은 별도 관찰 대상이다.",
   "schemaVersion": 41,
-  "version": 1,
+  "version": 2,
   "editable": false,
   "timezone": "Asia/Seoul",
   "refresh": "30s",
