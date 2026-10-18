@@ -79,6 +79,7 @@ class SearchAnswerWorkerLoggingTest {
             ).singleElement()
                     .satisfies(
                             event -> assertThat(event.getFormattedMessage()).contains(
+                                    "questionId=4",
                                     "answerId=5",
                                     "elapsedMs=1250"
                             )
@@ -116,7 +117,10 @@ class SearchAnswerWorkerLoggingTest {
                         assertThat(event.getLevel()).isEqualTo(Level.ERROR);
                         assertThat(event.getFormattedMessage()).contains(
                                 "workspaceId=1",
+                                "questionId=4",
                                 "answerId=5",
+                                "phase=generation",
+                                "failureCode=UNCLASSIFIED",
                                 "IllegalStateException"
                         )
                                 .doesNotContain(
@@ -126,6 +130,23 @@ class SearchAnswerWorkerLoggingTest {
                                         TOKEN.toString()
                                 );
                     });
+            assertThat(logs.events()).filteredOn(
+                    event -> event.getFormattedMessage()
+                            .contains("phase=document_retrieval")
+            )
+                    .singleElement()
+                    .satisfies(
+                            event -> assertThat(event.getFormattedMessage()).contains(
+                                    "questionId=4",
+                                    "answerId=5",
+                                    "outcome=failure",
+                                    "failureCode=UNCLASSIFIED"
+                            )
+                                    .doesNotContain(
+                                            "private-question",
+                                            "private-provider"
+                                    )
+                    );
         }
     }
 
