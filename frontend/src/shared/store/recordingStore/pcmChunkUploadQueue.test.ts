@@ -61,6 +61,21 @@ const createQueue = () =>
       }),
   });
 
+/** 예약 요청 본문만 남기고 응답은 기본 mock 핸들러에 맡겨요 */
+const recordReserveBodies = () => {
+  const bodies: RecordingAudioChunkReserveRequest[] = [];
+  mockServer.use(
+    http.post<PathParams, RecordingAudioChunkReserveRequest>(
+      RESERVE_PATH,
+      async ({ request }) => {
+        bodies.push(await request.clone().json());
+      },
+    ),
+  );
+
+  return bodies;
+};
+
 describe("PcmChunkUploadQueue", () => {
   it("넣은 순서대로 번호·offset·해시를 고정하고, 앞 예약의 응답을 받은 뒤에 다음 예약을 보낸다", async () => {
     const firstReserve = createGate();
@@ -106,6 +121,37 @@ describe("PcmChunkUploadQueue", () => {
         checksumSha256: expect.any(String),
       },
     ]);
+  });
+
+  it("PUT과 저장 확인은 조각 2개까지만 동시에 진행한다", async () => {
+    const puts = createGate();
+    let inflightPuts = 0;
+    let maxInflightPuts = 0;
+    mockServer.use(
+      http.put(STORAGE_PATH, async () => {
+        inflightPuts += 1;
+        maxInflightPuts = Math.max(maxInflightPuts, inflightPuts);
+        await puts.opened;
+        inflightPuts -= 1;
+
+        return new HttpResponse(null, { status: 200 });
+      }),
+    );
+    const reserveBodies = recordReserveBodies();
+    const queue = createQueue();
+
+    for (let i = 0; i < 3; i += 1) void queue.enqueue(silentPcm(CHUNK_FRAMES));
+
+    // 세 조각 모두 예약이 끝나도 PUT은 두 개만 열려 있어요
+    await vi.waitFor(() => expect(reserveBodies).toHaveLength(3));
+    await vi.waitFor(() => expect(inflightPuts).toBe(2));
+    expect(queue.pendingSequences).toEqual([1, 2, 3]);
+
+    puts.open();
+    await queue.drain();
+
+    expect(maxInflightPuts).toBe(2);
+    expect(queue.pendingSequences).toEqual([]);
   });
 
   it("뒤 조각의 저장 확인이 먼저 와도 그 조각만 놓고, watermark는 응답 중 큰 값을 따른다", async () => {
