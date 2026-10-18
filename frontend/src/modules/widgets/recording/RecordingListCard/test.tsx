@@ -44,6 +44,7 @@ const expectedRecording = new GetCurrentRecordingResponseDto(
 );
 const RECORDING_TITLE = `${new GetMeResponseDto(meResponse).nickname} 님의 녹음`;
 const EMPTY_TEXT = "진행 중인 녹음이 없어요";
+const LOAD_FAILED_TEXT = "녹음 상태를 불러오지 못했어요. 다시 시도해 주세요.";
 const OPEN_RECORDING = "녹음 화면으로";
 const MS_PER_SECOND = 1000;
 
@@ -211,7 +212,7 @@ describe("RecordingListCard", () => {
     },
   );
 
-  it("조회에 실패하면 빈 상태로 보여 주고 오류는 콘솔에만 남긴다", async () => {
+  it("조회에 실패하면 빈 상태 대신 카드 안에 실패 안내와 다시 시도를 보여 주고, 오류는 콘솔에도 남긴다 (ERR-09)", async () => {
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
@@ -219,8 +220,71 @@ describe("RecordingListCard", () => {
 
     renderCard();
 
-    expect(await screen.findByText(EMPTY_TEXT)).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      LOAD_FAILED_TEXT,
+    );
+    expect(
+      screen.getByRole("heading", { name: "진행 중인 녹음" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "다시 시도" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(EMPTY_TEXT)).not.toBeInTheDocument();
     expect(consoleError).toHaveBeenCalled();
+  });
+
+  it("다시 시도를 누르면 현재 녹음만 다시 조회해 보여 준다", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let attempts = 0;
+    respondCurrentRecording(() => {
+      attempts += 1;
+      if (attempts === 1) return HttpResponse.json(null, { status: 500 });
+
+      return HttpResponse.json(currentRecordingResponse);
+    });
+
+    renderCard();
+    fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+
+    expect(await screen.findByText(RECORDING_TITLE)).toBeInTheDocument();
+    expect(screen.queryByText(LOAD_FAILED_TEXT)).not.toBeInTheDocument();
+    expect(attempts).toBe(2);
+  });
+
+  it("한 번 받은 뒤 다시 조회만 실패하면 실패 안내 대신 받은 녹음을 그대로 보여 준다", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    renderCard();
+    expect(await screen.findByText(RECORDING_TITLE)).toBeInTheDocument();
+
+    respondCurrentRecording(() => HttpResponse.json(null, { status: 500 }));
+    try {
+      act(() => {
+        focusManager.setFocused(false);
+        focusManager.setFocused(true);
+      });
+      // 실패를 그린 뒤에 콘솔에 남기므로, 남겼으면 실패한 상태가 화면에 반영된 거예요
+      await waitFor(() => expect(consoleError).toHaveBeenCalled());
+
+      expect(screen.getByText(RECORDING_TITLE)).toBeInTheDocument();
+      expect(screen.queryByText(LOAD_FAILED_TEXT)).not.toBeInTheDocument();
+    } finally {
+      focusManager.setFocused(undefined);
+    }
+  });
+
+  it("이 탭에서 시작한 녹음이면 조회에 실패해도 실패 안내 대신 이 탭의 녹음을 보여 준다", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    respondCurrentRecording(() => HttpResponse.json(null, { status: 500 }));
+    await startRecordingInThisTab();
+
+    renderCard();
+
+    expect(
+      await screen.findByRole("button", { name: OPEN_RECORDING }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(LOAD_FAILED_TEXT)).not.toBeInTheDocument();
   });
 
   it("다른 탭에서 시작한 녹음이면 「녹음 화면으로」 버튼을 숨긴다", async () => {

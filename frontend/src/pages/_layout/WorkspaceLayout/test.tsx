@@ -31,7 +31,7 @@ import {
 } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import SearchConversation from "@widgets/search/SearchConversation";
 import type { ReactNode } from "react";
 
@@ -83,6 +83,9 @@ const CHAT_TEXT = "탐색 본문";
 const WORKSPACE_PATH_PATTERN = "*/api/v1/workspaces/:workspaceId";
 
 const SAVED = "녹음을 저장했어요";
+// 피그마 ERR-03(서버 오류), ERR-02(네트워크 오류) 화면의 제목이에요
+const SERVER_ERROR_TITLE = "잠시 문제가 생겼어요";
+const NETWORK_ERROR_TITLE = "연결이 잠시 끊겼어요";
 
 function ToastTriggerPage() {
   const { show } = useToast();
@@ -421,15 +424,110 @@ describe("WorkspaceLayout", () => {
     );
   });
 
-  it("그 외 실패면 이동하지 않고 스피너를 유지한다", async () => {
+  it.each([401, 403, 404])(
+    "%i면 이동하는 동안 에러 화면을 그리지 않는다",
+    async (status) => {
+      overrideWorkspaceStatus(status);
+      const { router } = renderLayout();
+      // 이동하기 전에 잠깐이라도 그린 제목을 모아요
+      const seenTitles: string[] = [];
+      const observer = new MutationObserver(() => {
+        document.querySelectorAll("h1").forEach(({ textContent }) => {
+          seenTitles.push(textContent ?? "");
+        });
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      await waitFor(() => {
+        expect(router.state.location.pathname).not.toBe(HOME_PATH);
+      });
+      observer.disconnect();
+
+      expect(seenTitles).toEqual([]);
+    },
+  );
+
+  it("서버 오류(5xx)로 조회하지 못하면 이동하지 않고, GNB와 독 없이 ERR-03 화면을 보여준다 (ERR-03)", async () => {
     overrideWorkspaceStatus(500);
     const { router } = renderLayout();
 
-    await waitRealTime(200);
-
+    expect(
+      await screen.findByRole("heading", { name: SERVER_ERROR_TITLE }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("서버에서 생긴 문제예요.")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "다시 시도" }),
+    ).toBeInTheDocument();
     expect(router.state.location.pathname).toBe(HOME_PATH);
-    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.queryByRole("banner")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "사이드바" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText(HOME_TEXT)).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("응답을 받지 못하면(네트워크 끊김) GNB와 독 없이 ERR-02 화면을 보여준다 (ERR-02)", async () => {
+    mockServer.use(
+      http.get(WORKSPACE_PATH_PATTERN, () => HttpResponse.error()),
+    );
+    const { router } = renderLayout();
+
+    expect(
+      await screen.findByRole("heading", { name: NETWORK_ERROR_TITLE }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("네트워크 상태를 확인한 뒤")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(HOME_PATH);
+    expect(screen.queryByRole("banner")).not.toBeInTheDocument();
+    expect(screen.queryByText(HOME_TEXT)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["서버 오류", SERVER_ERROR_TITLE, () => overrideWorkspaceStatus(503)],
+    [
+      "네트워크 끊김",
+      NETWORK_ERROR_TITLE,
+      () =>
+        mockServer.use(
+          http.get(WORKSPACE_PATH_PATTERN, () => HttpResponse.error()),
+        ),
+    ],
+  ])(
+    "%s 화면에서 다시 시도를 누르면 페이지를 새로고침한다",
+    async (_, title, respond) => {
+      respond();
+      renderLayout();
+      await screen.findByRole("heading", { name: title });
+      // jsdom은 새로고침하지 못해요. 새로고침 요청만 받아 두는 가짜 location으로 바꿔요
+      const reload = vi.fn();
+      vi.stubGlobal("location", { reload });
+
+      try {
+        fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
+
+        expect(reload).toHaveBeenCalledTimes(1);
+      } finally {
+        // 실패해도 가짜 location이 다음 테스트로 넘어가지 않게 되돌려요
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  it("이미 들어온 뒤 다시 조회만 실패하면 에러 화면으로 바꾸지 않는다", async () => {
+    const { queryClient } = renderLayout();
+    expect(await screen.findByText(HOME_TEXT)).toBeInTheDocument();
+
+    overrideWorkspaceStatus(500);
+    await act(async () => {
+      await queryClient.refetchQueries();
+    });
+    // 실패한 상태가 화면에 반영될 때까지 기다려요
+    await waitRealTime(100);
+
+    expect(
+      screen.queryByRole("heading", { name: SERVER_ERROR_TITLE }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("banner")).toBeInTheDocument();
   });
 
   it("탐색 대화에서 답변의 찾은 기록을 펼치면 본문 오른쪽 레일에 찾은 기록 패널을 둔다 (SEARCH-R11)", async () => {

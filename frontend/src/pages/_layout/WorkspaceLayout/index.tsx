@@ -13,6 +13,7 @@ import DockColumn, {
   DOCK_TOAST_GAP,
 } from "@primitives/layout/DockColumn";
 import LoadingIndicator from "@primitives/ui/LoadingIndicator";
+import PageErrorNotice from "@primitives/ui/PageErrorNotice";
 import { ToastViewport } from "@provider/context/toastContext";
 import ChatListDrawer from "@widgets/chat/ChatListDrawer";
 import TranscriptPanel from "@widgets/document/TranscriptPanel";
@@ -49,6 +50,8 @@ import type { DockedPanelName } from "./types/dockedPanel";
  *
  * 들어갈 수 있는 워크스페이스인지도 이 레이아웃 범위에서 한 번만 판정한다(`useWorkspaceEntry`).
  * 조회에 성공하기 전에는 본문 대신 스피너를 두고, 401은 로그인으로, 403·404는 선택 화면으로 보낸다.
+ * 처음 조회가 네트워크 끊김·timeout이나 5xx로 실패하면 GNB와 독까지 레이아웃 전체 대신 ERR-02·ERR-03을 그린다.
+ * 두 화면의 `다시 시도`는 페이지를 새로고침한다. 새로고침 경고는 녹음 중이면 그대로 뜬다.
  *
  * 녹음은 레이아웃 안의 어느 화면에서나 이어지므로, 녹음 중 새로고침·탭 닫기 경고도 이 범위에서 건다.
  *
@@ -58,10 +61,14 @@ import type { DockedPanelName } from "./types/dockedPanel";
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=526-772 탐색 결과/채팅 세션 목록
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2106-28974 탐색/대화 목록 고정 + 찾은 기록 열림
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-36104 문서/원문 열림
+ * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1788-4838 에러/네트워크 오류
+ * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1788-4849 에러/서버 오류 (500)
  */
 export default function WorkspaceLayout() {
   const { workspaceId, documentId } = useParams();
-  const { isReady } = useWorkspaceEntry({ workspaceId: Number(workspaceId) });
+  const { isReady, entryError } = useWorkspaceEntry({
+    workspaceId: Number(workspaceId),
+  });
   const { isChatActive } = useWorkspaceNav();
   const { isTranscriptPanelOpen } = useTranscriptPanel();
   const [pickedPanel, setPickedPanel] = useState<DockedPanelName>(null);
@@ -80,6 +87,15 @@ export default function WorkspaceLayout() {
 
   // 원문 패널은 주소의 documentId로 원문을 불러오므로, documentId가 있는 화면(문서 하나를 보는 화면)에만 버튼과 자리를 둬요
   const isDocumentActive = documentId !== undefined;
+
+  if (entryError) {
+    return (
+      <PageErrorNotice
+        variant={entryError}
+        onAction={() => window.location.reload()}
+      />
+    );
+  }
 
   return (
     <Container>

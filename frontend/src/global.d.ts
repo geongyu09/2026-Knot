@@ -8,6 +8,12 @@ declare namespace NodeJS {
     /** 비어 있으면 PostHog 사용 기록을 켜지 않아요 */
     POSTHOG_KEY: string;
     POSTHOG_HOST: string;
+    /** 비어 있으면 Sentry 오류 보고를 켜지 않아요 */
+    SENTRY_DSN: string;
+    /** Sentry 배포 환경 이름. 예: `production`, `development` */
+    SENTRY_ENVIRONMENT: string;
+    /** Sentry 릴리스 이름. 소스맵을 올린 릴리스와 같아야 해요. 비어 있으면 webpack 플러그인이 넣은 값을 써요 */
+    SENTRY_RELEASE: string;
   }
 }
 declare module "*.svg" {

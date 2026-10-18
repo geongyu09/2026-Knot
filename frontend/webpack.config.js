@@ -3,6 +3,7 @@ import webpack from "webpack";
 import path from "path";
 import HtmlWebpackPlugin from "html-webpack-plugin";
 import CopyWebpackPlugin from "copy-webpack-plugin";
+import { sentryWebpackPlugin } from "@sentry/webpack-plugin";
 
 const __dirname = import.meta.dirname;
 
@@ -23,9 +24,26 @@ export default (env, argv) => {
       ? isDev
       : process.env.API_MOCKING === "true";
 
+  // 소스맵 업로드 토큰과 조직 · 프로젝트가 모두 있는 프로덕션 빌드에서만 Sentry 플러그인을 켜요
+  const isSentryUploadEnabled =
+    !isDev &&
+    Boolean(
+      process.env.SENTRY_AUTH_TOKEN &&
+      process.env.SENTRY_ORG &&
+      process.env.SENTRY_PROJECT,
+    );
+
+  // init과 소스맵 업로드가 같은 릴리스를 쓰도록 한 번만 정해요. GitHub Actions에서는 커밋 SHA를 써요
+  const sentryRelease =
+    process.env.SENTRY_RELEASE || process.env.GITHUB_SHA || "";
+
+  // 개발: 빠르고 원본 그대로 / 프로덕션: 업로드할 때만 공개 주소 없는 .map을 만들고 업로드 뒤 지워요.
+  // 업로드하지 않는 프로덕션 빌드는 .map을 만들지 않아 원본 코드를 공개 배포하지 않아요
+  const productionDevtool = isSentryUploadEnabled ? "hidden-source-map" : false;
+
   return {
     entry: "./src/index.tsx", // 모듈 진입점
-    devtool: isDev ? "eval-source-map" : "source-map", // 개발: 빠르고 원본 그대로 / 프로덕션: 별도 .map 파일
+    devtool: isDev ? "eval-source-map" : productionDevtool,
     output: {
       filename: "bundle.js",
       path: path.resolve(__dirname, "dist"),
@@ -232,7 +250,27 @@ ${exports}
         "process.env.POSTHOG_HOST": JSON.stringify(
           process.env.POSTHOG_HOST ?? "",
         ),
+        "process.env.SENTRY_DSN": JSON.stringify(process.env.SENTRY_DSN ?? ""),
+        // 배포 워크플로가 값을 비워 두면 빈 문자열이 와서 ??가 아니라 ||로 기본값을 정해요
+        "process.env.SENTRY_ENVIRONMENT": JSON.stringify(
+          process.env.SENTRY_ENVIRONMENT ||
+            (isDev ? "development" : "production"),
+        ),
+        "process.env.SENTRY_RELEASE": JSON.stringify(sentryRelease),
       }),
-    ],
+      // 플러그인은 소스맵을 다 만든 뒤에 올려야 하므로 맨 뒤에 둬요
+      isSentryUploadEnabled &&
+        sentryWebpackPlugin({
+          org: process.env.SENTRY_ORG,
+          project: process.env.SENTRY_PROJECT,
+          authToken: process.env.SENTRY_AUTH_TOKEN,
+          // 비어 있으면 플러그인이 git 커밋 SHA로 정하고 번들에 넣어, init이 그 값을 써요
+          release: { name: sentryRelease || undefined },
+          sourcemaps: { filesToDeleteAfterUpload: ["./dist/**/*.map"] },
+          telemetry: false,
+          // 기본값은 업로드에 실패하면 빌드를 멈춰요. 소스맵 때문에 배포가 막히지 않도록 경고만 남겨요
+          errorHandler: (err) => console.warn(err),
+        }),
+    ].filter(Boolean),
   };
 };

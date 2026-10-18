@@ -1,3 +1,4 @@
+import { HTTP_ERROR_TYPE, isHttpError } from "@api/httpClient/error";
 import useUpdateLastViewedWorkspaceMutation from "@api/mutations/useUpdateLastViewedWorkspaceMutation";
 import useWorkspaceQuery from "@api/queries/useWorkspaceQuery";
 import useNavigateToWorkspace from "@hooks/domain/workspace/useNavigateToWorkspace";
@@ -17,7 +18,10 @@ interface UseWorkspaceEntryParams {
  * - 401: 로그인 화면으로, 403·404: 선택 화면(`/workspace`)으로 `replace` 이동해요(`useWorkspaceAccessGuard`).
  * - 정수가 아닌 workspaceId: 조회할 수 없으니 404처럼 선택 화면으로 보내요.
  *
- * 그 외 실패(네트워크·5xx·timeout)는 이동하지 않고 `isReady`만 `false`로 남아요.
+ * 처음 조회가 응답 없음(네트워크 끊김·timeout)이나 5xx로 실패하면 이동하지 않고 `entryError`로 알려요.
+ * 쓰는 쪽은 화면 전체 대신 `network`면 ERR-02, `server`면 ERR-03을 그려요. Query 재시도가 끝난 뒤의 값이에요.
+ * 이미 받은 워크스페이스가 있으면 다시 조회만 실패한 것이라 `entryError`는 `null`이에요.
+ * 그 밖의 실패는 이동하지 않고 `isReady`만 `false`로 남아요.
  * 홈뿐 아니라 하위 라우트(탐색 등)도 같은 레이아웃 아래라 진입마다 같은 판정을 거쳐요.
  *
  * 갱신은 워크스페이스마다 한 번이에요. 같은 워크스페이스 안에서 재조회되거나 StrictMode가 effect를
@@ -25,7 +29,7 @@ interface UseWorkspaceEntryParams {
  */
 const useWorkspaceEntry = ({ workspaceId }: UseWorkspaceEntryParams) => {
   const isValidWorkspaceId = Number.isInteger(workspaceId);
-  const { isSuccess, error } = useWorkspaceQuery({ workspaceId });
+  const { data, isSuccess, error } = useWorkspaceQuery({ workspaceId });
   const { mutate: updateLastViewedWorkspace } =
     useUpdateLastViewedWorkspaceMutation();
   const { navigateToWorkspace } = useNavigateToWorkspace();
@@ -46,7 +50,17 @@ const useWorkspaceEntry = ({ workspaceId }: UseWorkspaceEntryParams) => {
     updateLastViewedWorkspace({ workspaceId });
   }, [isSuccess, workspaceId, updateLastViewedWorkspace]);
 
-  return { isReady: isSuccess };
+  // 보던 화면을 에러 화면으로 덮지 않도록, 아직 받은 워크스페이스가 없을 때만 알려요
+  const entryError: "network" | "server" | null =
+    data !== undefined
+      ? null
+      : isHttpError(error, HTTP_ERROR_TYPE.network)
+        ? "network"
+        : isHttpError(error, HTTP_ERROR_TYPE.serverError)
+          ? "server"
+          : null;
+
+  return { isReady: isSuccess, entryError };
 };
 
 export default useWorkspaceEntry;

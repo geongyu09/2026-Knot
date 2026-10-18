@@ -8,7 +8,9 @@ import { GlobalStyle, theme } from "./shared/provider/themeProvider";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./shared/provider/queryClient";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import AppErrorBoundary from "@provider/AppErrorBoundary";
 import AppProviders from "@provider/AppProviders";
+import { getRootErrorHandlers, initSentry } from "@provider/sentry";
 import { routes } from "@routes/routes";
 import { syncAnalyticsUser } from "@utils/syncAnalyticsUser";
 import posthog from "posthog-js";
@@ -22,6 +24,13 @@ if (process.env.POSTHOG_KEY && process.env.POSTHOG_HOST) {
   syncAnalyticsUser(queryClient);
 }
 
+// DSN이 없는 환경(로컬, 테스트)에서는 오류를 보고하지 않아요
+initSentry({
+  dsn: process.env.SENTRY_DSN,
+  environment: process.env.SENTRY_ENVIRONMENT,
+  release: process.env.SENTRY_RELEASE,
+});
+
 // 정적 import하면 msw가 프로덕션 번들에 들어가므로 플래그 안에서 동적 import해요
 const enableApiMocking = async () => {
   if (process.env.API_MOCKING !== "true") return;
@@ -33,15 +42,20 @@ const enableApiMocking = async () => {
 };
 
 const renderApp = () => {
-  createRoot(document.getElementById("root") as HTMLElement).render(
+  createRoot(
+    document.getElementById("root") as HTMLElement,
+    getRootErrorHandlers(),
+  ).render(
     <React.StrictMode>
       <ThemeProvider theme={theme}>
         <GlobalStyle />
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>
-            <AppProviders routes={routes}>
-              <App />
-            </AppProviders>
+            <AppErrorBoundary>
+              <AppProviders routes={routes}>
+                <App />
+              </AppProviders>
+            </AppErrorBoundary>
           </BrowserRouter>
           <ReactQueryDevtools initialIsOpen={false} />
         </QueryClientProvider>

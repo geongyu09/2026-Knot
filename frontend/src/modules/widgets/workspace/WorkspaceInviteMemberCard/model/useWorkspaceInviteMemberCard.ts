@@ -10,6 +10,7 @@ const COPIED_DURATION_MS = 2000;
  *
  * 현재 `:workspaceId`의 활성 초대를 조회해 코드·링크를 얻고, 응답 전에는 `isLoading`으로 복사를 막아요.
  * 조회 실패의 이동 판정은 이 카드가 아니라 워크스페이스 레이아웃이 맡아요.
+ * 받은 초대 없이 조회에 실패하면 `isLoadFailed`가 `true`이고, `handleRetry`는 이 카드의 초대만 다시 받아요.
  */
 export const useWorkspaceInviteMemberCard = () => {
   const { workspaceId } = useParams();
@@ -17,6 +18,8 @@ export const useWorkspaceInviteMemberCard = () => {
     inviteCode,
     displayInviteLink,
     isLoading,
+    error,
+    retryInvitation,
     copyInviteCode,
     copyInviteLink,
   } = useCopyWorkspaceInvite({ workspaceId: Number(workspaceId) });
@@ -39,6 +42,8 @@ export const useWorkspaceInviteMemberCard = () => {
     inviteCode,
     displayInviteLink,
     isLoading,
+    isLoadFailed: inviteCode === undefined && error !== null,
+    handleRetry: retryInvitation,
     isLinkCopied,
     isCodeCopied,
     handleCopyLink,

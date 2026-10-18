@@ -23,6 +23,7 @@
   "devDependencies": {
     "@emotion/babel-plugin": "^11.13.5",
     "@playwright/test": "^1.62.1",
+    "@sentry/webpack-plugin": "^11.8.0",
     "@storybook/addon-designs": "^11.1.4",
     "@storybook/addon-docs": "^10.6.1",
     "@storybook/react-webpack5": "^10.6.1",
@@ -56,12 +57,14 @@
     "@babel/preset-typescript": "^8.0.1",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
+    "@sentry/react": "^11.8.0",
     "@tanstack/react-query": "^5.102.0",
     "axios": "^1.19.0",
     "babel-loader": "^10.1.1",
     "posthog-js": "^1.438.10",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "react-error-boundary": "^6.1.6",
     "react-router": "^8.3.0",
     "zustand": "^5.0.15"
   },

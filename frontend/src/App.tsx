@@ -1,8 +1,8 @@
-import { useRoutes } from "react-router";
+import { useSentryRoutes } from "@provider/sentry";
 import { routes } from "@routes/routes";
 
 const App = () => {
-  return useRoutes(routes);
+  return useSentryRoutes(routes);
 };
 
 export default App;
