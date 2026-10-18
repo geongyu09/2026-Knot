@@ -194,7 +194,7 @@ describe("RecordingHeartbeat", () => {
   it("일시정지 중에도 생존 신호를 보낸다", async () => {
     const requests = collectRequests();
     await startRecording();
-    act(() => useRecordingStore.getState().pauseRecording());
+    await act(() => useRecordingStore.getState().pauseRecording());
     renderRecordingHeartbeat();
 
     passHeartbeatInterval();
@@ -359,7 +359,7 @@ describe("RecordingHeartbeat", () => {
     const requests = collectRequests();
     await startRecording();
     renderRecordingHeartbeat();
-    act(() => useRecordingStore.getState().pauseRecording());
+    await act(() => useRecordingStore.getState().pauseRecording());
     leaveUntilMaxDuration(50);
 
     await waitPastMaxDuration();
