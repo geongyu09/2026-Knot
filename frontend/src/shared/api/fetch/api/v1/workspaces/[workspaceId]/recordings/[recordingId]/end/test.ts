@@ -1,10 +1,7 @@
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
-import {
-  PostRecordingEndRequestDto,
-  RecordingEndAudioSaveDto,
-} from "@api/dto/recording";
+import { PostRecordingEndRequestDto } from "@api/dto/recording";
 import { recordingEndResponse } from "@api/mock/responses/recording";
 import { mockServer } from "@api/mock/server";
 
@@ -82,7 +79,7 @@ describe("endRecordingApi", () => {
     });
   });
 
-  it("PCM 녹음의 종료 응답은 audioSave의 저장 상태와 받아 주는 시한만 담고, 없으면 null이다", async () => {
+  it("PCM 녹음의 종료 응답은 audioSave의 봉인 요약을 담고, 없으면 null이다", async () => {
     const acceptUntil = new Date(Date.now() + 2 * 60 * 1000).toISOString();
     const audioSave = {
       audioSaveStatus: "DRAINING",
@@ -90,7 +87,7 @@ describe("endRecordingApi", () => {
       totalFrameCount: 81600,
       tailUnknown: false,
       acceptUntil,
-    };
+    } as const;
 
     // 기본 mock은 WebM 종료라 audioSave가 없어요
     await expect(
@@ -116,11 +113,6 @@ describe("endRecordingApi", () => {
           audioSeal: AUDIO_SEAL,
         }),
       }),
-    ).resolves.toMatchObject({
-      audioSave: new RecordingEndAudioSaveDto({
-        audioSaveStatus: "DRAINING",
-        acceptUntil,
-      }),
-    });
+    ).resolves.toMatchObject({ audioSave });
   });
 });

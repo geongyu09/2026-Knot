@@ -425,21 +425,33 @@ export class PostRecordingEndRequestDto {
   }
 }
 
-/** 종료 응답에 담긴 PCM 저장 상태의 서버 응답 모양. 종료 종류·마지막 길이 필드는 화면에서 쓰지 않아 담지 않아요 */
+/** 종료 응답에 담긴 PCM 종료 봉인 요약의 서버 응답 모양 */
 export interface RecordingEndAudioSaveRaw {
   audioSaveStatus: RecordingAudioSaveStatus;
+  expectedLastSequence: number;
+  totalFrameCount: number;
+  tailUnknown: boolean;
   acceptUntil: string;
 }
 
-/** 종료 직후의 PCM 저장 상태. 종료 응답 안에 들어 있어요 */
+/** 종료 직후의 PCM 종료 봉인 요약. 종료 응답 안에 들어 있어요 */
 export class RecordingEndAudioSaveDto {
   /** 저장 상태. 정상 종료 직후는 보통 `DRAINING`이고, 조각이 모두 확인됐으면 바로 `FINALIZING` 이후예요 */
   audioSaveStatus: RecordingAudioSaveStatus;
+  /** 서버가 확정한 마지막 조각 번호. 음성이 없으면 0 */
+  expectedLastSequence: number;
+  /** 서버가 확정한 전체 프레임 수. 일시정지 시간은 더하지 않아요 */
+  totalFrameCount: number;
+  /** 봉인 없이 끝나 마지막 길이를 알 수 없으면 true. 최초 탭이 `audioSeal`을 보내 끝냈으면 false */
+  tailUnknown: boolean;
   /** 남은 조각의 PUT과 저장 확인을 받아 주는 시한(ISO 8601, 종료 시각 + 120초). 반복 종료에도 바뀌지 않아요 */
   acceptUntil: string;
 
   constructor(raw: RecordingEndAudioSaveRaw) {
     this.audioSaveStatus = raw.audioSaveStatus;
+    this.expectedLastSequence = raw.expectedLastSequence;
+    this.totalFrameCount = raw.totalFrameCount;
+    this.tailUnknown = raw.tailUnknown;
     this.acceptUntil = raw.acceptUntil;
   }
 }

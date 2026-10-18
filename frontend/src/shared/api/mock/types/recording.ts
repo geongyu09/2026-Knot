@@ -82,11 +82,23 @@ export interface RecordingResumeResponse {
   elapsedMillis: number;
 }
 
+/** PCM 조각 녹음의 종료 봉인 요약 */
+export interface RecordingEndAudioSave {
+  audioSaveStatus: RecordingAudioSaveStatus;
+  expectedLastSequence: number;
+  totalFrameCount: number;
+  tailUnknown: boolean;
+  /** ISO 8601 */
+  acceptUntil: string;
+}
+
 export interface RecordingEndResponse {
   recordingId: number;
   status: RecordingSessionStatus;
   /** ISO 8601 */
   endedAt: string;
+  /** WebM 녹음이면 키가 없음 */
+  audioSave?: RecordingEndAudioSave;
 }
 
 export interface RecordingHeartbeatResponse {
