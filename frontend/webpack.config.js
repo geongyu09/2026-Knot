@@ -74,6 +74,8 @@ export default (env, argv) => {
       },
     },
     module: {
+      // audioWorklet.addModule(new URL(...))을 찾아 processor를 TypeScript째 별도 파일로 묶어요 (기본은 꺼져 있어요)
+      parser: { javascript: { worklet: true } },
       rules: [
         {
           test: /\.(ts|tsx)$/, // .ts와 .tsx 파일을 대상으로
