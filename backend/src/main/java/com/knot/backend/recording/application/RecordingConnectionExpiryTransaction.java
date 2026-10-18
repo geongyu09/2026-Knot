@@ -37,6 +37,16 @@ public class RecordingConnectionExpiryTransaction {
         }
         audioSealing.sealEnded(session);
         recordingSessionRepository.save(session);
+        RecordingLog.committed(
+                "recording.auto_end",
+                "changed",
+                session.getWorkspaceId(),
+                session.getId(),
+                null,
+                null,
+                session.getEndReason()
+                        .name()
+        );
         return true;
     }
 }
