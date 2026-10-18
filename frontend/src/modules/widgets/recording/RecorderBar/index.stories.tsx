@@ -122,15 +122,15 @@ export const OverAnHour: Story = {
 };
 
 /**
- * 「이어서 녹음」을 눌렀지만 마이크를 받지 못한 상태예요. 모달로 알리고 녹음은 일시정지로 남아요.
- * 「다시 시도」는 마이크를 다시 받고, 「닫기」는 모달만 닫아요.
+ * 「이어서 녹음」을 눌렀지만 마이크를 받지 못한 상태예요. 권한을 허용하는 방법을 알림으로 알리고 녹음은 일시정지로 남아요.
+ * 「확인」은 알림만 닫고, 마이크는 「이어서 녹음」을 다시 누를 때 다시 받아요.
  * 예: 녹음 중 마이크가 빠진 뒤 주소창에서 마이크 권한을 꺼 둔 경우
  */
 export const MicrophoneUnavailable: Story = {
   parameters: {
     design: {
       type: "figma",
-      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2167-24736",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-35624",
     },
   },
   beforeEach: () => {

@@ -568,7 +568,22 @@ describe("WorkspaceDock", () => {
   });
 
   describe("회의 녹음 마이크", () => {
-    const MIC_UNAVAILABLE = "마이크를 사용할 수 없어요";
+    const MIC_UNAVAILABLE = "마이크 권한이 꺼져 있어요";
+
+    const confirmMicAlert = () => {
+      const alert = screen.getByRole("alertdialog", { name: MIC_UNAVAILABLE });
+      fireEvent.click(within(alert).getByRole("button", { name: "확인" }));
+    };
+
+    /** 마이크 권한 알림을 닫는 세 가지 방법 */
+    const CLOSE_MIC_ALERT: [string, () => void][] = [
+      ["확인", confirmMicAlert],
+      ["ESC", () => fireEvent.keyDown(document, { key: "Escape" })],
+      [
+        "바깥 클릭",
+        () => fireEvent.click(screen.getByRole("alertdialog").parentElement!),
+      ],
+    ];
 
     afterEach(() => {
       // 전역 저장소라 테스트끼리 녹음이 새지 않도록 처음 상태로 되돌려요
@@ -653,15 +668,18 @@ describe("WorkspaceDock", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("권한을 받지 못하면 모달을 띄우고 제자리에 남는다", async () => {
+    it("권한을 받지 못하면 권한을 허용하는 방법을 알리고 제자리에 남는다", async () => {
       denyMicrophoneOnce();
       const { router } = renderDock();
 
       await clickMic();
 
       expect(
-        screen.getByRole("dialog", { name: MIC_UNAVAILABLE }),
+        screen.getByRole("alertdialog", { name: MIC_UNAVAILABLE }),
       ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "다시 시도" }),
+      ).not.toBeInTheDocument();
       expect(useRecordingStore.getState().status).toBe("idle");
       expect(router.state.location.pathname).toBe(HOME_PATH);
     });
@@ -678,36 +696,49 @@ describe("WorkspaceDock", () => {
       expect(router.state.location.pathname).toBe(HOME_PATH);
     });
 
-    it("모달의 닫기는 모달만 닫고 제자리에 남는다", async () => {
-      denyMicrophoneOnce();
+    it.each(CLOSE_MIC_ALERT)(
+      "알림을 %s로 닫으면 알림만 닫고 제자리에 남는다",
+      async (_, closeAlert) => {
+        denyMicrophoneOnce();
+        const { router } = renderDock();
+        await clickMic();
+
+        closeAlert();
+
+        expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+        expect(useRecordingStore.getState().status).toBe("idle");
+        expect(router.state.location.pathname).toBe(HOME_PATH);
+      },
+    );
+
+    it("알림을 닫은 뒤 마이크를 다시 누르면 권한을 다시 받아 녹음 화면으로 간다", async () => {
+      const getUserMedia = denyMicrophoneOnce();
       const { router } = renderDock();
       await clickMic();
+      confirmMicAlert();
 
-      fireEvent.click(screen.getByRole("button", { name: "닫기" }));
-
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      expect(router.state.location.pathname).toBe(HOME_PATH);
-    });
-
-    it("ESC를 눌러도 닫기와 같다", async () => {
-      denyMicrophoneOnce();
-      renderDock();
       await clickMic();
 
-      fireEvent.keyDown(document, { key: "Escape" });
-
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
-
-    it("모달의 다시 시도로 권한을 받으면 녹음 화면으로 간다", async () => {
-      denyMicrophoneOnce();
-      const { router } = renderDock();
-      await clickMic();
-
-      await clickMic("다시 시도");
-
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(getUserMedia).toHaveBeenCalledTimes(2);
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
       expect(router.state.location.pathname).toBe(RECORDING_PATH);
+    });
+
+    it("알림을 닫은 뒤 다시 눌러도 권한을 못 받으면 같은 알림을 다시 띄운다", async () => {
+      denyMicrophoneOnce().mockRejectedValueOnce(
+        new DOMException("", "NotAllowedError"),
+      );
+      const { router } = renderDock();
+      await clickMic();
+      confirmMicAlert();
+
+      await clickMic();
+
+      expect(
+        screen.getByRole("alertdialog", { name: MIC_UNAVAILABLE }),
+      ).toBeInTheDocument();
+      expect(useRecordingStore.getState().status).toBe("idle");
+      expect(router.state.location.pathname).toBe(HOME_PATH);
     });
 
     it("이미 녹음 중이면 권한을 다시 묻지 않고 녹음 화면으로 간다", async () => {
@@ -1180,33 +1211,29 @@ describe("WorkspaceDock", () => {
         return { getUserMedia };
       };
 
-      it("일시정지하고 모달을 띄운다", async () => {
+      it("일시정지하고 권한을 허용하는 방법을 알린다", async () => {
         await startAndDisconnect();
 
         expect(useRecordingStore.getState().status).toBe("paused");
         expect(
-          screen.getByRole("dialog", { name: MIC_UNAVAILABLE }),
+          screen.getByRole("alertdialog", { name: MIC_UNAVAILABLE }),
         ).toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: "다시 시도" }),
+        ).not.toBeInTheDocument();
       });
 
-      it("닫기를 누르면 일시정지를 유지한다", async () => {
-        await startAndDisconnect();
+      it.each(CLOSE_MIC_ALERT)(
+        "알림을 %s로 닫으면 알림만 닫고 일시정지를 유지한다",
+        async (_, closeAlert) => {
+          await startAndDisconnect();
 
-        fireEvent.click(screen.getByRole("button", { name: "닫기" }));
+          closeAlert();
 
-        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-        expect(useRecordingStore.getState().status).toBe("paused");
-      });
-
-      it("다시 시도로 마이크를 받으면 녹음을 이어 간다", async () => {
-        const { getUserMedia } = await startAndDisconnect();
-
-        await clickMic("다시 시도");
-
-        expect(getUserMedia).toHaveBeenCalledTimes(2);
-        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-        expect(useRecordingStore.getState().status).toBe("recording");
-      });
+          expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+          expect(useRecordingStore.getState().status).toBe("paused");
+        },
+      );
     });
   });
 });
