@@ -1,7 +1,9 @@
 package com.knot.backend.global.config;
 
 import com.knot.backend.global.logging.JdbcTimingDataSourcePostProcessor;
+import com.knot.backend.global.logging.DocumentQueryTimingPostProcessor;
 import com.knot.backend.global.logging.RequestJdbcTimingFilter;
+import com.knot.backend.global.logging.TransactionTimingPostProcessor;
 import jakarta.servlet.DispatcherType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -19,6 +21,16 @@ public class JdbcTimingConfig {
     @Bean
     public static JdbcTimingDataSourcePostProcessor jdbcTimingDataSourcePostProcessor() {
         return new JdbcTimingDataSourcePostProcessor();
+    }
+
+    @Bean
+    public static TransactionTimingPostProcessor transactionTimingPostProcessor() {
+        return new TransactionTimingPostProcessor(System::nanoTime);
+    }
+
+    @Bean
+    public static DocumentQueryTimingPostProcessor documentQueryTimingPostProcessor() {
+        return new DocumentQueryTimingPostProcessor(System::nanoTime);
     }
 
     @Bean

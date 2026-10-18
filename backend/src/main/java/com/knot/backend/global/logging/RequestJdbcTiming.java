@@ -9,6 +9,7 @@ public final class RequestJdbcTiming {
     private static final int SAMPLE_LIMIT = 64;
 
     private final long startedNanos;
+    private final RequestJdbcPhases phases;
     private final Map<String, Long> borrowedAt = new HashMap<>();
     private final Map<String, Double> acquisitionMs = new HashMap<>();
     private final List<JdbcConnectionTiming> connections = new ArrayList<>();
@@ -26,6 +27,7 @@ public final class RequestJdbcTiming {
 
     public RequestJdbcTiming(long startedNanos) {
         this.startedNanos = startedNanos;
+        this.phases = new RequestJdbcPhases(startedNanos);
     }
 
     public void acquired(
@@ -91,6 +93,10 @@ public final class RequestJdbcTiming {
             boolean success
     ) {
         queryCount++;
+        phases.queryExecuted(
+                connectionId,
+                queryCount
+        );
         sqlNanos += elapsed;
         sqlMaxNanos = Math.max(
                 sqlMaxNanos,
@@ -114,6 +120,10 @@ public final class RequestJdbcTiming {
 
     public double elapsedMs(long now) {
         return millis(now - startedNanos);
+    }
+
+    public RequestJdbcPhases phases() {
+        return phases;
     }
 
     public double acquireMs() {

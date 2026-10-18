@@ -89,7 +89,10 @@ class RequestJdbcTimingFilterTest {
         assertThat(event.getFormattedMessage()).contains(
                 "api=document_list",
                 "sql_count=1",
-                "sql_ms=3.0"
+                "sql_ms=3.0",
+                "result_set_ms=0.0",
+                "open_result_sets=0",
+                "phase_samples=[]"
         )
                 .doesNotContain(
                         "secret-cookie",
@@ -142,6 +145,49 @@ class RequestJdbcTimingFilterTest {
                 "api=document_detail",
                 "sql_failures=1"
         );
+    }
+
+    @Test
+    @DisplayName("임계값 미만이어도 트랜잭션 종료 실패는 기록한다")
+    void filter_failure_logsFastCompletionFailure() throws Exception {
+        // given
+        RequestJdbcTimingFilter filter = new RequestJdbcTimingFilter(
+                500,
+                () -> 0
+        );
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "GET",
+                "/api/v1/workspaces/12/documents"
+        );
+
+        // when
+        filter.doFilter(
+                request,
+                new MockHttpServletResponse(),
+                (
+                        incoming,
+                        outgoing
+                ) -> RequestJdbcTimingContext.current()
+                        .phases()
+                        .operation(
+                                "spring_commit",
+                                null,
+                                0,
+                                0,
+                                false
+                        )
+        );
+
+        // then
+        assertThat(appender.list).hasSize(1);
+        assertThat(
+                appender.list.getFirst()
+                        .getFormattedMessage()
+        ).contains(
+                "phase_failures=1",
+                "spring_commit"
+        );
+        assertThat(RequestJdbcTimingContext.current()).isNull();
     }
 
     @Test

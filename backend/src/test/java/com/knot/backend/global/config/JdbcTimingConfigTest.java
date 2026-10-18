@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import com.knot.backend.global.logging.JdbcTimingDataSourcePostProcessor;
+import com.knot.backend.global.logging.DocumentQueryTimingPostProcessor;
+import com.knot.backend.global.logging.TransactionTimingPostProcessor;
 import javax.sql.DataSource;
 import net.ttddyy.dsproxy.support.ProxyDataSource;
 import org.junit.jupiter.api.DisplayName;
@@ -30,6 +32,8 @@ class JdbcTimingConfigTest {
         )
                 .run(context -> {
                     assertThat(context).hasSingleBean(JdbcTimingDataSourcePostProcessor.class);
+                    assertThat(context).hasSingleBean(DocumentQueryTimingPostProcessor.class);
+                    assertThat(context).hasSingleBean(TransactionTimingPostProcessor.class);
                     assertThat(context.getBean(DataSource.class)).isInstanceOf(ProxyDataSource.class);
                 });
     }
@@ -62,6 +66,8 @@ class JdbcTimingConfigTest {
                 .withPropertyValues("knot.observability.jdbc.enabled=false")
                 .run(context -> {
                     assertThat(context).doesNotHaveBean(JdbcTimingDataSourcePostProcessor.class);
+                    assertThat(context).doesNotHaveBean(DocumentQueryTimingPostProcessor.class);
+                    assertThat(context).doesNotHaveBean(TransactionTimingPostProcessor.class);
                     assertThat(context.getBean(DataSource.class)).isNotInstanceOf(ProxyDataSource.class);
                 });
     }

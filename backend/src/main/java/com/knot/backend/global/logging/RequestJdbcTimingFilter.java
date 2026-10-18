@@ -63,12 +63,15 @@ public final class RequestJdbcTimingFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             RequestJdbcTiming timing
     ) {
-        double elapsed = timing.elapsedMs(nanoTime.getAsLong());
-        if (elapsed < slowRequestMs && timing.acquireFailures() == 0 && timing.queryFailures() == 0) {
+        long finished = nanoTime.getAsLong();
+        double elapsed = timing.elapsedMs(finished);
+        RequestJdbcPhases phases = timing.phases();
+        if (elapsed < slowRequestMs && timing.acquireFailures() == 0 && timing.queryFailures() == 0
+                && phases.failures() == 0) {
             return;
         }
         log.info(
-                "DB_REQUEST_TIMING api={} status={} request_ms={} acquire_count={} acquire_failures={} acquire_ms={} acquire_max_ms={} usage_ms={} usage_max_ms={} open_connections={} sql_count={} sql_failures={} sql_ms={} sql_max_ms={} connections={} sql_samples={}",
+                "DB_REQUEST_TIMING api={} status={} request_ms={} acquire_count={} acquire_failures={} acquire_ms={} acquire_max_ms={} usage_ms={} usage_max_ms={} open_connections={} sql_count={} sql_failures={} sql_ms={} sql_max_ms={} connections={} sql_samples={} result_set_count={} result_set_ms={} result_set_jdbc_ms={} open_result_sets={} phase_failures={} phase_count={} phase_counts={} phase_ms={} result_set_samples={} phase_samples={}",
                 apiName(request),
                 response.getStatus(),
                 elapsed,
@@ -84,7 +87,17 @@ public final class RequestJdbcTimingFilter extends OncePerRequestFilter {
                 timing.sqlMs(),
                 timing.sqlMaxMs(),
                 timing.connections(),
-                timing.queries()
+                timing.queries(),
+                phases.resultSetCount(),
+                phases.resultSetMs(),
+                phases.resultSetJdbcMs(),
+                phases.openResultSets(),
+                phases.failures(),
+                phases.operationCount(),
+                phases.operationCounts(),
+                phases.operationMs(),
+                phases.resultSets(finished),
+                phases.operations()
         );
     }
 

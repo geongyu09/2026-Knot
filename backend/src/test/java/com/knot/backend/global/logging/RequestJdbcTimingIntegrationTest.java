@@ -8,6 +8,9 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
+import com.knot.backend.document.application.DocumentListQuery;
+import com.knot.backend.document.application.dto.query.DocumentListParameters;
+import com.knot.backend.document.domain.model.MyConfirmationState;
 import com.zaxxer.hikari.HikariDataSource;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.persistence.EntityManager;
@@ -15,6 +18,7 @@ import jakarta.persistence.EntityManagerFactory;
 import jakarta.servlet.ServletException;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -36,6 +40,9 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestConstructor;
+import org.springframework.orm.jpa.EntityManagerFactoryUtils;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Tag("integration")
 @ActiveProfiles({"dev", "observability"})
@@ -51,17 +58,23 @@ class RequestJdbcTimingIntegrationTest {
     private final DataSource dataSource;
     private final EntityManagerFactory entityManagerFactory;
     private final MeterRegistry registry;
+    private final PlatformTransactionManager transactionManager;
+    private final DocumentListQuery documentListQuery;
     private final Logger logger = (Logger) LoggerFactory.getLogger(RequestJdbcTimingFilter.class);
     private final ListAppender<ILoggingEvent> appender = new ListAppender<>();
 
     RequestJdbcTimingIntegrationTest(
             DataSource dataSource,
             EntityManagerFactory entityManagerFactory,
-            MeterRegistry registry
+            MeterRegistry registry,
+            PlatformTransactionManager transactionManager,
+            DocumentListQuery documentListQuery
     ) {
         this.dataSource = dataSource;
         this.entityManagerFactory = entityManagerFactory;
         this.registry = registry;
+        this.transactionManager = transactionManager;
+        this.documentListQuery = documentListQuery;
     }
 
     @BeforeEach
@@ -164,6 +177,172 @@ class RequestJdbcTimingIntegrationTest {
                         .gauge()
         ).isNotNull();
         assertThat(response.getHeader("X-Request-ID")).isEqualTo(ID);
+    }
+
+    @Test
+    @DisplayName("실제 Hibernate 결과 소비와 Spring 커밋 정리 및 연결 반환이 요청 로그에 기록된다")
+    void filter_success_realResultConsumptionAndSpringCompletion() throws Exception {
+        // given
+        AtomicReference<RequestJdbcTiming> captured = new AtomicReference<>();
+        RequestJdbcTimingFilter filter = new RequestJdbcTimingFilter(
+                0,
+                System::nanoTime
+        );
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        transaction.setReadOnly(true);
+
+        // when
+        new RequestIdFilter().doFilter(
+                request(),
+                new MockHttpServletResponse(),
+                (
+                        incoming,
+                        outgoing
+                ) -> filter.doFilter(
+                        incoming,
+                        outgoing,
+                        (
+                                accepted,
+                                returned
+                        ) -> {
+                            captured.set(RequestJdbcTimingContext.current());
+                            transaction.executeWithoutResult(status -> {
+                                EntityManager entityManager = EntityManagerFactoryUtils
+                                        .getTransactionalEntityManager(entityManagerFactory);
+                                assertThat(entityManager).isNotNull();
+                                List<?> rows = entityManager.createNativeQuery("SELECT i FROM generate_series(1, 3) i")
+                                        .getResultList();
+                                assertThat(rows).hasSize(3);
+                                assertThat(
+                                        documentListQuery.findTopics(
+                                                Long.MAX_VALUE,
+                                                Long.MAX_VALUE,
+                                                DocumentListParameters.of(
+                                                        null,
+                                                        100,
+                                                        MyConfirmationState.PENDING,
+                                                        null
+                                                )
+                                        )
+                                ).isEmpty();
+                            });
+                        }
+                )
+        );
+
+        // then
+        RequestJdbcTiming timing = captured.get();
+        assertThat(
+                timing.phases()
+                        .resultSetCount()
+        ).isEqualTo(2);
+        assertThat(
+                timing.phases()
+                        .openResultSets()
+        ).isZero();
+        assertThat(
+                timing.phases()
+                        .resultSets(System.nanoTime())
+        ).allSatisfy(sample -> {
+            assertThat(sample.closed()).isTrue();
+            assertThat(sample.spanMs()).isGreaterThanOrEqualTo(sample.jdbcMs());
+        });
+        assertThat(
+                timing.phases()
+                        .resultSets(System.nanoTime())
+                        .getFirst()
+                        .rows()
+        ).isEqualTo(3);
+        assertThat(
+                timing.phases()
+                        .operationMs()
+        ).containsKeys(
+                "spring_commit",
+                "jdbc_commit",
+                "jdbc_close",
+                "query_list_findTopics"
+        );
+        assertThat(
+                timing.phases()
+                        .operationMs()
+                        .get("spring_commit")
+        ).isGreaterThanOrEqualTo(
+                timing.phases()
+                        .operationMs()
+                        .get("jdbc_commit")
+                        + timing.phases()
+                                .operationMs()
+                                .get("jdbc_close")
+        );
+        assertThat(timing.openConnections()).isZero();
+        assertThat(
+                timing.phases()
+                        .failures()
+        ).isZero();
+        assertThat(
+                appender.list.getFirst()
+                        .getFormattedMessage()
+        ).contains(
+                "result_set_count=2",
+                "spring_commit",
+                "jdbc_close",
+                "query_list_findTopics"
+        );
+        assertThat(
+                appender.list.getFirst()
+                        .getMDCPropertyMap()
+        ).containsEntry(
+                "requestId",
+                ID
+        );
+    }
+
+    @Test
+    @DisplayName("실제 Spring 롤백에서도 JDBC 롤백과 반환 시간을 기록하고 원래 예외를 전달한다")
+    void filter_failure_realSpringRollback() {
+        // given
+        AtomicReference<RequestJdbcTiming> captured = new AtomicReference<>();
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        IllegalStateException failure = new IllegalStateException("private rollback reason");
+
+        // when & then
+        assertThatThrownBy(
+                () -> new RequestJdbcTimingFilter(
+                        0,
+                        System::nanoTime
+                ).doFilter(
+                        request(),
+                        new MockHttpServletResponse(),
+                        (
+                                incoming,
+                                outgoing
+                        ) -> {
+                            captured.set(RequestJdbcTimingContext.current());
+                            transaction.executeWithoutResult(status -> {
+                                EntityManager entityManager = EntityManagerFactoryUtils
+                                        .getTransactionalEntityManager(entityManagerFactory);
+                                assertThat(entityManager).isNotNull();
+                                entityManager.createNativeQuery("SELECT 1")
+                                        .getSingleResult();
+                                throw failure;
+                            });
+                        }
+                )
+        ).isSameAs(failure);
+        assertThat(
+                captured.get()
+                        .phases()
+                        .operationMs()
+        ).containsKeys(
+                "spring_rollback",
+                "jdbc_rollback",
+                "jdbc_close"
+        );
+        assertThat(
+                captured.get()
+                        .openConnections()
+        ).isZero();
+        assertThat(RequestJdbcTimingContext.current()).isNull();
     }
 
     @Test

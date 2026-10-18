@@ -17,6 +17,7 @@ public final class JdbcTimingDataSourcePostProcessor implements BeanPostProcesso
         }
         return ProxyDataSourceBuilder.create(DataSource.class.cast(bean))
                 .name(beanName)
+                .proxyResultSet()
                 .listener(new JdbcTimingListener(System::nanoTime))
                 .build();
     }
