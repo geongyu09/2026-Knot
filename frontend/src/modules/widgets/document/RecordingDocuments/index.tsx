@@ -25,8 +25,13 @@ export default function RecordingDocuments() {
 
   const workspaceId = Number(params.workspaceId);
   const recordingId = Number(params.recordingId);
-  const { viewStatus, retryLoad, retryGeneration, isRetrying } =
-    useRecordingDocuments({ workspaceId, recordingId });
+  const {
+    viewStatus,
+    isTranscriptionFailed,
+    retryLoad,
+    retryGeneration,
+    isRetrying,
+  } = useRecordingDocuments({ workspaceId, recordingId });
   useRecordingDocumentsRedirect({ workspaceId, recordingId, viewStatus });
   const { navigateToWorkspaceHome } = useNavigateToWorkspaceHome();
 
@@ -54,6 +59,7 @@ export default function RecordingDocuments() {
   if (viewStatus === "failed") {
     return (
       <DocumentFailedState
+        isTranscriptionFailed={isTranscriptionFailed}
         onRetry={retryGeneration}
         isRetrying={isRetrying}
         onGoHome={handleGoHome}

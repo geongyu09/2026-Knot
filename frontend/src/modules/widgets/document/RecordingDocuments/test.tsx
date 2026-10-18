@@ -18,7 +18,11 @@ import {
 import { ThemeProvider } from "@emotion/react";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  focusManager,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import {
   act,
   fireEvent,
@@ -54,6 +58,8 @@ const TRANSCRIPTION_RETRY_REQUEST = `${RECORDING_REQUEST}/transcription/retry`;
 const POLL_INTERVAL_MS = 3000;
 // mock 녹음의 어느 작업과도 겹치지 않는 문서 생성 작업 id
 const ANOTHER_JOB_ID = 188;
+// 전사 실패 mock 녹음의 시도와 다른 전사 시도 id. 다른 곳에서 전사를 다시 시도한 경우예요
+const ANOTHER_TRANSCRIPTION_ATTEMPT_ID = "8f4b2c1e-3a5d-4e6f-9b7a-0c1d2e3f4a5b";
 // 문서 만들기에 실패한 mock 녹음의 실패 작업 id. 다시 시도 mock 응답이 가리키는 작업이에요
 const FAILED_JOB_ID = documentGenerationJobRetryResponse.jobId;
 // 실패한 작업이 둘인 문서 생성 결과예요. 문서는 주제마다 다른 작업이 만들어서, 한 녹음에서 여러 작업이 실패할 수 있어요
@@ -76,6 +82,7 @@ const acceptRetry = (jobId: number) =>
 
 const ORGANIZING_TITLE = "회의 내용을 바탕으로 문서를 정리하고 있어요";
 const FAILED_TITLE = "문서를 만들지 못했어요";
+const TRANSCRIPTION_FAILED_TITLE = "녹음을 글로 옮기지 못했어요";
 const NO_CONTENT_TITLE = "문서로 만들 내용이 없었어요";
 const LOAD_FAILED_TITLE = "문서를 불러오지 못했어요";
 const RECORDING_KEPT_NOTICE = "녹음은 보관해 두었어요.";
@@ -142,12 +149,12 @@ const renderRecordingDocuments = (recordingId: number | string) => {
 };
 
 // 다시 시도할 수 없는 실패 화면이에요. 녹음을 보관했다는 설명과 「다시 시도」 없이 「홈으로」만 있어요
-const expectFailedScreenWithoutRetry = async () => {
+const expectFailedScreenWithoutRetry = async (title = FAILED_TITLE) => {
   expect(
     await screen.findByRole("button", { name: "홈으로" }),
   ).toBeInTheDocument();
   expect(
-    screen.getByRole("heading", { level: 2, name: FAILED_TITLE }),
+    screen.getByRole("heading", { level: 2, name: title }),
   ).toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: "다시 시도" }),
@@ -1172,7 +1179,7 @@ describe("RecordingDocuments", () => {
         },
       },
     ] satisfies { reason: string; detail: RecordingDetailResponse }[])(
-      "전사에 실패했으면($reason) 녹음을 보관했다고 알리고 다시 시도 버튼을 보여준다",
+      "전사에 실패했으면($reason) 녹음을 글로 옮기지 못했다고 알리고, 녹음을 보관했다는 설명과 다시 시도 버튼을 보여준다",
       async ({ detail }) => {
         mockServer.use(
           http.get(RECORDING_REQUEST, () => HttpResponse.json(detail)),
@@ -1180,7 +1187,10 @@ describe("RecordingDocuments", () => {
         renderRecordingDocuments(transcriptionFailedRecording.recordingId);
 
         expect(
-          await screen.findByRole("heading", { level: 2, name: FAILED_TITLE }),
+          await screen.findByRole("heading", {
+            level: 2,
+            name: TRANSCRIPTION_FAILED_TITLE,
+          }),
         ).toBeInTheDocument();
         expect(screen.getByText(RECORDING_KEPT_NOTICE)).toBeInTheDocument();
         expect(
@@ -1249,12 +1259,206 @@ describe("RecordingDocuments", () => {
     });
 
     it.each([
-      { status: 409, code: "TRANSCRIPTION_BUSY" },
+      { status: 409, code: "AUDIO_UPLOAD_NOT_COMPLETED" },
       { status: 409, code: "TRANSCRIPTION_RETRY_NOT_ALLOWED" },
-      { status: 404, code: "RECORDING_NOT_FOUND" },
-      { status: 500, code: "INTERNAL_SERVER_ERROR" },
+      { status: 409, code: "TRANSCRIPTION_DISABLED" },
+      { status: 404, code: "AUDIO_UPLOAD_NOT_FOUND" },
     ])(
-      "전사 다시 시도가 거절되면($status $code) 오류 코드를 콘솔에 남기고 버튼을 유지해 다시 누를 수 있게 한다",
+      "전사 다시 시도가 거절되고($status $code) 다시 조회한 녹음도 같은 시도로 실패면, 같은 제목에 설명과 다시 시도 없이 홈으로만 보여준다",
+      async ({ status, code }) => {
+        const consoleError = vi
+          .spyOn(console, "error")
+          .mockImplementation(() => {});
+        mockServer.use(
+          http.post(TRANSCRIPTION_RETRY_REQUEST, () =>
+            rejectTranscriptionRetry(status, code),
+          ),
+        );
+        renderRecordingDocuments(transcriptionFailedRecording.recordingId);
+
+        fireEvent.click(
+          await screen.findByRole("button", { name: "다시 시도" }),
+        );
+
+        await expectFailedScreenWithoutRetry(TRANSCRIPTION_FAILED_TITLE);
+
+        consoleError.mockRestore();
+      },
+    );
+
+    it("전사 다시 시도가 409로 거절됐지만 다시 조회한 녹음이 이미 전사 중이면 정리 중 화면으로 바뀐다", async () => {
+      let latestDetail: RecordingDetailResponse =
+        transcriptionFailedRecording.detail;
+      mockServer.use(
+        http.post(TRANSCRIPTION_RETRY_REQUEST, () => {
+          // 다른 곳에서 먼저 다시 시도해, 서버에서는 새 시도로 전사 중이에요
+          latestDetail = {
+            ...transcriptionFailedRecording.detail,
+            transcriptionAttemptId: ANOTHER_TRANSCRIPTION_ATTEMPT_ID,
+            transcriptionStatus: "PROCESSING",
+            transcriptionFailureCode: null,
+          };
+          return rejectTranscriptionRetry(
+            409,
+            "TRANSCRIPTION_RETRY_NOT_ALLOWED",
+          );
+        }),
+        http.get(RECORDING_REQUEST, () => HttpResponse.json(latestDetail)),
+      );
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      renderRecordingDocuments(transcriptionFailedRecording.recordingId);
+
+      fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+
+      expect(
+        await screen.findByRole("heading", {
+          level: 2,
+          name: ORGANIZING_TITLE,
+        }),
+      ).toBeInTheDocument();
+      vi.mocked(console.error).mockRestore();
+    });
+
+    it("전사 다시 시도가 거절된 뒤 녹음 상태를 다시 조회하는 동안에는 버튼을 다시 누를 수 없다", async () => {
+      let recordingRequestCount = 0;
+      let releaseRecheck = () => {};
+      const recheck = new Promise<void>((resolve) => {
+        releaseRecheck = resolve;
+      });
+      mockServer.use(
+        http.post(TRANSCRIPTION_RETRY_REQUEST, () =>
+          rejectTranscriptionRetry(409, "AUDIO_UPLOAD_NOT_COMPLETED"),
+        ),
+        http.get(RECORDING_REQUEST, async () => {
+          recordingRequestCount += 1;
+          // 거절 뒤의 조회(두 번째 조회)만 늦게 답해요
+          if (recordingRequestCount === 2) await recheck;
+
+          return HttpResponse.json(transcriptionFailedRecording.detail);
+        }),
+      );
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      renderRecordingDocuments(transcriptionFailedRecording.recordingId);
+
+      const retryButton = await screen.findByRole("button", {
+        name: "다시 시도",
+      });
+      fireEvent.click(retryButton);
+      await waitFor(() => expect(recordingRequestCount).toBe(2));
+      // 다시 시도 요청이 끝난 화면이 그려질 시간을 줘요
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+
+      expect(retryButton).toBeDisabled();
+
+      releaseRecheck();
+
+      await expectFailedScreenWithoutRetry(TRANSCRIPTION_FAILED_TITLE);
+      vi.mocked(console.error).mockRestore();
+    });
+
+    it("전사 다시 시도가 거절된 뒤 다른 곳의 다시 시도가 또 실패해 새 시도로 바뀌면, 창을 다시 볼 때 다시 시도 버튼을 다시 보여준다", async () => {
+      let latestDetail: RecordingDetailResponse =
+        transcriptionFailedRecording.detail;
+      mockServer.use(
+        http.post(TRANSCRIPTION_RETRY_REQUEST, () =>
+          rejectTranscriptionRetry(409, "TRANSCRIPTION_RETRY_NOT_ALLOWED"),
+        ),
+        http.get(RECORDING_REQUEST, () => HttpResponse.json(latestDetail)),
+      );
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      renderRecordingDocuments(transcriptionFailedRecording.recordingId);
+
+      fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+      await expectFailedScreenWithoutRetry(TRANSCRIPTION_FAILED_TITLE);
+
+      // 다른 곳에서 다시 시도한 전사가 새 시도로 또 실패했어요
+      latestDetail = {
+        ...transcriptionFailedRecording.detail,
+        transcriptionAttemptId: ANOTHER_TRANSCRIPTION_ATTEMPT_ID,
+      };
+      // 실패 상태에서는 3초 조회가 멈춰 있어, 창을 다시 볼 때의 조회로 새 상태를 받아요
+      act(() => {
+        focusManager.setFocused(false);
+        focusManager.setFocused(true);
+      });
+
+      expect(
+        await screen.findByRole("button", { name: "다시 시도" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText(RECORDING_KEPT_NOTICE)).toBeInTheDocument();
+      focusManager.setFocused(undefined);
+      vi.mocked(console.error).mockRestore();
+    });
+
+    it("전사 다시 시도가 거절된 뒤 다시 조회가 서버 오류로 실패해도, 같은 제목에 설명과 다시 시도 없이 홈으로만 보여준다", async () => {
+      let recordingRequestCount = 0;
+      mockServer.use(
+        http.post(TRANSCRIPTION_RETRY_REQUEST, () =>
+          rejectTranscriptionRetry(409, "AUDIO_UPLOAD_NOT_COMPLETED"),
+        ),
+        http.get(RECORDING_REQUEST, () => {
+          recordingRequestCount += 1;
+          // 거절 뒤의 조회(두 번째 조회)만 실패해요
+          return recordingRequestCount === 2
+            ? new HttpResponse(null, { status: 500 })
+            : HttpResponse.json(transcriptionFailedRecording.detail);
+        }),
+      );
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      renderRecordingDocuments(transcriptionFailedRecording.recordingId);
+
+      fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+
+      await expectFailedScreenWithoutRetry(TRANSCRIPTION_FAILED_TITLE);
+      expect(recordingRequestCount).toBe(2);
+      vi.mocked(console.error).mockRestore();
+    });
+
+    it("전사 다시 시도가 거절됐지만 서버가 같은 시도를 이어서 돌리는 중이었다면, 그 시도가 또 실패했을 때 다시 시도 버튼을 보여준다", async () => {
+      let latestDetail: RecordingDetailResponse =
+        transcriptionFailedRecording.detail;
+      mockServer.use(
+        http.post(TRANSCRIPTION_RETRY_REQUEST, () => {
+          // 다른 곳에서 먼저 다시 시도했고, 결과를 알 수 없던 시도라 서버가 새 시도를 만들지 않고 같은 시도를 이어서 돌려요
+          latestDetail = {
+            ...transcriptionFailedRecording.detail,
+            transcriptionStatus: "PROCESSING",
+            transcriptionFailureCode: null,
+          };
+          return rejectTranscriptionRetry(
+            409,
+            "TRANSCRIPTION_RETRY_NOT_ALLOWED",
+          );
+        }),
+        http.get(RECORDING_REQUEST, () => HttpResponse.json(latestDetail)),
+      );
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      renderRecordingDocuments(transcriptionFailedRecording.recordingId);
+
+      fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+      await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE });
+
+      // 이어서 돌린 같은 시도가 또 실패했어요
+      latestDetail = transcriptionFailedRecording.detail;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+      });
+
+      expect(
+        await screen.findByRole("button", { name: "다시 시도" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText(RECORDING_KEPT_NOTICE)).toBeInTheDocument();
+      vi.mocked(console.error).mockRestore();
+    });
+
+    it.each([
+      { status: 500, code: "INTERNAL_SERVER_ERROR" },
+      { status: 500, code: "AI_NOT_READY" },
+    ])(
+      "전사 다시 시도가 서버 오류로 실패하면($status $code) 오류 코드를 콘솔에 남기고 버튼을 유지해 다시 누를 수 있게 한다",
       async ({ status, code }) => {
         // 거절은 안내 없이 콘솔에만 남기므로, 테스트 출력에 섞이지 않게 막아요
         const consoleError = vi

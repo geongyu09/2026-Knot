@@ -28,6 +28,7 @@ const MISSING_RECORDING_ID = 999;
 const RECORDING_REQUEST =
   "*/api/v1/workspaces/:workspaceId/recordings/:recordingId";
 const AUDIO_SAVE_REQUEST = `${RECORDING_REQUEST}/audio-save`;
+const TRANSCRIPTION_RETRY_REQUEST = `${RECORDING_REQUEST}/transcription/retry`;
 // 끝냈지만 전사가 시작되기 전의 녹음이에요. PCM 조각 녹음은 이 동안 서버가 조각을 모아 저장해요
 const awaitingAudioSaveDetail = {
   ...organizingRecording.detail,
@@ -74,10 +75,12 @@ const failAudioSave = (failureCode: string) => ({
  *   요청이 모두 끝날 때까지 버튼을 누를 수 없고, 서버 오류로 실패하면 버튼이 다시 열려요.
  * - 문서가 일부만 만들어진 실패도 같은 화면이에요. 만들어진 문서로 보내지 않고, 「다시 시도」는 실패한 작업만 다시 시도해요.
  *   일부만 만들어진 경우만의 화면은 시안이 아직 없어서 따로 두지 않았어요. 만들어진 문서는 홈과 문서 탭에서 볼 수 있어요.
- * - 전사가 실패했으면 문서 만들기 실패와 같은 화면이에요. 「다시 시도」는 실패 이유와 녹음 방식에 관계없이 전사부터 다시 접수하고, 접수되면 정리 중으로 돌아가요.
- *   거절되면(다른 전사가 진행 중, 이미 다시 접수됨, 서버 오류) 안내 없이 콘솔에만 남기고 버튼을 그대로 둬요.
- * - 다시 시도할 작업이 남아 있지 않은 실패, 남은 작업의 다시 시도가 모두 거절된 경우는 설명 없이 「홈으로」만 둬요.
- *   이 경우의 문구가 기획에 아직 없고, 녹음이 보관되어 있는지도 경우마다 달라서예요.
+ * - 전사가 실패했으면 제목만 「녹음을 글로 옮기지 못했어요」로 다르고, 그림 · 설명 · 버튼은 문서 만들기 실패와 같아요.
+ *   「다시 시도」는 실패 이유와 녹음 방식에 관계없이 전사부터 다시 접수하고, 접수되면 정리 중으로 돌아가요.
+ *   409 · 404로 거절되면(보관 기간이 지남, 이미 전사 중, 전사 기능 꺼짐, 음성 없음) 녹음 상태를 다시 확인한 뒤 「홈으로」만 둬요. 서버에서 이미 전사 중이면 정리 중으로 바꿔요.
+ *   서버 오류로 실패하면 콘솔에만 남기고 버튼을 그대로 둬요.
+ * - 다시 시도할 작업이 남아 있지 않은 실패, 남은 작업의 다시 시도가 모두 거절된 경우는 같은 제목에 설명 없이 「홈으로」만 둬요.
+ *   서버가 다시 시도할 수 없는 이유를 나눠 주지 않아 이유를 짐작해 쓰지 않아요.
  * - 다시 시도가 409로 거절되면 녹음 상태를 다시 확인해요. 다른 곳에서 먼저 다시 시도해 서버에서는 이미 정리 중이거나 정리가 끝났을 수 있어서예요.
  *   그런 경우에는 그 상태의 화면으로 바꾸고, 그 작업이 또 실패하면 「다시 시도」를 다시 보여 줘요.
  * - PCM 조각 녹음은 끝낸 뒤 서버가 조각을 모아 저장해요. 전사가 시작되기 전에는 녹음 상태와 함께 저장 상태도 3초마다 확인하고, 저장 중에는 정리 중이에요.
@@ -161,13 +164,13 @@ export const DocumentFailed: Story = {
   },
 };
 
-/** 전사가 실패했을 때예요. 문서 만들기 실패와 같은 화면이고, 「다시 시도」를 누르면 전사부터 다시 접수해 정리 중 모습으로 돌아가요. */
+/** 전사가 실패했을 때예요. 제목만 「녹음을 글로 옮기지 못했어요」로 다르고 나머지는 문서 만들기 실패와 같아요. 「다시 시도」를 누르면 전사부터 다시 접수해 정리 중 모습으로 돌아가요. */
 export const TranscriptionFailed: Story = {
   parameters: {
     recordingId: transcriptionFailedRecording.recordingId,
     design: {
       type: "figma",
-      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-35662",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4524-43475",
     },
   },
 };
@@ -198,6 +201,31 @@ export const RetryRejected: Story = {
     design: {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-35662",
+    },
+  },
+};
+
+/** 전사 다시 시도를 서버가 거절했을 때예요. 예: 녹음 보관 기간(30일)이 지난 녹음(409 AUDIO_UPLOAD_NOT_COMPLETED). 「다시 시도」를 누르면 설명과 버튼이 사라지고 「홈으로」만 남아요. 붙인 피그마 프레임은 「다시 시도」가 있는 모습이에요. */
+export const TranscriptionRetryRejected: Story = {
+  parameters: {
+    recordingId: transcriptionFailedRecording.recordingId,
+    msw: {
+      handlers: {
+        transcriptionRetry: http.post(TRANSCRIPTION_RETRY_REQUEST, () =>
+          HttpResponse.json(
+            {
+              code: "AUDIO_UPLOAD_NOT_COMPLETED",
+              message: "예약한 오디오 파일이 저장소에 올라가지 않았습니다",
+            },
+            { status: 409 },
+          ),
+        ),
+      },
+    },
+    docs: ISOLATED_DOCS,
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4524-43475",
     },
   },
 };
