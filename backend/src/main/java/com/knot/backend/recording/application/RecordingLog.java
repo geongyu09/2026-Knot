@@ -61,7 +61,10 @@ public final class RecordingLog {
                     "RUNNER_FAILED",
                     "SERVER_RESTARTED",
                     "RECORDING_UNAVAILABLE",
-                    "RESULT_STORAGE_FAILED"
+                    "RESULT_STORAGE_FAILED",
+                    "NO_CONTENT",
+                    "INCREMENTAL_WINDOW_FAILED",
+                    "INCREMENTAL_MERGE_FAILED"
             )
     )
             .collect(Collectors.toUnmodifiableSet());

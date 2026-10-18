@@ -302,43 +302,51 @@ public class RecordingTranscriptionStateService {
             long recordingId,
             AiTranscript result
     ) {
-        RecordingSession session = incrementalSession(recordingId);
-        if (session.getIncrementalPipelineVersion() == null && transcriptionInputs.findByRecordingId(recordingId)
-                .filter(
-                        input -> input
-                                .getStatus() == com.knot.backend.recording.domain.model.InputPreparationStatus.READY
-                )
-                .isEmpty()) {
-            return;
-        }
-        RecordingTranscription transcription = recordingTranscriptionRepository
-                .findByRecordingSessionIdForUpdate(recordingId)
-                .orElseThrow();
-        if (transcription.getStatus() != com.knot.backend.recording.domain.model.TranscriptionStatus.QUEUED) {
-            return;
-        }
-        if (!hasAvailableUpload(recordingId)) {
-            return;
-        }
-        transcription.claim(
-                UUID.randomUUID(),
-                now(),
-                Duration.ofSeconds(60)
-        );
-        if (result.utterances()
-                .isEmpty()) {
-            transcription.fail(
-                    transcription.getAttemptId(),
-                    "NO_CONTENT"
+        RecordingLog.Scope trace = incrementalPersistenceTrace(recordingId);
+        trace.call(() -> {
+            RecordingSession session = incrementalSession(recordingId);
+            if (session.getIncrementalPipelineVersion() == null && transcriptionInputs.findByRecordingId(recordingId)
+                    .filter(
+                            input -> input
+                                    .getStatus() == com.knot.backend.recording.domain.model.InputPreparationStatus.READY
+                    )
+                    .isEmpty()) {
+                return null;
+            }
+            RecordingTranscription transcription = recordingTranscriptionRepository
+                    .findByRecordingSessionIdForUpdate(recordingId)
+                    .orElseThrow();
+            trace.attempt(transcription.getAttemptId());
+            if (transcription.getStatus() != com.knot.backend.recording.domain.model.TranscriptionStatus.QUEUED) {
+                return null;
+            }
+            if (!hasAvailableUpload(recordingId)) {
+                return null;
+            }
+            transcription.claim(
+                    UUID.randomUUID(),
+                    now(),
+                    Duration.ofSeconds(60)
             );
-            return;
-        }
-        persistTranscript(
-                session.getWorkspaceId(),
-                recordingId,
-                transcription,
-                result
-        );
+            if (result.utterances()
+                    .isEmpty()) {
+                transcription.fail(
+                        transcription.getAttemptId(),
+                        "NO_CONTENT"
+                );
+                trace.outcome("failed")
+                        .error("NO_CONTENT");
+                return null;
+            }
+            persistTranscript(
+                    session.getWorkspaceId(),
+                    recordingId,
+                    transcription,
+                    result
+            );
+            trace.outcome("completed");
+            return null;
+        });
     }
 
     @Transactional
@@ -346,22 +354,41 @@ public class RecordingTranscriptionStateService {
             long recordingId,
             String code
     ) {
-        incrementalSession(recordingId);
-        recordingTranscriptionRepository.findByRecordingSessionIdForUpdate(recordingId)
-                .ifPresent(transcription -> {
-                    if (transcription
-                            .getStatus() == com.knot.backend.recording.domain.model.TranscriptionStatus.QUEUED) {
-                        transcription.claim(
-                                UUID.randomUUID(),
-                                now(),
-                                Duration.ofSeconds(60)
-                        );
-                        transcription.fail(
-                                transcription.getAttemptId(),
-                                code
-                        );
-                    }
-                });
+        RecordingLog.Scope trace = incrementalPersistenceTrace(recordingId);
+        trace.call(() -> {
+            incrementalSession(recordingId);
+            recordingTranscriptionRepository.findByRecordingSessionIdForUpdate(recordingId)
+                    .ifPresent(transcription -> {
+                        trace.attempt(transcription.getAttemptId());
+                        if (transcription
+                                .getStatus() == com.knot.backend.recording.domain.model.TranscriptionStatus.QUEUED) {
+                            transcription.claim(
+                                    UUID.randomUUID(),
+                                    now(),
+                                    Duration.ofSeconds(60)
+                            );
+                            transcription.fail(
+                                    transcription.getAttemptId(),
+                                    code
+                            );
+                            trace.outcome("failed")
+                                    .error(code);
+                        }
+                    });
+            return null;
+        });
+    }
+
+    private RecordingLog.Scope incrementalPersistenceTrace(long recordingId) {
+        return RecordingLog.begin(
+                "recording.transcription.persist",
+                recordingSessionRepository.findWorkspaceIdById(recordingId)
+                        .orElse(0L),
+                recordingId,
+                null,
+                null
+        )
+                .outcome("ignored");
     }
 
     private RecordingSession incrementalSession(long recordingId) {
