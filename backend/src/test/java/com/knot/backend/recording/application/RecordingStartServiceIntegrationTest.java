@@ -356,9 +356,10 @@ class RecordingStartServiceIntegrationTest {
                         .single()
         ).isEqualTo(1);
         assertThat(
-                jdbcClient.sql(
-                        "SELECT COUNT(*) FROM recording_audio_cleanup WHERE recording_id = :id AND scope = 'DORMANT' AND storage_prefix = :prefix"
-                )
+                jdbcClient.sql("""
+                        SELECT COUNT(*) FROM recording_audio_cleanup
+                        WHERE recording_id = :id AND scope = 'DORMANT' AND storage_prefix = :prefix
+                        """)
                         .param(
                                 "id",
                                 first.recordingId()
