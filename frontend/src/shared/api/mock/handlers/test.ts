@@ -10,6 +10,7 @@ import {
 import {
   GetCurrentRecordingResponseDto,
   GetRecordingResponseDto,
+  PostRecordingAudioChunkCompleteResponseDto,
   PostRecordingAudioChunkResponseDto,
   PostRecordingAudioUploadCompleteResponseDto,
   PostRecordingAudioUploadUrlResponseDto,
@@ -79,6 +80,7 @@ import { retryDocumentGenerationJobApi } from "@api/fetch/api/v1/workspaces/[wor
 import { startRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings";
 import { getRecordingApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]";
 import { reserveRecordingAudioChunkApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioChunks";
+import { completeRecordingAudioChunkApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioChunks/[sequence]/complete";
 import { completeRecordingAudioUploadApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/audioUploadComplete";
 import {
   issueRecordingAudioUploadUrlApi,
@@ -100,6 +102,7 @@ import {
 } from "@api/mock/responses/document";
 import {
   currentRecordingResponse,
+  recordingAudioChunkCompleteResponse,
   recordingAudioChunkReserveResponse,
   recordingAudioUploadCompleteResponse,
   recordingAudioUploadUrlResponse,
@@ -874,6 +877,24 @@ describe("mock 기본 핸들러와 fetch 요청 함수의 대응", () => {
       ).resolves.toEqual(
         new PostRecordingAudioChunkResponseDto({
           ...recordingAudioChunkReserveResponse,
+          sequence,
+        }),
+      );
+    });
+
+    it("POST .../audio-chunks/:sequence/complete는 경로의 조각 번호로 recordingAudioChunkCompleteResponse를 돌려준다", async () => {
+      const sequence = 2;
+
+      await expect(
+        completeRecordingAudioChunkApi({
+          workspaceId: WORKSPACE_ID,
+          recordingId: RECORDING_ID,
+          sequence,
+          body: CONTROL_PROOF,
+        }),
+      ).resolves.toEqual(
+        new PostRecordingAudioChunkCompleteResponseDto({
+          ...recordingAudioChunkCompleteResponse,
           sequence,
         }),
       );

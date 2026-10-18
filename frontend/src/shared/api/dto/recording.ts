@@ -11,6 +11,7 @@
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-upload-url
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-upload-complete
  * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-chunks
+ * - POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-chunks/{sequence}/complete
  */
 
 /** 녹음 세션 상태. 시작·일시정지·재개·종료 응답과 녹음 상세 조회가 공유하는 서버 값. `DISCARDED`는 서버가 버린 녹음이에요 */
@@ -693,5 +694,52 @@ export class PostRecordingAudioChunkResponseDto {
     this.uploadUrl = raw.uploadUrl;
     this.expiresAt = raw.expiresAt;
     this.requiredHeaders = raw.requiredHeaders;
+  }
+}
+
+// POST /api/v1/workspaces/{workspaceId}/recordings/{recordingId}/audio-chunks/{sequence}/complete
+
+/** 조각 저장 확인 시 앱이 넘기는 값. 시작 때 보낸 증명 그대로 */
+export interface PostRecordingAudioChunkCompleteRequestInput {
+  tabId: string;
+  controlToken: string;
+}
+
+/** 조각 저장 확인 요청 본문. 최초 녹음 탭임을 증명해요 */
+export class PostRecordingAudioChunkCompleteRequestDto {
+  /** 녹음을 시작한 최초 탭의 UUID */
+  tabId: string;
+  /** 녹음 시작 때 보낸 제어 증명(43자 Base64URL) */
+  controlToken: string;
+
+  constructor({
+    tabId,
+    controlToken,
+  }: PostRecordingAudioChunkCompleteRequestInput) {
+    this.tabId = tabId;
+    this.controlToken = controlToken;
+  }
+}
+
+/** 조각 저장 확인의 서버 응답 모양. 명세의 `verifiedThroughSequence`, `verifiedAudioMillis`, `confirmedAt`은 화면에서 쓰지 않아 담지 않아요 */
+export interface PostRecordingAudioChunkCompleteResponseRaw {
+  sequence: number;
+  status: RecordingAudioChunkStatus;
+  verifiedThroughFrame: number;
+}
+
+/** 조각 저장 확인 응답. 이미 확인된 조각을 다시 확인해도 200으로 같은 결과를 돌려줘요 */
+export class PostRecordingAudioChunkCompleteResponseDto {
+  /** 확인한 조각 번호 */
+  sequence: number;
+  /** 항상 `VERIFIED` */
+  status: RecordingAudioChunkStatus;
+  /** 첫 조각부터 빈틈없이 확인된 구간의 끝 프레임(그 프레임은 제외). 앞 조각이 아직 확인 전이면 0이고, 재요청 때 늘어날 수 있어요 */
+  verifiedThroughFrame: number;
+
+  constructor(raw: PostRecordingAudioChunkCompleteResponseRaw) {
+    this.sequence = raw.sequence;
+    this.status = raw.status;
+    this.verifiedThroughFrame = raw.verifiedThroughFrame;
   }
 }
