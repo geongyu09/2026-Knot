@@ -99,6 +99,28 @@ const disconnectMicrophone = (stream: MediaStream) => {
 };
 
 const END_RECORDING_DIALOG = "녹음을 끝낼까요?";
+const MIC_UNAVAILABLE = "마이크 권한이 꺼져 있어요";
+
+const clickResume = async () => {
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "이어서 녹음" }));
+  });
+};
+
+const confirmMicAlert = () => {
+  const alert = screen.getByRole("alertdialog", { name: MIC_UNAVAILABLE });
+  fireEvent.click(within(alert).getByRole("button", { name: "확인" }));
+};
+
+/** 마이크 권한 알림을 닫는 세 가지 방법 */
+const CLOSE_MIC_ALERT: [string, () => void][] = [
+  ["확인", confirmMicAlert],
+  ["ESC", () => fireEvent.keyDown(document, { key: "Escape" })],
+  [
+    "바깥 클릭",
+    () => fireEvent.click(screen.getByRole("alertdialog").parentElement!),
+  ],
+];
 
 const getElapsedTime = () => screen.getByLabelText("녹음한 시간");
 
@@ -454,28 +476,73 @@ describe("RecorderBar", () => {
     expect(screen.getByText("녹음 중")).toBeInTheDocument();
   });
 
-  it("이어서 녹음할 때 마이크를 받지 못하면 모달을 띄우고 일시정지를 유지한다", async () => {
-    const getUserMedia = vi.spyOn(navigator.mediaDevices, "getUserMedia");
-    await startRecording();
-    const stream = await getUserMedia.mock.results[0].value;
-    renderRecorderBar();
-    disconnectMicrophone(stream);
-    getUserMedia.mockRejectedValueOnce(new DOMException("", "NotAllowedError"));
+  describe("이어서 녹음할 때 마이크를 받지 못하면", () => {
+    /** 마이크가 끊긴 뒤 권한이 꺼진 것처럼, 다음 `times`번의 마이크 요청을 거절해요 */
+    const disconnectAndDeny = async (times: number) => {
+      const getUserMedia = vi.spyOn(navigator.mediaDevices, "getUserMedia");
+      await startRecording();
+      const stream = await getUserMedia.mock.results[0].value;
+      renderRecorderBar();
+      disconnectMicrophone(stream);
+      for (let i = 0; i < times; i += 1) {
+        getUserMedia.mockRejectedValueOnce(
+          new DOMException("", "NotAllowedError"),
+        );
+      }
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "이어서 녹음" }));
+      return { getUserMedia };
+    };
+
+    it("권한을 허용하는 방법을 알리고 일시정지를 유지한다", async () => {
+      await disconnectAndDeny(1);
+
+      await clickResume();
+
+      expect(
+        screen.getByRole("alertdialog", { name: MIC_UNAVAILABLE }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "다시 시도" }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText("일시정지")).toBeInTheDocument();
     });
 
-    expect(
-      screen.getByRole("dialog", { name: "마이크를 사용할 수 없어요" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("일시정지")).toBeInTheDocument();
+    it.each(CLOSE_MIC_ALERT)(
+      "알림을 %s로 닫으면 알림만 닫고 일시정지를 유지한다",
+      async (_, closeAlert) => {
+        await disconnectAndDeny(1);
+        await clickResume();
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
+        closeAlert();
+
+        expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+        expect(screen.getByText("일시정지")).toBeInTheDocument();
+      },
+    );
+
+    it("알림을 닫은 뒤 이어서 녹음을 다시 누르면 마이크를 다시 받아 이어 간다", async () => {
+      const { getUserMedia } = await disconnectAndDeny(1);
+      await clickResume();
+      confirmMicAlert();
+
+      await clickResume();
+
+      expect(getUserMedia).toHaveBeenCalledTimes(3);
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(screen.getByText("녹음 중")).toBeInTheDocument();
     });
 
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByText("녹음 중")).toBeInTheDocument();
+    it("알림을 닫은 뒤 다시 눌러도 마이크를 못 받으면 같은 알림을 다시 띄운다", async () => {
+      await disconnectAndDeny(2);
+      await clickResume();
+      confirmMicAlert();
+
+      await clickResume();
+
+      expect(
+        screen.getByRole("alertdialog", { name: MIC_UNAVAILABLE }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("일시정지")).toBeInTheDocument();
+    });
   });
 });
