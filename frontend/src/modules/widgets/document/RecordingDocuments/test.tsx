@@ -1,13 +1,20 @@
 import { GetDocumentsResponseDto } from "@api/dto/document";
-import { RECORDING_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]";
 import { documentsResponse } from "@api/mock/responses/document";
 import { documentGenerationJobRetryResponse } from "@api/mock/responses/documentGenerationJob";
-import { recordingDetailsResponse } from "@api/mock/responses/recording";
+import {
+  recordingAudioSaveResponse,
+  recordingDetailsResponse,
+} from "@api/mock/responses/recording";
 import type {
+  RecordingAudioSaveResponse,
   RecordingDetailResponse,
   RecordingDocumentGenerationResponse,
 } from "@api/mock/types/recording";
 import { mockServer } from "@api/mock/server";
+import {
+  DOCUMENT_FROM_PARAM,
+  DOCUMENT_FROM_RECORDING,
+} from "@constants/document";
 import { ThemeProvider } from "@emotion/react";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
@@ -41,6 +48,9 @@ const RECORDING_REQUEST =
 const RETRY_REQUEST =
   "*/api/v1/workspaces/:workspaceId/document-generation-jobs/:jobId/retry";
 const DOCUMENTS_REQUEST = "*/api/v1/workspaces/:workspaceId/documents";
+const AUDIO_SAVE_REQUEST = `${RECORDING_REQUEST}/audio-save`;
+const AUDIO_SAVE_RETRY_REQUEST = `${AUDIO_SAVE_REQUEST}/retry`;
+const TRANSCRIPTION_RETRY_REQUEST = `${RECORDING_REQUEST}/transcription/retry`;
 const POLL_INTERVAL_MS = 3000;
 // mock 녹음의 어느 작업과도 겹치지 않는 문서 생성 작업 id
 const ANOTHER_JOB_ID = 188;
@@ -199,6 +209,13 @@ describe("RecordingDocuments", () => {
   });
 
   it("다시 시도를 누르면 문서 만들기를 다시 요청하고, 접수되면 정리 중 화면으로 돌아간다", async () => {
+    let transcriptionRetryCount = 0;
+    mockServer.use(
+      http.post(TRANSCRIPTION_RETRY_REQUEST, () => {
+        transcriptionRetryCount += 1;
+        return new HttpResponse(null, { status: 500 });
+      }),
+    );
     renderRecordingDocuments(failedRecording.recordingId);
 
     fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
@@ -208,42 +225,31 @@ describe("RecordingDocuments", () => {
       await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    // 문서 만들기 실패는 전사가 아니라 문서 만들기만 다시 시도해요
+    expect(transcriptionRetryCount).toBe(0);
   });
 
-  it.each([
-    { reason: "전사에 실패", recording: transcriptionFailedRecording },
-    {
-      reason: "문서 만들기에 실패했지만 다시 시도할 작업이 없음",
-      recording: {
-        ...failedRecording,
-        detail: {
+  it("문서 만들기에 실패했지만 다시 시도할 작업이 없으면 설명과 다시 시도 없이 홈으로만 보여준다", async () => {
+    mockServer.use(
+      http.get(RECORDING_REQUEST, () =>
+        HttpResponse.json({
           ...failedRecording.detail,
           // 실패 작업의 보존 기한이 지나면 서버는 실패 결과만 남기고 작업 ID를 비워요
           documentGeneration: {
             ...failedRecording.detail.documentGeneration,
             failedJobIds: [],
           },
-        },
-      },
-    },
-  ])(
-    "$reason: 설명과 다시 시도 없이 홈으로만 보여준다",
-    async ({ recording }) => {
-      mockServer.use(
-        http.get(
-          `*${RECORDING_API_PATH(WORKSPACE_ID, recording.recordingId)}`,
-          () => HttpResponse.json(recording.detail),
-        ),
-      );
-      renderRecordingDocuments(recording.recordingId);
+        }),
+      ),
+    );
+    renderRecordingDocuments(failedRecording.recordingId);
 
-      await expectFailedScreenWithoutRetry();
+    await expectFailedScreenWithoutRetry();
 
-      fireEvent.click(screen.getByRole("button", { name: "홈으로" }));
+    fireEvent.click(screen.getByRole("button", { name: "홈으로" }));
 
-      expect(await screen.findByText("워크스페이스 홈")).toBeInTheDocument();
-    },
-  );
+    expect(await screen.findByText("워크스페이스 홈")).toBeInTheDocument();
+  });
 
   it("문서가 일부만 만들어진 실패도 문서로 보내지 않고, 실패했다고 알리며 다시 시도 버튼을 보여준다", async () => {
     mockServer.use(
@@ -453,6 +459,18 @@ describe("RecordingDocuments", () => {
       getDocumentPath(firstCompletedRecordingDocument.id),
     );
     expect(router.state.historyAction).toBe("REPLACE");
+  });
+
+  it("첫 문서로 보낼 때 정리 화면에서 넘어왔다는 쿼리를 붙여, 문서 보기가 같은 녹음의 문서를 넘기는 스테퍼를 보여주게 한다", async () => {
+    const { router } = renderRecordingDocuments(completedRecording.recordingId);
+
+    await screen.findByText("문서 화면");
+
+    expect(
+      new URLSearchParams(router.state.location.search).get(
+        DOCUMENT_FROM_PARAM,
+      ),
+    ).toBe(DOCUMENT_FROM_RECORDING);
   });
 
   it("정리 중에는 문서 목록을 조회하지 않고, 정리가 끝나면 조회해 첫 문서로 보낸다", async () => {
@@ -1126,5 +1144,382 @@ describe("RecordingDocuments", () => {
       await screen.findByRole("button", { name: "다시 시도" }),
     ).toBeInTheDocument();
     expect(screen.getByText(RECORDING_KEPT_NOTICE)).toBeInTheDocument();
+  });
+
+  describe("전사 실패", () => {
+    // 전사 다시 시도가 거절됐을 때의 응답. 실제 서버처럼 본문에 오류 코드를 실어요
+    const rejectTranscriptionRetry = (status: number, code: string) =>
+      HttpResponse.json(
+        { code, message: "전사를 다시 시도할 수 없습니다" },
+        { status },
+      );
+
+    it.each([
+      {
+        reason: "AI 응답 시간 초과(AI_TIMEOUT)",
+        detail: transcriptionFailedRecording.detail,
+      },
+      {
+        reason: "그 밖의 이유로 실패한 PCM 조각 녹음",
+        detail: {
+          ...transcriptionFailedRecording.detail,
+          transcriptionFailureCode: "AUDIO_STORAGE_UNAVAILABLE",
+          sourceAudio: {
+            quality: "COMPLETE",
+            missingRanges: [],
+            tailUnknown: false,
+          },
+        },
+      },
+    ] satisfies { reason: string; detail: RecordingDetailResponse }[])(
+      "전사에 실패했으면($reason) 녹음을 보관했다고 알리고 다시 시도 버튼을 보여준다",
+      async ({ detail }) => {
+        mockServer.use(
+          http.get(RECORDING_REQUEST, () => HttpResponse.json(detail)),
+        );
+        renderRecordingDocuments(transcriptionFailedRecording.recordingId);
+
+        expect(
+          await screen.findByRole("heading", { level: 2, name: FAILED_TITLE }),
+        ).toBeInTheDocument();
+        expect(screen.getByText(RECORDING_KEPT_NOTICE)).toBeInTheDocument();
+        expect(
+          screen.getByRole("button", { name: "다시 시도" }),
+        ).toBeInTheDocument();
+      },
+    );
+
+    it("다시 시도를 누르면 문서 만들기가 아니라 전사를 다시 요청하고, 접수되면 정리 중 화면으로 돌아간다", async () => {
+      let documentRetryCount = 0;
+      let transcriptionRetryCount = 0;
+      mockServer.use(
+        http.post(RETRY_REQUEST, () => {
+          documentRetryCount += 1;
+          return new HttpResponse(null, { status: 500 });
+        }),
+        // 요청만 세고 아무것도 돌려주지 않아 기본 mock 핸들러가 이어서 접수해요
+        http.post(TRANSCRIPTION_RETRY_REQUEST, () => {
+          transcriptionRetryCount += 1;
+        }),
+      );
+      renderRecordingDocuments(transcriptionFailedRecording.recordingId);
+
+      fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+
+      // 기본 mock은 전사 다시 시도를 접수하면 그 녹음을 전사 중으로 바꿔 돌려줘요
+      expect(
+        await screen.findByRole("heading", {
+          level: 2,
+          name: ORGANIZING_TITLE,
+        }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("button")).not.toBeInTheDocument();
+      expect(transcriptionRetryCount).toBe(1);
+      expect(documentRetryCount).toBe(0);
+    });
+
+    it("전사 다시 시도의 응답과 바뀐 녹음 상태를 받을 때까지 버튼을 다시 누를 수 없다", async () => {
+      let releaseRetry = () => {};
+      const slowRetry = new Promise<void>((resolve) => {
+        releaseRetry = resolve;
+      });
+      mockServer.use(
+        // 응답만 늦게 와요. 아무것도 돌려주지 않아 기본 mock 핸들러가 이어서 접수해요
+        http.post(TRANSCRIPTION_RETRY_REQUEST, async () => {
+          await slowRetry;
+        }),
+      );
+      renderRecordingDocuments(transcriptionFailedRecording.recordingId);
+
+      const retryButton = await screen.findByRole("button", {
+        name: "다시 시도",
+      });
+      fireEvent.click(retryButton);
+
+      await waitFor(() => expect(retryButton).toBeDisabled());
+
+      releaseRetry();
+
+      expect(
+        await screen.findByRole("heading", {
+          level: 2,
+          name: ORGANIZING_TITLE,
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it.each([
+      { status: 409, code: "TRANSCRIPTION_BUSY" },
+      { status: 409, code: "TRANSCRIPTION_RETRY_NOT_ALLOWED" },
+      { status: 404, code: "RECORDING_NOT_FOUND" },
+      { status: 500, code: "INTERNAL_SERVER_ERROR" },
+    ])(
+      "전사 다시 시도가 거절되면($status $code) 오류 코드를 콘솔에 남기고 버튼을 유지해 다시 누를 수 있게 한다",
+      async ({ status, code }) => {
+        // 거절은 안내 없이 콘솔에만 남기므로, 테스트 출력에 섞이지 않게 막아요
+        const consoleError = vi
+          .spyOn(console, "error")
+          .mockImplementation(() => {});
+        let retryCount = 0;
+        mockServer.use(
+          http.post(TRANSCRIPTION_RETRY_REQUEST, () => {
+            retryCount += 1;
+            return rejectTranscriptionRetry(status, code);
+          }),
+        );
+        renderRecordingDocuments(transcriptionFailedRecording.recordingId);
+
+        fireEvent.click(
+          await screen.findByRole("button", { name: "다시 시도" }),
+        );
+
+        await waitFor(() =>
+          expect(consoleError).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.objectContaining({ code }),
+          ),
+        );
+        await waitFor(() =>
+          expect(
+            screen.getByRole("button", { name: "다시 시도" }),
+          ).toBeEnabled(),
+        );
+        expect(screen.getByText(RECORDING_KEPT_NOTICE)).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
+
+        await waitFor(() => expect(retryCount).toBe(2));
+
+        consoleError.mockRestore();
+      },
+    );
+
+    it("전사 다시 시도에서 로그인이 풀렸으면(401) 로그인 화면으로 보낸다", async () => {
+      mockServer.use(
+        http.post(
+          TRANSCRIPTION_RETRY_REQUEST,
+          () => new HttpResponse(null, { status: 401 }),
+        ),
+      );
+      renderRecordingDocuments(transcriptionFailedRecording.recordingId);
+
+      fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+
+      expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
+    });
+  });
+
+  describe("끝낸 녹음의 오디오 저장", () => {
+    // 끝냈지만 전사가 시작되기 전의 녹음이에요. PCM 조각 녹음은 이 동안 서버가 조각을 모아 저장하고, 녹음 상태만으로는 PCM인지 알 수 없어요
+    const awaitingAudioSaveDetail: RecordingDetailResponse = {
+      ...organizingRecording.detail,
+      transcriptionAttemptId: null,
+      transcriptionStatus: null,
+      documentGeneration: null,
+    };
+
+    const respondAudioSave = (overrides: Partial<RecordingAudioSaveResponse>) =>
+      HttpResponse.json({ ...recordingAudioSaveResponse, ...overrides });
+
+    // 녹음 상태는 전사 전으로 두고 저장 상태 응답만 바꿔요. 두 조회의 횟수를 세어 돌려줘요
+    const mockAwaitingAudioSave = (respond: () => Response) => {
+      const counts = { recording: 0, audioSave: 0 };
+      mockServer.use(
+        http.get(RECORDING_REQUEST, () => {
+          counts.recording += 1;
+          return HttpResponse.json(awaitingAudioSaveDetail);
+        }),
+        http.get(AUDIO_SAVE_REQUEST, () => {
+          counts.audioSave += 1;
+          return respond();
+        }),
+      );
+
+      return counts;
+    };
+
+    it.each(["DRAINING", "FINALIZING"] as const)(
+      "전사가 시작되기 전에 저장 상태가 %s이면 정리 중이라고 알린다",
+      async (audioSaveStatus) => {
+        const counts = mockAwaitingAudioSave(() =>
+          respondAudioSave({ audioSaveStatus }),
+        );
+        renderRecordingDocuments(organizingRecording.recordingId);
+
+        await screen.findByRole("heading", {
+          level: 2,
+          name: ORGANIZING_TITLE,
+        });
+        await waitFor(() => expect(counts.audioSave).toBe(1));
+
+        expect(
+          screen.getByRole("heading", { level: 2, name: ORGANIZING_TITLE }),
+        ).toBeInTheDocument();
+        expect(screen.queryByRole("button")).not.toBeInTheDocument();
+      },
+    );
+
+    it("저장된 음성이 없어 저장이 실패했으면(AUDIO_NO_CONTENT) 문서로 만들 내용이 없었다고 알린다", async () => {
+      mockAwaitingAudioSave(() =>
+        respondAudioSave({
+          audioSaveStatus: "FAILED",
+          failureCode: "AUDIO_NO_CONTENT",
+          canRetry: false,
+          quality: null,
+        }),
+      );
+      renderRecordingDocuments(organizingRecording.recordingId);
+
+      expect(
+        await screen.findByRole("heading", {
+          level: 2,
+          name: NO_CONTENT_TITLE,
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "홈으로" }),
+      ).toBeInTheDocument();
+    });
+
+    it.each([
+      {
+        reason: "저장소 문제처럼 그 밖의 이유로 실패했으면",
+        audioSave: {
+          audioSaveStatus: "FAILED",
+          failureCode: "AUDIO_STORAGE_UNAVAILABLE",
+          canRetry: true,
+        },
+      },
+      {
+        reason: "폐기됐으면",
+        audioSave: {
+          audioSaveStatus: "DISCARDED",
+          failureCode: null,
+          canRetry: false,
+        },
+      },
+    ] satisfies {
+      reason: string;
+      audioSave: Partial<RecordingAudioSaveResponse>;
+    }[])(
+      "저장이 $reason 다시 시도하지 않고 실패 이유를 콘솔에 남긴 뒤 지금 기록을 바꿔 워크스페이스 홈으로 보낸다",
+      async ({ audioSave }) => {
+        // 실패는 안내 없이 콘솔에만 남기므로, 테스트 출력에 섞이지 않게 막아요
+        const consoleError = vi
+          .spyOn(console, "error")
+          .mockImplementation(() => {});
+        let retryRequestCount = 0;
+        mockAwaitingAudioSave(() => respondAudioSave(audioSave));
+        mockServer.use(
+          http.post(AUDIO_SAVE_RETRY_REQUEST, () => {
+            retryRequestCount += 1;
+            return HttpResponse.json(recordingAudioSaveResponse, {
+              status: 202,
+            });
+          }),
+        );
+        const { router } = renderRecordingDocuments(
+          organizingRecording.recordingId,
+        );
+
+        expect(await screen.findByText("워크스페이스 홈")).toBeInTheDocument();
+        expect(router.state.historyAction).toBe("REPLACE");
+        expect(consoleError).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({ failureCode: audioSave.failureCode }),
+        );
+        expect(retryRequestCount).toBe(0);
+
+        consoleError.mockRestore();
+      },
+    );
+
+    it.each([
+      {
+        reason: "저장이 끝났으면(READY)",
+        respond: () => HttpResponse.json(recordingAudioSaveResponse),
+      },
+      {
+        reason: "WebM 녹음이라 저장 상태가 없으면(409 AUDIO_MODE_CONFLICT)",
+        respond: () =>
+          HttpResponse.json(
+            {
+              code: "AUDIO_MODE_CONFLICT",
+              message: "PCM 조각 녹음이 아닙니다.",
+            },
+            { status: 409 },
+          ),
+      },
+    ])(
+      "$reason 저장 상태는 더 조회하지 않고 녹음 상태만 계속 조회한다",
+      async ({ respond }) => {
+        const counts = mockAwaitingAudioSave(respond);
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        renderRecordingDocuments(organizingRecording.recordingId);
+
+        await screen.findByRole("heading", {
+          level: 2,
+          name: ORGANIZING_TITLE,
+        });
+        await waitFor(() => expect(counts.audioSave).toBe(1));
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+        });
+
+        await waitFor(() => expect(counts.recording).toBe(2));
+        expect(counts.audioSave).toBe(1);
+        expect(
+          screen.getByRole("heading", { level: 2, name: ORGANIZING_TITLE }),
+        ).toBeInTheDocument();
+      },
+    );
+
+    it("전사가 시작됐으면 저장 상태를 조회하지 않는다", async () => {
+      let audioSaveRequestCount = 0;
+      mockServer.use(
+        http.get(RECORDING_REQUEST, () =>
+          HttpResponse.json({
+            ...organizingRecording.detail,
+            transcriptionStatus: "PROCESSING",
+            documentGeneration: null,
+          }),
+        ),
+        http.get(AUDIO_SAVE_REQUEST, () => {
+          audioSaveRequestCount += 1;
+          return HttpResponse.json(recordingAudioSaveResponse);
+        }),
+      );
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      renderRecordingDocuments(organizingRecording.recordingId);
+
+      await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+      });
+
+      expect(audioSaveRequestCount).toBe(0);
+    });
+
+    it("저장 상태 조회가 서버 오류로 실패하면(503) 정리 중을 유지하고 같은 간격으로 계속 조회한다", async () => {
+      const counts = mockAwaitingAudioSave(
+        () => new HttpResponse(null, { status: 503 }),
+      );
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      renderRecordingDocuments(organizingRecording.recordingId);
+
+      await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE });
+      await waitFor(() => expect(counts.audioSave).toBe(1));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+      });
+
+      await waitFor(() => expect(counts.audioSave).toBe(2));
+      expect(
+        screen.getByRole("heading", { level: 2, name: ORGANIZING_TITLE }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("워크스페이스 홈")).not.toBeInTheDocument();
+    });
   });
 });

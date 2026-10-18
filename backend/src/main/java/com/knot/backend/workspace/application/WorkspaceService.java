@@ -1,6 +1,5 @@
 package com.knot.backend.workspace.application;
 
-import com.knot.backend.workspace.application.dto.result.WorkspaceCreateResult;
 import com.knot.backend.workspace.application.dto.result.WorkspaceDetailResult;
 import com.knot.backend.workspace.application.dto.result.WorkspaceListResult;
 import com.knot.backend.workspace.domain.model.Workspace;
@@ -25,7 +24,7 @@ public class WorkspaceService {
     private final Clock clock;
 
     @Transactional
-    public WorkspaceCreateResult create(
+    public long create(
             long memberId,
             String name
     ) {
@@ -51,7 +50,7 @@ public class WorkspaceService {
                     () -> workspaceMemberRepository.save(saved.createOwnerMembership(memberId))
             );
             trace.outcome("created");
-            return new WorkspaceCreateResult(saved.getId());
+            return saved.getId();
         });
     }
 

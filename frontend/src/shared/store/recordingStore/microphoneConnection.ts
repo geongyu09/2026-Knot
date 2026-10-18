@@ -32,7 +32,8 @@ export interface MicrophoneConnectionParams {
 export default class MicrophoneConnection {
   readonly analyser: AnalyserNode;
 
-  private readonly stream: MediaStream;
+  /** 받은 마이크. PCM 수집기가 같은 마이크를 써요 */
+  readonly stream: MediaStream;
   private readonly recorder: MediaRecorder;
   private readonly audioContext: AudioContext;
   private isClosed = false;

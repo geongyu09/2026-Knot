@@ -74,6 +74,7 @@ export const RecordingInThisTab: Story = {
       session: {
         workspaceId: WORKSPACE_ID,
         recordingId: currentRecordingResponse.recordingId,
+        audioMode: "FINAL_WEBM_V1",
       },
       accumulatedMs: (12 * 60 + 48) * 1000,
       resumedAt: Date.now(),

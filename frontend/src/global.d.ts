@@ -27,3 +27,18 @@ declare module "*.gif" {
   const src: string;
   export default src;
 }
+
+/** AudioWorklet 전역. lib.dom에 없어 `pcmProcessor.ts`가 쓰는 만큼만 선언해요 */
+declare class AudioWorkletProcessor {
+  readonly port: MessagePort;
+  process(
+    inputs: Float32Array[][],
+    outputs: Float32Array[][],
+    parameters: Record<string, Float32Array>,
+  ): boolean;
+}
+
+declare function registerProcessor(
+  name: string,
+  processor: new () => AudioWorkletProcessor,
+): void;

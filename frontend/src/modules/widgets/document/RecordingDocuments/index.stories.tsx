@@ -1,7 +1,11 @@
-import { recordingDetailsResponse } from "@api/mock/responses/recording";
+import {
+  recordingAudioSaveResponse,
+  recordingDetailsResponse,
+} from "@api/mock/responses/recording";
 import { resetRecordingMockState } from "@api/mock/state/recording";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
+import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
 
 import RecordingDocuments from ".";
@@ -20,6 +24,42 @@ const [
 ] = recordingDetailsResponse;
 // recordingDetailsResponse에 없는 녹음이라 기본 핸들러가 404로 답해요
 const MISSING_RECORDING_ID = 999;
+// 경로 파라미터 자리에 무엇이 와도 잡도록 fetch 상수 대신 패턴을 적어요
+const RECORDING_REQUEST =
+  "*/api/v1/workspaces/:workspaceId/recordings/:recordingId";
+const AUDIO_SAVE_REQUEST = `${RECORDING_REQUEST}/audio-save`;
+// 끝냈지만 전사가 시작되기 전의 녹음이에요. PCM 조각 녹음은 이 동안 서버가 조각을 모아 저장해요
+const awaitingAudioSaveDetail = {
+  ...organizingRecording.detail,
+  transcriptionAttemptId: null,
+  transcriptionStatus: null,
+  documentGeneration: null,
+};
+// 실패 작업의 보존 기한이 지나 서버가 작업 ID를 비운 문서 만들기 실패예요
+const expiredFailedDetail = {
+  ...failedRecording.detail,
+  documentGeneration: {
+    ...failedRecording.detail.documentGeneration,
+    failedJobIds: [],
+  },
+};
+// 응답을 덮는 스토리는 문서 페이지에서 따로 그려요. 실패 화면이 잘리지 않는 높이예요
+const ISOLATED_DOCS = { story: { inline: false, iframeHeight: 320 } };
+// 녹음 상태는 전사 전으로 두고 저장 상태만 실패로 바꿔요
+const failAudioSave = (failureCode: string) => ({
+  recording: http.get(RECORDING_REQUEST, () =>
+    HttpResponse.json(awaitingAudioSaveDetail),
+  ),
+  audioSave: http.get(AUDIO_SAVE_REQUEST, () =>
+    HttpResponse.json({
+      ...recordingAudioSaveResponse,
+      audioSaveStatus: "FAILED",
+      failureCode,
+      canRetry: false,
+      quality: null,
+    }),
+  ),
+});
 
 /**
  * 녹음을 끝낸 뒤 문서가 만들어질 때까지 머무는 정리 화면의 가운데 섹션이에요.
@@ -34,10 +74,15 @@ const MISSING_RECORDING_ID = 999;
  *   요청이 모두 끝날 때까지 버튼을 누를 수 없고, 서버 오류로 실패하면 버튼이 다시 열려요.
  * - 문서가 일부만 만들어진 실패도 같은 화면이에요. 만들어진 문서로 보내지 않고, 「다시 시도」는 실패한 작업만 다시 시도해요.
  *   일부만 만들어진 경우만의 화면은 시안이 아직 없어서 따로 두지 않았어요. 만들어진 문서는 홈과 문서 탭에서 볼 수 있어요.
- * - 전사 실패, 다시 시도할 작업이 남아 있지 않은 실패, 남은 작업의 다시 시도가 모두 거절된 경우는 설명 없이 「홈으로」만 둬요.
+ * - 전사가 실패했으면 문서 만들기 실패와 같은 화면이에요. 「다시 시도」는 실패 이유와 녹음 방식에 관계없이 전사부터 다시 접수하고, 접수되면 정리 중으로 돌아가요.
+ *   거절되면(다른 전사가 진행 중, 이미 다시 접수됨, 서버 오류) 안내 없이 콘솔에만 남기고 버튼을 그대로 둬요.
+ * - 다시 시도할 작업이 남아 있지 않은 실패, 남은 작업의 다시 시도가 모두 거절된 경우는 설명 없이 「홈으로」만 둬요.
  *   이 경우의 문구가 기획에 아직 없고, 녹음이 보관되어 있는지도 경우마다 달라서예요.
  * - 다시 시도가 409로 거절되면 녹음 상태를 다시 확인해요. 다른 곳에서 먼저 다시 시도해 서버에서는 이미 정리 중이거나 정리가 끝났을 수 있어서예요.
  *   그런 경우에는 그 상태의 화면으로 바꾸고, 그 작업이 또 실패하면 「다시 시도」를 다시 보여 줘요.
+ * - PCM 조각 녹음은 끝낸 뒤 서버가 조각을 모아 저장해요. 전사가 시작되기 전에는 녹음 상태와 함께 저장 상태도 3초마다 확인하고, 저장 중에는 정리 중이에요.
+ *   저장된 음성이 없어 실패했으면 문서로 만들 내용이 없을 때와 같은 화면이에요. 그 밖의 이유로 실패했거나 폐기됐으면 안내 없이 워크스페이스 홈으로 보내요.
+ *   WebM 녹음은 저장 상태가 없다고(409) 답해 와서 한 번만 확인하고 더 확인하지 않아요.
  * - 녹음 상태를 불러오지 못하면 「문서를 불러오지 못했어요」와 「다시 시도」를 보여 줘요.
  *   이때는 저절로 다시 확인하지 않고, 「다시 시도」를 누르면 다시 확인해요.
  * - 정리 중에 녹음이 없어지거나 볼 수 없게 되어도 「문서를 불러오지 못했어요」로 바꾸고 더 확인하지 않아요.
@@ -116,10 +161,29 @@ export const DocumentFailed: Story = {
   },
 };
 
-/** 다시 시도할 작업이 없는 실패일 때예요. 예: 전사 실패, 실패한 작업의 보존 기한이 지난 경우. 설명 없이 「홈으로」만 있어요. 붙인 피그마 프레임은 「다시 시도」가 있는 모습이에요. */
-export const DocumentFailedWithoutRetry: Story = {
+/** 전사가 실패했을 때예요. 문서 만들기 실패와 같은 화면이고, 「다시 시도」를 누르면 전사부터 다시 접수해 정리 중 모습으로 돌아가요. */
+export const TranscriptionFailed: Story = {
   parameters: {
     recordingId: transcriptionFailedRecording.recordingId,
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-35662",
+    },
+  },
+};
+
+/** 다시 시도할 작업이 없는 실패일 때예요. 예: 실패한 작업의 보존 기한이 지나 서버가 작업 ID를 비운 경우. 설명 없이 「홈으로」만 있어요. 붙인 피그마 프레임은 「다시 시도」가 있는 모습이에요. */
+export const DocumentFailedWithoutRetry: Story = {
+  parameters: {
+    recordingId: failedRecording.recordingId,
+    msw: {
+      handlers: {
+        recording: http.get(RECORDING_REQUEST, () =>
+          HttpResponse.json(expiredFailedDetail),
+        ),
+      },
+    },
+    docs: ISOLATED_DOCS,
     design: {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-35662",
@@ -135,6 +199,24 @@ export const RetryRejected: Story = {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-35662",
     },
+  },
+};
+
+/** PCM 조각 녹음을 끝냈는데 저장된 음성이 없어 저장이 실패했을 때예요(AUDIO_NO_CONTENT). 문서로 만들 내용이 없을 때와 같은 화면이에요. */
+export const AudioSaveNoContent: Story = {
+  parameters: {
+    msw: { handlers: failAudioSave("AUDIO_NO_CONTENT") },
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2262-33302",
+    },
+  },
+};
+
+/** PCM 조각 녹음의 저장이 그 밖의 이유로 끝내 실패했을 때예요. 업로드 실패와 같이 안내 없이 실패 이유를 콘솔에 남기고 워크스페이스 홈으로 보내요. */
+export const AudioSaveFailed: Story = {
+  parameters: {
+    msw: { handlers: failAudioSave("AUDIO_STORAGE_UNAVAILABLE") },
   },
 };
 

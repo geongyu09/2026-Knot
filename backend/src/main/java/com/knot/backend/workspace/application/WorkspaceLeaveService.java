@@ -1,5 +1,7 @@
 package com.knot.backend.workspace.application;
 
+import com.knot.backend.recording.application.RecordingAudioCleanupStateService;
+
 import com.knot.backend.document.application.DocumentArchivalService;
 import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
@@ -28,6 +30,7 @@ public class WorkspaceLeaveService {
     private final RecordingSessionRepository recordingSessionRepository;
     private final DocumentArchivalService documentArchivalService;
     private final Clock clock;
+    private final RecordingAudioCleanupStateService audioCleanup;
 
     @Transactional
     public void leave(
@@ -305,6 +308,13 @@ public class WorkspaceLeaveService {
         log.runStep(
                 "flush_memberships",
                 workspaceMemberRepository::flush
+        );
+        log.runStep(
+                "schedule_audio_cleanup",
+                () -> audioCleanup.afterDeparture(
+                        workspaceId,
+                        memberId
+                )
         );
         log.runStep(
                 "archive_documents",

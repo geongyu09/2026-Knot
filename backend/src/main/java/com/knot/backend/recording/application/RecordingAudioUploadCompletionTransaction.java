@@ -3,6 +3,7 @@ package com.knot.backend.recording.application;
 import com.knot.backend.global.config.TranscriptionProperties;
 import com.knot.backend.recording.application.dto.result.RecordingAudioUploadCompletionResult;
 import com.knot.backend.recording.domain.model.RecordingAudioUpload;
+import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.repository.RecordingAudioUploadRepository;
 import com.knot.backend.recording.domain.RecordingErrorCode;
 import com.knot.backend.recording.domain.RecordingException;
@@ -46,22 +47,32 @@ public class RecordingAudioUploadCompletionTransaction {
             long uploadId,
             StoredAudioObject storedObject
     ) {
-        RecordingAudioUpload upload = findValidatedUpload(
+        RecordingLog.Scope trace = RecordingLog.begin(
+                "recording.upload.complete",
                 workspaceId,
-                memberId,
                 recordingId,
-                uploadId
+                uploadId,
+                null
         );
-        upload.complete(
-                storedObject,
-                clock.instant()
-                        .truncatedTo(ChronoUnit.MICROS)
-        );
-        recordingAudioUploadRepository.save(upload);
-        if (transcriptionProperties.enabled() && upload.isAudioAvailable()) {
-            recordingTranscriptionStateService.registerAutomatic(recordingId);
-        }
-        return RecordingAudioUploadCompletionResult.from(upload);
+        return trace.call(() -> {
+            RecordingAudioUpload upload = findValidatedUpload(
+                    workspaceId,
+                    memberId,
+                    recordingId,
+                    uploadId
+            );
+            trace.outcome(upload.isCompleted() ? "replayed" : "completed");
+            upload.complete(
+                    storedObject,
+                    clock.instant()
+                            .truncatedTo(ChronoUnit.MICROS)
+            );
+            recordingAudioUploadRepository.save(upload);
+            if (transcriptionProperties.enabled() && upload.isAudioAvailable()) {
+                recordingTranscriptionStateService.registerAutomatic(recordingId);
+            }
+            return RecordingAudioUploadCompletionResult.from(upload);
+        });
     }
 
     private RecordingAudioUpload findValidatedUpload(
@@ -73,12 +84,13 @@ public class RecordingAudioUploadCompletionTransaction {
         if (uploadId <= 0) {
             throw new RecordingException(RecordingErrorCode.INVALID_RECORDING_DATA);
         }
-        recordingAccess.loadOwnedForUpdate(
+        RecordingSession session = recordingAccess.loadOwnedForUpdate(
                 workspaceId,
                 memberId,
                 recordingId
-        )
-                .validateAudioUploadable();
+        );
+        session.validateLegacyAudioMode();
+        session.validateEnded();
         RecordingAudioUpload upload = recordingAudioUploadRepository.findById(uploadId)
                 .orElseThrow(() -> new RecordingException(RecordingErrorCode.AUDIO_UPLOAD_NOT_FOUND));
         upload.validateBelongsTo(recordingId);

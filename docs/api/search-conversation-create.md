@@ -160,6 +160,7 @@ JSON 필드의 출력 순서와 delta 조각 수는 계약이 아니다.
 - 검색 없음은 녹음 안내 COMPLETED로 처리한다. 검색 오류는 FAILED로 구분한다.
 - #697의 [JSON 의도 분류 결정](../adr/697-search-intent-classification.md)이 2026-10-14의 자유 답변 경로를 대체한다.
   첫 본문 delta 전에 Qwen을 한 번 호출해 현재 질문과 문맥용 대화 이력을 다섯 의도로 분류한다.
+  Knot의 구체적인 동작, 권한, 정책, 절차, 결정 및 측정 결과 질문은 `MEETING_SEARCH`로 분류해 실제 회의 기록을 찾는다. 기능 사용 위치나 일반 사용법만 묻는 질문은 `SERVICE_GUIDE`로 분류한다.
   `MEETING_SEARCH`만 문서 탐색과 근거 답변 생성을 진행한다.
   `GREETING_OR_THANKS`·`SERVICE_GUIDE`·`NEEDS_CLARIFICATION`·`OUT_OF_SCOPE`는 의도별 서버 고정 안내와
   빈 근거를 저장하고 기존 delta → completed 이벤트, COMPLETED 상태로 종료한다.

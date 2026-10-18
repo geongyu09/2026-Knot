@@ -17,7 +17,9 @@ interface UseRecordingDocumentsRedirectParams {
  * 정리 화면에 머물 이유가 없는 녹음을 다른 화면으로 보내요.
  *
  * - `recording`: 아직 끝내지 않은 녹음은 녹음 화면으로 돌려보내요.
+ * - `audioSaveFailed`: 서버 저장이 끝내 실패하거나 폐기된 녹음은 정리할 음성이 없어 워크스페이스 홈으로 보내요. 다시 시도는 두지 않아요.
  * - `completed`: 정리가 끝난 녹음은 그 녹음에서 나온 첫 문서로 보내요. 서버가 준 순서의 첫 문서라, 문서 보기의 스테퍼가 `1 / n`인 문서예요.
+ *   정리 화면에서 넘어왔다는 쿼리를 붙여, 문서 보기가 같은 녹음의 문서를 넘기는 스테퍼를 보여주게 해요.
  *   그 녹음에서 나온 문서가 없거나 문서 목록을 불러오지 못하면 워크스페이스 홈으로 보내요.
  *   문서 목록 조회에서 로그인이 풀렸으면(401) 로그인 화면으로 보내요.
  *
@@ -57,6 +59,14 @@ export const useRecordingDocumentsRedirect = ({
       return;
     }
 
+    if (viewStatus === "audioSaveFailed") {
+      navigateToWorkspaceHome({
+        workspaceId: String(workspaceId),
+        replace: true,
+      });
+      return;
+    }
+
     if (viewStatus !== "completed") return;
 
     if (firstDocumentId !== undefined) {
@@ -64,6 +74,7 @@ export const useRecordingDocumentsRedirect = ({
         workspaceId,
         documentId: firstDocumentId,
         replace: true,
+        isFromRecording: true,
       });
       return;
     }

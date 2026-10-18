@@ -23,6 +23,8 @@ operation의 started는 Service 본문 진입, 최종 결과는 트랜잭션 aft
 
 단계는 생성·권한 검증·잠금 조회·DB 저장·녹음 폐기·멤버십 flush·조건부 문서 처리 등 기존 호출 경계다. 실패한 operation에는 failedStage와 안전한 errorCode가 있다. HTTP 전체 처리와 Service 진입 전 인증·입력 검증은 이 이벤트의 측정 범위 밖이다.
 
+탈퇴는 멤버십 flush 뒤 `schedule_audio_cleanup`, `archive_documents` 순서로 실행한다. 오디오 정리 단계의 `prepared`는 정리에 필요한 DB 상태를 반영했다는 뜻이며 실제 S3 삭제 완료를 뜻하지 않는다.
+
 elapsedMs는 단조 시계다. stage=operation의 최종 시간은 Service 본문 진입부터 트랜잭션 완료 콜백까지, 나머지 단계의 prepared 시간은 해당 단계의 진입부터 반환까지다. 서로 다른 범위를 단순 합산하지 않는다.
 
 ## 녹음 폐기에서 탈퇴 요청으로
