@@ -1697,6 +1697,41 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
       expect(getEvents("search_answer_returned")).toHaveLength(0);
     });
 
+    it.each([
+      {
+        place: "다른 워크스페이스로 옮기면",
+        path: getRouterPath({
+          routeKey: "WORKSPACE_HOME",
+          params: { workspaceId: String(WORKSPACE_ID + 1) },
+        }),
+      },
+      { place: "워크스페이스 밖으로 나가면", path: ELSEWHERE_PATH },
+    ])(
+      "답변을 기다리다 $place 기다린 시간을 한 번 보낸다",
+      async ({ path }) => {
+        const { router } = await sendAndAccept();
+
+        at(7);
+        await moveTo(router, path);
+
+        expect(getEvents("search_answer_left")).toEqual([
+          { event: "search_answer_left", properties: { waited_seconds: 7 } },
+        ]);
+      },
+    );
+
+    it("답변이 끝난 뒤에 워크스페이스 밖으로 나가면 떠난 기록을 보내지 않는다", async () => {
+      const { router, stream } = await sendAndAccept();
+      stream.send("completed", { answerMessageId, status: "COMPLETED" });
+      await waitFor(() =>
+        expect(getEvents("search_answer_result")).toHaveLength(1),
+      );
+
+      await moveTo(router, ELSEWHERE_PATH);
+
+      expect(getEvents("search_answer_left")).toHaveLength(0);
+    });
+
     it("접수되기 전에 다른 화면으로 가면 아직 대화가 없어 떠난 기록을 보내지 않는다", async () => {
       const stream = respondWithControlledSse(SEARCH_CONVERSATIONS_PATH);
       const { router } = renderLayout(CHAT_PATH, <SearchConversation />);
