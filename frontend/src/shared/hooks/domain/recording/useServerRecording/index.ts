@@ -25,7 +25,12 @@ const useServerRecording = () => {
     });
 
   useEffect(() => {
-    if (error) logRequestError("현재 녹음 조회", error);
+    if (error)
+      logRequestError({
+        feature: "recording",
+        action: "현재 녹음 조회",
+        error,
+      });
   }, [error]);
 
   const isRecording = data?.status === "RECORDING";

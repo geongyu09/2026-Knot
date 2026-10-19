@@ -1,3 +1,4 @@
+import { captureCaughtError } from "@provider/sentry";
 import type { AxiosInstance } from "axios";
 import axios from "axios";
 
@@ -47,13 +48,22 @@ let refreshing: Promise<void> | undefined;
  */
 let refreshCount = 0;
 
-/** 진행 중인 재발급이 있으면 그것을 기다리고, 없으면 새로 시작해요. */
+/**
+ * 진행 중인 재발급이 있으면 그것을 기다리고, 없으면 새로 시작해요.
+ *
+ * 실패하면 재발급 오류를 Sentry로 보내요. 기다리던 요청들은 원래 요청의 401을 던져 재발급 오류가 남지 않기 때문이에요.
+ * 함께 기다린 요청이 여럿이어도 재발급 한 번에 한 건이에요.
+ */
 const refreshTokens = (client: AxiosInstance) => {
   refreshing ??= withRefreshLock(async () => {
     await client.post(REFRESH_API_PATH);
   })
     .then(() => {
       refreshCount += 1;
+    })
+    .catch((error: unknown) => {
+      captureCaughtError({ error, feature: "auth" });
+      throw error;
     })
     .finally(() => {
       refreshing = undefined;

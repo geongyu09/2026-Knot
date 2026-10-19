@@ -16,6 +16,7 @@ import {
   DOCUMENT_FROM_RECORDING,
 } from "@constants/document";
 import { ThemeProvider } from "@emotion/react";
+import { setupSentryEvents } from "@provider/sentry/mock";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import {
@@ -1725,5 +1726,74 @@ describe("RecordingDocuments", () => {
       ).toBeInTheDocument();
       expect(screen.queryByText("워크스페이스 홈")).not.toBeInTheDocument();
     });
+  });
+});
+
+// 작업마다 보낸 다시 시도의 실패는 결과값으로 바뀌어 뮤테이션이 성공으로 끝나므로, react-query가 보고하지 않아요
+describe("RecordingDocuments의 다시 시도 실패 보고", () => {
+  const { flushEvents } = setupSentryEvents();
+
+  it("다시 시도가 서버 오류로 실패하면 버튼은 지금처럼 남기고 그 요청 오류를 한 번 보고한다", async () => {
+    let retryCount = 0;
+    mockServer.use(
+      http.post(RETRY_REQUEST, () => {
+        retryCount += 1;
+        return new HttpResponse(null, { status: 500 });
+      }),
+    );
+    renderRecordingDocuments(failedRecording.recordingId);
+
+    fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+    await waitFor(() => expect(retryCount).toBe(1));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "다시 시도" })).toBeEnabled(),
+    );
+    const events = await flushEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0].tags).toMatchObject({ feature: "document" });
+    expect(events[0].fingerprint).toEqual([
+      "POST",
+      "/api/v1/workspaces/:id/document-generation-jobs/:id/retry",
+      "500",
+    ]);
+  });
+
+  it("한 작업은 409로 거절되고 다른 작업은 서버 오류로 실패하면 서버 오류만 보고한다", async () => {
+    let retryCount = 0;
+    mockServer.use(
+      http.post(RETRY_REQUEST, ({ params }) => {
+        retryCount += 1;
+
+        return new HttpResponse(null, {
+          status: Number(params.jobId) === ANOTHER_JOB_ID ? 500 : 409,
+        });
+      }),
+      http.get(RECORDING_REQUEST, () => HttpResponse.json(twoJobsFailedDetail)),
+    );
+    renderRecordingDocuments(failedRecording.recordingId);
+
+    fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+    await waitFor(() => expect(retryCount).toBe(2));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "다시 시도" })).toBeEnabled(),
+    );
+    const events = await flushEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0].fingerprint).toContain("500");
+  });
+
+  // 다시 시도 횟수를 다 썼거나 이미 처리된 작업이라, 화면이 다시 시도 없이 홈으로만 보여줘요
+  it("다시 시도가 409로 거절되면 보고하지 않는다", async () => {
+    mockServer.use(
+      http.post(RETRY_REQUEST, () => new HttpResponse(null, { status: 409 })),
+    );
+    renderRecordingDocuments(failedRecording.recordingId);
+
+    fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+
+    await expectFailedScreenWithoutRetry();
+    expect(await flushEvents()).toHaveLength(0);
   });
 });

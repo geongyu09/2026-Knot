@@ -1,5 +1,6 @@
 import { retryDocumentGenerationJobApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documentGenerationJobs/[jobId]/retry";
 import { recordingKeys } from "@api/queryKey/recording";
+import { captureCaughtError } from "@provider/sentry";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface RetryDocumentGenerationJobsMutationVariables {
@@ -13,7 +14,8 @@ interface RetryDocumentGenerationJobParams {
   jobId: number;
 }
 
-// 한 작업의 요청이 실패해도 다른 작업의 요청을 끝까지 기다릴 수 있게, 실패를 던지지 않고 결과로 돌려줘요
+// 한 작업의 요청이 실패해도 다른 작업의 요청을 끝까지 기다릴 수 있게, 실패를 던지지 않고 결과로 돌려줘요.
+// 뮤테이션이 성공으로 끝나 react-query가 보고하지 않으므로 실패는 여기서 Sentry로 보내요. 409(횟수 소진)는 보고 기준에서 빠져요
 const retryDocumentGenerationJob = async ({
   workspaceId,
   jobId,
@@ -23,6 +25,8 @@ const retryDocumentGenerationJob = async ({
 
     return { jobId, isAccepted: true, error: null } as const;
   } catch (error: unknown) {
+    captureCaughtError({ error, feature: "document" });
+
     return { jobId, isAccepted: false, error } as const;
   }
 };

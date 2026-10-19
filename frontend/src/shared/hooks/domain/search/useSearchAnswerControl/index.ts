@@ -153,7 +153,7 @@ const useSearchAnswerControl = () => {
 
         return { isAcceptFailed: false };
       } catch (error) {
-        logRequestError("탐색 질문", error);
+        logRequestError({ feature: "search", action: "탐색 질문", error });
         invalidateMessages();
 
         return { isAcceptFailed: fail(controller, error) };

@@ -1,3 +1,5 @@
+import { captureCaughtError } from "@provider/sentry";
+
 import MicrophoneConnection, {
   type MicrophoneConnectionParams,
   stopTracks,
@@ -84,8 +86,10 @@ export default class Microphone {
       });
 
       return this.connection;
-    } catch {
-      // 권한 거부나 장치 없음은 연결하지 않고 `null`만 돌려줘요
+    } catch (error) {
+      // 받지 못하면 연결하지 않고 `null`만 돌려줘요. 권한 거부와 장치 없음은 Sentry 보고 기준에서 빠져요
+      captureCaughtError({ error, feature: "recording" });
+
       return null;
     }
   }
