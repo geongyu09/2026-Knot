@@ -1,5 +1,5 @@
 import { retryRecordingTranscriptionApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/recordings/[recordingId]/transcription/retry";
-import { recordingKeys } from "@api/queryKey/recording";
+import { recordingKeys, recordingMutationKeys } from "@api/queryKey/recording";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface RetryRecordingTranscriptionMutationVariables {
@@ -20,6 +20,7 @@ const useRetryRecordingTranscriptionMutation = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
+    mutationKey: recordingMutationKeys.transcriptionRetry(),
     mutationFn: (variables: RetryRecordingTranscriptionMutationVariables) =>
       retryRecordingTranscriptionApi(variables),
     onSuccess: () =>

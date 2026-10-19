@@ -1,5 +1,5 @@
 import { retryDocumentGenerationJobApi } from "@api/fetch/api/v1/workspaces/[workspaceId]/documentGenerationJobs/[jobId]/retry";
-import { recordingKeys } from "@api/queryKey/recording";
+import { recordingKeys, recordingMutationKeys } from "@api/queryKey/recording";
 import { captureCaughtError } from "@provider/sentry";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -46,6 +46,7 @@ const useRetryDocumentGenerationJobsMutation = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
+    mutationKey: recordingMutationKeys.documentGenerationRetry(),
     mutationFn: ({
       workspaceId,
       jobIds,

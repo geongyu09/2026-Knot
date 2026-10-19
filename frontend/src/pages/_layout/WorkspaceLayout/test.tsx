@@ -20,6 +20,7 @@ import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useSearchAnswerStore } from "@store/searchAnswerStore";
 import { useTranscriptPanelStore } from "@store/transcriptPanelStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ANALYTICS_SCROLL_ROOT_ATTRIBUTE } from "@constants/analytics";
 import { saveLastConversationId } from "@utils/lastConversation";
 import {
   act,
@@ -601,18 +602,20 @@ describe("WorkspaceLayout", () => {
     });
 
     const toastList = screen.getByTestId("toast-list");
-    const dockButton = screen.getByRole("button", { name: "무엇이든 요청하기" });
+    const dockButton = screen.getByRole("button", {
+      name: "무엇이든 요청하기",
+    });
 
     expect(within(toastList).getByText(SAVED)).toBeVisible();
     // 목록 바로 다음 칸에 독이 놓여요
-    expect(toastList.nextElementSibling).toContainElement(
-      dockButton,
-    );
+    expect(toastList.nextElementSibling).toContainElement(dockButton);
   });
 
   it("홈에서 탐색으로 이동해도 같은 토스트 목록을 유지한다", async () => {
     const { router } = renderLayout(TOAST_PATH);
-    fireEvent.click(await screen.findByRole("button", { name: `${SAVED} 알리기` }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: `${SAVED} 알리기` }),
+    );
     const list = screen.getByTestId("toast-list");
 
     await act(() => router.navigate(CHAT_PATH));
@@ -624,31 +627,45 @@ describe("WorkspaceLayout", () => {
 
   it("같은 레이아웃에서 이동한 뒤에도 열린 모달이 토스트를 띄울 수 있다", async () => {
     const { router } = renderLayout(TOAST_PATH);
-    fireEvent.click(await screen.findByRole("button", { name: "알림 모달 열기" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "알림 모달 열기" }),
+    );
 
     await act(() => router.navigate(CHAT_PATH));
     expect(await screen.findByText(CHAT_TEXT)).toBeInTheDocument();
-    expect(screen.getByRole("dialog", { name: "알림 모달" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "알림 모달" }),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "모달에서 알리기" }));
-    expect(within(screen.getByTestId("toast-list")).getByText(SAVED)).toBeVisible();
+    expect(
+      within(screen.getByTestId("toast-list")).getByText(SAVED),
+    ).toBeVisible();
   });
 
   it("다른 레이아웃으로 나가도 모달은 유지하고 이전 토스트만 정리한다", async () => {
     const { router } = renderLayout(TOAST_PATH);
-    fireEvent.click(await screen.findByRole("button", { name: "알림 모달 열기" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "알림 모달 열기" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "모달에서 알리기" }));
 
     await act(() => router.navigate(PATH_ROUTE.LOGIN));
 
-    expect(screen.getByRole("dialog", { name: "알림 모달" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "알림 모달" }),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("toast-list")).toBeEmptyDOMElement();
     fireEvent.click(screen.getByRole("button", { name: "모달에서 알리기" }));
-    expect(within(screen.getByTestId("toast-list")).getByText(SAVED)).toBeVisible();
+    expect(
+      within(screen.getByTestId("toast-list")).getByText(SAVED),
+    ).toBeVisible();
   });
 
   it("다른 워크스페이스를 불러오는 동안에도 같은 레이아웃의 토스트를 유지한다", async () => {
     const { router } = renderLayout(TOAST_PATH);
-    fireEvent.click(await screen.findByRole("button", { name: `${SAVED} 알리기` }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: `${SAVED} 알리기` }),
+    );
     const list = screen.getByTestId("toast-list");
     holdWorkspaceResponse();
 
@@ -661,14 +678,29 @@ describe("WorkspaceLayout", () => {
 
   it("다른 레이아웃으로 나갔다 돌아오면 이전 토스트가 다시 나타나지 않는다", async () => {
     const { router } = renderLayout(TOAST_PATH);
-    fireEvent.click(await screen.findByRole("button", { name: `${SAVED} 알리기` }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: `${SAVED} 알리기` }),
+    );
 
     await act(() => router.navigate(PATH_ROUTE.LOGIN));
     expect(screen.getByTestId("toast-list")).toBeEmptyDOMElement();
 
     await act(() => router.navigate(-1));
-    expect(await screen.findByRole("button", { name: `${SAVED} 알리기` })).toBeVisible();
+    expect(
+      await screen.findByRole("button", { name: `${SAVED} 알리기` }),
+    ).toBeVisible();
     expect(screen.getByTestId("toast-list")).toBeEmptyDOMElement();
+  });
+});
+
+describe("WorkspaceLayout의 워크스페이스 사용 기록", () => {
+  it("스크롤되는 본문(main)에 스크롤 깊이를 재는 표시를 단다", async () => {
+    renderLayout(HOME_PATH);
+    await screen.findByText(HOME_TEXT);
+
+    expect(screen.getByRole("main")).toHaveAttribute(
+      ANALYTICS_SCROLL_ROOT_ATTRIBUTE,
+    );
   });
 });
 
@@ -883,8 +915,13 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
   });
 
   it("새 대화 화면에서 독으로 보낸 질문과 흘러드는 답변을 보여주고, 접수된 대화 주소로 옮겨 간다 (SEARCH-R1)", async () => {
-    const { conversationId, questionMessageId, answerMessageId, deltas, evidences } =
-      searchAnswerStreamResponse;
+    const {
+      conversationId,
+      questionMessageId,
+      answerMessageId,
+      deltas,
+      evidences,
+    } = searchAnswerStreamResponse;
     const answerText = deltas.join("");
     const messagesRequests = respondMessages([
       {
@@ -910,7 +947,11 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
 
     expect(within(getConversation()).getByText(QUESTION)).toBeInTheDocument();
 
-    stream.send("accepted", { conversationId, questionMessageId, answerMessageId });
+    stream.send("accepted", {
+      conversationId,
+      questionMessageId,
+      answerMessageId,
+    });
     await waitForPath(
       router,
       getRouterPath({
@@ -923,9 +964,7 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
     );
 
     stream.send("delta", { answerMessageId, text: deltas[0] });
-    expect(
-      await findInConversation(deltas[0].trim()),
-    ).toBeInTheDocument();
+    expect(await findInConversation(deltas[0].trim())).toBeInTheDocument();
 
     stream.send("delta", { answerMessageId, text: deltas[1] });
     expect(
@@ -947,9 +986,7 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
     await waitFor(() => expect(messagesRequests.count).toBe(2));
     await waitFor(() => expect(queryClient.isFetching()).toBe(0));
 
-    expect(
-      within(getConversation()).getAllByText(answerText),
-    ).toHaveLength(1);
+    expect(within(getConversation()).getAllByText(answerText)).toHaveLength(1);
     expect(within(getConversation()).getAllByText(QUESTION)).toHaveLength(1);
     expect(within(getConversation()).getAllByRole("article")).toHaveLength(1);
   });
@@ -987,7 +1024,11 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
     await sendFromDock(QUESTION);
     await stream.waitForOpen();
     list.isAccepted = true;
-    stream.send("accepted", { conversationId, questionMessageId, answerMessageId });
+    stream.send("accepted", {
+      conversationId,
+      questionMessageId,
+      answerMessageId,
+    });
 
     expect(
       await waitFor(() => within(getChatList()).getByText(QUESTION)),
@@ -1063,7 +1104,10 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
     mockServer.use(
       http.post(SEARCH_ANSWER_RETRY_PATH, () =>
         HttpResponse.json(
-          { code: "ANSWER_ALREADY_IN_PROGRESS", message: "이미 답변을 만드는 중이에요" },
+          {
+            code: "ANSWER_ALREADY_IN_PROGRESS",
+            message: "이미 답변을 만드는 중이에요",
+          },
           { status: 409 },
         ),
       ),
@@ -1081,7 +1125,9 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
     expect(within(getConversation()).getAllByRole("article")).toHaveLength(
       savedQuestionCount + 1,
     );
-    expect(within(getLastTurn()).getByText(FOLLOW_UP_QUESTION)).toBeInTheDocument();
+    expect(
+      within(getLastTurn()).getByText(FOLLOW_UP_QUESTION),
+    ).toBeInTheDocument();
     expect(within(getLastTurn()).getByText(FAILED_TEXT)).toBeInTheDocument();
     expect(
       within(getLastTurn()).getByRole("button", { name: "다시 시도" }),
@@ -1308,9 +1354,9 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
     const stream = respondWithControlledSse(SEARCH_QUESTIONS_PATH);
     const { router } = renderLayout(CONVERSATION_PATH, <SearchConversation />);
     expect(
-      await within(await screen.findByRole("region", { name: "대화" })).findByText(
-        savedQuestions[0].content,
-      ),
+      await within(
+        await screen.findByRole("region", { name: "대화" }),
+      ).findByText(savedQuestions[0].content),
     ).toBeInTheDocument();
 
     await sendFromDock(FOLLOW_UP_QUESTION);

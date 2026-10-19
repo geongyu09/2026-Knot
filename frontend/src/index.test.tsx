@@ -2,6 +2,8 @@ import { useDialog } from "@provider/context/dialogContext";
 import CenteredLayout from "@pages/_layout/CenteredLayout";
 import { useToast } from "@provider/context/toastContext";
 import { act, fireEvent, screen } from "@testing-library/react";
+import { ANALYTICS_SCROLL_ROOT_ATTRIBUTE } from "@constants/analytics";
+import { attachAnalyticsWorkspace } from "@utils/analyticsWorkspace";
 import { syncAnalyticsUser } from "@utils/syncAnalyticsUser";
 import posthog from "posthog-js";
 import { useNavigate } from "react-router";
@@ -9,6 +11,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("posthog-js", () => ({ default: { init: vi.fn() } }));
 vi.mock("@utils/syncAnalyticsUser", () => ({ syncAnalyticsUser: vi.fn() }));
+// 테스트마다 모듈을 새로 불러와도 init에 넘긴 함수와 같은 함수인지 비교할 수 있게 고정해요
+vi.mock("@utils/analyticsWorkspace", () => ({
+  attachAnalyticsWorkspace: vi.fn(),
+}));
 
 const { NEXT_PATH, NEXT_TEXT } = vi.hoisted(() => ({
   NEXT_PATH: "/next",
@@ -135,6 +141,12 @@ describe("앱 진입점", () => {
         expect.objectContaining({
           api_host: "/relay/p",
           ui_host: "https://us.posthog.com",
+          before_send: attachAnalyticsWorkspace,
+          // 표시가 있는 본문을 먼저 재고, 없는 화면(랜딩 · 로그인)은 창 전체를 재요
+          scroll_root_selector: [
+            `[${ANALYTICS_SCROLL_ROOT_ATTRIBUTE}]`,
+            "html",
+          ],
         }),
       );
       expect(syncAnalyticsUser).toHaveBeenCalledTimes(1);

@@ -12,6 +12,8 @@ import AppErrorBoundary from "@provider/AppErrorBoundary";
 import AppProviders from "@provider/AppProviders";
 import { getRootErrorHandlers, initSentry } from "@provider/sentry";
 import { routes } from "@routes/routes";
+import { ANALYTICS_SCROLL_ROOT_ATTRIBUTE } from "@constants/analytics";
+import { attachAnalyticsWorkspace } from "@utils/analyticsWorkspace";
 import { syncAnalyticsUser } from "@utils/syncAnalyticsUser";
 import posthog from "posthog-js";
 
@@ -25,6 +27,10 @@ if (process.env.POSTHOG_KEY) {
     api_host: "/relay/p",
     ui_host: "https://us.posthog.com",
     defaults: "2026-08-30",
+    // 워크스페이스 화면의 이벤트에 workspace_id를 붙여요
+    before_send: attachAnalyticsWorkspace,
+    // 스크롤 깊이는 표시가 있는 본문을 먼저 재고, 없는 화면(랜딩 · 로그인)은 창 전체를 재요
+    scroll_root_selector: [`[${ANALYTICS_SCROLL_ROOT_ATTRIBUTE}]`, "html"],
   });
   syncAnalyticsUser(queryClient);
 }
