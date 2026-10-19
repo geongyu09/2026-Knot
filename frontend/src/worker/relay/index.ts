@@ -3,11 +3,12 @@ export interface Env {
   ASSETS: { fetch: (request: Request) => Promise<Response> };
 }
 
-type FetchUpstream = (request: Request) => Promise<Response>;
-
 /** Worker가 받는 중계 경로. wrangler의 `run_worker_first`와 맞춰야 해요 */
 export const RELAY_PATH = "/relay";
-/** PostHog로 넘기는 하위 경로. Sentry 같은 다른 중계는 `/relay` 아래 다른 하위 경로로 더해요 */
+/**
+ * PostHog로 넘기는 하위 경로. `src/index.tsx`의 `api_host`와 맞춰야 해요.
+ * Sentry 같은 다른 중계는 `/relay` 아래 다른 하위 경로로 더해요
+ */
 const POSTHOG_RELAY_PATH = `${RELAY_PATH}/p`;
 
 const POSTHOG_API_HOST = "us.i.posthog.com";
@@ -16,20 +17,24 @@ const POSTHOG_ASSET_HOST = "us-assets.i.posthog.com";
 const POSTHOG_ASSET_PATH_PREFIXES = ["/static/", "/array/"];
 
 const toPostHogUrl = (url: URL) => {
-  const path = url.pathname.slice(POSTHOG_RELAY_PATH.length) || "/";
+  const path = url.pathname.slice(POSTHOG_RELAY_PATH.length);
   const host = POSTHOG_ASSET_PATH_PREFIXES.some((prefix) =>
     path.startsWith(prefix),
   )
     ? POSTHOG_ASSET_HOST
     : POSTHOG_API_HOST;
 
-  return `https://${host}${path}${url.search}`;
+  // 경로를 문자열로 이어 붙이면 `.evil.com/x` 같은 경로가 호스트를 바꿔서, 호스트를 먼저 정하고 경로를 넣어요
+  const target = new URL(`https://${host}`);
+  target.pathname = path;
+  target.search = url.search;
+
+  return target;
 };
 
 /**
  * @description 우리 주소의 `/relay/p` 아래로 온 PostHog 요청을 PostHog로 넘기고 응답을 돌려줘요
  * @param request - 브라우저가 보낸 요청. 예: `POST /relay/p/i/v0/e/?ver=…`
- * @param fetchUpstream - PostHog로 요청을 보내는 함수. 테스트에서만 넘겨요
  * @returns PostHog 응답의 상태 · 본문 그대로, Set-Cookie만 지운 응답
  * @example
  * if (url.pathname.startsWith("/relay/p/")) return relayToPostHog(request);
@@ -37,10 +42,7 @@ const toPostHogUrl = (url: URL) => {
  * 우리 쿠키와 인증 헤더는 PostHog로 보내지 않아요. 같은 주소라 브라우저가 우리 쿠키를 함께 실어 보내기 때문이에요.
  * PostHog가 방문자 위치를 Cloudflare 데이터 센터가 아니라 실제 위치로 기록하도록 방문자 IP를 X-Forwarded-For로 넘겨요.
  */
-export const relayToPostHog = async (
-  request: Request,
-  fetchUpstream: FetchUpstream = fetch,
-) => {
+export const relayToPostHog = async (request: Request) => {
   const headers = new Headers(request.headers);
   headers.delete("Cookie");
   headers.delete("Authorization");
@@ -50,7 +52,7 @@ export const relayToPostHog = async (
   if (clientIp) headers.set("X-Forwarded-For", clientIp);
 
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
-  const upstreamResponse = await fetchUpstream(
+  const upstreamResponse = await fetch(
     new Request(toPostHogUrl(new URL(request.url)), {
       method: request.method,
       headers,
