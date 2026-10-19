@@ -20,6 +20,7 @@ import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useSearchAnswerStore } from "@store/searchAnswerStore";
 import { useTranscriptPanelStore } from "@store/transcriptPanelStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { saveLastConversationId } from "@utils/lastConversation";
 import {
   act,
   cleanup,
@@ -1334,5 +1335,189 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
     expect(within(lastTurn).getByText(FOLLOW_UP_QUESTION)).toBeInTheDocument();
     expect(within(lastTurn).getByText(answerText)).toBeInTheDocument();
     expect(router.state.location.pathname).toBe(CONVERSATION_PATH);
+  });
+
+  describe("GNB 탐색으로 돌아오기", () => {
+    const OTHER_WORKSPACE_ID = "2";
+    const savedQuestion = searchMessagesResponse.items[0].content;
+    const emptyText = "무엇을 찾고 있나요?";
+
+    const clickGnb = async (name: string) => {
+      await act(async () => {
+        fireEvent.click(
+          within(screen.getByRole("banner")).getByRole("button", { name }),
+        );
+      });
+    };
+
+    /** 대화 목록을 열어 새 채팅을 눌러요 */
+    const startNewChat = async () => {
+      fireEvent.click(screen.getByRole("button", { name: "대화 목록" }));
+      await act(async () => {
+        fireEvent.click(await screen.findByRole("button", { name: "새 채팅" }));
+      });
+    };
+
+    const getPath = (workspaceId: string, sessionId?: string) =>
+      sessionId === undefined
+        ? getRouterPath({ routeKey: "CHAT", params: { workspaceId } })
+        : getRouterPath({
+            routeKey: "CHAT_SESSION",
+            params: { workspaceId, sessionId },
+          });
+
+    // 마지막으로 본 대화는 브라우저에 남아 테스트끼리 이어지므로 비워요
+    afterEach(() => sessionStorage.clear());
+
+    it("대화를 보다가 홈에 다녀오면 GNB 탐색이 그 대화로 돌아가 기록을 다시 보여준다", async () => {
+      const { router } = renderLayout(
+        CONVERSATION_PATH,
+        <SearchConversation />,
+      );
+      await findInConversation(savedQuestion);
+
+      await clickGnb("홈");
+      expect(await screen.findByText(HOME_TEXT)).toBeInTheDocument();
+      await clickGnb("탐색");
+
+      expect(router.state.location.pathname).toBe(CONVERSATION_PATH);
+      expect(await findInConversation(savedQuestion)).toBeInTheDocument();
+    });
+
+    it("새 채팅으로 빈 대화를 연 뒤 홈에 다녀오면 GNB 탐색이 빈 새 대화를 보여준다", async () => {
+      const { router } = renderLayout(
+        CONVERSATION_PATH,
+        <SearchConversation />,
+      );
+      await findInConversation(savedQuestion);
+
+      await startNewChat();
+      await waitForPath(router, CHAT_PATH);
+      await clickGnb("홈");
+      expect(await screen.findByText(HOME_TEXT)).toBeInTheDocument();
+      await clickGnb("탐색");
+
+      expect(router.state.location.pathname).toBe(CHAT_PATH);
+      expect(await findInConversation(emptyText)).toBeInTheDocument();
+    });
+
+    it("이 탭에서 본 대화가 없으면 GNB 탐색이 빈 새 대화를 연다", async () => {
+      const { router } = renderLayout(HOME_PATH, <SearchConversation />);
+      expect(await screen.findByText(HOME_TEXT)).toBeInTheDocument();
+
+      await clickGnb("탐색");
+
+      expect(router.state.location.pathname).toBe(CHAT_PATH);
+      expect(await findInConversation(emptyText)).toBeInTheDocument();
+    });
+
+    it("워크스페이스마다 마지막으로 본 대화를 따로 기억한다", async () => {
+      const { router } = renderLayout(
+        CONVERSATION_PATH,
+        <SearchConversation />,
+      );
+      await findInConversation(savedQuestion);
+
+      await act(async () => {
+        await router.navigate(
+          getRouterPath({
+            routeKey: "WORKSPACE_HOME",
+            params: { workspaceId: OTHER_WORKSPACE_ID },
+          }),
+        );
+      });
+      expect(await screen.findByText(HOME_TEXT)).toBeInTheDocument();
+      await clickGnb("탐색");
+
+      expect(router.state.location.pathname).toBe(getPath(OTHER_WORKSPACE_ID));
+
+      await act(async () => {
+        await router.navigate(HOME_PATH);
+      });
+      expect(await screen.findByText(HOME_TEXT)).toBeInTheDocument();
+      await clickGnb("탐색");
+
+      expect(router.state.location.pathname).toBe(CONVERSATION_PATH);
+    });
+
+    it("새로고침해도 같은 탭에서는 GNB 탐색이 마지막으로 본 대화로 돌아간다", async () => {
+      renderLayout(CONVERSATION_PATH, <SearchConversation />);
+      await findInConversation(savedQuestion);
+
+      // 새로고침한 것처럼 화면을 지우고 홈으로 다시 들어와요. 브라우저에 남긴 값은 그대로 둬요
+      cleanup();
+      const { router } = renderLayout(HOME_PATH, <SearchConversation />);
+      expect(await screen.findByText(HOME_TEXT)).toBeInTheDocument();
+      await clickGnb("탐색");
+
+      expect(router.state.location.pathname).toBe(CONVERSATION_PATH);
+      expect(await findInConversation(savedQuestion)).toBeInTheDocument();
+    });
+
+    it("마지막으로 본 대화가 사라져 불러오지 못하면 기억을 비우고 빈 새 대화를 연다", async () => {
+      saveLastConversationId({
+        workspaceId: String(WORKSPACE_ID),
+        conversationId: Number(CONVERSATION_ID),
+      });
+      mockServer.use(
+        http.get(MESSAGES_PATH, () =>
+          HttpResponse.json(
+            {
+              code: "CONVERSATION_NOT_FOUND",
+              message: "대화를 찾을 수 없습니다.",
+            },
+            { status: 404 },
+          ),
+        ),
+      );
+      const { router } = renderLayout(HOME_PATH, <SearchConversation />);
+      expect(await screen.findByText(HOME_TEXT)).toBeInTheDocument();
+
+      await clickGnb("탐색");
+
+      await waitForPath(router, CHAT_PATH);
+      expect(await findInConversation(emptyText)).toBeInTheDocument();
+      // 뒤로 가기로 사라진 대화에 다시 갇히지 않게 그 기록을 바꿔 둬요
+      expect(router.state.historyAction).toBe("REPLACE");
+
+      await clickGnb("홈");
+      expect(await screen.findByText(HOME_TEXT)).toBeInTheDocument();
+      await clickGnb("탐색");
+
+      expect(router.state.location.pathname).toBe(CHAT_PATH);
+    });
+
+    it("새 대화의 첫 질문이 접수되면 그 대화를 기억해, 홈에 다녀와도 받던 답변을 이어서 보여준다 (SEARCH-R1)", async () => {
+      const { conversationId, questionMessageId, answerMessageId, deltas } =
+        searchAnswerStreamResponse;
+      const conversationPath = getPath(
+        String(WORKSPACE_ID),
+        String(conversationId),
+      );
+      respondMessages([]);
+      const stream = respondWithControlledSse(SEARCH_CONVERSATIONS_PATH);
+      const { router } = renderLayout(CHAT_PATH, <SearchConversation />);
+
+      await sendFromDock(QUESTION);
+      await stream.waitForOpen();
+      stream.send("accepted", {
+        conversationId,
+        questionMessageId,
+        answerMessageId,
+      });
+      await waitForPath(router, conversationPath);
+      stream.send("delta", { answerMessageId, text: deltas[0] });
+      await findInConversation(deltas[0].trim());
+
+      await clickGnb("홈");
+      expect(await screen.findByText(HOME_TEXT)).toBeInTheDocument();
+      await clickGnb("탐색");
+
+      expect(router.state.location.pathname).toBe(conversationPath);
+      stream.send("delta", { answerMessageId, text: deltas[1] });
+      expect(
+        await findInConversation(`${deltas[0]}${deltas[1]}`.trim()),
+      ).toBeInTheDocument();
+    });
   });
 });
