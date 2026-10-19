@@ -13,6 +13,7 @@ import useUploadRecordingAudioMutation from "@api/mutations/useUploadRecordingAu
 import { recordingKeys } from "@api/queryKey/recording";
 import { RECORDING_AUDIO_MODE } from "@constants/recording";
 import useNavigateToRecordingDocuments from "@hooks/domain/recording/useNavigateToRecordingDocuments";
+import useRecordingEndedAnalytics from "@hooks/domain/recording/useRecordingEndedAnalytics";
 import useNavigateToWorkspaceHome from "@hooks/domain/workspace/useNavigateToWorkspaceHome";
 import {
   type RecordingSession,
@@ -25,7 +26,6 @@ import {
 } from "@store/recordingStore/pcmChunkUploadQueue";
 import { UnsupportedPcmCollectorError } from "@store/recordingStore/pcmCollector";
 import { useQueryClient } from "@tanstack/react-query";
-import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { isClosedRecordingError } from "@utils/isClosedRecordingError";
 import { isRetryableAudioUploadError } from "@utils/isRetryableAudioUploadError";
 import { isUnreachableRecordingError } from "@utils/isUnreachableRecordingError";
@@ -576,44 +576,11 @@ const useRecordingControl = () => {
   );
 
   /**
-   * WebM 녹음을 끝낸 뒤 녹음한 파일 하나를 올려요. 올렸으면 `uploaded`, 끝냈지만 올리지 못했으면 `notUploaded`예요.
-   * 종료 요청이 실패해 녹음을 이어 가면 `notEnded`예요
-   */
-  const endWebmRecording = useCallback(
-    async (session: RecordingSession, proof: ControlProof) => {
-      try {
-        await endRecordingSession({ ...session, ...proof });
-      } catch (error) {
-        logRequestError({ feature: "recording", action: "녹음 종료", error });
-
-        // 서버에서 이미 끝났거나 버려진 녹음이면 올릴 곳이 없어 오디오를 버리고 끝낸 것으로 봐요
-        if (isClosedRecordingError(error)) {
-          clearRecording(session.workspaceId);
-
-          return "notUploaded";
-        }
-
-        useRecordingStore.getState().cancelEnding();
-
-        return "notEnded";
-      }
-
-      const audio = await useRecordingStore.getState().stopRecording();
-      const isUploaded = await uploadRecordedAudio({ ...session, audio });
-      clearRecording(session.workspaceId);
-
-      return isUploaded ? "uploaded" : "notUploaded";
-    },
-    [clearRecording, endRecordingSession, uploadRecordedAudio],
-  );
-
-  /**
    * 확인 창 없이 녹음을 끝내 올린 뒤 비워요. 이동은 부른 쪽이 정해요.
    * 결과는 `uploaded`(업로드 완료를 확인받음. PCM은 봉인해 끝냄)·`notUploaded`(끝냈지만 오디오를 올리지 못함)·`notEnded`예요.
-   * `notEnded`는 이미 끝내는 중이거나 종료 요청이 실패해 녹음을 이어 가는 경우예요.
-   * 끝냈으면(`uploaded` · `notUploaded`) 결과를 사용 기록(`recording_ended`)으로 보내요. 확인 창과 워크스페이스 옮기기가 모두 여기를 거쳐요
+   * `notEnded`는 이미 끝내는 중이거나 종료 요청이 실패해 녹음을 이어 가는 경우예요
    */
-  const endRecordingWithoutConfirm = useCallback(async () => {
+  const endAndUploadRecording = useCallback(async () => {
     const { session, isEnding, beginEnding } = useRecordingStore.getState();
     const proof = getRecordingControlProof();
     if (!session || !proof || isEnding) return "notEnded";
@@ -621,25 +588,42 @@ const useRecordingControl = () => {
     // 응답을 기다리는 동안 다시 눌러도 종료 요청이 겹치지 않게 먼저 표시해요
     beginEnding();
 
-    const result =
-      session.audioMode === "PCM16_CHUNKS_V1"
-        ? await endPcmRecording(session, proof)
-        : await endWebmRecording(session, proof);
-
-    if (result !== "notEnded") {
-      captureAnalyticsEvent({
-        event: "recording_ended",
-        properties: {
-          result: result === "uploaded" ? "uploaded" : "not_uploaded",
-          audio_mode: session.audioMode,
-          recording_id: session.recordingId,
-          workspace_id: session.workspaceId,
-        },
-      });
+    if (session.audioMode === "PCM16_CHUNKS_V1") {
+      return endPcmRecording(session, proof);
     }
 
-    return result;
-  }, [endPcmRecording, endWebmRecording]);
+    try {
+      await endRecordingSession({ ...session, ...proof });
+    } catch (error) {
+      logRequestError({ feature: "recording", action: "녹음 종료", error });
+
+      // 서버에서 이미 끝났거나 버려진 녹음이면 올릴 곳이 없어 오디오를 버리고 끝낸 것으로 봐요
+      if (isClosedRecordingError(error)) {
+        clearRecording(session.workspaceId);
+
+        return "notUploaded";
+      }
+
+      useRecordingStore.getState().cancelEnding();
+
+      return "notEnded";
+    }
+
+    const audio = await useRecordingStore.getState().stopRecording();
+    const isUploaded = await uploadRecordedAudio({ ...session, audio });
+    clearRecording(session.workspaceId);
+
+    return isUploaded ? "uploaded" : "notUploaded";
+  }, [
+    clearRecording,
+    endPcmRecording,
+    endRecordingSession,
+    uploadRecordedAudio,
+  ]);
+  // 확인 창과 워크스페이스 옮기기가 모두 이 함수로 끝내요. 끝낸 결과는 사용 기록으로도 보내요
+  const endRecordingWithoutConfirm = useRecordingEndedAnalytics(
+    endAndUploadRecording,
+  );
 
   const endRecording = useCallback(() => {
     // 끝내는 동안 다시 눌러도 이미 끝내는 중이라 확인 창을 또 띄우지 않아요
