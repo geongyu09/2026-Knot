@@ -468,6 +468,40 @@ describe("성능 측정 비율", () => {
   });
 });
 
+describe("중계 경로로 보내기", () => {
+  afterEach(async () => {
+    sentEvents.length = 0;
+    await Sentry.close();
+  });
+
+  it("광고 차단에 막히지 않게 Sentry 주소가 아니라 우리 주소의 중계 경로(/relay/s)로 보낸다", () => {
+    const transport = vi.fn(testTransport);
+
+    initSentry({ dsn: SENTRY_DSN, environment: "test", transport });
+
+    expect(transport).toHaveBeenCalledWith(
+      expect.objectContaining({ url: "/relay/s" }),
+    );
+  });
+
+  // 중계 Worker는 봉투 머리의 DSN을 보고 우리 프로젝트일 때만 넘겨요
+  it("보내는 봉투의 머리(첫 줄)에 DSN을 넣는다", async () => {
+    initSentry({
+      dsn: SENTRY_DSN,
+      environment: "test",
+      transport: testTransport,
+    });
+
+    sendEnvelope.mockClear();
+    Sentry.captureException(new Error("중계로 보낼 오류"));
+    await Sentry.flush();
+
+    const [[{ body }]] = sendEnvelope.mock.calls;
+    const [header] = textOf(body).split("\n");
+    expect(JSON.parse(header)).toMatchObject({ dsn: SENTRY_DSN });
+  });
+});
+
 // 초대 화면 주소(`/invite/:token`)에는 워크스페이스에 들어올 수 있는 토큰이 있어요. 리플레이는 주소를 그대로 기록해요
 describe("초대 화면 리플레이", () => {
   const INVITE_URL = "/invite/secret-token";
