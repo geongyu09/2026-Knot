@@ -8,6 +8,7 @@ import { devAuthHandlers, MOCK_AUTH_COOKIE_NAME, MOCK_AUTH_STATUS } from ".";
 const ME_URL = "http://localhost:3000/api/v1/auth/me";
 const NICKNAME_URL = "http://localhost:3000/api/v1/auth/nickname";
 const REFRESH_URL = "http://localhost:3000/api/v1/auth/refresh";
+const ACCEPT_URL = "http://localhost:3000/api/v1/invitations/accept";
 
 // axios(jsdom XHR)는 jar의 쿠키를 요청에 싣지 않아, fetch로 쿠키 헤더를 직접 실어 보내요
 const requestMe = (cookie?: string) =>
@@ -27,6 +28,16 @@ const requestRefresh = (cookie?: string) =>
   fetch(REFRESH_URL, {
     method: "POST",
     headers: cookie === undefined ? {} : { cookie },
+  });
+
+const requestAccept = (cookie?: string) =>
+  fetch(ACCEPT_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(cookie === undefined ? {} : { cookie }),
+    },
+    body: JSON.stringify({ credential: "X35D3S" }),
   });
 
 const memberCookie = `${MOCK_AUTH_COOKIE_NAME}=${MOCK_AUTH_STATUS.MEMBER}`;
@@ -95,6 +106,26 @@ describe("개발 브라우저 전용 인증 핸들러", () => {
       const response = await requestRefresh(memberCookie);
 
       expect(response.status).toBe(204);
+    });
+  });
+
+  describe("POST /api/v1/invitations/accept", () => {
+    it("로그인 쿠키가 없으면 401을 돌려준다", async () => {
+      const response = await requestAccept();
+
+      expect(response.status).toBe(401);
+    });
+
+    it("온보딩 쿠키만 있으면 아직 회원이 아니므로 401을 돌려준다", async () => {
+      const response = await requestAccept(onboardingCookie);
+
+      expect(response.status).toBe(401);
+    });
+
+    it("member 쿠키가 있으면 기본 핸들러가 참여를 받아 201을 돌려준다", async () => {
+      const response = await requestAccept(memberCookie);
+
+      expect(response.status).toBe(201);
     });
   });
 });
