@@ -247,9 +247,6 @@ ${exports}
         "process.env.POSTHOG_KEY": JSON.stringify(
           process.env.POSTHOG_KEY ?? "",
         ),
-        "process.env.POSTHOG_HOST": JSON.stringify(
-          process.env.POSTHOG_HOST ?? "",
-        ),
         "process.env.SENTRY_DSN": JSON.stringify(process.env.SENTRY_DSN ?? ""),
         // 배포 워크플로가 값을 비워 두면 빈 문자열이 와서 ??가 아니라 ||로 기본값을 정해요
         "process.env.SENTRY_ENVIRONMENT": JSON.stringify(
