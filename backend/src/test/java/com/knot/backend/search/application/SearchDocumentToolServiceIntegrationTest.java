@@ -48,7 +48,8 @@ import tools.jackson.databind.JsonNode;
 @Tag("integration")
 @ActiveProfiles("dev")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "knot.search.agent.enabled=true", "knot.search.agent.signing-key=test-signing-key-32-characters-minimum"})
+        "knot.search.agent.enabled=true", "knot.search.agent.signing-key=test-signing-key-32-characters-minimum",
+        "knot.search.agent.retrieval-mode=AGENT"})
 @Import(TestcontainersConfiguration.class)
 @TestApplicationProperties
 class SearchDocumentToolServiceIntegrationTest {
