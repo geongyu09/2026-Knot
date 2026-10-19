@@ -12,6 +12,7 @@ import AppErrorBoundary from "@provider/AppErrorBoundary";
 import AppProviders from "@provider/AppProviders";
 import { getRootErrorHandlers, initSentry } from "@provider/sentry";
 import { routes } from "@routes/routes";
+import { attachAnalyticsWorkspace } from "@utils/analyticsWorkspace";
 import { syncAnalyticsUser } from "@utils/syncAnalyticsUser";
 import posthog from "posthog-js";
 
@@ -25,6 +26,8 @@ if (process.env.POSTHOG_KEY) {
     api_host: "/relay/p",
     ui_host: "https://us.posthog.com",
     defaults: "2026-08-30",
+    // 워크스페이스 화면의 이벤트에 workspace_id를 붙여요
+    before_send: attachAnalyticsWorkspace,
   });
   syncAnalyticsUser(queryClient);
 }

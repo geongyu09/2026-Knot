@@ -20,6 +20,7 @@ import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useSearchAnswerStore } from "@store/searchAnswerStore";
 import { useTranscriptPanelStore } from "@store/transcriptPanelStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { attachAnalyticsWorkspace } from "@utils/analyticsWorkspace";
 import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { saveLastConversationId } from "@utils/lastConversation";
 import {
@@ -32,6 +33,7 @@ import {
   within,
 } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
+import type { CaptureResult } from "posthog-js";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SearchConversation from "@widgets/search/SearchConversation";
@@ -694,6 +696,41 @@ describe("WorkspaceLayout", () => {
       await screen.findByRole("button", { name: `${SAVED} 알리기` }),
     ).toBeVisible();
     expect(screen.getByTestId("toast-list")).toBeEmptyDOMElement();
+  });
+});
+
+describe("WorkspaceLayout의 워크스페이스 사용 기록", () => {
+  /** PostHog가 보내기 직전에 이벤트를 넘기는 것처럼, 지금 붙는 workspace_id를 읽어요 */
+  const getAttachedWorkspaceId = () =>
+    attachAnalyticsWorkspace({
+      uuid: "01a14f68-29c4-7ada-a1f8-5996005a8697",
+      event: "$pageview",
+      properties: {},
+    } as CaptureResult)?.properties.workspace_id;
+
+  it("워크스페이스 화면의 이벤트에는 그 workspace_id를 붙이고, 다른 워크스페이스로 옮기면 바꾸고, 워크스페이스 밖으로 나가면 붙이지 않는다", async () => {
+    const OTHER_WORKSPACE_ID = WORKSPACE_ID + 1;
+    const { router } = renderLayout(HOME_PATH);
+    await screen.findByText(HOME_TEXT);
+
+    expect(getAttachedWorkspaceId()).toBe(WORKSPACE_ID);
+
+    await act(() =>
+      router.navigate(
+        getRouterPath({
+          routeKey: "WORKSPACE_HOME",
+          params: { workspaceId: String(OTHER_WORKSPACE_ID) },
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(getAttachedWorkspaceId()).toBe(OTHER_WORKSPACE_ID),
+    );
+
+    await act(() => router.navigate(ELSEWHERE_PATH));
+    await screen.findByText("다른 화면");
+
+    expect(getAttachedWorkspaceId()).toBeUndefined();
   });
 });
 

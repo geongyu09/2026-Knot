@@ -6,6 +6,7 @@ import useTranscriptPanel from "@hooks/domain/document/useTranscriptPanel";
 import useRecordingLeaveWarning from "@hooks/domain/recording/useRecordingLeaveWarning";
 import useAbortSearchAnswerOnLeave from "@hooks/domain/search/useAbortSearchAnswerOnLeave";
 import useSearchAnswerAnalytics from "@hooks/domain/search/useSearchAnswerAnalytics";
+import useWorkspaceAnalytics from "@hooks/domain/workspace/useWorkspaceAnalytics";
 import useOpenEvidenceOnAnswerComplete from "@hooks/domain/search/useOpenEvidenceOnAnswerComplete";
 import useWorkspaceEntry from "@hooks/domain/workspace/useWorkspaceEntry";
 import useWorkspaceNav from "@hooks/domain/workspace/useWorkspaceNav";
@@ -77,6 +78,7 @@ export default function WorkspaceLayout() {
   useRecordingLeaveWarning();
   // 답변을 끊기 전의 상태로 떠남을 알아야 해서 useAbortSearchAnswerOnLeave보다 먼저 불러요
   useSearchAnswerAnalytics();
+  useWorkspaceAnalytics();
   useAbortSearchAnswerOnLeave();
   useOpenEvidenceOnAnswerComplete();
 
