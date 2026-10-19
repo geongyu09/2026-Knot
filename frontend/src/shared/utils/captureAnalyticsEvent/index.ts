@@ -46,6 +46,18 @@ interface AnalyticsEventMap {
     /** 끝날 때까지 받은 답변 글. 되묻기도 이 글로 세요. 접수 전에 실패하면 빈 문자열이에요 */
     answer: string;
   };
+  /** 탐색 답변이 끝나기 전(보내는 중 · 받는 중)에 그 대화 화면을 떠났어요. 접수 전(대화 주소가 생기기 전)은 세지 않아요 */
+  search_answer_left: {
+    /** 질문을 보낸 뒤 떠날 때까지 기다린 시간(초, 소수 첫째 자리까지) */
+    waited_seconds: number;
+  };
+  /** 답변을 기다리다 떠났던 그 대화 화면으로 같은 탭에서 돌아왔어요. 그사이 답변이 끊겼으면 보내지 않아요 */
+  search_answer_returned: {
+    /** 떠난 뒤 돌아올 때까지 걸린 시간(초, 소수 첫째 자리까지) */
+    away_seconds: number;
+    /** 돌아왔을 때 답변이 끝나 있었는지 */
+    is_answer_ready: boolean;
+  };
 }
 
 type AnalyticsEvent = keyof AnalyticsEventMap;
