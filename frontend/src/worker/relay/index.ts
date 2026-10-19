@@ -74,15 +74,23 @@ export const relayToPostHog = async (request: Request) => {
 /** Sentry로 넘기는 경로. `src/shared/provider/sentry`의 `tunnel`과 맞춰야 해요 */
 const SENTRY_RELAY_PATH = `${RELAY_PATH}/s`;
 
-// 우리 Sentry 프로젝트의 수집 주소와 ID예요. 개발 · 운영이 같은 프로젝트를 써요
+// 우리 Sentry 프로젝트의 수집 주소와 ID예요. 개발 · 운영이 같은 프로젝트를 써요.
+// 배포 워크플로가 넣는 저장소 변수 `SENTRY_DSN`과 같은 프로젝트여야 해요. 다르면 모든 envelope가 403이에요
 const SENTRY_INGEST_HOST = "o4512278291283968.ingest.us.sentry.io";
 const SENTRY_PROJECT_ID = "4512278350069760";
 const SENTRY_ENVELOPE_URL = `https://${SENTRY_INGEST_HOST}/api/${SENTRY_PROJECT_ID}/envelope/`;
 
+/** envelope 머리를 찾는 앞부분의 크기. SDK가 만드는 머리는 1KB 안팎이에요 */
+const MAX_ENVELOPE_HEADER_BYTES = 64 * 1024;
+
 /** envelope 첫 줄(머리)의 DSN을 꺼내요. 첫 줄이 JSON이 아니거나 DSN이 주소가 아니면 null이에요 */
 const readEnvelopeDsn = (body: ArrayBuffer) => {
-  // 뒤쪽 항목(리플레이 등)은 압축된 바이트라 첫 줄만 글자로 읽어요
-  const bytes = new Uint8Array(body);
+  // 뒤쪽 항목(리플레이 등)은 압축된 바이트라 첫 줄만 글자로 읽어요. 큰 본문을 끝까지 뒤지지 않게 앞부분에서만 찾아요
+  const bytes = new Uint8Array(
+    body,
+    0,
+    Math.min(body.byteLength, MAX_ENVELOPE_HEADER_BYTES),
+  );
   const headerEnd = bytes.indexOf("\n".charCodeAt(0));
   const headerLine = new TextDecoder().decode(
     headerEnd === -1 ? bytes : bytes.subarray(0, headerEnd),
@@ -103,8 +111,8 @@ const readEnvelopeDsn = (body: ArrayBuffer) => {
  * if (pathname === "/relay/s") return relayToSentry(request);
  *
  * 누구나 이 경로로 보낼 수 있어서, envelope 머리의 DSN이 우리 프로젝트일 때만 넘겨요. 목적지는 DSN에서 만들지 않고 고정해요.
- * 다른 프로젝트면 403, envelope 머리를 읽을 수 없으면 400, POST가 아니면 405예요.
- * 우리 쿠키와 인증 헤더는 Sentry로 보내지 않아요. 같은 주소라 브라우저가 우리 쿠키를 함께 실어 보내기 때문이에요.
+ * 다른 프로젝트면 403, envelope 머리를 앞 64KB 안에서 읽을 수 없으면 400, POST가 아니면 405예요.
+ * 요청 헤더는 `Content-Type`만 넘겨요. 같은 주소라 브라우저가 우리 쿠키를 함께 실어 보내고, 방문자 IP를 담은 헤더도 붙어 오기 때문이에요.
  */
 export const relayToSentry = async (request: Request) => {
   if (request.method !== "POST") {
@@ -122,10 +130,9 @@ export const relayToSentry = async (request: Request) => {
     return new Response("Forbidden", { status: 403 });
   }
 
-  const headers = new Headers(request.headers);
-  headers.delete("Cookie");
-  headers.delete("Authorization");
-  headers.delete("Host");
+  const headers = new Headers();
+  const contentType = request.headers.get("Content-Type");
+  if (contentType) headers.set("Content-Type", contentType);
 
   const upstreamResponse = await fetch(
     new Request(SENTRY_ENVELOPE_URL, { method: "POST", headers, body }),

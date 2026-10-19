@@ -190,6 +190,14 @@ describe("relayToSentry", () => {
       reason: "DSN이 주소가 아니면",
       body: toEnvelope({ event_id: "a1", dsn: "not a url" }),
     },
+    {
+      reason: "첫 줄이 앞 64KB 안에서 끝나지 않으면",
+      body: toEnvelope({
+        event_id: "a1",
+        dsn: OUR_DSN,
+        padding: "x".repeat(64 * 1024),
+      }),
+    },
   ])("$reason 넘기지 않고 400을 돌려준다", async ({ body }) => {
     const requests = captureSentryRequests();
 
@@ -210,7 +218,7 @@ describe("relayToSentry", () => {
     expect(requests).toHaveLength(0);
   });
 
-  it("우리 쿠키와 인증 헤더는 넘기지 않는다", async () => {
+  it("Content-Type만 넘기고, 쿠키 · 인증 · 방문자 IP 헤더는 넘기지 않는다", async () => {
     // msw가 켜져 있으면 본문 있는 요청의 헤더를 복사할 때 헤더가 빠져, 지우는 코드가 없어도 통과해요.
     // 그래서 이 테스트만 msw를 끄고 fetch를 바꿔 넘긴 요청을 봐요.
     // vi.spyOn으로 바꾸면 되돌린 뒤 msw를 다시 켜도 가로채지 못해, 다음 테스트가 실제 주소로 요청해요
@@ -222,13 +230,21 @@ describe("relayToSentry", () => {
     try {
       await relayToSentry(
         toRelayRequest(toEnvelope({ event_id: "a1", dsn: OUR_DSN }), {
-          headers: { Cookie: "KNOT_SESSION=abc", Authorization: "Bearer x" },
+          headers: {
+            "Content-Type": "text/plain;charset=UTF-8",
+            Cookie: "KNOT_SESSION=abc",
+            Authorization: "Bearer x",
+            "CF-Connecting-IP": "203.0.113.7",
+            "X-Forwarded-For": "203.0.113.7",
+            "X-Real-IP": "203.0.113.7",
+          },
         }),
       );
 
       const [upstream] = fetchUpstream.mock.calls[0] as [Request];
-      expect(upstream.headers.get("Cookie")).toBeNull();
-      expect(upstream.headers.get("Authorization")).toBeNull();
+      expect([...upstream.headers]).toEqual([
+        ["content-type", "text/plain;charset=UTF-8"],
+      ]);
     } finally {
       globalThis.fetch = originalFetch;
       mockServer.listen({ onUnhandledRequest: "error" });
