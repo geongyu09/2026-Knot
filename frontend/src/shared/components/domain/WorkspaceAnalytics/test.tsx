@@ -24,7 +24,12 @@ import {
 import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import SearchConversation from "@widgets/search/SearchConversation";
 import { http, HttpResponse } from "msw";
-import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
+import {
+  createMemoryRouter,
+  Outlet,
+  RouterProvider,
+  useLocation,
+} from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import WorkspaceAnalytics from ".";
@@ -65,6 +70,13 @@ const SEARCH_QUESTIONS_PATH =
 const QUESTION = "DB는 뭘로 정했어?";
 const FOLLOW_UP_QUESTION = "초기 스키마는 누가 정리했어?";
 
+/** React가 그린 화면의 주소를 보여요. 라우터의 주소는 화면을 그리기 전에 먼저 바뀌어서 따로 둬요 */
+function RenderedPath() {
+  const { pathname } = useLocation();
+
+  return <output aria-label="그려진 주소">{pathname}</output>;
+}
+
 /**
  * 라우트에서처럼 워크스페이스 레이아웃을 감싸 그려요. 탐색 화면에는 실제 대화 칸을 그려요.
  * 답변을 끊는 일은 레이아웃이 하므로, 레이아웃과 함께 그려야 떠남을 확인할 수 있어요
@@ -101,6 +113,7 @@ const renderWorkspaceAnalytics = (initialPath: string) => {
       {
         element: (
           <AppProviders routes={layouts}>
+            <RenderedPath />
             <Outlet />
           </AppProviders>
         ),
@@ -121,12 +134,13 @@ const renderWorkspaceAnalytics = (initialPath: string) => {
   return { router };
 };
 
-const waitForPath = (
-  router: ReturnType<typeof createMemoryRouter>,
-  pathname: string,
-) =>
+/**
+ * 그 주소의 화면이 그려질 때까지 기다려요. 라우터의 주소만 보면 화면을 그리기 전에 다음 이동을 할 수 있어요.
+ * 그러면 사용 기록 훅이 그 화면을 보지 못해, 느린 CI에서 떠남 기록이 빠졌어요
+ */
+const waitForRenderedPath = (pathname: string) =>
   waitFor(() => {
-    expect(router.state.location.pathname).toBe(pathname);
+    expect(screen.getByLabelText("그려진 주소").textContent).toBe(pathname);
   });
 
 const encoder = new TextEncoder();
@@ -254,7 +268,7 @@ describe("WorkspaceAnalytics의 탐색 사용 기록", () => {
     const sendAndAccept = async () => {
       at(0);
       const sent = await sendAndAcceptNewQuestion();
-      await waitForPath(sent.router, ANSWER_CONVERSATION_PATH);
+      await waitForRenderedPath(ANSWER_CONVERSATION_PATH);
 
       return sent;
     };
