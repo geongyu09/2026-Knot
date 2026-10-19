@@ -15,9 +15,6 @@ interface SearchAnswerState extends SearchAnswer {
    * 스트림을 끊는 데도 쓰고, 동작을 부른 요청이 지금 요청인지 가리는 표식으로도 써요.
    */
   controller: AbortController | null;
-
-  /** 지금 답변의 질문을 보낸 시각(ms). 보낸 질문이 없으면 `null`이에요. 답변에 걸린 시간을 사용 기록으로 보낼 때 써요 */
-  sentAt: number | null;
 }
 
 /** 다시 요청할 실패한 답변의 메시지 ID */
@@ -82,7 +79,6 @@ const IDLE_STATE: SearchAnswerState = {
   excludedDocumentCount: 0,
   failedCode: null,
   controller: null,
-  sentAt: null,
 };
 
 /**
@@ -118,7 +114,6 @@ export const useSearchAnswerStore = create<
         questionMessageId: retryOf?.questionMessageId ?? null,
         answerMessageId: retryOf?.answerMessageId ?? null,
         controller,
-        sentAt: Date.now(),
       });
 
       return controller;

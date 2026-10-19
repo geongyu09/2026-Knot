@@ -1698,4 +1698,176 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
       expect(getEvents("search_answer_left")).toHaveLength(0);
     });
   });
+
+  describe("탐색 답변 결과 사용 기록", () => {
+    const { conversationId, questionMessageId, answerMessageId } =
+      searchAnswerStreamResponse;
+    const SENT_AT = new Date("2026-10-19T03:00:00.000Z").getTime();
+    const at = (seconds: number) => vi.setSystemTime(SENT_AT + seconds * 1000);
+
+    const getResultEvents = () =>
+      vi
+        .mocked(captureAnalyticsEvent)
+        .mock.calls.map(([event]) => event)
+        .filter(({ event }) => event === "search_answer_result");
+
+    /** 새 대화 화면에서 질문을 보내고 접수된 상태로 만들어요 */
+    const sendFirstQuestion = async () => {
+      const stream = respondWithControlledSse(SEARCH_CONVERSATIONS_PATH);
+      const rendered = renderLayout(CHAT_PATH, <SearchConversation />);
+      await sendFromDock(QUESTION);
+      await stream.waitForOpen();
+      stream.send("accepted", {
+        conversationId,
+        questionMessageId,
+        answerMessageId,
+      });
+
+      return { ...rendered, stream };
+    };
+
+    beforeEach(() => {
+      vi.mocked(captureAnalyticsEvent).mockClear();
+      // 탐색 실패는 콘솔에 남기므로, 테스트 출력에 섞이지 않게 막아요
+      vi.spyOn(console, "error").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.mocked(console.error).mockRestore();
+    });
+
+    it("첫 질문의 답변이 끝나면 완료와 걸린 시간 · 질문 글 · 받은 답변 글을 한 번 보낸다", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      at(0);
+      const { stream } = await sendFirstQuestion();
+      stream.send("delta", { answerMessageId, text: "DB는 " });
+      stream.send("delta", { answerMessageId, text: "PostgreSQL이에요" });
+      await findInConversation("DB는 PostgreSQL이에요");
+
+      at(12.34);
+      stream.send("completed", { answerMessageId, status: "COMPLETED" });
+
+      await waitFor(() => expect(getResultEvents()).toHaveLength(1));
+      expect(getResultEvents()[0]).toEqual({
+        event: "search_answer_result",
+        properties: {
+          result: "completed",
+          is_retry: false,
+          is_first_question: true,
+          answer_seconds: 12.3,
+          question: QUESTION,
+          answer: "DB는 PostgreSQL이에요",
+        },
+      });
+    });
+
+    it("대화 화면에서 보낸 후속 질문의 답변이 중지되면 첫 질문이 아닌 중지로 보낸다", async () => {
+      const stream = respondWithControlledSse(SEARCH_QUESTIONS_PATH);
+      renderLayout(CONVERSATION_PATH, <SearchConversation />);
+      await sendFromDock(FOLLOW_UP_QUESTION);
+      await stream.waitForOpen();
+      stream.send("accepted", {
+        conversationId: Number(CONVERSATION_ID),
+        questionMessageId,
+        answerMessageId,
+      });
+      stream.send("stopped", { answerMessageId, status: "STOPPED" });
+
+      await waitFor(() => expect(getResultEvents()).toHaveLength(1));
+      expect(getResultEvents()[0].properties).toMatchObject({
+        result: "stopped",
+        is_first_question: false,
+        question: FOLLOW_UP_QUESTION,
+      });
+    });
+
+    it("접수 뒤에 답변이 실패하면 실패와 그때까지 받은 답변 글을 보낸다", async () => {
+      const { stream } = await sendFirstQuestion();
+      stream.send("delta", { answerMessageId, text: "끊기기 전까지 받은 답" });
+      await findInConversation("끊기기 전까지 받은 답");
+      stream.send("failed", {
+        answerMessageId,
+        status: "FAILED",
+        code: "LLM_STREAM_FAILED",
+      });
+
+      await waitFor(() => expect(getResultEvents()).toHaveLength(1));
+      expect(getResultEvents()[0].properties).toMatchObject({
+        result: "failed",
+        answer: "끊기기 전까지 받은 답",
+      });
+    });
+
+    it("접수 전에 질문이 거절되면 접수 전 실패와 빈 답변 글을 보낸다", async () => {
+      mockServer.use(
+        http.post(SEARCH_CONVERSATIONS_PATH, () =>
+          HttpResponse.json(
+            { code: "FORBIDDEN", message: "요청을 처리하지 못했어요" },
+            { status: 403 },
+          ),
+        ),
+      );
+      renderLayout(CHAT_PATH, <SearchConversation />);
+
+      await sendFromDock(QUESTION);
+
+      await waitFor(() => expect(getResultEvents()).toHaveLength(1));
+      expect(getResultEvents()[0].properties).toMatchObject({
+        result: "accept_failed",
+        question: QUESTION,
+        answer: "",
+      });
+    });
+
+    it("답변을 받는 중에 다른 대화를 열어 받기를 끊으면 결과를 보내지 않는다", async () => {
+      const { router, stream } = await sendFirstQuestion();
+      stream.send("delta", { answerMessageId, text: "받는 중" });
+      await findInConversation("받는 중");
+
+      await act(() => router.navigate(CONVERSATION_PATH));
+      await waitFor(() =>
+        expect(useSearchAnswerStore.getState().status).toBe("IDLE"),
+      );
+
+      expect(getResultEvents()).toHaveLength(0);
+    });
+
+    it("첫 질문이 접수되기 전에 다른 대화를 열어 받기를 끊으면 접수 전 실패로 보내지 않는다", async () => {
+      const stream = respondWithControlledSse(SEARCH_CONVERSATIONS_PATH);
+      const { router } = renderLayout(CHAT_PATH, <SearchConversation />);
+      await sendFromDock(QUESTION);
+      await stream.waitForOpen();
+
+      await act(() => router.navigate(CONVERSATION_PATH));
+      await waitFor(() =>
+        expect(useSearchAnswerStore.getState().status).toBe("IDLE"),
+      );
+
+      expect(getResultEvents()).toHaveLength(0);
+    });
+
+    it("실패한 답변을 다시 시도해 끝나면 다시 시도한 답변이라고 보낸다", async () => {
+      const [question, answer] = searchMessagesResponse.items;
+      respondMessages([
+        question,
+        { ...answer, content: "", status: "FAILED", evidences: [] },
+      ]);
+      renderLayout(CONVERSATION_PATH, <SearchConversation />);
+
+      await act(async () => {
+        fireEvent.click(
+          await screen.findByRole("button", { name: "다시 시도" }),
+        );
+      });
+
+      await waitFor(() => expect(getResultEvents()).toHaveLength(1));
+      expect(getResultEvents()[0].properties).toMatchObject({
+        result: "completed",
+        is_retry: true,
+        is_first_question: false,
+        question: question.content,
+      });
+    });
+  });
 });

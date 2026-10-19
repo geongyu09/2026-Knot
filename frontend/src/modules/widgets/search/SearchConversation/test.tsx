@@ -13,24 +13,12 @@ import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useSearchAnswerStore } from "@store/searchAnswerStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
-import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import SearchConversation from ".";
-
-vi.mock("@utils/captureAnalyticsEvent", () => ({
-  captureAnalyticsEvent: vi.fn(),
-}));
 
 const WORKSPACE_ID = "1";
 const CONVERSATION_ID = "10";
@@ -496,30 +484,6 @@ describe("SearchConversation", () => {
     ).toBeInTheDocument();
     expect(within(turns[0]).getByText(retriedAnswer)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-  });
-
-  it("'다시 시도'로 받은 답변이 끝나면 다시 시도한 답변이라고 사용 기록을 보낸다", async () => {
-    vi.mocked(captureAnalyticsEvent).mockClear();
-    respondWithFailedFirstAnswer();
-    renderConversation();
-
-    await act(async () => {
-      fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
-    });
-    await screen.findByText(searchAnswerRetryStreamResponse.deltas.join(""));
-
-    // 글자가 다 보인 뒤에 근거와 완료 이벤트가 이어 와요
-    await waitFor(() => expect(captureAnalyticsEvent).toHaveBeenCalledTimes(1));
-    expect(captureAnalyticsEvent).toHaveBeenCalledWith({
-      event: "search_answer_result",
-      properties: expect.objectContaining({
-        result: "completed",
-        is_retry: true,
-        is_first_question: false,
-        question: questions[0].content,
-        answer: searchAnswerRetryStreamResponse.deltas.join(""),
-      }),
-    });
   });
 
   it("'기록 N개에서 찾았어요'를 누르면 그 답변의 찾은 기록을 연다 (SEARCH-R2)", async () => {

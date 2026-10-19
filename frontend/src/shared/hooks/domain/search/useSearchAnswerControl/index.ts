@@ -10,7 +10,6 @@ import {
   useSearchAnswerStore,
 } from "@store/searchAnswerStore";
 import { useQueryClient } from "@tanstack/react-query";
-import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { logRequestError } from "@utils/logRequestError";
 import { useMatch } from "react-router";
 
@@ -78,8 +77,6 @@ interface RunAnswerParams {
  *   접수되면 첫 질문이 실패해 목록에서 빠져 있던 대화도 목록에 다시 나타나요.
  *   접수 전에 실패하면 저장된 실패 답변이 그대로 보여 다시 누를 수 있어요.
  * - 중단: 받기만 끊고 처음 상태로 돌아가요. 서버는 답변을 계속 만들어요(SEARCH-R8).
- * - 사용 기록: 끝난 결과(완료 · 중지 · 실패 · 접수 전 실패)를 걸린 시간 · 질문 글 · 받은 답변 글과 함께 `search_answer_result`로 보내요.
- *   홈 · 문서로 옮겨도 답변은 뒤에서 계속 받으므로 끝나면 보내요. 받기를 끊었으면 결과가 없어 보내지 않아요.
  */
 const useSearchAnswerControl = () => {
   const queryClient = useQueryClient();
@@ -109,23 +106,6 @@ const useSearchAnswerControl = () => {
         retryOf,
       });
       if (!controller) return { isAcceptFailed: false };
-
-      const sentAt = useSearchAnswerStore.getState().sentAt ?? Date.now();
-      const captureAnswerResult = (
-        result: "completed" | "stopped" | "failed" | "accept_failed",
-      ) =>
-        captureAnalyticsEvent({
-          event: "search_answer_result",
-          properties: {
-            result,
-            is_retry: retryOf !== undefined,
-            is_first_question: conversationId === undefined,
-            // 0.1초 단위로 반올림해요
-            answer_seconds: Math.round((Date.now() - sentAt) / 100) / 10,
-            question,
-            answer: useSearchAnswerStore.getState().text,
-          },
-        });
 
       // 첫 질문은 accepted가 와야 대화 ID를 알아요
       let acceptedConversationId = conversationId;
@@ -169,9 +149,6 @@ const useSearchAnswerControl = () => {
         if (result) {
           settle(controller, result.status);
           invalidateMessages();
-          captureAnswerResult(
-            result.status === "COMPLETED" ? "completed" : "stopped",
-          );
         }
 
         return { isAcceptFailed: false };
@@ -179,10 +156,7 @@ const useSearchAnswerControl = () => {
         logRequestError({ feature: "search", action: "탐색 질문", error });
         invalidateMessages();
 
-        const isAcceptFailed = fail(controller, error);
-        captureAnswerResult(isAcceptFailed ? "accept_failed" : "failed");
-
-        return { isAcceptFailed };
+        return { isAcceptFailed: fail(controller, error) };
       }
     },
     [isNewConversationScreen, navigateToChatSession, queryClient],
