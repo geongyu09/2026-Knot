@@ -22,6 +22,8 @@ interface AnalyticsEventMap {
     result: "completed" | "no_content" | "failed" | "audio_save_failed";
     /** 실패했을 때만 있어요. 전사에서 실패했는지, 문서 만들기에서 실패했는지예요 */
     failure_stage?: "transcription" | "document_generation";
+    /** 완료했을 때만 있어요. 그 녹음에서 만들어진 문서 수예요. 문서 보기의 스테퍼 전체 수와 같아요 */
+    document_count?: number;
     recording_id: number;
     workspace_id: number;
   };

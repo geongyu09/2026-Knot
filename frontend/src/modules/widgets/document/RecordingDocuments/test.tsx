@@ -1,4 +1,5 @@
 import { GetDocumentsResponseDto } from "@api/dto/document";
+import { GetRecordingResponseDto } from "@api/dto/recording";
 import { documentsResponse } from "@api/mock/responses/document";
 import { documentGenerationJobRetryResponse } from "@api/mock/responses/documentGenerationJob";
 import {
@@ -31,11 +32,16 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import RecordingDocuments from ".";
+
+vi.mock("@utils/captureAnalyticsEvent", () => ({
+  captureAnalyticsEvent: vi.fn(),
+}));
 
 const WORKSPACE_ID = 1;
 // 상태가 서로 다른 mock 녹음: 정리 중 · 내용 없음 · 문서 만들기 실패 · 전사 실패 · 정리 완료.
@@ -1795,5 +1801,157 @@ describe("RecordingDocuments의 다시 시도 실패 보고", () => {
 
     await expectFailedScreenWithoutRetry();
     expect(await flushEvents()).toHaveLength(0);
+  });
+});
+
+describe("RecordingDocuments의 정리 결과 기록", () => {
+  // 앞 describe의 테스트에서도 정리 결과가 기록되므로, 테스트마다 기록을 비우고 시작해요
+  beforeEach(() => {
+    vi.mocked(captureAnalyticsEvent).mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // 녹음 조회에 차례로 응답해요. 마지막 응답은 그 뒤로도 계속 돌려줘요
+  const respondRecordingInOrder = (...details: RecordingDetailResponse[]) => {
+    let requestCount = 0;
+    mockServer.use(
+      http.get(RECORDING_REQUEST, () => {
+        const detail = details[Math.min(requestCount, details.length - 1)];
+        requestCount += 1;
+        return HttpResponse.json(detail);
+      }),
+    );
+  };
+
+  const waitNextPoll = async () => {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+    });
+  };
+
+  const recordingTarget = {
+    recording_id: organizingRecording.recordingId,
+    workspace_id: WORKSPACE_ID,
+  };
+
+  it.each([
+    {
+      reason: "문서가 만들어지면 완료와 만들어진 문서 수를",
+      detail: completedRecording.detail,
+      properties: {
+        result: "completed",
+        document_count: new GetRecordingResponseDto(completedRecording.detail)
+          .documentGeneration?.succeededCount,
+      },
+    },
+    {
+      reason: "문서로 만들 내용이 없으면 내용 없음을",
+      detail: noContentRecording.detail,
+      properties: { result: "no_content" },
+    },
+    {
+      reason: "문서 만들기에 실패하면 문서 만들기 단계의 실패를",
+      detail: failedRecording.detail,
+      properties: { result: "failed", failure_stage: "document_generation" },
+    },
+    {
+      reason: "전사에 실패하면 전사 단계의 실패를",
+      detail: transcriptionFailedRecording.detail,
+      properties: { result: "failed", failure_stage: "transcription" },
+    },
+  ])(
+    "정리 중을 보던 중에 $reason 한 번 보낸다",
+    async ({ detail, properties }) => {
+      respondRecordingInOrder(organizingRecording.detail, detail);
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      renderRecordingDocuments(organizingRecording.recordingId);
+
+      await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE });
+      expect(captureAnalyticsEvent).not.toHaveBeenCalled();
+
+      await waitNextPoll();
+
+      await waitFor(() =>
+        expect(captureAnalyticsEvent).toHaveBeenCalledTimes(1),
+      );
+      expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+        event: "recording_documents_result",
+        properties: { ...properties, ...recordingTarget },
+      });
+    },
+  );
+
+  it.each([
+    { reason: "정리가 끝난", recording: completedRecording, text: "문서 화면" },
+    {
+      reason: "문서 만들기에 실패한",
+      recording: failedRecording,
+      text: FAILED_TITLE,
+    },
+    {
+      reason: "내용이 없던",
+      recording: noContentRecording,
+      text: NO_CONTENT_TITLE,
+    },
+  ])("이미 $reason 녹음을 열면 보내지 않는다", async ({ recording, text }) => {
+    renderRecordingDocuments(recording.recordingId);
+
+    expect(await screen.findByText(text)).toBeInTheDocument();
+    expect(captureAnalyticsEvent).not.toHaveBeenCalled();
+  });
+
+  it("실패 화면에서 다시 시도해 정리 중을 다시 본 뒤 정리가 끝나면 그 결과를 보낸다", async () => {
+    respondRecordingInOrder(
+      failedRecording.detail,
+      organizingRecording.detail,
+      completedRecording.detail,
+    );
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderRecordingDocuments(organizingRecording.recordingId);
+
+    fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+    await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE });
+    expect(captureAnalyticsEvent).not.toHaveBeenCalled();
+
+    await waitNextPoll();
+
+    await waitFor(() => expect(captureAnalyticsEvent).toHaveBeenCalledTimes(1));
+    expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+      event: "recording_documents_result",
+      properties: expect.objectContaining({ result: "completed" }),
+    });
+  });
+
+  it("끝낸 녹음의 오디오 저장이 끝내 실패하면 저장 실패를 보낸다", async () => {
+    // 저장 실패는 안내 없이 콘솔에만 남기므로, 테스트 출력에 섞이지 않게 막아요
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    // 끝냈지만 전사가 시작되기 전이라 저장 상태를 함께 조회하는 녹음이에요
+    respondRecordingInOrder({
+      ...organizingRecording.detail,
+      transcriptionAttemptId: null,
+      transcriptionStatus: null,
+      documentGeneration: null,
+    });
+    mockServer.use(
+      http.get(AUDIO_SAVE_REQUEST, () =>
+        HttpResponse.json({
+          ...recordingAudioSaveResponse,
+          audioSaveStatus: "FAILED",
+          failureCode: "AUDIO_STORAGE_UNAVAILABLE",
+        }),
+      ),
+    );
+
+    renderRecordingDocuments(organizingRecording.recordingId);
+
+    expect(await screen.findByText("워크스페이스 홈")).toBeInTheDocument();
+    expect(captureAnalyticsEvent).toHaveBeenCalledTimes(1);
+    expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+      event: "recording_documents_result",
+      properties: { result: "audio_save_failed", ...recordingTarget },
+    });
   });
 });
