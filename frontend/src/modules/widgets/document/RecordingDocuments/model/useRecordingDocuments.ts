@@ -3,12 +3,10 @@ import useRetryDocumentGenerationJobsMutation from "@api/mutations/useRetryDocum
 import useRecordingAudioSaveQuery from "@api/queries/useRecordingAudioSaveQuery";
 import useRecordingQuery from "@api/queries/useRecordingQuery";
 import useRedirectToLoginOnUnauthorized from "@hooks/domain/auth/useRedirectToLoginOnUnauthorized";
-import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { getRecordingDocumentsStatus } from "@utils/getRecordingDocumentsStatus";
 import { isUnauthorizedError } from "@utils/isUnauthorizedError";
 import { useEffect, useState } from "react";
 
-import { useCaptureRecordingDocumentsResult } from "./useCaptureRecordingDocumentsResult";
 import { useTranscriptionRetry } from "./useTranscriptionRetry";
 
 interface UseRecordingDocumentsParams {
@@ -24,19 +22,6 @@ const isUnrecoverableLoadError = (error: unknown) =>
 const isRetryRejectedError = (error: unknown) =>
   isHttpError(error, HTTP_ERROR_TYPE.conflict) ||
   isHttpError(error, HTTP_ERROR_TYPE.notFound);
-
-type DocumentRetryResults = NonNullable<
-  ReturnType<typeof useRetryDocumentGenerationJobsMutation>["data"]
->;
-
-/** 작업마다 보낸 문서 다시 시도의 결과를 사용 기록의 결과 하나로 묶어요 */
-const getDocumentRetryResult = (results: DocumentRetryResults) => {
-  if (results.some(({ isAccepted }) => isAccepted)) return "accepted";
-
-  return results.every(({ error }) => isRetryRejectedError(error))
-    ? "rejected"
-    : "error";
-};
 
 /**
  * 정리 화면이 그릴 상태(`viewStatus`)를 정해요. 주소에서 읽은 id를 확인하지 않고 그대로 조회하고, 잘못된 id는 서버 응답(400 · 404)으로 알아요.
@@ -67,13 +52,9 @@ const getDocumentRetryResult = (results: DocumentRetryResults) => {
  * 실패한 작업이 여러 개면 한 번에 모두 다시 시도해요. 하나라도 접수되면 녹음 상태를 다시 받아 정리 중으로 돌아가요.
  * 남은 실패 작업이 모두 거절된(409 · 404) 작업이면 더 시도할 수 없어 `retryGeneration`을 없애요.
  * 네트워크 · 서버 문제로 실패한 작업은 거절된 것이 아니라 다시 시도할 수 있어요.
- * 응답은 한 번에 묶어 사용 기록(`recording_documents_retry`)으로 보내요. 하나라도 접수되면 접수, 모두 거절(409 · 404)이면 거절, 그 밖은 오류예요.
- * 로그인이 풀린(401) 작업이 있으면 다시 시도의 결과가 아니라 보내지 않아요.
  * 409는 화면이 아는 녹음 상태와 서버의 녹음 상태가 다를 수 있다는 응답이라, 녹음 상태를 다시 조회해요.
  * 서버에서 이미 정리 중이거나 정리가 끝났으면 그 상태의 화면으로 바뀌어요.
  * 이 조회가 끝날 때까지도 다시 시도 중(`isRetrying`)이에요.
- *
- * 정리 중을 본 뒤 결과가 정해지면 그 결과를 사용 기록으로 보내요(`useCaptureRecordingDocumentsResult`).
  *
  * 쓰는 쪽이 구조분해해서 받을 수 있게, 어느 상태든 같은 이름의 값을 모두 돌려줘요.
  */
@@ -190,35 +171,12 @@ export const useRecordingDocuments = ({
   const isTranscriptionFailed =
     viewStatus === "failed" && recording?.transcriptionStatus === "FAILED";
 
-  useCaptureRecordingDocumentsResult({
-    workspaceId,
-    recordingId,
-    viewStatus,
-    isTranscriptionFailed,
-    documentCount: recording?.documentGeneration?.succeededCount,
-  });
-
   const retryDocumentGeneration = canRetry
     ? () =>
         requestRetry(
           { workspaceId, jobIds: failedJobIds },
           {
             onSuccess: async (results) => {
-              const retryErrors = results.map(
-                ({ error: retryError }) => retryError,
-              );
-              if (!retryErrors.some(isUnauthorizedError)) {
-                captureAnalyticsEvent({
-                  event: "recording_documents_retry",
-                  properties: {
-                    stage: "document_generation",
-                    result: getDocumentRetryResult(results),
-                    recording_id: recordingId,
-                    workspace_id: workspaceId,
-                  },
-                });
-              }
-
               const conflictedJobIds = results
                 .filter(({ error: retryError }) =>
                   isHttpError(retryError, HTTP_ERROR_TYPE.conflict),
