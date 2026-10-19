@@ -62,6 +62,7 @@ describe("trackRecordingDocumentsRetry", () => {
   it.each([
     { reason: "로그인이 풀렸으면(401)", errors: [unauthorized] },
     { reason: "작업 하나라도 로그인이 풀렸으면", errors: [null, unauthorized] },
+    { reason: "보낸 요청이 없으면", errors: [] },
   ])("$reason 보내지 않는다", ({ errors }) => {
     trackRecordingDocumentsRetry({
       stage: "transcription",

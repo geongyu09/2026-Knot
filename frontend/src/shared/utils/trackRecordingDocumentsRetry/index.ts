@@ -30,6 +30,7 @@ const getRetryResult = (errors: unknown[]) => {
  * trackRecordingDocumentsRetry({ stage: "transcription", errors: [null], workspaceId, recordingId });
  *
  * 로그인이 풀린(401) 요청이 있으면 다시 시도의 결과가 아니라 로그인 화면으로 가는 것이라 보내지 않아요.
+ * 보낸 요청이 없으면(빈 목록) 서버 응답도 없어 보내지 않아요.
  */
 export const trackRecordingDocumentsRetry = ({
   stage,
@@ -37,7 +38,8 @@ export const trackRecordingDocumentsRetry = ({
   workspaceId,
   recordingId,
 }: TrackRecordingDocumentsRetryParams) => {
-  if (errors.some(isUnauthorizedError)) return;
+  // 빈 목록은 `every`가 true라 그대로 두면 거절로 세어져요
+  if (errors.length === 0 || errors.some(isUnauthorizedError)) return;
 
   captureAnalyticsEvent({
     event: "recording_documents_retry",
