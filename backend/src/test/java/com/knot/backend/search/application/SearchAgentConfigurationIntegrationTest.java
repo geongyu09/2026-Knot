@@ -17,8 +17,8 @@ import org.springframework.test.context.ActiveProfiles;
 @ActiveProfiles("dev")
 @SpringBootTest(properties = {"knot.search.agent.enabled=true", "knot.search.worker.enabled=true",
         "knot.search.worker.poll-interval=PT1H", "knot.search.agent.signing-key=test-key-with-at-least-32-characters",
-        "knot.llm.enabled=true", "knot.llm.base-url=http://127.0.0.1:9999", "knot.llm.api-token=test-token",
-        "knot.llm.model=test-model"})
+        "knot.search.agent.retrieval-mode=AGENT", "knot.llm.enabled=true", "knot.llm.base-url=http://127.0.0.1:9999",
+        "knot.llm.api-token=test-token", "knot.llm.model=test-model"})
 @Import(TestcontainersConfiguration.class)
 @TestApplicationProperties
 class SearchAgentConfigurationIntegrationTest {
