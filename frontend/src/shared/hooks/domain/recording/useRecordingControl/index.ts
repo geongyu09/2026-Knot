@@ -621,9 +621,8 @@ const useRecordingControl = () => {
     uploadRecordedAudio,
   ]);
   // 확인 창과 워크스페이스 옮기기가 모두 이 함수로 끝내요. 끝낸 결과는 사용 기록으로도 보내요
-  const endRecordingWithoutConfirm = useRecordingEndedAnalytics(
-    endAndUploadRecording,
-  );
+  const { endAndTrackRecording: endRecordingWithoutConfirm } =
+    useRecordingEndedAnalytics(endAndUploadRecording);
 
   const endRecording = useCallback(() => {
     // 끝내는 동안 다시 눌러도 이미 끝내는 중이라 확인 창을 또 띄우지 않아요

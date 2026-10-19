@@ -13,8 +13,8 @@ type EndRecording = () => Promise<
  * 끝내기의 결과는 상태에 남지 않고 함수의 반환값으로만 나와서, 지켜보지 않고 감싸요. 감싼 함수의 동작과 반환값은 그대로예요.
  * 끝내는 동안 녹음 세션이 비워지므로 끝내기 전에 세션을 읽어 둬요.
  */
-const useRecordingEndedAnalytics = (endRecording: EndRecording) =>
-  useCallback(async () => {
+const useRecordingEndedAnalytics = (endRecording: EndRecording) => {
+  const endAndTrackRecording = useCallback(async () => {
     const { session } = useRecordingStore.getState();
     const result = await endRecording();
 
@@ -22,5 +22,8 @@ const useRecordingEndedAnalytics = (endRecording: EndRecording) =>
 
     return result;
   }, [endRecording]);
+
+  return { endAndTrackRecording };
+};
 
 export default useRecordingEndedAnalytics;
