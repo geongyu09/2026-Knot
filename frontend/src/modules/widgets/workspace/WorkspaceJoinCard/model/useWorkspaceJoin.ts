@@ -5,6 +5,8 @@ import useNavigateToJoinError from "@hooks/domain/workspace/useNavigateToJoinErr
 import useNavigateToWorkspace from "@hooks/domain/workspace/useNavigateToWorkspace";
 import useNavigateToWorkspaceHome from "@hooks/domain/workspace/useNavigateToWorkspaceHome";
 import useWorkspaceJoinState from "@hooks/domain/workspace/useWorkspaceJoinState";
+import { getRouterPath } from "@routes/PATH_ROUTE";
+import { saveAuthReturnPath } from "@utils/authReturnPath";
 import { isUnauthorizedError } from "@utils/isUnauthorizedError";
 import { useEffect } from "react";
 
@@ -21,8 +23,10 @@ const isJoinRejectedError = (error: unknown) =>
  *
  * `참여할게요`는 state의 credential로 참여 API를 부르고, 기존 멤버십(200)·새 멤버십(201) 모두
  * 응답의 workspaceId로 홈에 가요. 요청 중에는 버튼을 로딩으로 잠가요.
- * 401은 로그인으로, 404·429는 초대 링크 오류 화면으로 `replace` 이동하고, 그 외(네트워크·5xx)는
- * 버튼을 다시 열어 재시도할 수 있게 둬요.
+ * 401은 로그인 뒤 돌아올 초대 주소(`/invite/<credential>`)를 기억하고 로그인으로, 404·429는 초대 링크
+ * 오류 화면으로 `replace` 이동하고, 그 외(네트워크·5xx)는 버튼을 다시 열어 재시도할 수 있게 둬요.
+ * 백엔드가 로그인 뒤 고정 주소로만 보내서, 돌아올 곳은 프론트가 기억해요. 초대 코드로 들어와
+ * credential이 6자 코드여도 같은 주소를 저장하고, 미리보기 API가 코드로 분류해 그대로 동작해요.
  */
 export const useWorkspaceJoin = () => {
   const { joinState } = useWorkspaceJoinState();
@@ -44,13 +48,21 @@ export const useWorkspaceJoin = () => {
   const handleJoin = () => {
     if (joinState === undefined || isPending) return;
 
+    const { credential } = joinState;
+
     mutate(
-      { credential: joinState.credential },
+      { credential },
       {
         onSuccess: ({ workspaceId }) =>
           navigateToWorkspaceHome({ workspaceId: String(workspaceId) }),
         onError: (error) => {
           if (isUnauthorizedError(error)) {
+            saveAuthReturnPath(
+              getRouterPath({
+                routeKey: "INVITE",
+                params: { token: credential },
+              }),
+            );
             navigateToLogin({ replace: true });
             return;
           }
