@@ -28,6 +28,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { useRecordingStore } from "@store/recordingStore";
 import { useSearchAnswerStore } from "@store/searchAnswerStore";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { formatRecordingTime } from "@utils/formatRecordingTime";
 import { getRecordingStartProof } from "@utils/recordingControlProof";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,6 +37,10 @@ import WorkspaceDock from ".";
 import { DOCK_HINT_MAX_SEEN_COUNT, DOCK_HINT_TEXT } from "./constants/dockHint";
 
 // 이 파일은 WebM 녹음만 보므로, PCM 켜기(#799) 뒤에도 WebM으로 고정해요. PCM 시작은 useRecordingControl 테스트가 봐요
+vi.mock("@utils/captureAnalyticsEvent", () => ({
+  captureAnalyticsEvent: vi.fn(),
+}));
+
 vi.mock("@constants/recording", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@constants/recording")>()),
   RECORDING_AUDIO_MODE: "FINAL_WEBM_V1",
@@ -1055,7 +1060,9 @@ describe("WorkspaceDock", () => {
 
         expandDock();
 
-        expect(screen.getByRole("img", { name: "녹음 중" })).toBeInTheDocument();
+        expect(
+          screen.getByRole("img", { name: "녹음 중" }),
+        ).toBeInTheDocument();
         expect(screen.getByText(OTHER_TAB_ELAPSED_TIME)).toBeInTheDocument();
         expect(
           screen.queryByRole("button", { name: "회의 녹음 시작" }),
@@ -1234,6 +1241,189 @@ describe("WorkspaceDock", () => {
           expect(useRecordingStore.getState().status).toBe("paused");
         },
       );
+    });
+  });
+
+  describe("탐색 답변 결과를 사용 기록으로 보낸다", () => {
+    const encoder = new TextEncoder();
+    const { conversationId, questionMessageId, answerMessageId } =
+      searchAnswerStreamResponse;
+    const toFrame = (event: string, data: object) =>
+      encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    const ACCEPTED_FRAME = toFrame("accepted", {
+      conversationId,
+      questionMessageId,
+      answerMessageId,
+    });
+    const toDeltaFrame = (text: string) =>
+      toFrame("delta", { answerMessageId, text });
+
+    /** 첫 질문 응답 스트림을 열어 두고, 테스트가 프레임을 하나씩 보내 닫게 해요 */
+    const holdSearchStream = () => {
+      let streamController: ReadableStreamDefaultController<Uint8Array>;
+      mockServer.use(
+        http.post(
+          SEARCH_CONVERSATIONS_PATH,
+          () =>
+            new HttpResponse(
+              new ReadableStream<Uint8Array>({
+                start(controller) {
+                  streamController = controller;
+                },
+              }),
+              { headers: { "Content-Type": "text/event-stream" } },
+            ),
+        ),
+      );
+
+      return {
+        send: (...frames: Uint8Array[]) =>
+          act(async () => {
+            frames.forEach((frame) => streamController.enqueue(frame));
+          }),
+        close: () => act(async () => streamController.close()),
+      };
+    };
+
+    const getResultEvents = () =>
+      vi
+        .mocked(captureAnalyticsEvent)
+        .mock.calls.map(([event]) => event)
+        .filter(({ event }) => event === "search_answer_result");
+
+    beforeEach(() => {
+      vi.mocked(captureAnalyticsEvent).mockClear();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("첫 질문의 답변이 끝나면 완료와 걸린 시간 · 질문 글 · 받은 답변 글을 한 번 보낸다", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-19T03:00:00.000Z"));
+      const stream = holdSearchStream();
+      renderDock();
+      expandDock();
+
+      await sendQuestion();
+      await stream.send(
+        ACCEPTED_FRAME,
+        toDeltaFrame("DB는 "),
+        toDeltaFrame("PostgreSQL이에요"),
+      );
+      vi.setSystemTime(new Date("2026-10-19T03:00:12.340Z"));
+      await stream.send(
+        toFrame("completed", { answerMessageId, status: "COMPLETED" }),
+      );
+      await stream.close();
+
+      await waitFor(() => expect(getResultEvents()).toHaveLength(1));
+      expect(getResultEvents()[0]).toEqual({
+        event: "search_answer_result",
+        properties: {
+          result: "completed",
+          is_retry: false,
+          is_first_question: true,
+          answer_seconds: 12.3,
+          question: QUESTION,
+          answer: "DB는 PostgreSQL이에요",
+        },
+      });
+    });
+
+    it("탐색 대화 화면에서 보낸 질문은 첫 질문이 아니라고 보낸다", async () => {
+      renderDock(CONVERSATION_PATH);
+
+      await sendQuestion();
+
+      await waitFor(() => expect(getResultEvents()).toHaveLength(1));
+      expect(getResultEvents()[0].properties).toMatchObject({
+        result: "completed",
+        is_first_question: false,
+      });
+    });
+
+    it("답변이 중지로 끝나면 중지를 보낸다", async () => {
+      const stream = holdSearchStream();
+      renderDock();
+      expandDock();
+
+      await sendQuestion();
+      await stream.send(
+        ACCEPTED_FRAME,
+        toFrame("stopped", { answerMessageId, status: "STOPPED" }),
+      );
+      await stream.close();
+
+      await waitFor(() => expect(getResultEvents()).toHaveLength(1));
+      expect(getResultEvents()[0].properties).toMatchObject({
+        result: "stopped",
+      });
+    });
+
+    it("접수 뒤에 답변이 실패하면 실패와 그때까지 받은 답변 글을 보낸다", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const stream = holdSearchStream();
+      renderDock();
+      expandDock();
+
+      await sendQuestion();
+      await stream.send(
+        ACCEPTED_FRAME,
+        toDeltaFrame("끊기기 전까지 받은 답"),
+        toFrame("failed", {
+          answerMessageId,
+          status: "FAILED",
+          code: "AI_TIMEOUT",
+        }),
+      );
+      await stream.close();
+
+      await waitFor(() => expect(getResultEvents()).toHaveLength(1));
+      expect(getResultEvents()[0].properties).toMatchObject({
+        result: "failed",
+        question: QUESTION,
+        answer: "끊기기 전까지 받은 답",
+      });
+    });
+
+    it("접수 전에 질문이 거절되면 접수 전 실패를 보낸다", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      mockServer.use(
+        http.post(SEARCH_CONVERSATIONS_PATH, () =>
+          HttpResponse.json(
+            { code: "FORBIDDEN", message: "요청을 처리하지 못했어요" },
+            { status: 403 },
+          ),
+        ),
+      );
+      renderDock(CHAT_PATH);
+
+      await sendQuestion();
+
+      await waitFor(() => expect(getResultEvents()).toHaveLength(1));
+      expect(getResultEvents()[0].properties).toMatchObject({
+        result: "accept_failed",
+        question: QUESTION,
+        answer: "",
+      });
+    });
+
+    it("답변을 받는 중에 받기를 끊으면(다른 대화를 열거나 워크스페이스를 나감) 보내지 않는다", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const stream = holdSearchStream();
+      renderDock();
+      expandDock();
+
+      await sendQuestion();
+      await stream.send(ACCEPTED_FRAME, toDeltaFrame("받는 중"));
+      act(() => useSearchAnswerStore.getState().abort());
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+
+      expect(getResultEvents()).toHaveLength(0);
     });
   });
 });

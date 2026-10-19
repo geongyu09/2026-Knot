@@ -44,6 +44,9 @@ describe("captureAnalyticsEvent", () => {
         result: "completed",
         is_retry: false,
         is_first_question: true,
+        answer_seconds: 3.2,
+        question: "지난주에 정한 DB는?",
+        answer: "PostgreSQL이에요",
       },
     });
 

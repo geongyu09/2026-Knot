@@ -7,7 +7,7 @@ import type { RecordingAudioMode } from "@/shared/types/recording";
  *
  * 이름은 PostHog 관례대로 snake_case로 쓰고, 한 번 정하면 바꾸지 않아요. 바꾸면 PostHog에서 이전 기록과 다른 이벤트로 갈라져요.
  * 읽기 쉬운 한글 이름은 PostHog의 액션 · 인사이트에 붙여요.
- * 질문 글 · 문서 내용 같은 본문은 넣지 않고, id와 결과 값만 넣어요.
+ * 문서 제목 · 내용은 넣지 않아요. 탐색 질문 글 · 답변 글은 MVP 단계에서 자세히 보려고 `search_answer_result`에만 넣어요.
  */
 interface AnalyticsEventMap {
   /** 녹음을 끝내고 업로드 결과가 정해졌어요. 끝내지 못했으면 보내지 않아요 */
@@ -39,6 +39,12 @@ interface AnalyticsEventMap {
     result: "completed" | "stopped" | "failed" | "accept_failed";
     is_retry: boolean;
     is_first_question: boolean;
+    /** 질문을 보낸 뒤 끝날 때까지 걸린 시간(초, 소수 첫째 자리까지) */
+    answer_seconds: number;
+    /** 보낸 질문 글 */
+    question: string;
+    /** 끝날 때까지 받은 답변 글. 되묻기도 이 글로 세요. 접수 전에 실패하면 빈 문자열이에요 */
+    answer: string;
   };
 }
 
