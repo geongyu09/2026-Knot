@@ -2,6 +2,8 @@ import { HTTP_ERROR_TYPE, isHttpError } from "@api/httpClient/error";
 import useRetryRecordingTranscriptionMutation from "@api/mutations/useRetryRecordingTranscriptionMutation";
 import type useRecordingQuery from "@api/queries/useRecordingQuery";
 import useRedirectToLoginOnUnauthorized from "@hooks/domain/auth/useRedirectToLoginOnUnauthorized";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
+import { isUnauthorizedError } from "@utils/isUnauthorizedError";
 import { useState } from "react";
 
 interface UseTranscriptionRetryParams {
@@ -29,6 +31,7 @@ const isRetryRejectedError = (error: unknown) =>
  * 이 조회가 끝날 때까지도 다시 시도 중이에요. 서버에서 이미 전사 중이면 정리 중으로 바뀌고 거절 기록을 남기지 않아요.
  * 그래서 그 전사가 또 실패하면, 새 시도든 서버가 이어서 돌린 같은 시도든 다시 시도할 수 있어요.
  * 서버 오류 · 네트워크 문제는 잠깐의 문제일 수 있어 버튼을 유지해요. 로그인이 풀렸으면(401) 로그인 화면으로 보내요.
+ * 응답은 접수 · 거절(409 · 404) · 오류로 나눠 사용 기록(`recording_documents_retry`)으로 보내요. 401은 다시 시도의 결과가 아니라 보내지 않아요.
  */
 export const useTranscriptionRetry = ({
   workspaceId,
@@ -53,16 +56,34 @@ export const useTranscriptionRetry = ({
     rejectedAttemptId !== undefined &&
     rejectedAttemptId === transcriptionAttemptId;
 
+  const captureRetryResult = (result: "accepted" | "rejected" | "error") =>
+    captureAnalyticsEvent({
+      event: "recording_documents_retry",
+      properties: {
+        stage: "transcription",
+        result,
+        recording_id: recordingId,
+        workspace_id: workspaceId,
+      },
+    });
+
   const retryTranscription = () => {
     const attemptId = transcriptionAttemptId ?? null;
 
     requestTranscriptionRetry(
       { workspaceId, recordingId },
       {
+        onSuccess: () => captureRetryResult("accepted"),
         onError: async (retryError) => {
           console.error("전사를 다시 시도하지 못했어요", {
             code: isHttpError(retryError) ? retryError.code : undefined,
           });
+
+          if (!isUnauthorizedError(retryError)) {
+            captureRetryResult(
+              isRetryRejectedError(retryError) ? "rejected" : "error",
+            );
+          }
 
           if (!isRetryRejectedError(retryError)) return;
 

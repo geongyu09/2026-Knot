@@ -1912,14 +1912,21 @@ describe("RecordingDocuments의 정리 결과 기록", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     renderRecordingDocuments(organizingRecording.recordingId);
 
+    // 다시 시도 결과도 함께 기록되므로, 정리 결과만 골라 봐요
+    const getResultEvents = () =>
+      vi
+        .mocked(captureAnalyticsEvent)
+        .mock.calls.map(([event]) => event)
+        .filter(({ event }) => event === "recording_documents_result");
+
     fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
     await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE });
-    expect(captureAnalyticsEvent).not.toHaveBeenCalled();
+    expect(getResultEvents()).toHaveLength(0);
 
     await waitNextPoll();
 
-    await waitFor(() => expect(captureAnalyticsEvent).toHaveBeenCalledTimes(1));
-    expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+    await waitFor(() => expect(getResultEvents()).toHaveLength(1));
+    expect(getResultEvents()[0]).toEqual({
       event: "recording_documents_result",
       properties: expect.objectContaining({ result: "completed" }),
     });
@@ -1952,6 +1959,192 @@ describe("RecordingDocuments의 정리 결과 기록", () => {
     expect(captureAnalyticsEvent).toHaveBeenCalledWith({
       event: "recording_documents_result",
       properties: { result: "audio_save_failed", ...recordingTarget },
+    });
+  });
+});
+
+describe("RecordingDocuments의 다시 시도 결과 기록", () => {
+  // 앞 describe의 테스트에서도 사용 기록이 남으므로, 테스트마다 기록을 비우고 시작해요
+  beforeEach(() => {
+    vi.mocked(captureAnalyticsEvent).mockClear();
+    // 전사 다시 시도의 거절 · 실패는 콘솔에 남기므로, 테스트 출력에 섞이지 않게 막아요
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.mocked(console.error).mockRestore();
+  });
+
+  // 정리 결과도 함께 기록될 수 있어서, 다시 시도 결과만 골라 봐요
+  const getRetryEvents = () =>
+    vi
+      .mocked(captureAnalyticsEvent)
+      .mock.calls.map(([event]) => event)
+      .filter(({ event }) => event === "recording_documents_retry");
+
+  const reject = (status: number) => () => new HttpResponse(null, { status });
+
+  describe("문서 만들기", () => {
+    // 작업 id마다 다시 시도 응답을 정해요
+    const respondRetryByJob = (responses: Record<number, () => Response>) =>
+      mockServer.use(
+        http.post(RETRY_REQUEST, ({ params }) =>
+          responses[Number(params.jobId)](),
+        ),
+      );
+
+    it.each([
+      {
+        reason: "접수되면 접수를",
+        detail: failedRecording.detail,
+        responses: { [FAILED_JOB_ID]: () => acceptRetry(FAILED_JOB_ID) },
+        result: "accepted",
+      },
+      {
+        reason: "409로 거절되면 거절을",
+        detail: failedRecording.detail,
+        responses: { [FAILED_JOB_ID]: reject(409) },
+        result: "rejected",
+      },
+      {
+        reason: "404로 거절되면 거절을",
+        detail: failedRecording.detail,
+        responses: { [FAILED_JOB_ID]: reject(404) },
+        result: "rejected",
+      },
+      {
+        reason: "서버 오류로 실패하면 오류를",
+        detail: failedRecording.detail,
+        responses: { [FAILED_JOB_ID]: reject(500) },
+        result: "error",
+      },
+      {
+        reason: "네트워크 오류로 실패하면 오류를",
+        detail: failedRecording.detail,
+        responses: { [FAILED_JOB_ID]: () => HttpResponse.error() },
+        result: "error",
+      },
+      {
+        reason: "작업 가운데 하나라도 접수되면 접수를",
+        detail: twoJobsFailedDetail,
+        responses: {
+          [FAILED_JOB_ID]: () => acceptRetry(FAILED_JOB_ID),
+          [ANOTHER_JOB_ID]: reject(409),
+        },
+        result: "accepted",
+      },
+      {
+        reason: "작업이 모두 거절되면 거절을",
+        detail: twoJobsFailedDetail,
+        responses: {
+          [FAILED_JOB_ID]: reject(409),
+          [ANOTHER_JOB_ID]: reject(404),
+        },
+        result: "rejected",
+      },
+      {
+        reason: "접수된 작업 없이 거절과 서버 오류가 섞이면 오류를",
+        detail: twoJobsFailedDetail,
+        responses: {
+          [FAILED_JOB_ID]: reject(409),
+          [ANOTHER_JOB_ID]: reject(500),
+        },
+        result: "error",
+      },
+    ] satisfies {
+      reason: string;
+      detail: RecordingDetailResponse;
+      responses: Record<number, () => Response>;
+      result: string;
+    }[])(
+      "다시 시도가 $reason 한 번 보낸다",
+      async ({ detail, responses, result }) => {
+        mockServer.use(
+          http.get(RECORDING_REQUEST, () => HttpResponse.json(detail)),
+        );
+        respondRetryByJob(responses);
+        renderRecordingDocuments(failedRecording.recordingId);
+
+        fireEvent.click(
+          await screen.findByRole("button", { name: "다시 시도" }),
+        );
+
+        await waitFor(() => expect(getRetryEvents()).toHaveLength(1));
+        expect(getRetryEvents()[0]).toEqual({
+          event: "recording_documents_retry",
+          properties: {
+            stage: "document_generation",
+            result,
+            recording_id: failedRecording.recordingId,
+            workspace_id: WORKSPACE_ID,
+          },
+        });
+      },
+    );
+
+    it("다시 시도에서 로그인이 풀렸으면(401) 보내지 않는다", async () => {
+      respondRetryByJob({ [FAILED_JOB_ID]: reject(401) });
+      renderRecordingDocuments(failedRecording.recordingId);
+
+      fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+
+      expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
+      expect(getRetryEvents()).toHaveLength(0);
+    });
+  });
+
+  describe("전사", () => {
+    it.each([
+      { reason: "접수되면 접수를", respond: undefined, result: "accepted" },
+      {
+        reason: "409로 거절되면 거절을",
+        respond: reject(409),
+        result: "rejected",
+      },
+      {
+        reason: "404로 거절되면 거절을",
+        respond: reject(404),
+        result: "rejected",
+      },
+      {
+        reason: "서버 오류로 실패하면 오류를",
+        respond: reject(500),
+        result: "error",
+      },
+      {
+        reason: "네트워크 오류로 실패하면 오류를",
+        respond: () => HttpResponse.error(),
+        result: "error",
+      },
+    ])("다시 시도가 $reason 한 번 보낸다", async ({ respond, result }) => {
+      // 접수는 기본 mock 응답을 써요
+      if (respond) {
+        mockServer.use(http.post(TRANSCRIPTION_RETRY_REQUEST, respond));
+      }
+      renderRecordingDocuments(transcriptionFailedRecording.recordingId);
+
+      fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+
+      await waitFor(() => expect(getRetryEvents()).toHaveLength(1));
+      expect(getRetryEvents()[0]).toEqual({
+        event: "recording_documents_retry",
+        properties: {
+          stage: "transcription",
+          result,
+          recording_id: transcriptionFailedRecording.recordingId,
+          workspace_id: WORKSPACE_ID,
+        },
+      });
+    });
+
+    it("다시 시도에서 로그인이 풀렸으면(401) 보내지 않는다", async () => {
+      mockServer.use(http.post(TRANSCRIPTION_RETRY_REQUEST, reject(401)));
+      renderRecordingDocuments(transcriptionFailedRecording.recordingId);
+
+      fireEvent.click(await screen.findByRole("button", { name: "다시 시도" }));
+
+      expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
+      expect(getRetryEvents()).toHaveLength(0);
     });
   });
 });
