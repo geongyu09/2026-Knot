@@ -12,6 +12,7 @@ import DockColumn, {
   DOCK_BOTTOM,
   DOCK_TOAST_GAP,
 } from "@primitives/layout/DockColumn";
+import useScrollRestoration from "@hooks/common/useScrollRestoration";
 import LoadingIndicator from "@primitives/ui/LoadingIndicator";
 import PageErrorNotice from "@primitives/ui/PageErrorNotice";
 import { ToastViewport } from "@provider/context/toastContext";
@@ -21,7 +22,7 @@ import SearchEvidenceList from "@widgets/search/SearchEvidenceList";
 import WorkspaceDock from "@widgets/workspace/WorkspaceDock";
 import WorkspaceGnb from "@widgets/workspace/WorkspaceGnb";
 import WorkspaceSidebar from "@widgets/workspace/WorkspaceSidebar";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Outlet, useParams } from "react-router";
 
 import ChatListIcon from "@/assets/icons/chatList.svg";
@@ -72,10 +73,13 @@ export default function WorkspaceLayout() {
   const { isChatActive } = useWorkspaceNav();
   const { isTranscriptPanelOpen } = useTranscriptPanel();
   const [pickedPanel, setPickedPanel] = useState<DockedPanelName>(null);
+  const mainRef = useRef<HTMLElement>(null);
 
   useRecordingLeaveWarning();
   useAbortSearchAnswerOnLeave();
   useOpenEvidenceOnAnswerComplete();
+  // 화면은 창이 아니라 본문 안에서 스크롤돼서, 화면을 옮길 때 본문의 스크롤 위치를 맞춰요
+  useScrollRestoration({ scrollRef: mainRef });
 
   // 대화 목록 버튼은 탐색 화면에만 있으므로, 홈으로 나가면 고른 적 없던 것으로 봐요
   const dockedPanel =
@@ -140,7 +144,7 @@ export default function WorkspaceLayout() {
 
         <Content>
           {/* 사용 기록의 스크롤 깊이는 창이 아니라 이 본문을 재요(ANALYTICS_SCROLL_ROOT_ATTRIBUTE) */}
-          <Main data-analytics-scroll-root aria-busy={!isReady}>
+          <Main ref={mainRef} data-analytics-scroll-root aria-busy={!isReady}>
             {isReady ? (
               <Outlet />
             ) : (
