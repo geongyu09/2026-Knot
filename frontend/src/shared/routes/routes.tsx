@@ -19,6 +19,7 @@ import RecordingDocumentsPage from "@pages/workspace/[workspaceId]/recordings/[r
 import WorkspaceCodePage from "@pages/workspace/code";
 import WorkspaceCreatePage from "@pages/workspace/create";
 import RecordingHeartbeat from "@widgets/recording/RecordingHeartbeat";
+import WorkspaceAnalytics from "@/shared/components/domain/WorkspaceAnalytics";
 import type { RouteObject } from "react-router";
 
 import AuthGuard from "./AuthGuard";
@@ -120,10 +121,13 @@ export const routes: RouteObject[] = [
   // GNB — 워크스페이스 입장 후
   {
     handle: { hasDock: true },
-    // 녹음은 레이아웃 안의 어느 화면에서나 이어지므로, 생존 신호가 끊기지 않게 레이아웃째 감싸요
+    // 녹음은 레이아웃 안의 어느 화면에서나 이어지므로, 생존 신호가 끊기지 않게 레이아웃째 감싸요.
+    // 사용 기록도 화면 코드와 섞이지 않게 레이아웃 바깥에서 감싸요
     element: (
       <RecordingHeartbeat>
-        <WorkspaceLayout />
+        <WorkspaceAnalytics>
+          <WorkspaceLayout />
+        </WorkspaceAnalytics>
       </RecordingHeartbeat>
     ),
     children: [

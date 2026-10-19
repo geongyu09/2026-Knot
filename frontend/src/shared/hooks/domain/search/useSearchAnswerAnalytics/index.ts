@@ -2,8 +2,7 @@ import useConversationId from "@hooks/domain/search/useConversationId";
 import { useSearchAnswerStore } from "@store/searchAnswerStore";
 import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { createSearchAnswerResultTracker } from "@utils/createSearchAnswerResultTracker";
-import { useEffect, useRef } from "react";
-import { useParams } from "react-router";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 type SearchAnswerState = ReturnType<typeof useSearchAnswerStore.getState>;
 
@@ -58,7 +57,7 @@ const captureAnswerLeft = ({ sentAt, leftAt }: CaptureAnswerLeftParams) =>
 
 /**
  * 탐색 답변에서 일어난 일을 사용 기록으로 보내는 도메인 훅. 답변 저장소와 주소를 지켜보기만 하고, 탐색 동작은 바꾸지 않아요.
- * 워크스페이스 레이아웃에서 한 번만 불러요.
+ * 워크스페이스 레이아웃을 감싼 `WorkspaceAnalytics`에서 한 번만 불러요.
  *
  * - 답변 결과(`search_answer_result`): 질문을 보낸 뒤 완료 · 중지 · 실패 · 접수 전 실패로 끝나면 보내요. 홈 · 문서로 옮겨도 답변은 뒤에서 계속 받아 끝나면 보내요.
  *   받기를 끊었으면(다른 대화를 열거나 워크스페이스를 나감) 결과가 없어 보내지 않아요.
@@ -68,10 +67,11 @@ const captureAnswerLeft = ({ sentAt, leftAt }: CaptureAnswerLeftParams) =>
  * - 돌아옴(`search_answer_returned`): 떠났던 그 대화 주소로 같은 탭에서 돌아오면, 떠나 있던 시간과 답변이 끝나 있었는지를 보내요.
  *   그사이 답변이 끊겼거나 새 질문을 보냈으면 돌아올 답변이 없어 보내지 않아요. 새로고침하거나 탭을 닫은 뒤 돌아오면 세지 않아요.
  *
- * 다른 대화를 열거나 워크스페이스를 옮기거나 나가면 `useAbortSearchAnswerOnLeave`가 답변을 끊으므로, 끊기 전의 상태로 떠남을 알 수 있게 그 훅보다 먼저 불러요.
+ * 다른 대화를 열거나 워크스페이스를 옮기거나 나가면 레이아웃의 `useAbortSearchAnswerOnLeave`가 `useEffect`에서 답변을 끊어요.
+ * 떠남은 끊기 전의 상태로 알아야 해서, 주소를 보는 effect는 `useLayoutEffect`로 둬요. `useLayoutEffect`는 컴포넌트가 놓인 위치와
+ * 관계없이 같은 화면 변경의 모든 `useEffect`보다 먼저 실행돼서, 이 훅을 레이아웃 바깥에서 불러도 끊기 전의 상태를 읽어요.
  */
 const useSearchAnswerAnalytics = () => {
-  const { workspaceId } = useParams();
   const { conversationId: routeConversationId } = useConversationId();
   // 지금 답변의 질문을 보낸 시각(ms)
   const sentAtRef = useRef<number | null>(null);
@@ -104,7 +104,7 @@ const useSearchAnswerAnalytics = () => {
     });
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const previousRouteConversationId = previousRouteConversationIdRef.current;
     previousRouteConversationIdRef.current = routeConversationId;
 
@@ -140,16 +140,16 @@ const useSearchAnswerAnalytics = () => {
     }
   }, [routeConversationId]);
 
-  // 워크스페이스를 옮기거나 나가면 useAbortSearchAnswerOnLeave의 정리 함수가 답변을 먼저 끊어, 위 주소 effect는 끊긴 뒤만 봐요.
-  // 그래서 같은 정리 단계에서 그 훅보다 먼저 떠남을 보내요. 답변이 끊기므로 돌아옴은 재지 않아요
-  useEffect(
+  // 워크스페이스 밖으로 나가면 주소 effect가 다시 실행되지 않아, 화면에서 지워질 때 떠남을 보내요.
+  // 다른 워크스페이스로 옮길 때는 주소 effect가 보내므로 여기서는 보내지 않아요. 답변이 끊기므로 돌아옴은 재지 않아요
+  useLayoutEffect(
     () => () => {
       const state = useSearchAnswerStore.getState();
       if (!isOnAnswer(state, previousRouteConversationIdRef.current)) return;
 
       captureAnswerLeft({ sentAt: sentAtRef.current, leftAt: Date.now() });
     },
-    [workspaceId],
+    [],
   );
 };
 
