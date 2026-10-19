@@ -144,7 +144,8 @@ export default function WorkspaceLayout() {
         <DockRail id={WORKSPACE_DOCK_RAIL_ID} />
 
         <Content>
-          <Main aria-busy={!isReady}>
+          {/* 사용 기록의 스크롤 깊이는 창이 아니라 이 본문을 재요(ANALYTICS_SCROLL_ROOT_ATTRIBUTE) */}
+          <Main data-analytics-scroll-root aria-busy={!isReady}>
             {isReady ? (
               <Outlet />
             ) : (

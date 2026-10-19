@@ -20,6 +20,7 @@ import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useSearchAnswerStore } from "@store/searchAnswerStore";
 import { useTranscriptPanelStore } from "@store/transcriptPanelStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ANALYTICS_SCROLL_ROOT_ATTRIBUTE } from "@constants/analytics";
 import { attachAnalyticsWorkspace } from "@utils/analyticsWorkspace";
 import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { saveLastConversationId } from "@utils/lastConversation";
@@ -700,6 +701,15 @@ describe("WorkspaceLayout", () => {
 });
 
 describe("WorkspaceLayout의 워크스페이스 사용 기록", () => {
+  it("스크롤되는 본문(main)에 스크롤 깊이를 재는 표시를 단다", async () => {
+    renderLayout(HOME_PATH);
+    await screen.findByText(HOME_TEXT);
+
+    expect(screen.getByRole("main")).toHaveAttribute(
+      ANALYTICS_SCROLL_ROOT_ATTRIBUTE,
+    );
+  });
+
   /** PostHog가 보내기 직전에 이벤트를 넘기는 것처럼, 지금 붙는 workspace_id를 읽어요 */
   const getAttachedWorkspaceId = () =>
     attachAnalyticsWorkspace({

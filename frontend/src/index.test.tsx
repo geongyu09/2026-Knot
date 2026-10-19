@@ -2,6 +2,7 @@ import { useDialog } from "@provider/context/dialogContext";
 import CenteredLayout from "@pages/_layout/CenteredLayout";
 import { useToast } from "@provider/context/toastContext";
 import { act, fireEvent, screen } from "@testing-library/react";
+import { ANALYTICS_SCROLL_ROOT_ATTRIBUTE } from "@constants/analytics";
 import { attachAnalyticsWorkspace } from "@utils/analyticsWorkspace";
 import { syncAnalyticsUser } from "@utils/syncAnalyticsUser";
 import posthog from "posthog-js";
@@ -141,6 +142,11 @@ describe("앱 진입점", () => {
           api_host: "/relay/p",
           ui_host: "https://us.posthog.com",
           before_send: attachAnalyticsWorkspace,
+          // 표시가 있는 본문을 먼저 재고, 없는 화면(랜딩 · 로그인)은 창 전체를 재요
+          scroll_root_selector: [
+            `[${ANALYTICS_SCROLL_ROOT_ATTRIBUTE}]`,
+            "html",
+          ],
         }),
       );
       expect(syncAnalyticsUser).toHaveBeenCalledTimes(1);
