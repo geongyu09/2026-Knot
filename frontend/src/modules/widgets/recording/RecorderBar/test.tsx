@@ -9,6 +9,7 @@ import { theme } from "@provider/themeProvider";
 import { useRecordingStore } from "@store/recordingStore";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import {
   act,
   fireEvent,
@@ -27,6 +28,10 @@ import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import RecorderBar from ".";
+
+vi.mock("@utils/captureAnalyticsEvent", () => ({
+  captureAnalyticsEvent: vi.fn(),
+}));
 
 const WORKSPACE_ID = "1";
 const RECORDING_PATH = getRouterPath({
@@ -177,6 +182,7 @@ describe("RecorderBar", () => {
     useRecordingStore.getState().discardRecording();
     clearRecordingStartProof();
     mockServer.events.removeAllListeners();
+    vi.mocked(captureAnalyticsEvent).mockClear();
     vi.useRealTimers();
   });
 
@@ -339,6 +345,84 @@ describe("RecorderBar", () => {
       await chooseInEndRecordingDialog("녹음 끝내기");
 
       await waitFor(() => expect(bodies).toEqual([proof]));
+    });
+
+    describe("끝낸 결과를 사용 기록으로 보낸다", () => {
+      const endRecordingByDialog = async () => {
+        await startRecording();
+        const { router } = renderRecorderBar();
+
+        await clickEndRecording();
+        await chooseInEndRecordingDialog("녹음 끝내기");
+
+        return { router };
+      };
+
+      it("오디오를 올리면 올렸다고 녹음 방식 · 녹음 · 워크스페이스 id와 함께 한 번 보낸다", async () => {
+        vi.useRealTimers();
+
+        const { router } = await endRecordingByDialog();
+
+        await waitFor(() =>
+          expect(router.state.location.pathname).toBe(DOCUMENTS_PATH),
+        );
+        expect(captureAnalyticsEvent).toHaveBeenCalledTimes(1);
+        expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+          event: "recording_ended",
+          properties: {
+            result: "uploaded",
+            audio_mode: "FINAL_WEBM_V1",
+            recording_id: RECORDING_ID,
+            workspace_id: Number(WORKSPACE_ID),
+          },
+        });
+      });
+
+      it("오디오를 올리지 못하면 올리지 못했다고 보낸다", async () => {
+        vi.useRealTimers();
+        // 업로드 실패는 안내 없이 콘솔에만 남기므로, 테스트 출력에 섞이지 않게 막아요
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        // 다시 보내도 결과가 같은 4xx라 다시 시도하지 않고 바로 실패로 끝나요
+        mockServer.use(
+          http.post(
+            "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/audio-upload-url",
+            () =>
+              HttpResponse.json({ code: "INVALID_REQUEST" }, { status: 400 }),
+          ),
+        );
+
+        const { router } = await endRecordingByDialog();
+
+        await waitFor(() =>
+          expect(router.state.location.pathname).toBe(HOME_PATH),
+        );
+        expect(captureAnalyticsEvent).toHaveBeenCalledTimes(1);
+        expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+          event: "recording_ended",
+          properties: expect.objectContaining({ result: "not_uploaded" }),
+        });
+      });
+
+      it("종료 요청이 실패해 녹음이 이어지면 보내지 않는다", async () => {
+        vi.useRealTimers();
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        const count = countControlRequests();
+        mockServer.use(
+          http.post(
+            "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/end",
+            () => new HttpResponse(null, { status: 500 }),
+          ),
+        );
+
+        await endRecordingByDialog();
+
+        await waitFor(() => expect(count.end).toBe(1));
+        await waitFor(() =>
+          expect(useRecordingStore.getState().isEnding).toBe(false),
+        );
+        expect(screen.getByText("녹음 중")).toBeInTheDocument();
+        expect(captureAnalyticsEvent).not.toHaveBeenCalled();
+      });
     });
 
     it("끝내는 중에 다시 눌러도 확인 창을 열지 않는다", async () => {
