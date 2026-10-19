@@ -8,10 +8,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.knot.backend.auth.domain.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
-import com.knot.backend.workspace.application.WorkspaceQueryService;
+import com.knot.backend.workspace.application.WorkspaceService;
 import com.knot.backend.workspace.application.dto.result.WorkspaceDetailResult;
+import com.knot.backend.workspace.domain.model.WorkspaceMemberRole;
 import com.knot.backend.workspace.application.dto.result.WorkspaceListItemResult;
 import com.knot.backend.workspace.application.dto.result.WorkspaceListResult;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
@@ -30,13 +31,13 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class WorkspaceQueryControllerTest {
-    private WorkspaceQueryService workspaceQueryService;
+    private WorkspaceService workspaceService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        workspaceQueryService = mock(WorkspaceQueryService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new WorkspaceQueryController(workspaceQueryService))
+        workspaceService = mock(WorkspaceService.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(new WorkspaceQueryController(workspaceService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                 .build();
@@ -48,17 +49,23 @@ class WorkspaceQueryControllerTest {
     }
 
     @Test
-    @DisplayName("워크스페이스 멤버가 단건 조회하면 200과 이름을 반환한다")
+    @DisplayName("워크스페이스 멤버가 단건 조회하면 200과 이름, 내 역할, 활성 멤버 수를 반환한다")
     void detail_success() throws Exception {
         // given
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
         when(
-                workspaceQueryService.findDetail(
+                workspaceService.findDetail(
                         1L,
                         10L
                 )
-        ).thenReturn(new WorkspaceDetailResult("Knot 팀"));
+        ).thenReturn(
+                new WorkspaceDetailResult(
+                        "Knot 팀",
+                        WorkspaceMemberRole.OWNER,
+                        2L
+                )
+        );
 
         // when
         ResultActions result = mockMvc.perform(
@@ -70,8 +77,10 @@ class WorkspaceQueryControllerTest {
 
         // then
         result.andExpect(status().isOk())
-                .andExpect(jsonPath("$.name").value("Knot 팀"));
-        verify(workspaceQueryService).findDetail(
+                .andExpect(jsonPath("$.name").value("Knot 팀"))
+                .andExpect(jsonPath("$.myRole").value("OWNER"))
+                .andExpect(jsonPath("$.activeMemberCount").value(2));
+        verify(workspaceService).findDetail(
                 1L,
                 10L
         );
@@ -91,7 +100,7 @@ class WorkspaceQueryControllerTest {
         result.andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_PARAMETER"))
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("workspaceId"));
-        verifyNoInteractions(workspaceQueryService);
+        verifyNoInteractions(workspaceService);
     }
 
     @Test
@@ -101,7 +110,7 @@ class WorkspaceQueryControllerTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
         when(
-                workspaceQueryService.findDetail(
+                workspaceService.findDetail(
                         1L,
                         10L
                 )
@@ -127,7 +136,7 @@ class WorkspaceQueryControllerTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
         when(
-                workspaceQueryService.findDetail(
+                workspaceService.findDetail(
                         1L,
                         10L
                 )
@@ -152,7 +161,7 @@ class WorkspaceQueryControllerTest {
         // given
         SecurityContextHolder.getContext()
                 .setAuthentication(memberAuthentication());
-        when(workspaceQueryService.findAllByMemberId(10L)).thenReturn(
+        when(workspaceService.findAllByMemberId(10L)).thenReturn(
                 new WorkspaceListResult(
                         2L,
                         List.of(
@@ -183,7 +192,7 @@ class WorkspaceQueryControllerTest {
                 .andExpect(jsonPath("$.workspaces[0].createdAt").doesNotExist())
                 .andExpect(jsonPath("$.workspaces[1].id").value(1L))
                 .andExpect(jsonPath("$.workspaces[1].name").value("이전 팀"));
-        verify(workspaceQueryService).findAllByMemberId(10L);
+        verify(workspaceService).findAllByMemberId(10L);
     }
 
     private UsernamePasswordAuthenticationToken memberAuthentication() {

@@ -10,16 +10,15 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
-
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationAcceptanceResult;
-import com.knot.backend.workspace.domain.Workspace;
+import com.knot.backend.workspace.domain.model.Workspace;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
-import com.knot.backend.workspace.domain.WorkspaceInvitation;
-import com.knot.backend.workspace.domain.WorkspaceInvitationRepository;
-import com.knot.backend.workspace.domain.WorkspaceMember;
-import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
-import com.knot.backend.workspace.domain.WorkspaceRepository;
+import com.knot.backend.workspace.domain.model.WorkspaceInvitation;
+import com.knot.backend.workspace.domain.repository.WorkspaceInvitationRepository;
+import com.knot.backend.workspace.domain.model.WorkspaceMember;
+import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -48,14 +47,18 @@ class WorkspaceInvitationAcceptanceServiceTest {
     );
     private final WorkspaceRepository workspaceRepository = mock(WorkspaceRepository.class);
     private final WorkspaceMemberRepository workspaceMemberRepository = mock(WorkspaceMemberRepository.class);
-    private final WorkspaceInvitationSecretProtector secretProtector = mock(WorkspaceInvitationSecretProtector.class);
+    private final WorkspaceInvitationSecretHasher workspaceInvitationSecretHasher = mock(
+            WorkspaceInvitationSecretHasher.class
+    );
     private final WorkspaceInvitationPreviewRateLimiter rateLimiter = mock(WorkspaceInvitationPreviewRateLimiter.class);
-    private final WorkspaceInvitationAcceptanceService service = new WorkspaceInvitationAcceptanceService(
+    private final WorkspaceInvitationService service = new WorkspaceInvitationService(
             workspaceRepository,
             workspaceMemberRepository,
             workspaceInvitationRepository,
-            secretProtector,
+            mock(WorkspaceInvitationSecretGenerator.class),
+            workspaceInvitationSecretHasher,
             rateLimiter,
+            mock(WorkspaceInvitationTransactionExecutor.class),
             Clock.fixed(
                     NOW,
                     ZoneOffset.UTC
@@ -68,13 +71,11 @@ class WorkspaceInvitationAcceptanceServiceTest {
         // given
         WorkspaceInvitation invitation = validInvitation();
         when(
-                secretProtector.hash(
+                workspaceInvitationSecretHasher.hash(
                         WorkspaceInvitationSecretKind.INVITE_CODE,
                         CODE
                 )
         ).thenReturn(CODE_HASH);
-        when(workspaceInvitationRepository.findWorkspaceIdByInviteCodeHash(CODE_HASH))
-                .thenReturn(Optional.of(WORKSPACE_ID));
         when(workspaceRepository.findByIdForUpdate(WORKSPACE_ID)).thenReturn(Optional.of(workspace()));
         when(workspaceInvitationRepository.findByInviteCodeHash(CODE_HASH)).thenReturn(Optional.of(invitation));
         when(
@@ -94,7 +95,7 @@ class WorkspaceInvitationAcceptanceServiceTest {
         // then
         assertThat(result.workspaceId()).isEqualTo(WORKSPACE_ID);
         assertThat(result.workspaceName()).isEqualTo(WORKSPACE_NAME);
-        assertThat(result.created()).isTrue();
+        assertThat(result.membershipCreated()).isTrue();
         ArgumentCaptor<WorkspaceMember> memberCaptor = ArgumentCaptor.forClass(WorkspaceMember.class);
         verify(workspaceMemberRepository).save(memberCaptor.capture());
         assertThat(memberCaptor.getValue()).extracting(
@@ -113,11 +114,9 @@ class WorkspaceInvitationAcceptanceServiceTest {
                 workspaceMemberRepository
         );
         inOrder.verify(workspaceInvitationRepository)
-                .findWorkspaceIdByInviteCodeHash(CODE_HASH);
+                .findByInviteCodeHash(CODE_HASH);
         inOrder.verify(workspaceRepository)
                 .findByIdForUpdate(WORKSPACE_ID);
-        inOrder.verify(workspaceInvitationRepository)
-                .findByInviteCodeHash(CODE_HASH);
         inOrder.verify(workspaceMemberRepository)
                 .existsByWorkspaceIdAndMemberId(
                         WORKSPACE_ID,
@@ -132,13 +131,11 @@ class WorkspaceInvitationAcceptanceServiceTest {
         // given
         WorkspaceInvitation invitation = validInvitation();
         when(
-                secretProtector.hash(
+                workspaceInvitationSecretHasher.hash(
                         WorkspaceInvitationSecretKind.LINK_TOKEN,
                         LINK_TOKEN
                 )
         ).thenReturn(LINK_TOKEN_HASH);
-        when(workspaceInvitationRepository.findWorkspaceIdByLinkTokenHash(LINK_TOKEN_HASH))
-                .thenReturn(Optional.of(WORKSPACE_ID));
         when(workspaceRepository.findByIdForUpdate(WORKSPACE_ID)).thenReturn(Optional.of(workspace()));
         when(workspaceInvitationRepository.findByLinkTokenHash(LINK_TOKEN_HASH)).thenReturn(Optional.of(invitation));
         when(
@@ -156,7 +153,7 @@ class WorkspaceInvitationAcceptanceServiceTest {
         );
 
         // then
-        assertThat(result.created()).isTrue();
+        assertThat(result.membershipCreated()).isTrue();
         verifyNoInteractions(rateLimiter);
         verify(workspaceMemberRepository).save(any(WorkspaceMember.class));
     }
@@ -167,13 +164,11 @@ class WorkspaceInvitationAcceptanceServiceTest {
         // given
         WorkspaceInvitation invitation = validInvitation();
         when(
-                secretProtector.hash(
+                workspaceInvitationSecretHasher.hash(
                         WorkspaceInvitationSecretKind.INVITE_CODE,
                         CODE
                 )
         ).thenReturn(CODE_HASH);
-        when(workspaceInvitationRepository.findWorkspaceIdByInviteCodeHash(CODE_HASH))
-                .thenReturn(Optional.of(WORKSPACE_ID));
         when(workspaceRepository.findByIdForUpdate(WORKSPACE_ID)).thenReturn(Optional.of(workspace()));
         when(workspaceInvitationRepository.findByInviteCodeHash(CODE_HASH)).thenReturn(Optional.of(invitation));
         when(
@@ -193,7 +188,7 @@ class WorkspaceInvitationAcceptanceServiceTest {
         // then
         assertThat(result.workspaceId()).isEqualTo(WORKSPACE_ID);
         assertThat(result.workspaceName()).isEqualTo(WORKSPACE_NAME);
-        assertThat(result.created()).isFalse();
+        assertThat(result.membershipCreated()).isFalse();
         verify(
                 workspaceMemberRepository,
                 never()
@@ -218,22 +213,19 @@ class WorkspaceInvitationAcceptanceServiceTest {
                 .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
                 .isEqualTo(WorkspaceErrorCode.WORKSPACE_INVITATION_PREVIEW_NOT_FOUND);
         verify(rateLimiter).consume(REMOTE_ADDRESS);
-        verifyNoInteractions(secretProtector);
+        verifyNoInteractions(workspaceInvitationSecretHasher);
     }
 
-    @DisplayName("초기 조회 후 재발급으로 초대가 사라지면 멤버십을 만들지 않고 초대 없음으로 응답한다")
+    @DisplayName("초대가 없으면 멤버십을 만들지 않고 초대 없음으로 응답한다")
     @Test
-    void accept_failure_invitationReissuedAfterWorkspaceLookup() {
+    void accept_failure_invitationNotFound() {
         // given
         when(
-                secretProtector.hash(
+                workspaceInvitationSecretHasher.hash(
                         WorkspaceInvitationSecretKind.INVITE_CODE,
                         CODE
                 )
         ).thenReturn(CODE_HASH);
-        when(workspaceInvitationRepository.findWorkspaceIdByInviteCodeHash(CODE_HASH))
-                .thenReturn(Optional.of(WORKSPACE_ID));
-        when(workspaceRepository.findByIdForUpdate(WORKSPACE_ID)).thenReturn(Optional.of(workspace()));
         when(workspaceInvitationRepository.findByInviteCodeHash(CODE_HASH)).thenReturn(Optional.empty());
 
         // when
@@ -267,15 +259,13 @@ class WorkspaceInvitationAcceptanceServiceTest {
                 NOW.minus(WorkspaceInvitation.VALIDITY_PERIOD)
         );
         when(
-                secretProtector.hash(
+                workspaceInvitationSecretHasher.hash(
                         WorkspaceInvitationSecretKind.INVITE_CODE,
                         CODE
                 )
         ).thenReturn(CODE_HASH);
-        when(workspaceInvitationRepository.findWorkspaceIdByInviteCodeHash(CODE_HASH))
-                .thenReturn(Optional.of(WORKSPACE_ID));
-        when(workspaceRepository.findByIdForUpdate(WORKSPACE_ID)).thenReturn(Optional.of(workspace()));
         when(workspaceInvitationRepository.findByInviteCodeHash(CODE_HASH)).thenReturn(Optional.of(invitation));
+        when(workspaceRepository.findByIdForUpdate(WORKSPACE_ID)).thenReturn(Optional.of(workspace()));
 
         // when
         ThrowingCallable action = () -> service.accept(
@@ -288,6 +278,60 @@ class WorkspaceInvitationAcceptanceServiceTest {
         assertThatThrownBy(action).isInstanceOf(WorkspaceException.class)
                 .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
                 .isEqualTo(WorkspaceErrorCode.WORKSPACE_INVITATION_PREVIEW_NOT_FOUND);
+        verifyNoInteractions(workspaceMemberRepository);
+    }
+
+    @DisplayName("Workspace 잠금을 기다리는 동안 만료된 초대는 잠금 뒤 시각으로 거절한다")
+    @Test
+    void accept_failure_expiredWhileWaitingForLock() {
+        // given
+        Clock clock = mock(Clock.class);
+        WorkspaceInvitationService lockWaitingService = new WorkspaceInvitationService(
+                workspaceRepository,
+                workspaceMemberRepository,
+                workspaceInvitationRepository,
+                mock(WorkspaceInvitationSecretGenerator.class),
+                workspaceInvitationSecretHasher,
+                rateLimiter,
+                mock(WorkspaceInvitationTransactionExecutor.class),
+                clock
+        );
+        WorkspaceInvitation invitation = WorkspaceInvitation.create(
+                WORKSPACE_ID,
+                LINK_TOKEN_HASH,
+                CODE_HASH,
+                NOW.minus(WorkspaceInvitation.VALIDITY_PERIOD)
+                        .plusSeconds(1)
+        );
+        when(
+                workspaceInvitationSecretHasher.hash(
+                        WorkspaceInvitationSecretKind.INVITE_CODE,
+                        CODE
+                )
+        ).thenReturn(CODE_HASH);
+        when(workspaceInvitationRepository.findByInviteCodeHash(CODE_HASH)).thenReturn(Optional.of(invitation));
+        when(workspaceRepository.findByIdForUpdate(WORKSPACE_ID)).thenReturn(Optional.of(workspace()));
+        when(clock.instant()).thenReturn(NOW.plusSeconds(1));
+
+        // when
+        ThrowingCallable action = () -> lockWaitingService.accept(
+                CODE,
+                REMOTE_ADDRESS,
+                MEMBER_ID
+        );
+
+        // then
+        assertThatThrownBy(action).isInstanceOf(WorkspaceException.class)
+                .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
+                .isEqualTo(WorkspaceErrorCode.WORKSPACE_INVITATION_PREVIEW_NOT_FOUND);
+        InOrder inOrder = inOrder(
+                workspaceRepository,
+                clock
+        );
+        inOrder.verify(workspaceRepository)
+                .findByIdForUpdate(WORKSPACE_ID);
+        inOrder.verify(clock)
+                .instant();
         verifyNoInteractions(workspaceMemberRepository);
     }
 

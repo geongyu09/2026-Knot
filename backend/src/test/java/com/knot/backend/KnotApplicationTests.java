@@ -3,6 +3,7 @@ package com.knot.backend;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.startsWith;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -11,9 +12,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.knot.backend.auth.domain.AuthTokenProvider;
-import com.knot.backend.auth.domain.AuthenticatedMember;
-import com.knot.backend.auth.domain.OAuthProvider;
-import com.knot.backend.auth.domain.OAuthUser;
+import com.knot.backend.auth.domain.model.AuthenticatedMember;
+import com.knot.backend.auth.domain.model.OAuthProvider;
+import com.knot.backend.auth.domain.model.OAuthUser;
 import com.knot.backend.auth.infrastructure.jwt.JwtProvider;
 import com.knot.backend.global.config.JwtProperties;
 import com.knot.backend.testsupport.TestApplicationProperties;
@@ -39,6 +40,8 @@ import org.springframework.test.context.TestConstructor.AutowireMode;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.mock.web.MockHttpSession;
+import org.springframework.web.util.UriComponentsBuilder;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -53,6 +56,7 @@ class KnotApplicationTests {
     private static final String LOCAL_FRONTEND_ORIGIN = "http://localhost:3000";
     private static final String UNALLOWED_ORIGIN = "https://attacker.example";
     private static final String JWT_COOKIE_NAME = "KNOT_ACCESS_TOKEN";
+    private static final String REFRESH_COOKIE_NAME = "KNOT_REFRESH_TOKEN";
     private static final String NICKNAME_COOKIE_NAME = "KNOT_NICKNAME_TOKEN";
     private static final String CSRF_COOKIE_NAME = "XSRF-TOKEN";
 
@@ -96,6 +100,104 @@ class KnotApplicationTests {
                                 startsWith("https://github.com/login/oauth/authorize")
                         )
                 );
+    }
+
+    @Test
+    @DisplayName("GitHub callback의 state가 다르면 외부 토큰 교환 없이 실패 화면으로 이동한다")
+    void githubOAuthCallback_failure_invalidState() throws Exception {
+        // given
+        MvcResult start = mockMvc.perform(get("/oauth2/authorization/github"))
+                .andReturn();
+        MockHttpSession session = (MockHttpSession) start.getRequest()
+                .getSession(false);
+
+        // when
+        MvcResult result = mockMvc.perform(
+                get("/login/oauth2/code/github").session(session)
+                        .param(
+                                "code",
+                                "unused-code"
+                        )
+                        .param(
+                                "state",
+                                "incorrect-state"
+                        )
+        )
+                .andExpect(status().isFound())
+                .andExpect(
+                        header().string(
+                                "Location",
+                                "/login?error=oauth2"
+                        )
+                )
+                .andReturn();
+
+        // then
+        assertThat(
+                result.getResponse()
+                        .getContentAsString()
+        ).isEmpty();
+        assertThat(
+                result.getResponse()
+                        .getCookie(JWT_COOKIE_NAME)
+                        .getMaxAge()
+        ).isZero();
+        assertThat(
+                result.getResponse()
+                        .getCookie("KNOT_REFRESH_TOKEN")
+                        .getMaxAge()
+        ).isZero();
+        assertThat(session.isInvalid()).isTrue();
+    }
+
+    @Test
+    @DisplayName("GitHub 승인을 취소하면 JSON 없이 실패 화면으로 이동하고 인증 쿠키를 만료한다")
+    void githubOAuthCallback_failure_accessDenied() throws Exception {
+        // given
+        MvcResult start = mockMvc.perform(get("/oauth2/authorization/github"))
+                .andReturn();
+        MockHttpSession session = (MockHttpSession) start.getRequest()
+                .getSession(false);
+        String state = UriComponentsBuilder.fromUriString(
+                start.getResponse()
+                        .getHeader("Location")
+        )
+                .build()
+                .getQueryParams()
+                .getFirst("state");
+
+        // when
+        MvcResult result = mockMvc.perform(
+                get("/login/oauth2/code/github").session(session)
+                        .param(
+                                "error",
+                                "access_denied"
+                        )
+                        .param(
+                                "state",
+                                state
+                        )
+        )
+                .andExpect(status().isFound())
+                .andExpect(
+                        header().string(
+                                "Location",
+                                "/login?error=oauth2"
+                        )
+                )
+                .andReturn();
+
+        // then
+        assertThat(
+                result.getResponse()
+                        .getContentAsString()
+        ).isEmpty();
+        assertThat(
+                result.getResponse()
+                        .getCookie(NICKNAME_COOKIE_NAME)
+                        .getMaxAge()
+        ).isZero();
+        assertThat(session.isInvalid()).isTrue();
     }
 
     @Test
@@ -310,6 +412,89 @@ class KnotApplicationTests {
     }
 
     @Test
+    @DisplayName("허용된 프론트 Origin의 워크스페이스 탈퇴 DELETE preflight 요청을 허용한다")
+    void leaveWorkspacePreflight_success_allowedOrigin() throws Exception {
+        // when
+        ResultActions result = mockMvc.perform(
+                options("/api/v1/workspaces/1/members/me").header(
+                        HttpHeaders.ORIGIN,
+                        FRONTEND_ORIGIN
+                )
+                        .header(
+                                HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD,
+                                HttpMethod.DELETE.name()
+                        )
+                        .header(
+                                HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS,
+                                "x-xsrf-token"
+                        )
+        );
+
+        // then
+        result.andExpect(status().isOk())
+                .andExpect(
+                        header().string(
+                                HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN,
+                                FRONTEND_ORIGIN
+                        )
+                )
+                .andExpect(
+                        header().string(
+                                HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS,
+                                containsString(HttpMethod.DELETE.name())
+                        )
+                )
+                .andExpect(
+                        header().string(
+                                HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS,
+                                containsString("x-xsrf-token")
+                        )
+                )
+                .andExpect(
+                        header().string(
+                                HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS,
+                                "true"
+                        )
+                );
+    }
+
+    @Test
+    @DisplayName("허용하지 않은 Origin의 워크스페이스 탈퇴 DELETE preflight 요청에는 CORS 허용 헤더를 제공하지 않는다")
+    void leaveWorkspacePreflight_failure_unallowedOrigin() throws Exception {
+        // when
+        ResultActions result = mockMvc.perform(
+                options("/api/v1/workspaces/1/members/me").header(
+                        HttpHeaders.ORIGIN,
+                        UNALLOWED_ORIGIN
+                )
+                        .header(
+                                HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD,
+                                HttpMethod.DELETE.name()
+                        )
+        );
+
+        // then
+        result.andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN));
+    }
+
+    @Test
+    @DisplayName("허용된 프론트 Origin이어도 CSRF 토큰이 없는 워크스페이스 탈퇴 DELETE 요청은 거부한다")
+    void leaveWorkspace_failure_missingCsrfToken() throws Exception {
+        // when
+        ResultActions result = mockMvc.perform(
+                delete("/api/v1/workspaces/1/members/me").header(
+                        HttpHeaders.ORIGIN,
+                        FRONTEND_ORIGIN
+                )
+        );
+
+        // then
+        result.andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
     @DisplayName("localhost 프론트 Origin에서 CSRF 토큰을 조회한다")
     void csrf_success_localFrontendOrigin() throws Exception {
         // given
@@ -374,7 +559,7 @@ class KnotApplicationTests {
                 .getCookie(CSRF_COOKIE_NAME);
         assertThat(csrfCookie).isNotNull();
         String csrfToken = csrfCookie.getValue();
-        String nickname = uniqueValue("user-");
+        String nickname = "valid-user";
         String nicknameToken = authTokenProvider.issueNickname(
                 OAuthUser.of(
                         OAuthProvider.GITHUB,
@@ -405,6 +590,27 @@ class KnotApplicationTests {
 
         // then
         result.andExpect(status().isNoContent());
+        assertThat(
+                result.andReturn()
+                        .getResponse()
+                        .getContentAsString()
+        ).isEmpty();
+        assertThat(
+                result.andReturn()
+                        .getResponse()
+                        .getCookie(JWT_COOKIE_NAME)
+        ).isNotNull();
+        assertThat(
+                result.andReturn()
+                        .getResponse()
+                        .getCookie("KNOT_REFRESH_TOKEN")
+        ).isNotNull();
+        assertThat(
+                result.andReturn()
+                        .getResponse()
+                        .getCookie(NICKNAME_COOKIE_NAME)
+                        .getMaxAge()
+        ).isZero();
     }
 
     @Test
@@ -433,8 +639,7 @@ class KnotApplicationTests {
 
         // then
         result.andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("FORBIDDEN"))
-                .andExpect(jsonPath("$.message").value("요청 권한이 없습니다"));
+                .andExpect(jsonPath("$.code").value("CSRF_INVALID"));
     }
 
     @Test
@@ -463,6 +668,10 @@ class KnotApplicationTests {
                                 token
                         ),
                         new Cookie(
+                                REFRESH_COOKIE_NAME,
+                                "refresh-token"
+                        ),
+                        new Cookie(
                                 NICKNAME_COOKIE_NAME,
                                 "nickname-token"
                         )
@@ -475,13 +684,19 @@ class KnotApplicationTests {
         );
 
         // then
-        result.andExpect(status().isFound())
+        result.andExpect(status().isNoContent())
                 .andExpect(resultActions -> {
                     List<String> cookies = resultActions.getResponse()
                             .getHeaders("Set-Cookie");
                     assertThat(cookies).anySatisfy(
                             cookie -> assertThat(cookie).contains(
                                     JWT_COOKIE_NAME + "=",
+                                    "Max-Age=0"
+                            )
+                    );
+                    assertThat(cookies).anySatisfy(
+                            cookie -> assertThat(cookie).contains(
+                                    REFRESH_COOKIE_NAME + "=",
                                     "Max-Age=0"
                             )
                     );

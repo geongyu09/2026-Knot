@@ -1,11 +1,13 @@
 package com.knot.backend.global.config;
 
 import com.knot.backend.auth.domain.AuthErrorCode;
+import com.knot.backend.global.logging.RequestIdFilter;
 import com.knot.backend.auth.domain.AuthException;
 import com.knot.backend.auth.infrastructure.github.GithubOAuth2UserService;
 import com.knot.backend.auth.infrastructure.jwt.JwtAuthenticationFilter;
 import com.knot.backend.auth.presentation.handler.AuthAccessDeniedHandler;
 import com.knot.backend.auth.presentation.handler.AuthAuthenticationEntryPoint;
+import com.knot.backend.auth.presentation.handler.AuthLogoutSuccessHandler;
 import com.knot.backend.auth.presentation.handler.JwtLogoutHandler;
 import com.knot.backend.auth.presentation.handler.OAuth2AuthenticationFailureHandler;
 import com.knot.backend.auth.presentation.handler.OAuth2AuthenticationSuccessHandler;
@@ -16,6 +18,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -40,6 +43,7 @@ public class SecurityConfig {
     private final AuthAuthenticationEntryPoint authenticationEntryPoint;
     private final AuthAccessDeniedHandler accessDeniedHandler;
     private final JwtLogoutHandler jwtLogoutHandler;
+    private final AuthLogoutSuccessHandler logoutSuccessHandler;
     private final JwtProperties jwtProperties;
     private final CorsProperties corsProperties;
     private final ApiDocumentationProperties apiDocumentationProperties;
@@ -59,6 +63,7 @@ public class SecurityConfig {
                         HttpMethod.GET.name(),
                         HttpMethod.POST.name(),
                         HttpMethod.PUT.name(),
+                        HttpMethod.DELETE.name(),
                         HttpMethod.OPTIONS.name()
                 )
         );
@@ -68,7 +73,12 @@ public class SecurityConfig {
                         "X-XSRF-TOKEN"
                 )
         );
-        configuration.setExposedHeaders(List.of(HttpHeaders.RETRY_AFTER));
+        configuration.setExposedHeaders(
+                List.of(
+                        HttpHeaders.RETRY_AFTER,
+                        RequestIdFilter.HEADER
+                )
+        );
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
@@ -95,6 +105,31 @@ public class SecurityConfig {
 
         http.cors(Customizer.withDefaults())
                 .authorizeHttpRequests(auth -> {
+                    auth.requestMatchers(
+                            HttpMethod.GET,
+                            "/actuator/prometheus"
+                    )
+                            .access(
+                                    (
+                                            authentication,
+                                            context
+                                    ) -> new AuthorizationDecision(
+                                            List.of(
+                                                    "127.0.0.1",
+                                                    "::1",
+                                                    "0:0:0:0:0:0:0:1"
+                                            )
+                                                    .contains(
+                                                            context.getRequest()
+                                                                    .getRemoteAddr()
+                                                    )
+                                    )
+                            )
+                            .requestMatchers(
+                                    "/actuator/prometheus",
+                                    "/actuator/prometheus/**"
+                            )
+                            .denyAll();
                     if (apiDocumentationProperties.isEnabled()) {
                         auth.requestMatchers(
                                 "/swagger-ui.html",
@@ -110,6 +145,7 @@ public class SecurityConfig {
                             "/oauth2/**",
                             "/login/**",
                             "/api/v1/auth/nickname",
+                            "/api/v1/auth/refresh",
                             "/api/v1/auth/csrf",
                             "/actuator/health",
                             "/error"
@@ -117,8 +153,7 @@ public class SecurityConfig {
                             .permitAll()
                             .requestMatchers(
                                     HttpMethod.GET,
-                                    "/api/v1/invitations/*",
-                                    "/api/v1/notion/oauth/callback"
+                                    "/api/v1/invitations/*"
                             )
                             .permitAll()
                             .anyRequest()
@@ -141,6 +176,7 @@ public class SecurityConfig {
                 .logout(
                         logout -> logout.logoutUrl("/api/v1/auth/logout")
                                 .addLogoutHandler(jwtLogoutHandler)
+                                .logoutSuccessHandler(logoutSuccessHandler)
                 )
                 .addFilterBefore(
                         jwtAuthenticationFilter,

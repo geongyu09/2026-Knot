@@ -1,0 +1,13 @@
+/catalog/
+/provisioning/environment-dashboards/dev/knot-dev-spring-observability.json
+/secrets/
+/verification-*.json
+/environment-deployment-*.md
+secrets/
+tls/*.key
+tls/*.crt
+tls/*.csr
+agent/tls/
+*.env
+agent/*.env
+nginx/ingest-allow.conf

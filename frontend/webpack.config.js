@@ -2,6 +2,8 @@ import fs from "fs";
 import webpack from "webpack";
 import path from "path";
 import HtmlWebpackPlugin from "html-webpack-plugin";
+import CopyWebpackPlugin from "copy-webpack-plugin";
+import { sentryWebpackPlugin } from "@sentry/webpack-plugin";
 
 const __dirname = import.meta.dirname;
 
@@ -22,9 +24,26 @@ export default (env, argv) => {
       ? isDev
       : process.env.API_MOCKING === "true";
 
+  // 소스맵 업로드 토큰과 조직 · 프로젝트가 모두 있는 프로덕션 빌드에서만 Sentry 플러그인을 켜요
+  const isSentryUploadEnabled =
+    !isDev &&
+    Boolean(
+      process.env.SENTRY_AUTH_TOKEN &&
+      process.env.SENTRY_ORG &&
+      process.env.SENTRY_PROJECT,
+    );
+
+  // init과 소스맵 업로드가 같은 릴리스를 쓰도록 한 번만 정해요. GitHub Actions에서는 커밋 SHA를 써요
+  const sentryRelease =
+    process.env.SENTRY_RELEASE || process.env.GITHUB_SHA || "";
+
+  // 개발: 빠르고 원본 그대로 / 프로덕션: 업로드할 때만 공개 주소 없는 .map을 만들고 업로드 뒤 지워요.
+  // 업로드하지 않는 프로덕션 빌드는 .map을 만들지 않아 원본 코드를 공개 배포하지 않아요
+  const productionDevtool = isSentryUploadEnabled ? "hidden-source-map" : false;
+
   return {
     entry: "./src/index.tsx", // 모듈 진입점
-    devtool: isDev ? "eval-source-map" : "source-map", // 개발: 빠르고 원본 그대로 / 프로덕션: 별도 .map 파일
+    devtool: isDev ? "eval-source-map" : productionDevtool,
     output: {
       filename: "bundle.js",
       path: path.resolve(__dirname, "dist"),
@@ -73,6 +92,8 @@ export default (env, argv) => {
       },
     },
     module: {
+      // audioWorklet.addModule(new URL(...))을 찾아 processor를 TypeScript째 별도 파일로 묶어요 (기본은 꺼져 있어요)
+      parser: { javascript: { worklet: true } },
       rules: [
         {
           test: /\.(ts|tsx)$/, // .ts와 .tsx 파일을 대상으로
@@ -197,6 +218,7 @@ ${exports}
         "@provider": path.resolve(__dirname, "src/shared/provider"),
         "@hooks": path.resolve(__dirname, "src/shared/hooks"),
         "@utils": path.resolve(__dirname, "src/shared/utils"),
+        "@store": path.resolve(__dirname, "src/shared/store"),
       },
     },
     plugins: [
@@ -205,6 +227,16 @@ ${exports}
         filename: "index.html", // 출력될 HTML 파일 이름
         inject: true, // <script> 태그 자동 삽입
       }),
+      // 파비콘, 앱 아이콘, 공유 이미지처럼 고정 주소로 불리는 파일을 dist로 복사해요
+      new CopyWebpackPlugin({
+        patterns: [
+          {
+            from: "public",
+            // msw 워커는 개발 서버에서만 써요
+            globOptions: { ignore: ["**/mockServiceWorker.js"] },
+          },
+        ],
+      }),
       new webpack.DefinePlugin({
         // mock 모드에서는 오리진 없이(같은 오리진) 요청해야 msw와 mock OAuth 미들웨어가 받아요
         "process.env.API_BASE_URL": JSON.stringify(
@@ -212,7 +244,33 @@ ${exports}
         ),
         // 문자열 리터럴로 넣어 src/index.tsx의 분기가 빌드 시점에 접혀요
         "process.env.API_MOCKING": JSON.stringify(String(isApiMockingEnabled)),
+        "process.env.POSTHOG_KEY": JSON.stringify(
+          process.env.POSTHOG_KEY ?? "",
+        ),
+        "process.env.POSTHOG_HOST": JSON.stringify(
+          process.env.POSTHOG_HOST ?? "",
+        ),
+        "process.env.SENTRY_DSN": JSON.stringify(process.env.SENTRY_DSN ?? ""),
+        // 배포 워크플로가 값을 비워 두면 빈 문자열이 와서 ??가 아니라 ||로 기본값을 정해요
+        "process.env.SENTRY_ENVIRONMENT": JSON.stringify(
+          process.env.SENTRY_ENVIRONMENT ||
+            (isDev ? "development" : "production"),
+        ),
+        "process.env.SENTRY_RELEASE": JSON.stringify(sentryRelease),
       }),
-    ],
+      // 플러그인은 소스맵을 다 만든 뒤에 올려야 하므로 맨 뒤에 둬요
+      isSentryUploadEnabled &&
+        sentryWebpackPlugin({
+          org: process.env.SENTRY_ORG,
+          project: process.env.SENTRY_PROJECT,
+          authToken: process.env.SENTRY_AUTH_TOKEN,
+          // 비어 있으면 플러그인이 git 커밋 SHA로 정하고 번들에 넣어, init이 그 값을 써요
+          release: { name: sentryRelease || undefined },
+          sourcemaps: { filesToDeleteAfterUpload: ["./dist/**/*.map"] },
+          telemetry: false,
+          // 기본값은 업로드에 실패하면 빌드를 멈춰요. 소스맵 때문에 배포가 막히지 않도록 경고만 남겨요
+          errorHandler: (err) => console.warn(err),
+        }),
+    ].filter(Boolean),
   };
 };

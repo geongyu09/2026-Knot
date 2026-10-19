@@ -29,13 +29,22 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
 	implementation 'org.springframework.security:spring-security-oauth2-jose'
+	implementation 'org.springframework.ai:mcp-spring-webmvc:2.0.1'
+	implementation 'io.modelcontextprotocol.sdk:mcp-json-jackson3:2.0.0'
 
 	implementation 'org.flywaydb:flyway-database-postgresql'
+	implementation 'net.ttddyy:datasource-proxy:1.11.1'
+
+	implementation platform('software.amazon.awssdk:bom:2.55.11')
+	implementation('software.amazon.awssdk:s3') {
+		exclude group: 'software.amazon.awssdk', module: 'netty-nio-client'
+	}
 
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
 
 	runtimeOnly 'org.postgresql:postgresql'
+	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 
 	testImplementation 'org.springframework.boot:spring-boot-starter-actuator-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
@@ -62,6 +71,20 @@ spotless {
 		removeUnusedImports()
 		trimTrailingWhitespace()
 		endWithNewline()
+	}
+}
+
+tasks.withType(Test).configureEach {
+	systemProperty 'spring.test.context.cache.maxSize', '8'
+	systemProperty 'aws.accessKeyId', 'test-access-key'
+	systemProperty 'aws.secretAccessKey', 'test-secret-key'
+	maxHeapSize = '1g'
+}
+
+tasks.named('processTestResources') {
+	from('src/main/resources/db/migration') {
+		exclude 'V49__*.sql', 'V50__*.sql'
+		into 'db/transcription-queue-history'
 	}
 }
 

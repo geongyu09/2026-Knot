@@ -1,5 +1,6 @@
 package com.knot.backend.auth.presentation.handler;
 
+import com.knot.backend.global.logging.ServerErrorLogger;
 import com.knot.backend.auth.application.AuthService;
 import com.knot.backend.auth.application.dto.result.AuthLoginResult;
 import com.knot.backend.auth.domain.AuthErrorCode;
@@ -55,6 +56,7 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
         try {
             GithubOAuth2User githubUser = getGithubUser(authentication);
             AuthLoginResult result = authService.login(githubUser.getOAuthUser());
+            authCookieManager.expireLoginCookies(response);
 
             if (result.requiresNickname()) {
                 authCookieManager.addNicknameToken(
@@ -66,6 +68,11 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
                 return;
             }
 
+            authCookieManager.addRefreshToken(
+                    response,
+                    result.refreshToken(),
+                    result.refreshMaxAge()
+            );
             authCookieManager.addAccessToken(
                     response,
                     result.token()
@@ -73,17 +80,15 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
             clearAuthentication(request);
             response.sendRedirect(loginProperties.getSuccessRedirectUri());
         } catch (AuthException exception) {
-            log.warn(
-                    "OAuth 인증 처리 실패: errorCode={}",
-                    exception.getErrorCode()
-            );
+            logAuthenticationFailure(exception);
             handleFailure(
                     request,
                     response
             );
         } catch (RuntimeException exception) {
-            log.error(
-                    "OAuth 인증 처리 중 예기치 않은 오류가 발생했습니다.",
+            ServerErrorLogger.error(
+                    log,
+                    "OAuth success processing failed",
                     exception
             );
             handleFailure(
@@ -93,11 +98,28 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
         }
     }
 
+    private void logAuthenticationFailure(AuthException exception) {
+        if (ServerErrorLogger.isInternalFailure(exception)) {
+            ServerErrorLogger.record(
+                    log,
+                    "OAuth success processing failed",
+                    exception
+            );
+            return;
+        }
+        ServerErrorLogger.warn(
+                log,
+                "OAuth authentication rejected",
+                exception
+        );
+    }
+
     private void handleFailure(
             HttpServletRequest request,
             HttpServletResponse response
     ) throws IOException {
         clearAuthentication(request);
+        authCookieManager.expireLoginCookies(response);
         response.sendRedirect(loginProperties.getFailureRedirectUri());
     }
 

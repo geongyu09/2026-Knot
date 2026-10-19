@@ -15,6 +15,7 @@ import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.MigrationVersion;
 import org.flywaydb.core.api.output.MigrateResult;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -33,9 +34,9 @@ class FlywayMigrationUpgradeIntegrationTest {
             .withUsername("knot")
             .withPassword("knot");
 
-    @DisplayName("V9 스키마를 V13 검색 스키마로 업그레이드한다")
+    @DisplayName("V9 스키마를 V13으로 업그레이드하고 진행 중 가져오기 데이터를 보존한다")
     @Test
-    void migrate_success_v9ToContentImportSchema() throws SQLException {
+    void migrate_success_v9ToV13() throws SQLException {
         // given
         Flyway v9Flyway = configureFlyway(MigrationVersion.fromVersion("9"));
         v9Flyway.migrate();
@@ -56,7 +57,7 @@ class FlywayMigrationUpgradeIntegrationTest {
                 "migration-pending",
                 "PENDING"
         );
-        Flyway latestFlyway = configureFlyway();
+        Flyway latestFlyway = configureFlyway(MigrationVersion.fromVersion("13"));
 
         // when
         MigrateResult result = latestFlyway.migrate();
@@ -244,6 +245,213 @@ class FlywayMigrationUpgradeIntegrationTest {
                 FROM content_import_runs
                 WHERE status = 'RUNNING'
                 """)).isTrue();
+
+    }
+
+    @BeforeEach
+    void clearSchema() {
+        Flyway.configure()
+                .dataSource(
+                        POSTGRESQL.getJdbcUrl(),
+                        POSTGRESQL.getUsername(),
+                        POSTGRESQL.getPassword()
+                )
+                .locations(MIGRATION_LOCATION)
+                .cleanDisabled(false)
+                .load()
+                .clean();
+    }
+
+    @Test
+    @DisplayName("V13 기존 데이터를 보존하며 V17로 업그레이드한다")
+    void migrate_success_preservesRetainedDataThroughV17() throws SQLException {
+        // given
+        configureFlyway(MigrationVersion.fromVersion("13")).migrate();
+        insertImportRun(
+                "existing-data",
+                "PENDING"
+        );
+
+        // when
+        Flyway currentFlyway = configureFlyway(MigrationVersion.fromVersion("17"));
+        MigrateResult cleanupResult = currentFlyway.migrate();
+
+        // then
+        assertThat(cleanupResult.success).isTrue();
+        assertThat(cleanupResult.migrationsExecuted).isEqualTo(4);
+        assertThat(appliedVersions(currentFlyway)).containsExactly(
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+        );
+        List<String> tablesAfterCleanup = schemaObjectNames("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                ORDER BY table_name
+                """);
+        assertThat(tablesAfterCleanup).contains(
+                "members",
+                "oauth_identities",
+                "workspaces",
+                "workspace_members",
+                "workspace_invitations"
+        );
+        assertThat(tablesAfterCleanup).doesNotContain(
+                "search_references",
+                "search_document_chunks",
+                "chat_feedback",
+                "imported_page_publications",
+                "chat_messages",
+                "imported_pages",
+                "chat_sessions",
+                "content_import_runs",
+                "content_source_authorizations",
+                "content_source_connections"
+        );
+        assertThat(queryBoolean("""
+                SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector')
+                """)).isFalse();
+        assertThat(queryBoolean("SELECT EXISTS (SELECT 1 FROM members)")).isTrue();
+        assertThat(queryBoolean("SELECT EXISTS (SELECT 1 FROM workspaces)")).isTrue();
+        assertThat(queryBoolean("SELECT EXISTS (SELECT 1 FROM workspace_members)")).isTrue();
+        assertThat(schemaObjectNames("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                    AND table_name = 'workspaces'
+                ORDER BY ordinal_position
+                """)).contains("deleted_at");
+        assertThat(schemaObjectNames("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                    AND table_name = 'workspace_members'
+                ORDER BY ordinal_position
+                """)).contains("left_at");
+        assertThat(schemaObjectNames("""
+                SELECT indexname
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                ORDER BY indexname
+                """)).contains(
+                "uk_workspace_members_active_workspace_member",
+                "uk_workspace_members_member_last_viewed"
+        );
+
+    }
+
+    @Test
+    @DisplayName("빈 스키마에 V17까지 전체 마이그레이션을 적용한다")
+    void migrate_success_freshSchemaToV17() throws SQLException {
+        // given
+        Flyway cleanableFlyway = Flyway.configure()
+                .dataSource(
+                        POSTGRESQL.getJdbcUrl(),
+                        POSTGRESQL.getUsername(),
+                        POSTGRESQL.getPassword()
+                )
+                .locations(MIGRATION_LOCATION)
+                .cleanDisabled(false)
+                .load();
+        cleanableFlyway.clean();
+        Flyway freshFlyway = configureFlyway(MigrationVersion.fromVersion("17"));
+
+        // when
+        MigrateResult freshResult = freshFlyway.migrate();
+
+        // then
+        assertThat(freshResult.success).isTrue();
+        assertThat(freshResult.migrationsExecuted).isEqualTo(15);
+        assertThat(appliedVersions(freshFlyway)).containsExactly(
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "9",
+                "10",
+                "11",
+                "12",
+                "13",
+                "14",
+                "15",
+                "16",
+                "17"
+        );
+        List<String> freshTables = schemaObjectNames("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                ORDER BY table_name
+                """);
+        assertThat(freshTables).contains(
+                "members",
+                "oauth_identities",
+                "workspaces",
+                "workspace_members",
+                "workspace_invitations"
+        );
+        assertThat(freshTables).doesNotContain(
+                "search_references",
+                "search_document_chunks",
+                "chat_feedback",
+                "imported_page_publications",
+                "chat_messages",
+                "imported_pages",
+                "chat_sessions",
+                "content_import_runs",
+                "content_source_authorizations",
+                "content_source_connections"
+        );
+        assertThat(queryBoolean("""
+                SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector')
+                """)).isFalse();
+    }
+
+    @Test
+    @DisplayName("V17의 기존 사용자 데이터를 보존하면서 V18 녹음 스키마를 추가한다")
+    void migrate_success_v17ToV18() throws SQLException {
+        // given
+        configureFlyway(MigrationVersion.fromVersion("13")).migrate();
+        insertImportRun(
+                "recording-upgrade",
+                "RUNNING"
+        );
+        configureFlyway(MigrationVersion.fromVersion("17")).migrate();
+        Flyway currentFlyway = configureFlyway(MigrationVersion.fromVersion("18"));
+
+        // when
+        MigrateResult result = currentFlyway.migrate();
+
+        // then
+        assertThat(result.success).isTrue();
+        assertThat(appliedVersions(currentFlyway)).endsWith("18");
+        assertThat(queryBoolean("SELECT EXISTS (SELECT 1 FROM members)")).isTrue();
+        assertThat(queryBoolean("SELECT EXISTS (SELECT 1 FROM workspaces)")).isTrue();
+        assertThat(queryBoolean("SELECT EXISTS (SELECT 1 FROM workspace_members)")).isTrue();
+        assertThat(schemaObjectNames("""
+                SELECT constraint_name
+                FROM information_schema.table_constraints
+                WHERE table_schema = 'public' AND table_name = 'recording_sessions'
+                """)).contains(
+                "fk_recording_sessions_workspace",
+                "fk_recording_sessions_member",
+                "uk_recording_sessions_member_request"
+        );
     }
 
     private void insertImportRun(

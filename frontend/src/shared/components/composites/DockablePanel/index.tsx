@@ -1,6 +1,7 @@
 import { css, keyframes } from "@emotion/react";
 import styled from "@emotion/styled";
-import { useId, type ReactNode } from "react";
+import useExitAnimation from "@hooks/common/useExitAnimation";
+import { useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import useDockablePanel from "./model/useDockablePanel";
@@ -28,16 +29,8 @@ interface DockablePanelProps {
 /**
  * 스치면 띄우고 누르면 자리를 차지하는 패널.
  *
- * 트리거 버튼에 포인터를 얹거나 포커스를 주면 패널이 화면 위에 겹쳐 떠요(드롭다운).
- * 버튼을 누르면 겹치는 대신 `dockTargetId` 자리로 옮겨가 실제로 폭을 차지하고,
- * 다시 누르면 접혀요. 어느 쪽으로 뜨든 왼쪽에서 밀려 들어오는 모션으로 나와요.
- *
- * 어떤 내용을 담을지는 쓰는 쪽이 정하므로 이 컴포넌트는 도메인을 알지 못해요.
- * 같은 자리를 여러 패널이 나눠 써서 하나만 고정돼야 한다면, 고정 여부는
- * `isDocked`·`onDockedChange`로 그 자리를 아는 바깥이 정해요.
- *
- * @see {@link https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1364-6863 GNB/Floating}
- * @see {@link https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1382-2171 Sidebar/Drawer}
+ * 닫힌 패널은 `useExitAnimation`이 물러나는 애니메이션이 끝날 때까지 조금 더 그려 둬요.
+ * 겹쳐 뜬 패널이 고정되며 닫힐 때는 같은 자리에 고정 패널이 들어오므로 기다리지 않고 바로 지워요.
  */
 export default function DockablePanel({
   label,
@@ -50,6 +43,12 @@ export default function DockablePanel({
   const panelId = useId();
   const { isDocked, isPeeking, dockTarget, rootProps, triggerProps } =
     useDockablePanel({ dockTargetId, dockedProp, onDockedChange });
+  const floatingPanelRef = useRef<HTMLDivElement>(null);
+  const dockedPanelRef = useRef<HTMLDivElement>(null);
+  const { renderedValue: isFloatingRendered, isExiting: isFloatingClosing } =
+    useExitAnimation({ value: isPeeking || null, ref: floatingPanelRef });
+  const { renderedValue: isDockedRendered, isExiting: isDockedClosing } =
+    useExitAnimation({ value: isDocked || null, ref: dockedPanelRef });
 
   return (
     <Root {...rootProps}>
@@ -65,11 +64,30 @@ export default function DockablePanel({
         {icon}
       </Trigger>
 
-      {isPeeking && <FloatingPanel id={panelId}>{children}</FloatingPanel>}
+      {isFloatingRendered && !isDocked && (
+        <FloatingPanel
+          ref={floatingPanelRef}
+          id={panelId}
+          data-overlay-state={isFloatingClosing ? "closing" : "open"}
+          inert={isFloatingClosing}
+        >
+          {children}
+        </FloatingPanel>
+      )}
 
-      {isDocked &&
+      {isDockedRendered &&
         dockTarget !== null &&
-        createPortal(<DockedPanel id={panelId}>{children}</DockedPanel>, dockTarget)}
+        createPortal(
+          <DockedPanel
+            ref={dockedPanelRef}
+            id={panelId}
+            data-overlay-state={isDockedClosing ? "closing" : "open"}
+            inert={isDockedClosing}
+          >
+            {children}
+          </DockedPanel>,
+          dockTarget,
+        )}
     </Root>
   );
 }
@@ -78,7 +96,6 @@ const Root = styled.div`
   display: flex;
 `;
 
-/** @see {@link https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1364-836 Btn/사이드바} */
 const Trigger = styled.button<{ $isDocked: boolean }>`
   display: flex;
   align-items: center;
@@ -103,25 +120,38 @@ const Trigger = styled.button<{ $isDocked: boolean }>`
   }
 `;
 
-/** 왼쪽에서 밀려 들어오는 등장 모션. 자리를 차지할 때도 겹쳐 뜰 때도 같은 방향으로 나와요 */
+/** 왼쪽에서 살며시 밀려 들어오는 등장 모션. 자리를 차지할 때도 겹쳐 뜰 때도 같은 방향으로 나와요 */
 const slideInFromLeft = keyframes`
   from {
-    transform: translateX(-1.5rem); /* 24px */
+    transform: translateX(-0.75rem); /* 12px */
     opacity: 0;
-  }
-
-  to {
-    transform: translateX(0);
-    opacity: 1;
   }
 `;
 
-/** 등장 모션의 길이와 감속. 레일이 벌어지는 속도와 맞춰야 함께 밀리는 것처럼 보여요 */
-const panelEnterStyle = css`
-  animation: ${slideInFromLeft} 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+/** 들어온 쪽으로 조금 물러나며 옅어지는 퇴장 모션 */
+const slideOutToLeft = keyframes`
+  to {
+    transform: translateX(-0.5rem); /* 8px */
+    opacity: 0;
+  }
+`;
+
+/**
+ * 등장은 길고 끝이 부드럽게 감속하고, 퇴장은 짧고 담백하게 빠져요.
+ * 레일이 벌어지고 좁혀지는 속도(`WorkspaceLayout`의 `DockRail`)와 맞춰야 함께 밀리는 것처럼 보여요.
+ */
+const panelMotionStyle = css`
+  animation: ${slideInFromLeft} 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+
+  &[data-overlay-state="closing"] {
+    animation: ${slideOutToLeft} 0.22s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
 
   @media (prefers-reduced-motion: reduce) {
-    animation: none;
+    &,
+    &[data-overlay-state="closing"] {
+      animation: none;
+    }
   }
 `;
 
@@ -136,12 +166,25 @@ const FloatingPanel = styled.div`
   bottom: 8.5rem; /* 136px */
   left: 2.5rem; /* 40px */
   z-index: 20;
-  ${panelEnterStyle}
+  ${panelMotionStyle}
 `;
 
-/** 자리를 차지한 패널. 옮겨 간 자리를 그대로 채워요 */
+/**
+ * 자리를 차지한 패널. 옮겨 간 자리를 그대로 채워요.
+ *
+ * 물러나는 동안 레일이 함께 좁혀지므로, 내용이 레일 밖으로 넘치지 않게 잘라요.
+ * 다른 패널이 같은 자리에 들어오면 물러나기를 기다리지 않고 바로 비켜, 두 패널이 나란히 서지 않아요.
+ */
 const DockedPanel = styled.div`
   width: 100%;
   height: 100%;
-  ${panelEnterStyle}
+  ${panelMotionStyle}
+
+  &[data-overlay-state="closing"] {
+    overflow: hidden;
+  }
+
+  &[data-overlay-state="closing"]:not(:only-child) {
+    display: none;
+  }
 `;

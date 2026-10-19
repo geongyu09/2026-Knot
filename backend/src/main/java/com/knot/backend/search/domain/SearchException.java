@@ -17,8 +17,4 @@ public final class SearchException extends ProjectException {
                 cause
         );
     }
-
-    public SearchErrorCode searchErrorCode() {
-        return (SearchErrorCode) getErrorCode();
-    }
 }

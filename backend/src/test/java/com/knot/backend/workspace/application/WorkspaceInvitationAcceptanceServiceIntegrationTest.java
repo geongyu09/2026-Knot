@@ -9,13 +9,11 @@ import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationAcceptanceResult;
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationResult;
-import com.knot.backend.workspace.domain.Workspace;
-import com.knot.backend.workspace.domain.WorkspaceErrorCode;
-import com.knot.backend.workspace.domain.WorkspaceException;
-import com.knot.backend.workspace.domain.WorkspaceMember;
-import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
-import com.knot.backend.workspace.domain.WorkspaceMemberRole;
-import com.knot.backend.workspace.domain.WorkspaceRepository;
+import com.knot.backend.workspace.domain.model.Workspace;
+import com.knot.backend.workspace.domain.model.WorkspaceMember;
+import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.model.WorkspaceMemberRole;
+import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -40,7 +38,6 @@ import org.springframework.test.context.TestConstructor;
 @SpringBootTest
 @TestConstructor(autowireMode = TestConstructor.AutowireMode.ALL)
 class WorkspaceInvitationAcceptanceServiceIntegrationTest {
-    private final WorkspaceInvitationAcceptanceService acceptanceService;
     private final WorkspaceInvitationService invitationService;
     private final MemberRepository memberRepository;
     private final WorkspaceRepository workspaceRepository;
@@ -48,14 +45,12 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
     private final JdbcClient jdbcClient;
 
     WorkspaceInvitationAcceptanceServiceIntegrationTest(
-            WorkspaceInvitationAcceptanceService acceptanceService,
             WorkspaceInvitationService invitationService,
             MemberRepository memberRepository,
             WorkspaceRepository workspaceRepository,
             WorkspaceMemberRepository workspaceMemberRepository,
             JdbcClient jdbcClient
     ) {
-        this.acceptanceService = acceptanceService;
         this.invitationService = invitationService;
         this.memberRepository = memberRepository;
         this.workspaceRepository = workspaceRepository;
@@ -76,7 +71,7 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
                     5,
                     TimeUnit.SECONDS
             );
-            return acceptanceService.accept(
+            return invitationService.accept(
                     fixture.invitation()
                             .code(),
                     uniqueRemoteAddress(),
@@ -92,7 +87,7 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
             );
 
             // then
-            assertThat(results).extracting(WorkspaceInvitationAcceptanceResult::created)
+            assertThat(results).extracting(WorkspaceInvitationAcceptanceResult::membershipCreated)
                     .containsExactlyInAnyOrder(
                             true,
                             false
@@ -122,7 +117,7 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
                     5,
                     TimeUnit.SECONDS
             );
-            return acceptanceService.accept(
+            return invitationService.accept(
                     fixture.invitation()
                             .linkToken(),
                     uniqueRemoteAddress(),
@@ -134,7 +129,7 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
                     5,
                     TimeUnit.SECONDS
             );
-            return acceptanceService.accept(
+            return invitationService.accept(
                     fixture.invitation()
                             .linkToken(),
                     uniqueRemoteAddress(),
@@ -151,7 +146,7 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
             );
 
             // then
-            assertThat(results).extracting(WorkspaceInvitationAcceptanceResult::created)
+            assertThat(results).extracting(WorkspaceInvitationAcceptanceResult::membershipCreated)
                     .containsOnly(true);
             assertThat(
                     countMemberships(
@@ -171,70 +166,6 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
         }
     }
 
-    @DisplayName("초대 참여와 재발급 경합은 참여 성공 또는 통합 404 중 하나로 끝난다")
-    @Test
-    void accept_successOrNotFound_whenRacingWithReissue() throws Exception {
-        // given
-        InvitationFixture fixture = createInvitationFixture("참여 재발급 경합 팀");
-        Member joiningMember = createMember();
-        CyclicBarrier barrier = new CyclicBarrier(2);
-        ExecutorService executorService = Executors.newFixedThreadPool(2);
-        Callable<AcceptanceRaceOutcome> acceptInvitation = () -> {
-            barrier.await(
-                    5,
-                    TimeUnit.SECONDS
-            );
-            return acceptanceOutcome(
-                    fixture.invitation()
-                            .code(),
-                    joiningMember.getId()
-            );
-        };
-        Callable<WorkspaceInvitationResult> reissueInvitation = () -> {
-            barrier.await(
-                    5,
-                    TimeUnit.SECONDS
-            );
-            return invitationService.reissue(
-                    fixture.workspaceId(),
-                    fixture.ownerMemberId()
-            );
-        };
-
-        try {
-            // when
-            AcceptanceRaceResult raceResult = awaitRaceResult(
-                    executorService,
-                    acceptInvitation,
-                    reissueInvitation
-            );
-
-            // then
-            assertThat(
-                    raceResult.reissuedInvitation()
-                            .created()
-            ).isTrue();
-            assertThat(
-                    raceResult.acceptanceOutcome()
-                            .isAccepted()
-                            || raceResult.acceptanceOutcome()
-                                    .errorCode() == WorkspaceErrorCode.WORKSPACE_INVITATION_PREVIEW_NOT_FOUND
-            ).isTrue();
-            long expectedMembershipCount = raceResult.acceptanceOutcome()
-                    .isAccepted() ? 1L : 0L;
-            assertThat(
-                    countMemberships(
-                            fixture.workspaceId(),
-                            joiningMember.getId()
-                    )
-            ).isEqualTo(expectedMembershipCount);
-            assertThat(countInvitations(fixture.workspaceId())).isEqualTo(2);
-            assertThat(countUninvalidatedInvitations(fixture.workspaceId())).isEqualTo(1);
-        } finally {
-            executorService.shutdownNow();
-        }
-    }
-
     @DisplayName("멤버십 저장이 실패하면 초대와 기존 멤버십 상태를 함께 보존한다")
     @Test
     void accept_failure_rollsBackWhenMembershipSaveFails() {
@@ -246,7 +177,7 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
 
         // when
         Throwable thrown = catchThrowable(
-                () -> acceptanceService.accept(
+                () -> invitationService.accept(
                         fixture.invitation()
                                 .linkToken(),
                         uniqueRemoteAddress(),
@@ -328,42 +259,6 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
         );
     }
 
-    private AcceptanceRaceResult awaitRaceResult(
-            ExecutorService executorService,
-            Callable<AcceptanceRaceOutcome> acceptance,
-            Callable<WorkspaceInvitationResult> reissue
-    ) throws Exception {
-        Future<AcceptanceRaceOutcome> acceptanceFuture = executorService.submit(acceptance);
-        Future<WorkspaceInvitationResult> reissueFuture = executorService.submit(reissue);
-        return new AcceptanceRaceResult(
-                acceptanceFuture.get(
-                        10,
-                        TimeUnit.SECONDS
-                ),
-                reissueFuture.get(
-                        10,
-                        TimeUnit.SECONDS
-                )
-        );
-    }
-
-    private AcceptanceRaceOutcome acceptanceOutcome(
-            String credential,
-            long memberId
-    ) {
-        try {
-            return AcceptanceRaceOutcome.accepted(
-                    acceptanceService.accept(
-                            credential,
-                            uniqueRemoteAddress(),
-                            memberId
-                    )
-            );
-        } catch (WorkspaceException exception) {
-            return AcceptanceRaceOutcome.rejected((WorkspaceErrorCode) exception.getErrorCode());
-        }
-    }
-
     private long countMemberships(
             Long workspaceId,
             Long memberId
@@ -390,20 +285,6 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
         return jdbcClient.sql("""
                 SELECT count(*)
                 FROM workspace_members
-                WHERE workspace_id = :workspaceId
-                """)
-                .param(
-                        "workspaceId",
-                        workspaceId
-                )
-                .query(Long.class)
-                .single();
-    }
-
-    private long countInvitations(Long workspaceId) {
-        return jdbcClient.sql("""
-                SELECT count(*)
-                FROM workspace_invitations
                 WHERE workspace_id = :workspaceId
                 """)
                 .param(
@@ -451,6 +332,10 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
                         "-",
                         ""
                 )
+                .replaceAll(
+                        "[0-9]",
+                        "g"
+                )
                 .substring(
                         0,
                         10
@@ -468,33 +353,4 @@ class WorkspaceInvitationAcceptanceServiceIntegrationTest {
     ) {
     }
 
-    private record AcceptanceRaceResult(
-            AcceptanceRaceOutcome acceptanceOutcome,
-            WorkspaceInvitationResult reissuedInvitation
-    ) {
-    }
-
-    private record AcceptanceRaceOutcome(
-            WorkspaceInvitationAcceptanceResult result,
-            WorkspaceErrorCode errorCode
-    ) {
-
-        private static AcceptanceRaceOutcome accepted(WorkspaceInvitationAcceptanceResult result) {
-            return new AcceptanceRaceOutcome(
-                    result,
-                    null
-            );
-        }
-
-        private static AcceptanceRaceOutcome rejected(WorkspaceErrorCode errorCode) {
-            return new AcceptanceRaceOutcome(
-                    null,
-                    errorCode
-            );
-        }
-
-        private boolean isAccepted() {
-            return result != null;
-        }
-    }
 }

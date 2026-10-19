@@ -80,6 +80,11 @@ public class OpenApiConfig {
 
     private void customizeWorkspaceListOperation(Operation operation) {
         operation.summary("내 워크스페이스 목록 조회")
+                .description(
+                        "현재 참여 중인 삭제되지 않은 워크스페이스를 최근 참여 순서로 반환합니다. "
+                                + "재가입은 새 참여 시각을 사용하며, 탈퇴·삭제된 마지막 조회 대상은 null로 반환합니다. "
+                                + "서버는 마지막 조회 ID를 다른 ID로 대체하거나 저장된 상태를 변경하지 않습니다. " + "화면 이동 대상은 클라이언트가 목록을 기준으로 결정합니다."
+                )
                 .responses(workspaceListResponses());
         operation.security(List.of(new SecurityRequirement().addList(ACCESS_TOKEN_COOKIE)));
     }
@@ -293,15 +298,31 @@ public class OpenApiConfig {
                                 new Operation().operationId("logout")
                                         .summary("로그아웃")
                                         .addTagsItem("인증")
+                                        .addParametersItem(
+                                                new Parameter().name(CSRF_TOKEN_HEADER_NAME)
+                                                        .in("header")
+                                                        .required(true)
+                                                        .schema(new StringSchema())
+                                                        .description("CSRF 토큰")
+                                        )
                                         .responses(
                                                 new ApiResponses().addApiResponse(
-                                                        "302",
-                                                        new ApiResponse().description("로그아웃 후 로그인 화면으로 redirect")
+                                                        "204",
+                                                        new ApiResponse().description("현재 세션 폐기 및 인증 쿠키 만료")
                                                                 .addHeaderObject(
-                                                                        "Location",
-                                                                        new Header().description("로그인 화면 URL")
+                                                                        "Set-Cookie",
+                                                                        new Header()
+                                                                                .description("Access·refresh·온보딩 쿠키 만료")
+                                                                                .schema(new StringSchema())
                                                                 )
                                                 )
+                                                        .addApiResponse(
+                                                                "403",
+                                                                jsonResponse(
+                                                                        "CSRF_INVALID: CSRF 검증 실패",
+                                                                        "ErrorResponse"
+                                                                )
+                                                        )
                                         )
                         )
                 );

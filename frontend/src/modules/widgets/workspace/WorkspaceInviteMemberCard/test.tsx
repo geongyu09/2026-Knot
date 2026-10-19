@@ -23,6 +23,7 @@ const HOME_PATH = getRouterPath({
 });
 const DISPLAY_INVITE_LINK = `/invite/${expected.linkToken}`;
 const COPIED_DURATION_MS = 2000;
+const LOAD_FAILED_TEXT = "초대 링크를 불러오지 못했어요. 다시 시도해 주세요.";
 
 const writeText = vi.fn<(text: string) => Promise<void>>();
 
@@ -168,5 +169,50 @@ describe("WorkspaceInviteMemberCard", () => {
     expect(copyLinkButton).toHaveTextContent("복사");
     expect(copyLinkButton).not.toHaveTextContent("복사됨");
     expect(copyCodeButton).toHaveTextContent("초대 코드 복사");
+  });
+
+  it("초대를 불러오지 못하면 제목은 두고, 링크 칸과 초대 코드 복사 대신 실패 안내와 다시 시도를 보여준다 (ERR-09)", async () => {
+    mockServer.use(
+      http.post(
+        `*${WORKSPACE_INVITATIONS_API_PATH(WORKSPACE_ID)}`,
+        () => new HttpResponse(null, { status: 500 }),
+      ),
+    );
+    renderCard();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      LOAD_FAILED_TEXT,
+    );
+    expect(
+      screen.getByRole("heading", { name: "팀원 초대" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("textbox", { name: "초대 링크" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "초대 코드 복사" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "다시 시도" }),
+    ).toBeInTheDocument();
+  });
+
+  it("다시 시도를 누르면 초대만 다시 받아 링크를 보여준다", async () => {
+    let attempts = 0;
+    mockServer.use(
+      http.post(`*${WORKSPACE_INVITATIONS_API_PATH(WORKSPACE_ID)}`, () => {
+        attempts += 1;
+        if (attempts === 1) return new HttpResponse(null, { status: 500 });
+
+        return HttpResponse.json(workspaceInvitationResponse);
+      }),
+    );
+    renderCard();
+
+    await click(await screen.findByRole("button", { name: "다시 시도" }));
+
+    expect(await waitForInvitation()).toBeInTheDocument();
+    expect(screen.queryByText(LOAD_FAILED_TEXT)).not.toBeInTheDocument();
+    expect(attempts).toBe(2);
   });
 });

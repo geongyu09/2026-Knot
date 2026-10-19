@@ -15,9 +15,12 @@ API 관련 코드는 한곳에서 계층적으로 관리해야 하므로 모두 
 - `fetch/` — 순수 함수인 fetch를 엔드포인트별 폴더 구조로 관리. restful API 요청 엔드포인트와 `fetch/` 하위 디렉토리 위치가 일치해야 함. 요청·응답 타입은 파일 안에 정의하지 않고 `dto/`에서 가져오며, 응답은 `new XxxResponseDto(response.data)`로 감싸 반환.
   - e.g. `GET /api/v1/users/[id]` → `src/shared/api/fetch/api/v1/users/[id]/index.ts`
   - 폴더 이름의 `fetch`는 네이티브 fetch API가 아니라 **요청 함수**를 뜻함. 실제 요청은 `httpClient/`의 인스턴스로 보냄.
+  - 예외: SSE 응답(`Accept: text/event-stream`)을 받는 요청은 axios가 브라우저에서 응답 본문을 조각 단위로 읽지 못하므로 `httpClient` 대신 `sse/requestSseStream`으로 보냄. DTO 하나를 반환하는 대신 `requestSseStream`이 내는 이벤트를 `for await`로 받아 이벤트 DTO로 바꿔 하나씩 내는 async generator로 작성하고, 이름은 다른 요청 함수와 같은 규칙(e.g. `createSearchConversationApi`)을 따름. 스트림을 받기 전 실패 응답은 `requestSseStream`이 상태 코드와 서버 오류 코드를 담은 `SseRequestError`로 throw하므로 요청 함수에서 따로 오류 클래스를 만들지 않음. 스트림을 받은 뒤 실패는 이벤트로 전달.
+  - 같은 리소스 아래 여러 SSE 엔드포인트가 함께 쓰는 도메인 코드(이벤트 이름을 DTO로 바꾸는 변환, 끝 이벤트를 보고 반환·throw를 정하는 판정과 그 오류 클래스)는 경로상 공통 부모 엔드포인트의 `index.ts`에 함께 export하고, 테스트도 그 폴더의 `test.ts`에 둠. 이벤트 이름을 알아야 해서 `sse/`에 둘 수 없고, `dto/`를 써야 해서 `shared/utils`에 둘 수 없기 때문. (e.g. 탐색 첫 질문 `…/search/conversations/index.ts`의 `toSearchStreamEvent`·`relaySearchAnswerUntilEnd`를 후속 질문 요청 함수와 두 뮤테이션이 import)
 - `queryKey/` — 쿼리 키는 뮤테이션에서도 쓰이므로 별도 폴더로 분리, `user.ts`처럼 도메인별 파일로 관리.
 - `queries/`, `mutations/`, `suspense/`, `prefetch/` — 쿼리·뮤테이션·서스펜스·프리페치 훅을 각각 둠. 작성 규칙은 `.claude/rules/query-hooks.md` 참고.
 - `mock/` — 백엔드 연동 전 msw로 응답을 대신하는 mock API. 작성 규칙은 아래 「API mock」 참고.
+- `sse/` — SSE 표준 형식과 SSE 요청의 공통 부분만 다룸. 문자열을 이벤트로 자르는 순수 함수(`parseSseEvents`), 응답 본문 스트림을 끝까지 읽어 이벤트를 하나씩 내는 async generator(`readSseStream`, 받는 쪽이 멈추면 `finally`에서 읽기를 취소), 네이티브 `fetch`로 SSE 요청을 보내 `readSseStream`의 이벤트를 그대로 내는 async generator(`requestSseStream`)를 둠. `requestSseStream`은 절대 주소·쿠키를 붙이고 CSRF 헤더는 `httpClient`처럼 GET이 아닌 요청에만 붙이며, 스트림을 받기 전 실패 응답을 같은 파일의 `SseRequestError`(`status`, 본문의 서버 오류 `code`, `message`)로 throw함(본문을 읽지 못하면 `code`는 `UNKNOWN`, 성공인데 본문 없음은 `EMPTY_BODY`, 네트워크 오류·abort는 바꾸지 않고 그대로 던짐). 탐색 같은 도메인과 API 명세의 이벤트 이름을 모름. 요청 함수(`fetch/`)에서만 씀.
 
 ## API 요청(fetch) 로직
 
@@ -94,12 +97,15 @@ src/shared/api/mock/
 │   └── api/v1/chatSessions/index.ts  # fetch/ 와 동일한 경로 구조
 ├── responses/
 │   └── chatSession.ts                # 도메인별 mock 응답 데이터
+├── state/
+│   └── document.ts                   # (필요할 때만) 요청으로 바뀌는 도메인별 mock 상태
 └── types/
     └── chatSession.ts                # 도메인별 mock 전용 응답 타입
 ```
 
 - `handlers/`는 `fetch/`와 경로 구조를 일치시킴. 엔드포인트가 바뀌면 요청 함수와 핸들러가 항상 같이 바뀌므로 `fetch/`의 "URL과 폴더 구조 일치" 규칙을 그대로 이어받음.
 - `responses/`는 `queryKey/`처럼 도메인별 플랫 파일. 데이터는 엔드포인트가 아니라 도메인 단위로 바뀌고(세션 목록·세션 상세가 같은 `ChatSession`을 공유), 통합 테스트의 기대값(응답 DTO로 변환해서 씀, `test-strategy.md` 「기대값」)으로도 쓰이기 때문.
+- `state/`는 변경 요청 뒤에 조회 응답이 달라져야 하는 도메인에만 두는 mock 상태. 대부분의 도메인에는 없음. 규칙은 아래 「요청으로 바뀌는 상태」 참고.
 - `types/`는 `responses/`와 같은 도메인별 파일로 둔 mock 전용 타입. mock 응답은 네트워크로 나가는 **서버 JSON 모양**이므로 여기 타입은 `dto/`의 `Raw`(생성자 입력)에 대응하며, DTO 클래스(앱 모양)가 아님. mock의 데이터 타입은 모두 여기서 별도로 정의하고 `dto/`·`fetch/`의 타입을 import하지 않음. 실제 요청·응답 모양의 정본은 `dto/`.
 
 ### mock 응답 데이터
@@ -156,6 +162,17 @@ export const handlers = [...chatSessionsHandlers];
 - 경로는 `fetch/`의 경로 상수를 재사용해 요청 함수와 핸들러가 어긋나지 않게 함.
 - 경로 파라미터가 있는 엔드포인트는 `fetch/`의 상수가 실제 id를 채우는 함수라 그대로 못 쓰므로, 그 경우에만 `*/api/v1/chat-sessions/:sessionId` 패턴을 핸들러에 직접 적고 폴더 위치(`handlers/api/v1/chatSessions/[sessionId]/`)로 대응 관계를 드러냄.
 - 엔드포인트 하나를 추가하는 비용은 **응답 1개 + 핸들러 1개 + 등록 1줄**(새 도메인이면 타입 1개 추가).
+
+### 요청으로 바뀌는 상태
+
+핸들러는 기본적으로 `responses/`의 값을 그대로 돌려줌. 변경 요청 뒤에 다른 조회 응답이 달라져야 화면 흐름을 확인할 수 있는 경우에만 `state/`에 도메인별 파일을 둠. (예: 문서를 확인하면 문서 상세의 내 확인 상태와 확인 수, 확인 대상 목록의 내 항목이 함께 바뀜)
+
+- **`responses/`의 기본값은 바꾸지 않음.** 테스트의 기대값으로 쓰이기 때문. `state/`는 바뀐 것만 기억하고, 기본값에서 바뀐 응답을 계산해 돌려줌.
+- 그 도메인의 핸들러는 `responses/`를 직접 읽지 않고 `state/`의 함수를 거쳐 읽고 씀. 한 핸들러라도 직접 읽으면 응답끼리 어긋남.
+- 상태를 지우는 `reset{Domain}MockState` 함수를 함께 두고 `vitest.setup.ts`의 `afterEach`에서 부름. 지우지 않으면 앞 테스트가 보낸 요청이 뒤 테스트의 응답을 바꿈.
+- 스토리북은 스토리를 옮겨도 미리보기 화면을 새로고침하지 않아 mock 상태가 남음. 그 도메인의 상태를 **바꾸거나 읽는** 컴포넌트의 스토리 파일은 meta `loaders`에서도 `reset{Domain}MockState`를 부름. (예: 확인 버튼 스토리에서 누른 확인이 확인 수 스토리에 1명 많게 보임)
+- 빈 목록·에러 같은 **변형을 만드는 용도로 쓰지 않음.** 변형은 지금처럼 그 테스트·스토리에서 핸들러를 덮음.
+- 개발 서버에서는 페이지를 새로고침하면 기본 상태로 돌아감.
 
 ### 켜고 끄기
 

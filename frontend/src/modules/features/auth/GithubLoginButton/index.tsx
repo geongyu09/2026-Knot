@@ -1,4 +1,5 @@
 import Button from "@primitives/ui/Button";
+import { useEffect, useState } from "react";
 
 import GithubIcon from "@/assets/icons/github.svg";
 
@@ -11,27 +12,47 @@ import GithubIcon from "@/assets/icons/github.svg";
  */
 const GITHUB_OAUTH_URL = `${process.env.API_BASE_URL}/oauth2/authorization/github`;
 
+/** 넘어가지 못하고 화면이 남았을 때, 처리 중을 푸는 데까지 기다리는 시간 */
+const REDIRECT_TIMEOUT_MS = 10_000;
+
 /**
  * GitHub 계정으로 로그인을 시작하는 버튼.
  *
- * `httpClient`가 아니라 `window.location.href`로 **페이지를 통째로 이동**시켜요.
- * 이 주소는 응답을 받아 화면에 그리는 API가 아니라 GitHub으로 가는 302 리다이렉트라,
- * axios로 부르면 GitHub 도메인에서 CORS에 막히고 쿠키도 제대로 심기지 않습니다.
- *
- * 이동 뒤의 흐름은 백엔드가 정합니다.
- * 기존 회원은 접근 토큰 쿠키를 받고, 신규 사용자는 온보딩 토큰 쿠키를 받아
- * 닉네임 입력 화면(`/onboarding`)으로 돌아옵니다.
- *
- * 서버가 허용한 출처에서만 동작하므로 `localhost`에서는 확인할 수 없어요.
- * 배포된 주소에서 확인해야 합니다.
+ * 누르면 GitHub으로 넘어갈 때까지 처리 중으로 바뀌어 다시 누를 수 없어요.
+ * 넘어가지 못하고 이 화면이 남으면 처리 중을 풀어 다시 누를 수 있게 해요.
  */
 export default function GithubLoginButton() {
+  const [isRedirecting, setIsRedirecting] = useState(false);
+
+  // 처리 중인데 이 화면이 남는 경우는 두 가지예요. 둘 다 처리 중을 풀지 않으면 새로고침하기 전까지 버튼을 누를 수 없어요
+  useEffect(() => {
+    if (!isRedirecting) return;
+
+    const stopRedirecting = () => setIsRedirecting(false);
+
+    // 뒤로 가기로 돌아오면 브라우저가 떠날 때의 화면을 그대로 되살리고 pageshow를 알려요
+    window.addEventListener("pageshow", stopRedirecting);
+    // 브라우저의 중지 버튼이나 Esc로 이동이 멈추면 브라우저가 알려 주지 않아, 시간이 지나면 풀어요
+    const timerId = window.setTimeout(stopRedirecting, REDIRECT_TIMEOUT_MS);
+
+    return () => {
+      window.removeEventListener("pageshow", stopRedirecting);
+      window.clearTimeout(timerId);
+    };
+  }, [isRedirecting]);
+
   const handleClick = () => {
+    setIsRedirecting(true);
     window.location.href = GITHUB_OAUTH_URL;
   };
 
   return (
-    <Button size="lg" isFullWidth onClick={handleClick}>
+    <Button
+      size="lg"
+      isFullWidth
+      isLoading={isRedirecting}
+      onClick={handleClick}
+    >
       <GithubIcon />
       GitHub으로 시작하기
     </Button>

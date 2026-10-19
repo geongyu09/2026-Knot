@@ -2,21 +2,19 @@ package com.knot.backend.workspace.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
-
 import com.knot.backend.workspace.application.dto.result.WorkspaceInvitationPreviewResult;
-import com.knot.backend.workspace.domain.Workspace;
+import com.knot.backend.workspace.domain.model.Workspace;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
-import com.knot.backend.workspace.domain.WorkspaceInvitation;
-import com.knot.backend.workspace.domain.WorkspaceInvitationRepository;
-import com.knot.backend.workspace.domain.WorkspaceMemberRepository;
-import com.knot.backend.workspace.domain.WorkspaceRepository;
+import com.knot.backend.workspace.domain.model.WorkspaceInvitation;
+import com.knot.backend.workspace.domain.repository.WorkspaceInvitationRepository;
+import com.knot.backend.workspace.domain.repository.WorkspaceMemberRepository;
+import com.knot.backend.workspace.domain.repository.WorkspaceRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -40,20 +38,24 @@ class WorkspaceInvitationPreviewServiceTest {
     );
     private final WorkspaceRepository workspaceRepository = mock(WorkspaceRepository.class);
     private final WorkspaceMemberRepository workspaceMemberRepository = mock(WorkspaceMemberRepository.class);
-    private final WorkspaceInvitationSecretGenerator secretGenerator = mock(WorkspaceInvitationSecretGenerator.class);
-    private final WorkspaceInvitationSecretProtector secretProtector = mock(WorkspaceInvitationSecretProtector.class);
+    private final WorkspaceInvitationSecretGenerator workspaceInvitationSecretGenerator = mock(
+            WorkspaceInvitationSecretGenerator.class
+    );
+    private final WorkspaceInvitationSecretHasher workspaceInvitationSecretHasher = mock(
+            WorkspaceInvitationSecretHasher.class
+    );
     private final WorkspaceInvitationPreviewRateLimiter rateLimiter = mock(WorkspaceInvitationPreviewRateLimiter.class);
-    private final WorkspaceInvitationTransactionExecutor transactionExecutor = mock(
+    private final WorkspaceInvitationTransactionExecutor workspaceInvitationTransactionExecutor = mock(
             WorkspaceInvitationTransactionExecutor.class
     );
     private final WorkspaceInvitationService service = new WorkspaceInvitationService(
             workspaceRepository,
             workspaceMemberRepository,
             workspaceInvitationRepository,
-            secretGenerator,
-            secretProtector,
+            workspaceInvitationSecretGenerator,
+            workspaceInvitationSecretHasher,
             rateLimiter,
-            transactionExecutor,
+            workspaceInvitationTransactionExecutor,
             Clock.fixed(
                     NOW,
                     ZoneOffset.UTC
@@ -66,7 +68,7 @@ class WorkspaceInvitationPreviewServiceTest {
         // given
         WorkspaceInvitation invitation = validInvitation();
         when(
-                secretProtector.hash(
+                workspaceInvitationSecretHasher.hash(
                         WorkspaceInvitationSecretKind.INVITE_CODE,
                         CODE
                 )
@@ -96,7 +98,7 @@ class WorkspaceInvitationPreviewServiceTest {
         // given
         WorkspaceInvitation invitation = validInvitation();
         when(
-                secretProtector.hash(
+                workspaceInvitationSecretHasher.hash(
                         WorkspaceInvitationSecretKind.LINK_TOKEN,
                         LINK_TOKEN
                 )
@@ -127,7 +129,7 @@ class WorkspaceInvitationPreviewServiceTest {
                 NOW.minusSeconds(1)
         );
         when(
-                secretProtector.hash(
+                workspaceInvitationSecretHasher.hash(
                         WorkspaceInvitationSecretKind.INVITE_CODE,
                         CODE
                 )
@@ -144,14 +146,6 @@ class WorkspaceInvitationPreviewServiceTest {
         // then
         assertThat(result.workspaceId()).isEqualTo(WORKSPACE_ID);
         assertThat(result.workspaceName()).isEqualTo(WORKSPACE_NAME);
-        verify(
-                secretProtector,
-                never()
-        ).decrypt(
-                any(),
-                any(),
-                any()
-        );
     }
 
     @DisplayName("금지 문자가 포함된 6자리 값도 코드 조회 제한을 소비한 뒤 초대 없음으로 응답한다")
@@ -171,7 +165,7 @@ class WorkspaceInvitationPreviewServiceTest {
                 .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
                 .isEqualTo(WorkspaceErrorCode.WORKSPACE_INVITATION_PREVIEW_NOT_FOUND);
         verify(rateLimiter).consume(REMOTE_ADDRESS);
-        verifyNoInteractions(secretProtector);
+        verifyNoInteractions(workspaceInvitationSecretHasher);
     }
 
     @DisplayName("존재하지 않는 credential은 원인을 구분하지 않는 초대 없음으로 응답한다")
@@ -179,7 +173,7 @@ class WorkspaceInvitationPreviewServiceTest {
     void preview_failure_invitationNotFound() {
         // given
         when(
-                secretProtector.hash(
+                workspaceInvitationSecretHasher.hash(
                         WorkspaceInvitationSecretKind.INVITE_CODE,
                         CODE
                 )
@@ -207,38 +201,10 @@ class WorkspaceInvitationPreviewServiceTest {
                 WORKSPACE_ID,
                 LINK_TOKEN_HASH,
                 CODE_HASH,
-                LINK_TOKEN,
-                CODE,
                 NOW.minus(WorkspaceInvitation.VALIDITY_PERIOD)
         );
         when(
-                secretProtector.hash(
-                        WorkspaceInvitationSecretKind.INVITE_CODE,
-                        CODE
-                )
-        ).thenReturn(CODE_HASH);
-        when(workspaceInvitationRepository.findByInviteCodeHash(CODE_HASH)).thenReturn(Optional.of(invitation));
-
-        // when
-        ThrowingCallable action = () -> service.preview(
-                CODE,
-                REMOTE_ADDRESS
-        );
-
-        // then
-        assertThatThrownBy(action).isInstanceOf(WorkspaceException.class)
-                .extracting(exception -> ((WorkspaceException) exception).getErrorCode())
-                .isEqualTo(WorkspaceErrorCode.WORKSPACE_INVITATION_PREVIEW_NOT_FOUND);
-    }
-
-    @DisplayName("재발급으로 무효화된 초대는 원인을 구분하지 않는 초대 없음으로 응답한다")
-    @Test
-    void preview_failure_invalidatedInvitation() {
-        // given
-        WorkspaceInvitation invitation = validInvitation();
-        invitation.invalidate(NOW);
-        when(
-                secretProtector.hash(
+                workspaceInvitationSecretHasher.hash(
                         WorkspaceInvitationSecretKind.INVITE_CODE,
                         CODE
                 )
@@ -262,8 +228,6 @@ class WorkspaceInvitationPreviewServiceTest {
                 WORKSPACE_ID,
                 LINK_TOKEN_HASH,
                 CODE_HASH,
-                LINK_TOKEN,
-                CODE,
                 NOW.minusSeconds(1)
         );
     }

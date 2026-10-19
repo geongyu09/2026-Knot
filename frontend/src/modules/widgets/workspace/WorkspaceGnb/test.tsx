@@ -5,7 +5,13 @@ import { ThemeProvider } from "@emotion/react";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it } from "vitest";
 
@@ -20,10 +26,21 @@ const CHAT_PATH = getRouterPath({
   routeKey: "CHAT",
   params: { workspaceId: WORKSPACE_ID },
 });
+const DOCUMENTS_PATH = getRouterPath({
+  routeKey: "DOCUMENTS",
+  params: { workspaceId: WORKSPACE_ID },
+});
+// 문서 하나를 보는 화면. GNB는 문서를 조회하지 않아 id는 아무 값이어도 돼요
+const DOCUMENT_PATH = getRouterPath({
+  routeKey: "DOCUMENT",
+  params: { workspaceId: WORKSPACE_ID, documentId: "101" },
+});
 const DOCK_RAIL_ID = "test-dock-rail";
 const PANEL_TEXT = "패널 내용";
 
 const expectedMe = new GetMeResponseDto(meResponse);
+
+const RIGHT_TEXT = "오른쪽 버튼";
 
 const renderGnb = (initialPath = HOME_PATH) => {
   const queryClient = new QueryClient({
@@ -32,21 +49,26 @@ const renderGnb = (initialPath = HOME_PATH) => {
   const element = (
     <>
       <div id={DOCK_RAIL_ID} />
-      <WorkspaceGnb>
-        <DockablePanel
-          label="사이드바"
-          icon={<span />}
-          dockTargetId={DOCK_RAIL_ID}
-        >
-          <p>{PANEL_TEXT}</p>
-        </DockablePanel>
-      </WorkspaceGnb>
+      <WorkspaceGnb
+        left={
+          <DockablePanel
+            label="사이드바"
+            icon={<span />}
+            dockTargetId={DOCK_RAIL_ID}
+          >
+            <p>{PANEL_TEXT}</p>
+          </DockablePanel>
+        }
+        right={<button type="button">{RIGHT_TEXT}</button>}
+      />
     </>
   );
   const router = createMemoryRouter(
     [
       { path: PATH_ROUTE.WORKSPACE_HOME, element },
       { path: PATH_ROUTE.CHAT, element },
+      { path: PATH_ROUTE.DOCUMENTS, element },
+      { path: PATH_ROUTE.DOCUMENT, element },
     ],
     { initialEntries: [initialPath] },
   );
@@ -63,16 +85,18 @@ const renderGnb = (initialPath = HOME_PATH) => {
     router,
     homeButton: screen.getByRole("button", { name: "홈" }),
     exploreButton: screen.getByRole("button", { name: "탐색" }),
+    documentsButton: screen.getByRole("button", { name: "문서" }),
     panelTrigger: screen.getByRole("button", { name: "사이드바" }),
   };
 };
 
 describe("WorkspaceGnb", () => {
   it("홈 화면에서는 내비 필의 홈만 현재 화면으로 표시한다", () => {
-    const { homeButton, exploreButton } = renderGnb();
+    const { homeButton, exploreButton, documentsButton } = renderGnb();
 
     expect(homeButton).toHaveAttribute("aria-current", "page");
     expect(exploreButton).not.toHaveAttribute("aria-current");
+    expect(documentsButton).not.toHaveAttribute("aria-current");
   });
 
   it("탐색을 누르면 탐색 화면으로 이동하고 표시가 옮겨간다", async () => {
@@ -90,6 +114,46 @@ describe("WorkspaceGnb", () => {
     expect(screen.getByRole("button", { name: "홈" })).not.toHaveAttribute(
       "aria-current",
     );
+  });
+
+  it("문서를 누르면 문서 목록 화면으로 이동하고 표시가 옮겨간다", async () => {
+    const { router, documentsButton } = renderGnb();
+
+    await act(async () => {
+      fireEvent.click(documentsButton);
+    });
+
+    expect(router.state.location.pathname).toBe(DOCUMENTS_PATH);
+    expect(screen.getByRole("button", { name: "문서" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("button", { name: "홈" })).not.toHaveAttribute(
+      "aria-current",
+    );
+  });
+
+  it("문서 하나를 보는 화면에서도 문서를 현재 화면으로 표시하고, 문서를 누르면 문서 목록으로 간다", async () => {
+    const { router, documentsButton } = renderGnb(DOCUMENT_PATH);
+
+    expect(documentsButton).toHaveAttribute("aria-current", "page");
+
+    await act(async () => {
+      fireEvent.click(documentsButton);
+    });
+
+    expect(router.state.location.pathname).toBe(DOCUMENTS_PATH);
+  });
+
+  it("문서 목록 화면에서 문서를 눌러도 이동하지 않는다", async () => {
+    const { router, documentsButton } = renderGnb(DOCUMENTS_PATH);
+
+    await act(async () => {
+      fireEvent.click(documentsButton);
+    });
+
+    expect(router.state.historyAction).toBe("POP");
+    expect(router.state.location.pathname).toBe(DOCUMENTS_PATH);
   });
 
   it("이미 있는 화면의 버튼은 눌러도 이동하지 않는다", async () => {
@@ -114,6 +178,18 @@ describe("WorkspaceGnb", () => {
         expectedMe.profileImageUrl,
       );
     });
+  });
+
+  it("우측에 받은 버튼을 아바타 앞에 둔다 (Figma GNB/Floating)", () => {
+    renderGnb();
+
+    const right = screen.getByRole("button", { name: RIGHT_TEXT });
+    const avatar = screen.getByRole("img", { name: "내 프로필" });
+
+    expect(right.parentElement).toBe(avatar.parentElement);
+    expect(right.compareDocumentPosition(avatar)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
 
   it("좌측 패널 트리거에 포인터를 얹으면 패널이 겹쳐 뜬다", () => {

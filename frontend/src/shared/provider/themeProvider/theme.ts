@@ -26,6 +26,18 @@ const text = {
     line-height: 1.5;
     letter-spacing: -0.02em;
   `,
+  heading03: css`
+    font-size: 1.25rem; /* 20px */
+    font-weight: 600;
+    line-height: 1.5;
+    letter-spacing: -0.02em;
+  `,
+  heading04: css`
+    font-size: 1.125rem; /* 18px */
+    font-weight: 600;
+    line-height: 1.5;
+    letter-spacing: -0.02em;
+  `,
 
   body01: css`
     font-size: 1rem; /* 16px */
@@ -83,17 +95,24 @@ export const theme = {
       100: "#E5F0F4",
       200: "#A8CEDB",
       500: "#2E85A3",
+      700: "#2F6F82",
+    },
+    caution: {
+      700: "#8A6A2C",
     },
     warning: {
       50: "#FAEFEE",
       200: "#DDACA6",
       600: "#BF3B2C",
+      700: "#A8483C",
       800: "#8C2A1F",
     },
   },
 
   text,
 
+  shadow01:
+    "0 2px 6px -1px rgba(31, 30, 28, 0.08), 0 1px 1px 0 rgba(31, 30, 28, 0.04)",
   shadow02:
     "0 6px 16px -4px rgba(31, 30, 28, 0.08), 0 1px 2px 0 rgba(31, 30, 28, 0.04)",
   shadow03:

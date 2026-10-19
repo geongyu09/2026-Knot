@@ -1,8 +1,8 @@
-import { RouterProvider } from "react-router/dom";
-import { router } from "@routes/routes";
+import { useSentryRoutes } from "@provider/sentry";
+import { routes } from "@routes/routes";
 
 const App = () => {
-  return <RouterProvider router={router} />;
+  return useSentryRoutes(routes);
 };
 
 export default App;
