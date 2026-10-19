@@ -1,16 +1,21 @@
 {
   "name": "knot-frontend",
+  // /relay 아래 요청만 받는 중계 Worker예요(ADR 838). 나머지 주소는 아래 run_worker_first에 걸리지 않아 정적 파일로 바로 나가요
+  "main": "src/worker/index.ts",
   "compatibility_date": "2026-08-01",
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // 이 경로만 Worker를 먼저 거쳐요. 바꾸면 src/worker의 RELAY_PATH도 함께 바꿔요
+    "run_worker_first": ["/relay/*"],
   },
   "env": {
     "dev": {
-      "name": "knot-frontend-dev"
+      "name": "knot-frontend-dev",
     },
     "prod": {
-      "name": "knot-frontend"
-    }
-  }
+      "name": "knot-frontend",
+    },
+  },
 }

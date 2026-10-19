@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import worker, { relayToPostHog } from ".";
+import worker from ".";
+import { relayToPostHog } from "./relay";
 
 const SITE = "https://dev.knoted.kr";
 

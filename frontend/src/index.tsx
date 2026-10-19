@@ -15,10 +15,13 @@ import { routes } from "@routes/routes";
 import { syncAnalyticsUser } from "@utils/syncAnalyticsUser";
 import posthog from "posthog-js";
 
-// 키가 없는 환경(로컬, 테스트)에서는 사용 기록을 보내지 않아요
-if (process.env.POSTHOG_KEY && process.env.POSTHOG_HOST) {
+// 키가 없는 환경(로컬, 테스트)에서는 사용 기록을 보내지 않아요.
+// 광고 차단에 막히지 않게 PostHog 주소가 아니라 우리 주소의 중계 경로로 보내고, 프론트 Worker(src/worker)가 PostHog로 넘겨요(ADR 838).
+// ui_host는 툴바 · 링크가 PostHog 화면을 가리키게 하는 값이에요
+if (process.env.POSTHOG_KEY) {
   posthog.init(process.env.POSTHOG_KEY, {
-    api_host: process.env.POSTHOG_HOST,
+    api_host: "/relay/p",
+    ui_host: "https://us.posthog.com",
     defaults: "2026-08-30",
   });
   syncAnalyticsUser(queryClient);

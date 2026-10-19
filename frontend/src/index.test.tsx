@@ -125,15 +125,17 @@ describe("앱 진입점", () => {
       vi.mocked(syncAnalyticsUser).mockClear();
     });
 
-    it("키와 주소가 있으면 사용 기록을 켜고, 로그인 확인 결과로 사용자를 식별하게 연결한다", async () => {
+    it("키가 있으면 사용 기록을 우리 주소의 중계 경로로 보내게 켜고, 로그인 확인 결과로 사용자를 식별하게 연결한다", async () => {
       vi.stubEnv("POSTHOG_KEY", "phc_test");
-      vi.stubEnv("POSTHOG_HOST", "https://us.i.posthog.com");
 
       await import("./index");
 
       expect(posthog.init).toHaveBeenCalledWith(
         "phc_test",
-        expect.objectContaining({ api_host: "https://us.i.posthog.com" }),
+        expect.objectContaining({
+          api_host: "/relay/p",
+          ui_host: "https://us.posthog.com",
+        }),
       );
       expect(syncAnalyticsUser).toHaveBeenCalledTimes(1);
     });
