@@ -12,6 +12,7 @@ import DockColumn, {
   DOCK_BOTTOM,
   DOCK_TOAST_GAP,
 } from "@primitives/layout/DockColumn";
+import useScrollRestoration from "@hooks/common/useScrollRestoration";
 import LoadingIndicator from "@primitives/ui/LoadingIndicator";
 import PageErrorNotice from "@primitives/ui/PageErrorNotice";
 import { ToastViewport } from "@provider/context/toastContext";
@@ -76,6 +77,8 @@ export default function WorkspaceLayout() {
   useRecordingLeaveWarning();
   useAbortSearchAnswerOnLeave();
   useOpenEvidenceOnAnswerComplete();
+  // 화면은 창이 아니라 본문 안에서 스크롤돼서, 화면을 옮길 때 본문의 스크롤 위치를 맞춰요
+  const { scrollRef: mainRef } = useScrollRestoration();
 
   // 대화 목록 버튼은 탐색 화면에만 있으므로, 홈으로 나가면 고른 적 없던 것으로 봐요
   const dockedPanel =
@@ -140,7 +143,7 @@ export default function WorkspaceLayout() {
 
         <Content>
           {/* 사용 기록의 스크롤 깊이는 창이 아니라 이 본문을 재요(ANALYTICS_SCROLL_ROOT_ATTRIBUTE) */}
-          <Main data-analytics-scroll-root aria-busy={!isReady}>
+          <Main ref={mainRef} data-analytics-scroll-root aria-busy={!isReady}>
             {isReady ? (
               <Outlet />
             ) : (
