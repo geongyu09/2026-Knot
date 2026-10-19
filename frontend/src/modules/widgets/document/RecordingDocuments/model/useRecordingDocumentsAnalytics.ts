@@ -32,15 +32,20 @@ interface UseRecordingDocumentsAnalyticsParams {
   viewStatus: RecordingDocumentsViewStatus;
 }
 
+interface UseRecordingDocumentsRetryAnalyticsParams {
+  workspaceId: number;
+  recordingId: number;
+}
+
 /**
- * 정리 화면에서 일어난 일을 사용 기록으로 보내는 훅. 화면의 상태와 다시 시도 응답을 지켜보기만 하고, 정리 화면의 동작은 바꾸지 않아요.
+ * 「정리 중」을 본 뒤 결과로 바뀌면 정리 결과(`recording_documents_result`)를 보내요.
+ * 실패면 전사 · 문서 만들기 중 어디서 실패했는지, 완료면 만들어진 문서 수(녹음 조회 응답의 성공 수)를 함께 보내요.
  *
- * - 정리 결과(`recording_documents_result`): 「정리 중」을 본 뒤 결과로 바뀌면 보내요. 실패면 전사 · 문서 만들기 중 어디서 실패했는지,
- *   완료면 만들어진 문서 수(녹음 조회 응답의 성공 수)를 함께 보내요. 이미 결과가 난 녹음을 다시 열면 정리 중을 거치지 않아 보내지 않아요.
- * - 다시 시도 응답(`recording_documents_retry`): 전사 · 문서 다시 시도 뮤테이션이 끝나면 뮤테이션 캐시에서 응답을 읽어 보내요.
- *   캐시에는 앞서 다른 화면에서 보낸 다시 시도도 잠시 남아 있어서, 이 화면을 연 뒤에 보낸 것만 한 번씩 보내요.
+ * 이미 결과가 난 녹음을 다시 열면 정리 중을 거치지 않아 보내지 않아요.
+ * 단, 저장 상태로 결과가 정해지는 녹음(저장된 음성 없음 · 저장 실패)은 저장 상태의 첫 응답을 기다리는 동안 정리 중을 거쳐서
+ * 다시 열 때마다 보내요. 분석할 때는 recording_id로 중복을 빼요.
  */
-export const useRecordingDocumentsAnalytics = ({
+const useRecordingDocumentsResultAnalytics = ({
   workspaceId,
   recordingId,
   viewStatus,
@@ -82,7 +87,16 @@ export const useRecordingDocumentsAnalytics = ({
       },
     });
   }, [queryClient, recordingId, viewStatus, workspaceId]);
+};
 
+/**
+ * 전사 · 문서 다시 시도 뮤테이션이 끝나면 뮤테이션 캐시에서 응답을 읽어 다시 시도 응답(`recording_documents_retry`)을 보내요.
+ * 캐시에는 앞서 다른 화면에서 보낸 다시 시도도 잠시 남아 있어서, 이 화면을 연 뒤에 보낸 것만 한 번씩 보내요.
+ */
+const useRecordingDocumentsRetryAnalytics = ({
+  workspaceId,
+  recordingId,
+}: UseRecordingDocumentsRetryAnalyticsParams) => {
   const [mountedAt] = useState(() => Date.now());
   const trackedRetryIdsRef = useRef(new Set<number>());
   const transcriptionRetries = useMutationState({
@@ -144,4 +158,17 @@ export const useRecordingDocumentsAnalytics = ({
     transcriptionRetries,
     workspaceId,
   ]);
+};
+
+/**
+ * 정리 화면에서 일어난 일을 사용 기록으로 보내는 훅. 화면의 상태와 다시 시도 응답을 지켜보기만 하고, 정리 화면의 동작은 바꾸지 않아요.
+ *
+ * - 정리 결과(`recording_documents_result`): `useRecordingDocumentsResultAnalytics`
+ * - 다시 시도 응답(`recording_documents_retry`): `useRecordingDocumentsRetryAnalytics`
+ */
+export const useRecordingDocumentsAnalytics = (
+  params: UseRecordingDocumentsAnalyticsParams,
+) => {
+  useRecordingDocumentsResultAnalytics(params);
+  useRecordingDocumentsRetryAnalytics(params);
 };

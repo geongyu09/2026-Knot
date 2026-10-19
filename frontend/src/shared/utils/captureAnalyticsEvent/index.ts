@@ -17,7 +17,7 @@ interface AnalyticsEventMap {
     recording_id: number;
     workspace_id: number;
   };
-  /** 정리 화면에서 「정리 중」을 본 뒤 결과가 정해졌어요. 이미 결과가 난 녹음을 다시 열면 보내지 않아요 */
+  /** 정리 화면에서 「정리 중」을 본 뒤 결과가 정해졌어요. 이미 결과가 난 녹음을 다시 열면 보내지 않지만, 저장된 음성 없음 · 저장 실패는 다시 열 때마다 보내서 recording_id로 중복을 빼요 */
   recording_documents_result: {
     result: "completed" | "no_content" | "failed" | "audio_save_failed";
     /** 실패했을 때만 있어요. 전사에서 실패했는지, 문서 만들기에서 실패했는지예요 */
