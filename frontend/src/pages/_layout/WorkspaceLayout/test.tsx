@@ -25,6 +25,7 @@ import { saveLastConversationId } from "@utils/lastConversation";
 import {
   act,
   cleanup,
+  configure,
   fireEvent,
   render,
   screen,
@@ -746,11 +747,15 @@ describe("WorkspaceLayout의 본문 스크롤 위치", () => {
     };
   };
 
-  const moveTo = (
-    router: ReturnType<typeof createMemoryRouter>,
-    path: string,
-    options?: { replace: boolean },
-  ) => act(() => router.navigate(path, options));
+  interface MoveToParams {
+    router: ReturnType<typeof createMemoryRouter>;
+    path: string;
+    /** 기록을 쌓지 않고 바꿔치기할지 */
+    options?: { replace: boolean };
+  }
+
+  const moveTo = ({ router, path, options }: MoveToParams) =>
+    act(() => router.navigate(path, options));
 
   const goForward = (router: ReturnType<typeof createMemoryRouter>) =>
     act(() => router.navigate(1));
@@ -767,6 +772,7 @@ describe("WorkspaceLayout의 본문 스크롤 위치", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    configure({ reactStrictMode: false });
   });
 
   it.each([
@@ -777,7 +783,7 @@ describe("WorkspaceLayout의 본문 스크롤 위치", () => {
     async ({ options }) => {
       const { router, main } = await renderScrolledHome();
 
-      await moveTo(router, DOCUMENT_PATH, options);
+      await moveTo({ router, path: DOCUMENT_PATH, options });
 
       expect(await screen.findByText(DOCUMENT_TEXT)).toBeInTheDocument();
       expect(main.scrollTop).toBe(0);
@@ -786,7 +792,7 @@ describe("WorkspaceLayout의 본문 스크롤 위치", () => {
 
   it("뒤로 · 앞으로 가기로 돌아오면 그 화면에서 보던 위치로 돌린다", async () => {
     const { router, main, scrollTo } = await renderScrolledHome();
-    await moveTo(router, DOCUMENT_PATH);
+    await moveTo({ router, path: DOCUMENT_PATH });
     await screen.findByText(DOCUMENT_TEXT);
     scrollTo(300);
 
@@ -803,7 +809,7 @@ describe("WorkspaceLayout의 본문 스크롤 위치", () => {
 
   it("뒤로 가기로 돌아왔을 때 내용이 아직 짧으면, 그 위치까지 길어진 뒤 맞춘다", async () => {
     const { router, main, setContentHeight } = await renderScrolledHome();
-    await moveTo(router, DOCUMENT_PATH);
+    await moveTo({ router, path: DOCUMENT_PATH });
     await screen.findByText(DOCUMENT_TEXT);
     // 홈 내용을 다시 불러오는 동안이라 본문이 600px까지 내려갈 만큼 길지 않아요
     setContentHeight(700);
@@ -820,7 +826,7 @@ describe("WorkspaceLayout의 본문 스크롤 위치", () => {
 
   it("정해 둔 시간 안에 내용이 길어지지 않으면 위치를 맞추지 않는다", async () => {
     const { router, main, setContentHeight } = await renderScrolledHome();
-    await moveTo(router, DOCUMENT_PATH);
+    await moveTo({ router, path: DOCUMENT_PATH });
     await screen.findByText(DOCUMENT_TEXT);
     setContentHeight(700);
     // 시계만 가짜로 두고, 화면 그리기는 실제로 흐르게 해요
@@ -839,9 +845,65 @@ describe("WorkspaceLayout의 본문 스크롤 위치", () => {
   it("주소의 쿼리만 바뀌면(같은 화면에서 패널을 여닫음) 본문 위치를 그대로 둔다", async () => {
     const { router, main } = await renderScrolledHome();
 
-    await moveTo(router, `${HOME_PATH}?messageId=1`);
+    await moveTo({ router, path: `${HOME_PATH}?messageId=1` });
 
     expect(main.scrollTop).toBe(600);
+  });
+  it.each([
+    { how: "쌓아", options: undefined },
+    { how: "바꿔치기해", options: { replace: true } },
+  ])(
+    "쿼리만 $how 바꾼 화면도 다른 화면에 다녀와 뒤로 가기로 돌아오면 보던 위치로 돌린다",
+    async ({ options }) => {
+      const { router, main } = await renderScrolledHome();
+      // 찾은 기록을 여닫을 때처럼 쿼리만 바꿔요. 라우터는 이때도 새 기록을 만들어요
+      await moveTo({ router, path: `${HOME_PATH}?messageId=1`, options });
+      await moveTo({ router, path: DOCUMENT_PATH });
+      await screen.findByText(DOCUMENT_TEXT);
+
+      await goBack(router);
+
+      expect(await screen.findByText(HOME_TEXT)).toBeInTheDocument();
+      expect(main.scrollTop).toBe(600);
+    },
+  );
+
+  it.each([
+    { mode: "보통 그릴 때", isStrictMode: false },
+    // 실제 앱처럼 StrictMode로 그리면, 새로 그린 레이아웃의 효과가 개발 모드에서 한 번 더 돌아요
+    { mode: "개발 모드(StrictMode)에서", isStrictMode: true },
+  ])(
+    "$mode 워크스페이스 밖 화면에 다녀와 뒤로 가기로 돌아오면, 레이아웃을 새로 그려도 보던 위치로 돌린다",
+    async ({ isStrictMode }) => {
+      configure({ reactStrictMode: isStrictMode });
+      const { router } = await renderScrolledHome();
+      await moveTo({ router, path: ELSEWHERE_PATH });
+      await screen.findByText("다른 화면");
+
+      await goBack(router);
+      await screen.findByText(HOME_TEXT);
+      // 레이아웃이 새로 그려져 본문도 새 요소예요. 새 본문의 내용 높이를 정해요
+      const { main } = mockMainScroll(2000);
+
+      await waitFor(() => expect(main.scrollTop).toBe(600));
+    },
+  );
+
+  it("정해 둔 시간이 지난 뒤에 내용이 길어지면, 그때는 위치를 맞추지 않는다", async () => {
+    const { router, main, setContentHeight } = await renderScrolledHome();
+    await moveTo({ router, path: DOCUMENT_PATH });
+    await screen.findByText(DOCUMENT_TEXT);
+    setContentHeight(700);
+    vi.useFakeTimers({ toFake: ["Date"] });
+
+    await goBack(router);
+    await screen.findByText(HOME_TEXT);
+    // 다음 확인 전에 시간이 지나고 내용도 길어진 경우예요(탭을 옮겨 화면 그리기가 멈췄다 돌아온 때처럼)
+    vi.setSystemTime(Date.now() + 10_000);
+    setContentHeight(2000);
+    await waitRealTime(100);
+
+    expect(main.scrollTop).not.toBe(600);
   });
 });
 

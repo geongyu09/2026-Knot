@@ -22,7 +22,7 @@ import SearchEvidenceList from "@widgets/search/SearchEvidenceList";
 import WorkspaceDock from "@widgets/workspace/WorkspaceDock";
 import WorkspaceGnb from "@widgets/workspace/WorkspaceGnb";
 import WorkspaceSidebar from "@widgets/workspace/WorkspaceSidebar";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Outlet, useParams } from "react-router";
 
 import ChatListIcon from "@/assets/icons/chatList.svg";
@@ -73,13 +73,12 @@ export default function WorkspaceLayout() {
   const { isChatActive } = useWorkspaceNav();
   const { isTranscriptPanelOpen } = useTranscriptPanel();
   const [pickedPanel, setPickedPanel] = useState<DockedPanelName>(null);
-  const mainRef = useRef<HTMLElement>(null);
 
   useRecordingLeaveWarning();
   useAbortSearchAnswerOnLeave();
   useOpenEvidenceOnAnswerComplete();
   // 화면은 창이 아니라 본문 안에서 스크롤돼서, 화면을 옮길 때 본문의 스크롤 위치를 맞춰요
-  useScrollRestoration({ scrollRef: mainRef });
+  const { scrollRef: mainRef } = useScrollRestoration();
 
   // 대화 목록 버튼은 탐색 화면에만 있으므로, 홈으로 나가면 고른 적 없던 것으로 봐요
   const dockedPanel =
