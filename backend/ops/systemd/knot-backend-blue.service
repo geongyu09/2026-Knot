@@ -1,0 +1,26 @@
+[Unit]
+Description=Knot Backend Blue Slot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/knot-backend
+EnvironmentFile=/etc/knot-backend/knot-backend.env
+EnvironmentFile=/etc/knot-backend/recording-storage.env
+EnvironmentFile=/etc/knot-backend/pr646-e2e.env
+EnvironmentFile=/etc/knot-backend/transcription.env
+Environment=SPRING_PROFILES_ACTIVE=dev
+Environment=SPRING_PROFILES_INCLUDE=observability
+Environment="AUTH_CORS_ALLOWED_ORIGINS=https://dev.knoted.kr,http://localhost:3000"
+Environment="SPRING_CONFIG_ADDITIONAL_LOCATION=file:/etc/knot-backend/recording-streaming.properties"
+ExecStart=/usr/bin/java -Xmx256m -jar /opt/knot-backend/slots/blue/app.jar --server.port=8080
+Restart=always
+RestartSec=5
+SuccessExitStatus=143
+TimeoutStopSec=90s
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
