@@ -240,15 +240,19 @@ describe("WorkspaceGnb", () => {
     expect(exploreButton).toHaveFocus();
   });
 
-  it("이미 있는 화면의 버튼은 눌러도 이동하지 않는다", async () => {
+  it("이미 있는 화면의 버튼은 눌렀다 떼도 이동하지 않고 그 버튼이 현재 화면으로 남는다", async () => {
     const { router, homeButton } = renderGnb();
 
+    // 표시가 제자리에서 맺히는 누름과 뗌을 거쳐 실제 누름과 같은 순서로 눌러요
     await act(async () => {
+      fireEvent.pointerDown(homeButton, { button: 0 });
+      fireEvent.pointerUp(homeButton, { button: 0 });
       fireEvent.click(homeButton);
     });
 
     expect(router.state.historyAction).toBe("POP");
     expect(router.state.location.pathname).toBe(HOME_PATH);
+    expect(homeButton).toHaveAttribute("aria-current", "page");
   });
 
   it("우측에 로그인한 회원의 프로필 이미지를 아바타로 보여준다", async () => {

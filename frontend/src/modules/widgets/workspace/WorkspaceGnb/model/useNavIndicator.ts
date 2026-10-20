@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 
+import { useIndicatorDroplet } from "./useIndicatorDroplet";
+
 interface UseNavIndicatorParams {
   /** 탭 순서에서 지금 탭의 자리. 탭이 아닌 화면이면 -1이에요 */
   activeTabIndex: number;
@@ -26,7 +28,8 @@ const placeIndicator = ({
   indicator.dataset.sliding = String(isSliding);
   indicator.style.width = `${activeTab.offsetWidth}px`;
   indicator.style.height = `${activeTab.offsetHeight}px`;
-  indicator.style.transform = `translate(${activeTab.offsetLeft}px, ${activeTab.offsetTop}px)`;
+  // transform 대신 translate로 옮겨요. transform에 자리를 두면 물방울 모양(scale)이 그 거리까지 키워 표시가 옆으로 밀려요
+  indicator.style.translate = `${activeTab.offsetLeft}px ${activeTab.offsetTop}px`;
 };
 
 /**
@@ -36,12 +39,17 @@ const placeIndicator = ({
  * 미끄러지는 중에 다시 바뀌면 지금 있는 자리에서 이어서 움직여요. CSS 전환이 그 자리에서 다시 출발하기 때문이에요.
  * 처음 그릴 때, 탭이 아닌 화면에서 탭으로 올 때, 창 크기나 글꼴이 바뀌어 칸 크기가 달라질 때는 모션 없이 제자리에 놓아요.
  * 처음 자리가 정해지기 전에 미끄러지면 필의 왼쪽 끝에서 날아오는 것처럼 보여서예요.
+ * 미끄러질 때만 표시가 물방울처럼 늘어났다가 맺혀요(`useIndicatorDroplet`).
  */
 export const useNavIndicator = ({ activeTabIndex }: UseNavIndicatorParams) => {
   const containerRef = useRef<HTMLElement>(null);
   const indicatorRef = useRef<HTMLSpanElement>(null);
   /** 표시가 마지막으로 놓인 탭의 자리. 아직 놓이지 않았거나 숨었으면 -1이에요 */
   const placedTabIndexRef = useRef(-1);
+  const { playSlideDroplet } = useIndicatorDroplet({
+    containerRef,
+    indicatorRef,
+  });
 
   // 화면에 그리기 전에 옮겨야 표시가 이전 자리에 한 프레임 남지 않아요
   useLayoutEffect(() => {
@@ -53,12 +61,11 @@ export const useNavIndicator = ({ activeTabIndex }: UseNavIndicatorParams) => {
     placedTabIndexRef.current = activeTabIndex;
     if (activeTabIndex === -1) return;
 
-    placeIndicator({
-      container,
-      indicator,
-      isSliding: placedTabIndex !== -1 && placedTabIndex !== activeTabIndex,
-    });
-  }, [activeTabIndex]);
+    const isSliding =
+      placedTabIndex !== -1 && placedTabIndex !== activeTabIndex;
+    placeIndicator({ container, indicator, isSliding });
+    if (isSliding) playSlideDroplet();
+  }, [activeTabIndex, playSlideDroplet]);
 
   useEffect(() => {
     const container = containerRef.current;

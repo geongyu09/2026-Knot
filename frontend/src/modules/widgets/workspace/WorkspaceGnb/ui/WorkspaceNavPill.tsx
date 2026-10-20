@@ -1,10 +1,10 @@
 import {
   TAB_ENTER_EASING,
-  TAB_INDICATOR_DURATION,
+  TAB_INDICATOR_DURATION_MS,
   TAB_POP_EASING,
-  TAB_PRESS_DURATION,
+  TAB_PRESS_DURATION_MS,
   TAB_PRESS_SCALE,
-  TAB_RELEASE_DURATION,
+  TAB_RELEASE_DURATION_MS,
 } from "@constants/tabMotion";
 import styled from "@emotion/styled";
 import useWorkspaceNav from "@hooks/domain/workspace/useWorkspaceNav";
@@ -16,8 +16,9 @@ import { useNavIndicator } from "../model/useNavIndicator";
  *
  * 채워진 모양은 칸마다 따로 칠하지 않고 진한 표시 하나가 칸 사이를 미끄러져요.
  * 칸마다 따로 바꾸면 바뀌는 동안 두 칸이 함께 반쯤 어두워 보여서예요.
- * 누르는 동안 칸이 살짝 작아졌다가 떼면 통 튀어 돌아와요. 지금 탭을 누르면 이 눌림만 보이고 화면은 그대로예요.
- * 움직임 줄이기를 켜 두면 눌림과 미끄러짐 없이 바로 바뀌어요.
+ * 표시는 미끄러지는 동안 진행 방향으로 살짝 늘어났다가, 새 칸에 도착하며 물방울처럼 톡 맺혀요.
+ * 누르는 동안 칸이 살짝 작아졌다가 떼면 통 튀어 돌아와요. 지금 탭을 누르면 표시도 함께 눌렸다가 제자리에서 톡 맺히고 화면은 그대로예요.
+ * 움직임 줄이기를 켜 두면 눌림, 미끄러짐, 물방울 없이 바로 바뀌어요.
  */
 export default function WorkspaceNavPill() {
   const {
@@ -84,7 +85,7 @@ const Container = styled.nav`
  * 지금 탭 칸 아래에 깔리는 진한 표시. 자리와 크기는 `useNavIndicator`가 칸을 재서 정해요.
  *
  * 탭이 바뀔 때만(`data-sliding="true"`) 미끄러지고, 처음 놓이거나 칸 크기가 바뀌면 바로 그 자리에 놓여요.
- * 지금 탭 칸을 누르면 칸과 함께 작아져요. 다른 칸을 누를 때는 그 칸의 글자만 작아져요.
+ * 모양(`scale`)은 `useIndicatorDroplet`이 바꿔서 여기서는 전환을 걸지 않아요. CSS 전환은 모양 애니메이션보다 앞서 그려져 둘을 함께 걸면 물방울이 끊겨요.
  */
 const Indicator = styled.span`
   position: absolute;
@@ -95,24 +96,12 @@ const Indicator = styled.span`
   pointer-events: none;
 
   @media (prefers-reduced-motion: no-preference) {
-    transition-property: transform, width, scale;
-    transition-duration: 0s, 0s, ${TAB_RELEASE_DURATION};
-    transition-timing-function:
-      ${TAB_ENTER_EASING}, ${TAB_ENTER_EASING}, ${TAB_POP_EASING};
+    transition-property: translate, width;
+    transition-duration: 0s;
+    transition-timing-function: ${TAB_ENTER_EASING};
 
     &[data-sliding="true"] {
-      transition-duration:
-        ${TAB_INDICATOR_DURATION}, ${TAB_INDICATOR_DURATION},
-        ${TAB_RELEASE_DURATION};
-    }
-
-    nav:has(> [aria-current="page"]:active) > & {
-      scale: ${TAB_PRESS_SCALE};
-      transition-duration:
-        ${TAB_INDICATOR_DURATION}, ${TAB_INDICATOR_DURATION},
-        ${TAB_PRESS_DURATION};
-      transition-timing-function:
-        ${TAB_ENTER_EASING}, ${TAB_ENTER_EASING}, ${TAB_ENTER_EASING};
+      transition-duration: ${TAB_INDICATOR_DURATION_MS}ms;
     }
   }
 `;
@@ -132,12 +121,14 @@ const NavItem = styled.button<{ $isActive: boolean }>`
   /* 글자색은 표시가 지나가는 동안 같은 시간에 바꿔요 */
   @media (prefers-reduced-motion: no-preference) {
     transition-property: color, transform;
-    transition-duration: ${TAB_INDICATOR_DURATION}, ${TAB_RELEASE_DURATION};
+    transition-duration:
+      ${TAB_INDICATOR_DURATION_MS}ms, ${TAB_RELEASE_DURATION_MS}ms;
     transition-timing-function: ${TAB_ENTER_EASING}, ${TAB_POP_EASING};
 
     &:active {
       transform: scale(${TAB_PRESS_SCALE});
-      transition-duration: ${TAB_INDICATOR_DURATION}, ${TAB_PRESS_DURATION};
+      transition-duration:
+        ${TAB_INDICATOR_DURATION_MS}ms, ${TAB_PRESS_DURATION_MS}ms;
       transition-timing-function: ${TAB_ENTER_EASING}, ${TAB_ENTER_EASING};
     }
   }
