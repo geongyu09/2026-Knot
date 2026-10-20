@@ -8,8 +8,20 @@ type Me = Awaited<ReturnType<typeof getMeApi>>;
 
 const ME_QUERY_HASH = hashKey(authKeys.me());
 
+// 개발 · 운영 서버는 회원 번호를 따로 매기는데 PostHog 프로젝트는 하나예요. 번호만 쓰면 서로 다른 회원이 한 사람으로 합쳐져요
+const SERVER_NAMES: Record<string, string> = {
+  "knoted.kr": "prod",
+  "dev.knoted.kr": "dev",
+};
+
+const toDistinctId = (memberId: number) => {
+  const { hostname } = window.location;
+
+  return `${SERVER_NAMES[hostname] ?? hostname}-${memberId}`;
+};
+
 const identifyMember = ({ memberId, nickname, profileImageUrl }: Me) => {
-  const distinctId = String(memberId);
+  const distinctId = toDistinctId(memberId);
 
   if (posthog.get_distinct_id() === distinctId) return;
 
@@ -25,7 +37,7 @@ const forgetMember = () => {
 };
 
 /**
- * @description 로그인 확인(me) 결과에 맞춰 PostHog 사용자 식별을 맞춰요. 성공하면 회원 id로 식별하고 닉네임 · 프로필 사진 주소를 보내며, 401이면 식별을 지워요
+ * @description 로그인 확인(me) 결과에 맞춰 PostHog 사용자 식별을 맞춰요. 성공하면 서버 이름을 붙인 회원 id(예: prod-7)로 식별하고 닉네임 · 프로필 사진 주소를 보내며, 401이면 식별을 지워요
  * @param queryClient - 앱 전체가 쓰는 QueryClient
  * @returns 동기화를 멈추는 함수
  * @example
