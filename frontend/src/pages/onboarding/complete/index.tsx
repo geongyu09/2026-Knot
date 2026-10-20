@@ -3,6 +3,7 @@ import Spacing from "@primitives/layout/Spacing";
 import Stack from "@primitives/layout/Stack";
 import Button from "@primitives/ui/Button";
 import { PATH_ROUTE } from "@routes/PATH_ROUTE";
+import { clearAuthReturnPath, readAuthReturnPath } from "@utils/authReturnPath";
 import { Navigate, useLocation, useNavigate } from "react-router";
 
 import ClapIllustration from "@/assets/illustrations/clap.svg";
@@ -12,6 +13,8 @@ import ClapIllustration from "@/assets/illustrations/clap.svg";
  *
  * 닉네임 등록이 끝난 뒤 보여주는 환영 화면이다.
  * CTA를 누르면 워크스페이스 생성 및 참여(`/workspace`)로 이동한다.
+ * 로그인 전 초대 참여가 401로 끝나며 기억해 둔 복귀 주소(`/invite/<credential>`)가 있으면
+ * 그 주소로 대신 이동하고 저장값을 지운다. 백엔드가 가입 뒤 고정 주소로만 보내기 때문이다.
  *
  * 인사말에 쓸 닉네임은 `NicknameCard`가 라우터 state로 넘겨준다.
  * 새로고침하거나 주소를 직접 열면 state가 비어 있는데, 등록을 거치지 않고
@@ -29,7 +32,10 @@ export default function OnboardingCompletePage() {
   const nickname: string | undefined = location.state?.nickname;
 
   const handleStart = () => {
-    navigate(PATH_ROUTE.WORKSPACE);
+    const returnPath = readAuthReturnPath();
+
+    clearAuthReturnPath();
+    navigate(returnPath ?? PATH_ROUTE.WORKSPACE);
   };
 
   if (nickname === undefined) {
