@@ -87,6 +87,25 @@ describe("shouldReportError", () => {
         ),
       ).toBe(false);
     });
+
+    // 대화 화면은 새 대화로 옮기고, 답변 칸은 실패 안내를 보여 줘요
+    it("볼 수 없는 탐색 대화의 403은 탐색 화면이 처리하는 예상 오류라 보고하지 않는다", () => {
+      expect(
+        isReported(
+          httpError(HTTP_ERROR_TYPE.forbidden, "SEARCH_ACCESS_DENIED"),
+        ),
+      ).toBe(false);
+      expect(isReported(sseError(403, "SEARCH_ACCESS_DENIED"))).toBe(false);
+    });
+
+    // 녹음 화면이 아직 안내하지 않아 사용자는 녹음이 이어지는 줄 알아요
+    it("녹음 제어권을 잃은 403은 화면이 처리하지 않아 보고한다", () => {
+      expect(
+        isReported(
+          httpError(HTTP_ERROR_TYPE.forbidden, "RECORDING_CONTROL_DENIED"),
+        ),
+      ).toBe(true);
+    });
   });
 
   describe("404 · 409 · 429", () => {

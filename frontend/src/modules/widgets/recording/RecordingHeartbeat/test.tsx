@@ -141,15 +141,6 @@ const collectRequests = () => {
 
 const UPLOAD_REQUESTS = ["audio-upload-url", "audio", "audio-upload-complete"];
 
-/** 403은 CSRF 토큰이 낡았을 수 있어 httpClient가 토큰을 새로 받아 최대 두 번 더 보내요. 계속 403인 신호 한 번이 이렇게 나가요 */
-const CSRF_RETRIED_HEARTBEAT = [
-  "heartbeat",
-  "csrf",
-  "heartbeat",
-  "csrf",
-  "heartbeat",
-];
-
 describe("RecordingHeartbeat", () => {
   beforeEach(() => {
     // 요청은 실제 시간으로 흘러야 해서 신호 주기만 가짜로 돌려요.
@@ -213,9 +204,10 @@ describe("RecordingHeartbeat", () => {
     expect(requests).toEqual([]);
   });
 
+  // 업무 403은 CSRF 토큰과 관계없어 httpClient가 토큰을 새로 받아 다시 보내지 않아요
   it.each([
     [500, "INTERNAL_SERVER_ERROR", ["heartbeat"]],
-    [403, "RECORDING_CONTROL_DENIED", CSRF_RETRIED_HEARTBEAT],
+    [403, "RECORDING_CONTROL_DENIED", ["heartbeat"]],
   ])(
     "신호가 실패(%i %s)하면 곧바로 다시 보내지 않고 녹음을 이어 가다 다음 주기에 보낸다",
     async (status, code, sent) => {
@@ -272,7 +264,7 @@ describe("RecordingHeartbeat", () => {
     ],
     [
       "403 WORKSPACE_ACCESS_DENIED",
-      CSRF_RETRIED_HEARTBEAT,
+      ["heartbeat"],
       () => respondHeartbeatWithError(403, "WORKSPACE_ACCESS_DENIED"),
     ],
     [
