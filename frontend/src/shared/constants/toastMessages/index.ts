@@ -23,15 +23,29 @@ export const TOAST_MESSAGES = {
     variant: "success",
     message: "워크스페이스를 옮겼어요",
   },
-  /** 연결 끊김으로 종료된 녹음의 업로드 완료·문서 처리 시작을 확인한 뒤 사용해요. */
+  /**
+   * 연결 끊김으로 종료된 녹음의 업로드 완료·문서 처리 시작을 확인한 뒤 사용해요.
+   * 탭이 열려 있는 동안 생존 신호가 ENDED, CONNECTION_EXPIRED로 답한 경우만 알려요. Figma 1783:13225
+   */
   RECORDING_CONNECTION_LOST: {
     variant: "caution",
     message: "연결이 끊겨 녹음이 끝났어요. 여기까지 문서로 정리하고 있어요",
   },
+  /** 녹음한 시간이 최대 녹음 시간 15분 전에 닿았을 때 녹음마다 한 번. Figma 2072:26802 */
   RECORDING_TIME_LIMIT_APPROACHING: {
     variant: "caution",
     message:
       "최대 녹음 시간까지 15분 남았어요. 시간이 되면 녹음을 끝내고 문서로 정리해요",
+  },
+  /** 생존 신호가 이 탭의 녹음 제어를 거절(403 RECORDING_CONTROL_DENIED)해 녹음을 닫을 때. Figma 4826:33497 */
+  RECORDING_CONTROL_LOST: {
+    variant: "caution",
+    message: "이 탭에서 녹음을 이어갈 수 없어 녹음이 끝났어요",
+  },
+  /** 녹음 파일 업로드를 다시 시도해도 끝내 실패해 오디오를 버리고 홈으로 갈 때. Figma 4826:33502 */
+  RECORDING_UPLOAD_FAILED: {
+    variant: "caution",
+    message: "녹음 파일을 올리지 못해 문서로 정리하지 못했어요",
   },
   /** 로그인 화면으로 이동하며 navigateWithToast로 전달해요. */
   SESSION_EXPIRED: {
@@ -52,6 +66,17 @@ export const TOAST_MESSAGES = {
   QUESTION_SEND_FAILED: {
     variant: "error",
     message: "질문을 보내지 못했어요. 잠시 후 다시 시도해 주세요.",
+  },
+  /** 녹음 끝내기 요청이 실패해 녹음을 이어 갈 때. 「끝내고 이동」도 같아요. Figma 3812:892 */
+  RECORDING_END_FAILED: {
+    variant: "error",
+    message:
+      "녹음을 끝내지 못했어요. 녹음은 계속되고 있어요. 다시 시도해 주세요.",
+  },
+  /** 이어서 녹음 요청이 실패해 일시정지로 남을 때. Figma 4826:33507 */
+  RECORDING_RESUME_FAILED: {
+    variant: "error",
+    message: "이어서 녹음하지 못했어요. 다시 시도해 주세요.",
   },
   COPY_FAILED: {
     variant: "error",
