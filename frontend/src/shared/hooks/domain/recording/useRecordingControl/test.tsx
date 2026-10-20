@@ -1,6 +1,7 @@
 import { createHttpError, HTTP_ERROR_TYPE } from "@api/httpClient/error";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
+import { setupSentryEvents } from "@provider/sentry/mock";
 import { theme } from "@provider/themeProvider";
 import { useRecordingStore } from "@store/recordingStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -833,6 +834,46 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
         { ...proof, audioSeal: EMPTY_SEAL },
         { ...proof, audioSeal: undefined },
       ]);
+    });
+
+    // 다시 보낼 때마다 보내면 끝내는 동안의 장애 한 번이 이벤트 여러 건이 돼요
+    describe("실패 보고", () => {
+      const { flushEvents } = setupSentryEvents();
+
+      it("종료 요청을 다시 보내는 동안에는 첫 실패와 포기한 실패만 보고한다", async () => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        const result = renderRecordingControl();
+        await startRecording(result);
+        vi.useFakeTimers();
+        let attempts = 0;
+        endRecordingApi.mockImplementation(async () => {
+          attempts += 1;
+          throw attempts < 4
+            ? createHttpError({ type: HTTP_ERROR_TYPE.network })
+            : createHttpError({
+                type: HTTP_ERROR_TYPE.forbidden,
+                code: "RECORDING_CONTROL_DENIED",
+              });
+        });
+
+        let ending!: ReturnType<
+          typeof result.current.endRecordingWithoutConfirm
+        >;
+        act(() => {
+          ending = result.current.endRecordingWithoutConfirm();
+        });
+        await vi.advanceTimersByTimeAsync(7_000);
+        expect(await ending).toBe("notUploaded");
+        // Sentry는 타이머로 보내므로 진짜 타이머로 돌린 뒤 모은 이벤트를 봐요
+        vi.useRealTimers();
+
+        const events = await flushEvents();
+        expect(attempts).toBe(4);
+        expect(events.map(({ extra }) => extra)).toEqual([
+          { consecutiveFailures: 1 },
+          { consecutiveFailures: 4, isGivingUp: true },
+        ]);
+      });
     });
   });
 });

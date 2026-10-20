@@ -27,6 +27,7 @@ import {
 } from "@store/recordingStore/pcmChunkUploadQueue";
 import { UnsupportedPcmCollectorError } from "@store/recordingStore/pcmCollector";
 import { useQueryClient } from "@tanstack/react-query";
+import { createRepeatedFailureReporter } from "@utils/createRepeatedFailureReporter";
 import { isClosedRecordingError } from "@utils/isClosedRecordingError";
 import { isRetryableAudioUploadError } from "@utils/isRetryableAudioUploadError";
 import { isUnreachableRecordingError } from "@utils/isUnreachableRecordingError";
@@ -51,6 +52,12 @@ const SEAL_REJECTED_CODES = [
   "AUDIO_SEAL_CONFLICT",
   "AUDIO_MODE_CONFLICT",
 ];
+
+/** 생존 신호는 10초마다 보내 실패도 거듭되므로, 녹음마다 연속 실패의 첫 번째만 보고해요. 여러 화면이 같은 기록을 써요 */
+const heartbeatFailures = createRepeatedFailureReporter({
+  feature: "recording",
+  action: "녹음 생존 신호",
+});
 
 /** 서버가 조각을 받아 주는 시한(ISO 8601). 종료 시각을 모르면 지금부터 재요 */
 const acceptUntilFrom = (endedAt: string | null) =>
@@ -220,7 +227,7 @@ const useRecordingControl = () => {
 
   /**
    * 생존 신호를 보내고 응답의 서버 상태에 맞춰 녹음을 이어 가거나 닫아요.
-   * 실패는 콘솔에만 남기고 다시 보내지 않아요. 다음 신호는 부르는 쪽의 주기에 맡겨요
+   * 실패는 다시 보내지 않고 다음 신호를 부르는 쪽의 주기에 맡겨요. 콘솔에는 실패마다, Sentry에는 연속 실패의 첫 번째만 남겨요
    */
   const sendHeartbeat = useCallback(async () => {
     const { session, isEnding } = useRecordingStore.getState();
@@ -241,6 +248,7 @@ const useRecordingControl = () => {
         ...session,
         ...proof,
       });
+      heartbeatFailures.reset();
       if (isLateResponse()) return;
 
       if (status === "ENDED" && session.audioMode === "PCM16_CHUNKS_V1") {
@@ -257,11 +265,7 @@ const useRecordingControl = () => {
         useRecordingStore.getState().syncElapsedTime(elapsedMillis);
       }
     } catch (error) {
-      logRequestError({
-        feature: "recording",
-        action: "녹음 생존 신호",
-        error,
-      });
+      heartbeatFailures.report({ error, scope: session.recordingId });
       if (!isLateResponse() && isUnreachableRecordingError(error)) {
         closeRecording(session.workspaceId);
         // 내보내졌거나 없어진 워크스페이스인지 레이아웃의 진입 판정이 다시 확인해, 그렇다면 다른 곳으로 보내고 알려요(ERR-11)
@@ -543,6 +547,10 @@ const useRecordingControl = () => {
         .getState()
         .sealRecording();
       const nextDelay = createBackoff();
+      const endFailures = createRepeatedFailureReporter({
+        feature: "recording",
+        action: "녹음 종료",
+      });
 
       for (;;) {
         try {
@@ -558,9 +566,8 @@ const useRecordingControl = () => {
 
           return "uploaded";
         } catch (error) {
-          logRequestError({ feature: "recording", action: "녹음 종료", error });
-
           if (isTransientApiError(error)) {
+            endFailures.report({ error });
             // 끝내는 중 생존 신호를 보내지 않아 30초가 넘으면 서버가 먼저 끝내고 409로 알려요
             await wait(nextDelay());
           } else if (
@@ -568,8 +575,10 @@ const useRecordingControl = () => {
             isHttpError(error) &&
             SEAL_REJECTED_CODES.includes(error.code ?? "")
           ) {
+            endFailures.report({ error });
             audioSeal = undefined;
           } else {
+            endFailures.report({ error, isGivingUp: true });
             const isEndedByServer =
               isHttpError(error) && error.code === "RECORDING_ALREADY_ENDED";
             clearRecording(

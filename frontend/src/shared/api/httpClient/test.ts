@@ -13,6 +13,10 @@ const TEST_PATH = "/__http-client-test";
 
 const CSRF_HEADER_NAME = "X-XSRF-TOKEN";
 
+/** 서버가 CSRF 검사에서 거절할 때의 응답. 인증 경로는 `CSRF_INVALID`, 그 밖의 경로는 `FORBIDDEN`이에요 */
+const csrfRejected = (code = "FORBIDDEN") =>
+  HttpResponse.json({ code }, { status: 403 });
+
 /** 받은 CSRF 헤더 값을 응답으로 돌려주는 핸들러 */
 const echoCsrfHeader = (method: "get" | "post") =>
   http[method](`*${TEST_PATH}`, ({ request }) =>
@@ -47,13 +51,13 @@ describe("httpClient의 CSRF 처리", () => {
     expect(data.csrf).toBe(await getCsrfToken());
   });
 
-  it("403이 오면 토큰을 새로 받아 한 번 다시 보낸다", async () => {
+  it("CSRF 실패 403이 오면 토큰을 새로 받아 한 번 다시 보낸다", async () => {
     let attempts = 0;
     mockServer.use(
       rotatingCsrfHandler(),
       http.post(`*${TEST_PATH}`, ({ request }) => {
         attempts += 1;
-        if (attempts === 1) return new HttpResponse(null, { status: 403 });
+        if (attempts === 1) return csrfRejected();
 
         return HttpResponse.json({
           csrf: request.headers.get(CSRF_HEADER_NAME),
@@ -67,7 +71,7 @@ describe("httpClient의 CSRF 처리", () => {
     expect(data.csrf).toBe("token-1");
   });
 
-  it("다시 보낸 요청도 403이면 토큰을 한 번 더 받아 보내고, 그래도 403이면 더 보내지 않고 실패한다", async () => {
+  it("다시 보낸 요청도 CSRF 실패면 토큰을 한 번 더 받아 보내고, 그래도 403이면 더 보내지 않고 실패한다", async () => {
     let attempts = 0;
     let issued = 0;
     mockServer.use(
@@ -77,7 +81,7 @@ describe("httpClient의 CSRF 처리", () => {
       }),
       http.post(`*${TEST_PATH}`, () => {
         attempts += 1;
-        return new HttpResponse(null, { status: 403 });
+        return csrfRejected("CSRF_INVALID");
       }),
     );
 
@@ -87,6 +91,37 @@ describe("httpClient의 CSRF 처리", () => {
     expect(attempts).toBe(3);
     expect(issued).toBe(2);
   });
+
+  // 업무 403은 토큰과 관계없이 같은 결과라, 다시 보내면 요청만 늘어요
+  it.each([
+    "RECORDING_CONTROL_DENIED",
+    "WORKSPACE_ACCESS_DENIED",
+    "SEARCH_ACCESS_DENIED",
+  ])(
+    "업무 403(%s)은 CSRF 토큰을 다시 받지 않고 한 번만 보낸 뒤 실패한다",
+    async (code) => {
+      let attempts = 0;
+      let issued = 0;
+      // 토큰을 들고 있으면 처음 보낼 때도 받지 않으므로, 이 테스트에서 받은 횟수만 세요
+      await getCsrfToken();
+      mockServer.use(
+        http.get(`*${AUTH_CSRF_API_PATH}`, () => {
+          issued += 1;
+          return HttpResponse.json({ token: `token-${issued}` });
+        }),
+        http.post(`*${TEST_PATH}`, () => {
+          attempts += 1;
+          return HttpResponse.json({ code }, { status: 403 });
+        }),
+      );
+
+      const error = await httpClient.post(TEST_PATH).catch((e: unknown) => e);
+
+      expect(error).toMatchObject({ type: HTTP_ERROR_TYPE.forbidden, code });
+      expect(attempts).toBe(1);
+      expect(issued).toBe(0);
+    },
+  );
 });
 
 /** 토큰 캐시가 모듈에 남으므로, 캐시가 빈 상태에서 시작해야 하는 테스트는 모듈을 새로 불러와요 */
@@ -144,7 +179,7 @@ const clearedCookieCsrfServer = ({
       await delay(ms);
       if (issuedToken !== undefined) state.cookie = issuedToken;
 
-      return new HttpResponse(null, { status: 403 });
+      return csrfRejected();
     }),
   );
 
@@ -458,7 +493,7 @@ describe("httpClient의 토큰 재발급", () => {
       ]);
     });
 
-    it("재발급 요청이 응답을 받지 못하면 보고한다", async () => {
+    it("재발급 요청이 응답을 받지 못하면 연결 실패로 묶어 보고하고, 재발급 경로는 태그로 남긴다", async () => {
       mockServer.use(
         http.post(`*${AUTH_REFRESH_API_PATH}`, () => HttpResponse.error()),
         failingThenOkHandler({ status: 401, failures: 1 }).handler,
@@ -469,10 +504,12 @@ describe("httpClient의 토큰 재발급", () => {
       const events = await flushEvents();
       expect(events).toHaveLength(1);
       expect(events[0].fingerprint).toEqual([
-        "POST",
-        AUTH_REFRESH_API_PATH,
+        "http-network",
         HTTP_ERROR_TYPE.network,
       ]);
+      expect(events[0].tags).toMatchObject({
+        "http.path": AUTH_REFRESH_API_PATH,
+      });
     });
 
     it("재발급 응답이 401이면(refresh 토큰 만료) 로그인 화면으로 보내는 예상 실패라 보고하지 않는다", async () => {

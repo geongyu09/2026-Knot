@@ -16,9 +16,12 @@ interface CompleteRecordingAudioChunkMutationVariables extends PostRecordingAudi
  *
  * 서버가 저장소의 크기·checksum을 검증하고 `VERIFIED`로 기록해요. 이미 확인된 조각을 다시 보내도
  * 같은 결과를 돌려줘요. 오류는 `HttpError`의 `code`로 넘겨요. 무효화할 쿼리는 없어요.
+ *
+ * 조각 전송 큐가 일시 실패를 다시 보내므로, 실패는 큐가 골라 보고해요(`meta.errorReport`).
  */
 const useCompleteRecordingAudioChunkMutation = () => {
   return useMutation({
+    meta: { errorReport: "caller" },
     mutationFn: ({
       workspaceId,
       recordingId,

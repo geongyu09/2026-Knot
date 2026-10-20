@@ -5,13 +5,17 @@ import {
   wrapUseRoutes,
 } from "@sentry/react/react-router";
 import { PATH_ROUTE } from "@routes/PATH_ROUTE";
+import { getRequestErrorContext } from "@utils/getRequestErrorContext";
 import { getRequestErrorFingerprint } from "@utils/getRequestErrorFingerprint";
 import {
   scrubSentryBreadcrumb,
   scrubSentryEvent,
   scrubSentrySpan,
 } from "@utils/scrubSentryEvent";
-import { shouldReportError } from "@utils/shouldReportError";
+import {
+  getErrorReportLevel,
+  shouldReportError,
+} from "@utils/shouldReportError";
 import type { RootOptions } from "react-dom/client";
 import { useLayoutEffect } from "react";
 import { matchPath, useLocation, useRoutes } from "react-router";
@@ -61,7 +65,50 @@ const addReplayIntegration = async () => {
 };
 
 /**
- * 보고 기준에 맞는 오류만 민감한 값을 지운 뒤 보내요. 모든 수집 경로가 이 함수를 지나요.
+ * 페이지를 떠나는 중인지. 떠날 때 브라우저가 끊는 요청의 실패를 보고에서 빼려고 써요.
+ * 뒤로 가기 캐시(bfcache)로 페이지에 돌아오면 다시 `false`가 돼요.
+ */
+let isPageHiding = false;
+
+const markPageHiding = () => {
+  isPageHiding = true;
+};
+
+const markPageShowing = () => {
+  isPageHiding = false;
+};
+
+/** 같은 함수를 다시 등록해도 한 번만 불려, `initSentry`를 여러 번 불러도 괜찮아요 */
+const watchPageHiding = () => {
+  window.addEventListener("pagehide", markPageHiding);
+  window.addEventListener("pageshow", markPageShowing);
+};
+
+/**
+ * 오류의 심각도(level)를 정하고, httpClient 요청 실패에는 묶음 기준(fingerprint), 요청 정보 태그, 요청 ID context를 붙여요.
+ *
+ * 수집 경로마다 붙이지 않고 `beforeSend` 한 곳에서 붙여, 처리하지 않은 `mutateAsync` 실패(`unhandledrejection`)도 같은 모양으로 남겨요.
+ */
+const describeError = (event: ErrorEvent, error: unknown) => {
+  const fingerprint = getRequestErrorFingerprint(error);
+  const context = getRequestErrorContext(error);
+
+  return {
+    ...event,
+    level: getErrorReportLevel(error),
+    ...(fingerprint && { fingerprint }),
+    ...(context && { tags: { ...event.tags, ...context.tags } }),
+    ...(context?.requestId && {
+      contexts: {
+        ...event.contexts,
+        apiRequest: { requestId: context.requestId },
+      },
+    }),
+  };
+};
+
+/**
+ * 보고 기준에 맞는 오류만 요청 정보를 붙이고 민감한 값을 지운 뒤 보내요. 모든 수집 경로가 이 함수를 지나요.
  *
  * 같은 오류는 여러 경로로 들어와요. `throwOnError`로 넘어간 Query 오류는 QueryCache와 Boundary(`onCaughtError`)로,
  * `mutateAsync`의 처리되지 않은 실패는 MutationCache와 전역 `unhandledrejection`으로 들어와요.
@@ -75,13 +122,15 @@ const beforeSend = (event: ErrorEvent, hint: EventHint) => {
     !shouldReportError({
       error: hint.originalException,
       isOnline: navigator.onLine,
+      isPageHiding,
+      isHidden: document.visibilityState === "hidden",
       feature: typeof feature === "string" ? feature : undefined,
     })
   ) {
     return null;
   }
 
-  return scrubSentryEvent(event);
+  return scrubSentryEvent(describeError(event, hint.originalException));
 };
 
 interface InitSentryParams {
@@ -141,6 +190,7 @@ export const initSentry = ({
     ...(transport && { transport }),
   });
 
+  watchPageHiding();
   void addReplayIntegration();
 
   return true;
@@ -210,17 +260,14 @@ interface CaptureRequestErrorParams {
 /**
  * react-query의 Query · Mutation 실패를 Sentry로 보내요. `QueryCache` · `MutationCache`의 `onError`에서 불러요.
  *
- * 보낼지는 `beforeSend`가 정하므로 여기서는 거르지 않아요.
- * httpClient 요청 실패는 API마다 다른 Issue로 묶이도록 `getRequestErrorFingerprint`로 묶음 기준을 정해요.
+ * 보낼지와 묶음 기준, 요청 정보 태그는 `beforeSend`가 정하므로 여기서는 들어온 곳만 붙여요.
  */
 export const captureRequestError = ({
   error,
   source,
 }: CaptureRequestErrorParams) => {
-  const fingerprint = getRequestErrorFingerprint(error);
-
   Sentry.captureException(error, {
-    captureContext: { tags: { source }, ...(fingerprint && { fingerprint }) },
+    captureContext: { tags: { source } },
     mechanism: { handled: true, type: `auto.tanstack.${source}_cache` },
   });
 };
@@ -239,20 +286,17 @@ interface CaptureCaughtErrorParams {
  * 코드가 잡고 넘어간 실패를 Sentry로 보내요. catch에서 실패를 안내, 상태, 결과값으로 바꿀 때 불러요.
  *
  * react-query가 이미 보낸 같은 오류 객체는 SDK가 건너뛰어 한 번만 남아요.
- * 보낼지는 `beforeSend`가 정하므로 여기서는 거르지 않아요. Sentry가 꺼져 있으면 아무것도 하지 않아요.
+ * 보낼지와 묶음 기준, 요청 정보 태그는 `beforeSend`가 정하므로 여기서는 거르지 않아요. Sentry가 꺼져 있으면 아무것도 하지 않아요.
  */
 export const captureCaughtError = ({
   error,
   feature,
   extra,
 }: CaptureCaughtErrorParams) => {
-  const fingerprint = getRequestErrorFingerprint(error);
-
   Sentry.captureException(error, {
     captureContext: {
       tags: { source: "caught", feature },
       ...(extra && { extra }),
-      ...(fingerprint && { fingerprint }),
     },
     mechanism: { handled: true, type: "manual.caught" },
   });

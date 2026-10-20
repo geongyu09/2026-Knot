@@ -29,6 +29,7 @@ import DocumentSkeleton from "./ui/DocumentSkeleton";
  *
  * 받은 문서 값을 그리기만 하면 되는 것(경로 · 제목 · 날짜 · 녹음 길이 · 본문)은 여기서 직접 그려요.
  * 복사 버튼 · 확인 수 · 스테퍼 · 확인 버튼은 이 위젯의 부품(`ui/`)이고, 필요한 값과 동작을 여기서 넘겨줘요. 문서는 여기서 한 번만 조회해요.
+ * 복사 버튼은 제목과 같은 줄의 오른쪽 끝에 놓아요.
  * 본문 아래 줄에는 왼쪽에 같은 녹음의 문서를 넘기는 스테퍼를, 오른쪽에 확인 버튼을 놓아요.
  * 스테퍼는 녹음 직후 정리 화면에서 넘어와 주소에 `?from=recording`이 있을 때만 그려요(DOC-R2). 문서 탭 · 홈 · 탐색에서 연 저장 문서에는 확인 버튼만 남아요.
  * 확인 버튼은 확인 대상에게만 보여요. 확인한 뒤에는 누를 수 없는 「확인했어요」로 바뀌고, 확인 대상이 아니면 그리지 않아요.
@@ -69,14 +70,14 @@ export default function DocumentViewer() {
     // 스테퍼로 다른 문서로 넘어가면 「복사됨」 같은 앞 문서의 표시가 남지 않게, 문서마다 새로 그려요
     <Container key={documentDetail.id} aria-labelledby={titleId}>
       <Breadcrumb parent="문서" current={documentDetail.title} />
-      <TopRow>
-        <DocumentCopyButton
-          title={documentDetail.title}
-          content={documentDetail.content}
-        />
-      </TopRow>
       <TitleBlock>
-        <Title id={titleId}>{documentDetail.title}</Title>
+        <TitleRow>
+          <Title id={titleId}>{documentDetail.title}</Title>
+          <DocumentCopyButton
+            title={documentDetail.title}
+            content={documentDetail.content}
+          />
+        </TitleRow>
         <MetaRow>
           <Meta>
             <CreatedDate dateTime={documentDetail.createdAt}>
@@ -121,7 +122,7 @@ export default function DocumentViewer() {
   );
 }
 
-/** 피그마 문서 열(Standard): 폭 720px, 경로 · 복사 줄 · 제목 묶음 · 본문 사이 24px */
+/** 피그마 문서 열(Standard): 폭 720px, 경로 · 제목 묶음 · 본문 사이 24px */
 const Container = styled.section`
   display: flex;
   flex-direction: column;
@@ -130,20 +131,25 @@ const Container = styled.section`
   max-width: 45rem; /* 720px */
 `;
 
-/** 피그마 TopRow: 복사 버튼을 오른쪽 끝에 놓는 줄 */
-const TopRow = styled.div`
-  display: flex;
-  justify-content: flex-end;
-`;
-
-/** 피그마 TitleBlock: 제목과 날짜 줄 사이 4px */
+/** 피그마 TitleBlock: 제목 줄과 날짜 줄 사이 4px */
 const TitleBlock = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.25rem; /* 4px */
 `;
 
+/** 피그마 TitleRow: 왼쪽에 제목, 오른쪽 끝에 복사 버튼. 둘 사이 16px, 세로 가운데 */
+const TitleRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem; /* 16px */
+`;
+
+/** 제목이 길면 버튼 자리를 남기고 줄을 바꿔요 */
 const Title = styled.h2`
+  flex: 1;
+  min-width: 0;
   ${({ theme }) => theme.text.heading02};
   color: ${({ theme }) => theme.neutral[900]};
   overflow-wrap: break-word;

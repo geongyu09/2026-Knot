@@ -15,9 +15,12 @@ interface ReserveRecordingAudioChunkMutationVariables extends PostRecordingAudio
  *
  * 같은 descriptor로 다시 보내면 서버가 같은 조각의 URL을 다시 발급하고, 이미 저장이 확인된 조각이면
  * URL 없이 `VERIFIED`를 돌려줘요. 오류는 `HttpError`의 `code`로 넘겨요. 무효화할 쿼리는 없어요.
+ *
+ * 조각 전송 큐가 일시 실패를 다시 보내므로, 실패는 큐가 골라 보고해요(`meta.errorReport`).
  */
 const useReserveRecordingAudioChunkMutation = () => {
   return useMutation({
+    meta: { errorReport: "caller" },
     mutationFn: ({
       workspaceId,
       recordingId,

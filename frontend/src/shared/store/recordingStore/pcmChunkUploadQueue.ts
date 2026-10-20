@@ -1,5 +1,6 @@
 import { HTTP_ERROR_TYPE, isHttpError } from "@api/httpClient/error";
 import { captureCaughtError } from "@provider/sentry";
+import { createRepeatedFailureReporter } from "@utils/createRepeatedFailureReporter";
 import axios from "axios";
 
 /** PUT과 저장 확인을 동시에 진행하는 조각 수의 상한 */
@@ -116,6 +117,8 @@ const isUploadPossiblyStored = (error: unknown) =>
  * - 요청을 고쳐야 하는 실패(충돌, 권한 거절 같은 4xx)는 그 조각을 멈추고, 앞 조각의 예약이 멈추면 뒤 조각의 예약도 보내지 않아요
  * - `setAcceptUntil`의 시한이 지나거나 `clear`하면 남은 조각을 모두 멈추고 바이트를 놓아요
  * - 멈춘 조각의 이유는 Sentry로 보내요. 시한이 지나 버린 조각은 남은 수를 담아 한 건으로 보내고, `clear`는 의도한 중단(AbortError)이라 보고 기준에서 빠져요
+ * - 다시 시도하는 실패는 시도마다 보내지 않고 연속 실패의 첫 번째만 보내요. 조각의 저장이 확인되면 다시 세요.
+ *   그래서 조각 요청 뮤테이션은 MutationCache가 보고하지 않아요(`meta.errorReport`)
  * - `seal()`은 종료 요청에 담을 마지막 번호와 예약 응답을 아직 받지 못한 조각을 줘요. 종료 뒤에도 그 조각은 평소대로 예약부터 올려요
  * - 서버 요청은 밖에서 받아요. 이 저장소는 브라우저 안의 녹음만 다루고 API 호출은 도메인 훅이 맡아요
  */
@@ -139,6 +142,11 @@ export default class PcmChunkUploadQueue {
   /** 큐 전체를 멈출 때 abort해요. 재시도를 기다리던 조각도 그 이유로 바로 깨어나요 */
   private readonly stop = new AbortController();
   private acceptUntilTimer: ReturnType<typeof setTimeout> | undefined;
+  /** 다시 시도하는 예약, PUT, 저장 확인의 실패. 연속 실패의 첫 번째만 Sentry로 보내요 */
+  private readonly retriedFailures = createRepeatedFailureReporter({
+    feature: "recording",
+    action: "녹음 조각 올리기",
+  });
 
   constructor({ reserve, upload, complete }: PcmChunkUploadQueueParams) {
     this.reserve = reserve;
@@ -314,7 +322,11 @@ export default class PcmChunkUploadQueue {
           await this.upload({ uploadUrl, requiredHeaders, pcm });
         } catch (error) {
           // 403(URL 만료)을 포함한 나머지 PUT 실패는 재예약해 새 URL로 다시 보내요
-          if (!isUploadPossiblyStored(error)) return "reserveAgain";
+          if (!isUploadPossiblyStored(error)) {
+            this.retriedFailures.report({ error });
+
+            return "reserveAgain";
+          }
         }
       }
 
@@ -325,6 +337,7 @@ export default class PcmChunkUploadQueue {
         if (completed.status !== "VERIFIED") return "reserveAgain";
 
         this.pending.delete(sequence);
+        this.retriedFailures.reset();
         // 뒤 조각의 응답이 먼저 와도 watermark가 줄지 않게 큰 값만 받아요
         this.verifiedFrame = Math.max(
           this.verifiedFrame,
@@ -334,9 +347,15 @@ export default class PcmChunkUploadQueue {
         return "verified";
       } catch (error) {
         if (isHttpError(error) && error.code === AUDIO_CHUNK_NOT_STORED) {
+          this.retriedFailures.report({ error });
+
           return "reserveAgain";
         }
-        if (isTransientApiError(error)) return "completeAgain";
+        if (isTransientApiError(error)) {
+          this.retriedFailures.report({ error });
+
+          return "completeAgain";
+        }
         throw error;
       }
     } finally {
@@ -355,6 +374,7 @@ export default class PcmChunkUploadQueue {
         return await request();
       } catch (error) {
         if (!isTransientApiError(error)) throw error;
+        this.retriedFailures.report({ error });
       }
       await this.wait(nextDelay());
     }

@@ -12,6 +12,7 @@ import { ThemeProvider } from "@emotion/react";
 import WorkspaceLayout from "@pages/_layout/WorkspaceLayout";
 import AppProviders from "@provider/AppProviders";
 import { DialogProvider } from "@provider/context/dialogContext";
+import { setupSentryEvents } from "@provider/sentry/mock";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
@@ -151,15 +152,6 @@ const collectRequests = () => {
 
 const UPLOAD_REQUESTS = ["audio-upload-url", "audio", "audio-upload-complete"];
 
-/** 403은 CSRF 토큰이 낡았을 수 있어 httpClient가 토큰을 새로 받아 최대 두 번 더 보내요. 계속 403인 신호 한 번이 이렇게 나가요 */
-const CSRF_RETRIED_HEARTBEAT = [
-  "heartbeat",
-  "csrf",
-  "heartbeat",
-  "csrf",
-  "heartbeat",
-];
-
 describe("RecordingHeartbeat", () => {
   beforeEach(() => {
     // 요청은 실제 시간으로 흘러야 해서 신호 주기만 가짜로 돌려요.
@@ -223,9 +215,10 @@ describe("RecordingHeartbeat", () => {
     expect(requests).toEqual([]);
   });
 
+  // 업무 403은 CSRF 토큰과 관계없어 httpClient가 토큰을 새로 받아 다시 보내지 않아요
   it.each([
     [500, "INTERNAL_SERVER_ERROR", ["heartbeat"]],
-    [403, "RECORDING_CONTROL_DENIED", CSRF_RETRIED_HEARTBEAT],
+    [403, "RECORDING_CONTROL_DENIED", ["heartbeat"]],
   ])(
     "신호가 실패(%i %s)하면 곧바로 다시 보내지 않고 녹음을 이어 가다 다음 주기에 보낸다",
     async (status, code, sent) => {
@@ -282,7 +275,7 @@ describe("RecordingHeartbeat", () => {
     ],
     [
       "403 WORKSPACE_ACCESS_DENIED",
-      CSRF_RETRIED_HEARTBEAT,
+      ["heartbeat"],
       () => respondHeartbeatWithError(403, "WORKSPACE_ACCESS_DENIED"),
     ],
     [
@@ -530,5 +523,49 @@ describe("RecordingHeartbeat", () => {
     await waitPastMaxDuration();
     expect(requests).toEqual(["heartbeat"]);
     expect(useRecordingStore.getState().status).toBe("recording");
+  });
+
+  // 10초마다 실패할 때마다 보내면 장애 한 번이 이벤트 수십 건이 돼 심각도를 가늠할 수 없어요
+  describe("실패 보고", () => {
+    const { flushEvents } = setupSentryEvents();
+    /** 다른 테스트의 실패 기록과 섞이지 않게 이 테스트만의 녹음으로 보내요 */
+    const REPORTED_RECORDING_ID = expected.recordingId + 100;
+
+    /** 응답을 받아 처리할 틈을 줘요 */
+    const settleHeartbeat = () =>
+      act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+    // SDK는 바로 앞과 같은 오류 이벤트를 버리므로, 성공 뒤의 실패는 다른 상태 코드로 봐요
+    it("신호가 거듭 실패하면 연속 실패의 첫 번째만 보고하고, 성공한 뒤 다시 실패하면 처음부터 센다", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const statuses = [500, 500, 500, 200, 503, 503];
+      respondHeartbeat(() => {
+        const status = statuses.shift();
+
+        return status === 200
+          ? HttpResponse.json(recordingHeartbeatResponse)
+          : HttpResponse.json({ code: "SERVER_ERROR" }, { status });
+      });
+      await startRecording(REPORTED_RECORDING_ID);
+      renderRecordingHeartbeat();
+
+      for (let beat = 0; beat < 6; beat += 1) {
+        passHeartbeatInterval();
+        await settleHeartbeat();
+      }
+
+      const events = await flushEvents();
+      expect(events).toHaveLength(2);
+      expect(events.map(({ tags }) => tags?.feature)).toEqual([
+        "recording",
+        "recording",
+      ]);
+      expect(events.map(({ extra }) => extra)).toEqual([
+        { consecutiveFailures: 1 },
+        { consecutiveFailures: 1 },
+      ]);
+      // 콘솔에는 실패마다 남겨요
+      expect(console.error).toHaveBeenCalledTimes(5);
+    });
   });
 });

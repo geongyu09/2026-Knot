@@ -9,6 +9,7 @@ import {
 import { mockServer } from "@api/mock/server";
 import type { DocumentTranscriptResponse } from "@api/mock/types/document";
 import { ThemeProvider } from "@emotion/react";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -24,10 +25,11 @@ import { formatDate } from "@utils/formatDate";
 import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
 import { formatRecordingTime } from "@utils/formatRecordingTime";
 import { delay, http, HttpResponse } from "msw";
-import { createMemoryRouter, RouterProvider } from "react-router";
-import { describe, expect, it } from "vitest";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import TranscriptPanel from ".";
+import { formatTranscriptText } from "./utils/formatTranscriptText";
 
 const [transcriptResponse] = documentTranscriptsResponse;
 const expectedTranscript = new GetDocumentTranscriptResponseDto(
@@ -45,6 +47,8 @@ const FOOTER_NOTICE =
   "이 문서를 만든 원본이에요. 전사 전체를 그대로 볼 수 있어요";
 const MILLIS_PER_SECOND = 1000;
 const LOADING_LABEL = "원문을 불러오고 있어요";
+/** 복사한 뒤 「복사됨」을 보여 주는 시간 */
+const COPIED_DURATION_MS = 3000;
 const LOAD_FAILED_NOTICE = "원문을 불러오지 못했어요. 다시 시도해 주세요.";
 
 const renderTranscriptPanel = (documentId = DOCUMENT_ID) => {
@@ -53,9 +57,19 @@ const renderTranscriptPanel = (documentId = DOCUMENT_ID) => {
   });
   const router = createMemoryRouter(
     [
-      { path: PATH_ROUTE.DOCUMENT, element: <TranscriptPanel /> },
-      // 이동을 확인할 수 있게 로그인 경로에 표시만 하는 화면을 둬요
-      { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
+      {
+        // 복사에 실패하면 토스트로 알려서 토스트 자리를 둬요
+        element: (
+          <ToastProvider>
+            <Outlet />
+          </ToastProvider>
+        ),
+        children: [
+          { path: PATH_ROUTE.DOCUMENT, element: <TranscriptPanel /> },
+          // 이동을 확인할 수 있게 로그인 경로에 표시만 하는 화면을 둬요
+          { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
+        ],
+      },
     ],
     {
       initialEntries: [
@@ -108,6 +122,11 @@ const formatLineTime = (startMillis: number) =>
   formatRecordingTime(startMillis / MILLIS_PER_SECOND);
 
 describe("TranscriptPanel", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    Reflect.deleteProperty(navigator, "clipboard");
+  });
+
   it("제목 「원문」과 문서를 만든 날짜, 녹음 길이를 보여 준다", async () => {
     renderTranscriptPanel();
 
@@ -408,5 +427,33 @@ describe("TranscriptPanel", () => {
       LOAD_FAILED_NOTICE,
     );
     expect(requestCount).toBe(1);
+  });
+
+  it("머리의 복사를 누르면 보이는 발화 줄을 한 줄씩 복사하고, 3초 동안 복사됨을 보여 준다", async () => {
+    const writeText = vi
+      .fn<(text: string) => Promise<void>>()
+      .mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    renderTranscriptPanel();
+    const panel = within(await findLoadedPanel());
+    vi.useFakeTimers();
+
+    await act(async () => {
+      fireEvent.click(panel.getByRole("button", { name: "복사" }));
+    });
+
+    expect(writeText).toHaveBeenCalledWith(
+      formatTranscriptText(expectedTranscript.segments),
+    );
+    expect(panel.getByRole("button", { name: "복사됨" })).toBeInTheDocument();
+
+    await act(async () => {
+      vi.advanceTimersByTime(COPIED_DURATION_MS);
+    });
+
+    expect(panel.getByRole("button", { name: "복사" })).toBeInTheDocument();
   });
 });

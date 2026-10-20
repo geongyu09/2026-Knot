@@ -101,15 +101,24 @@ function QueryContent() {
   return <p>{data?.text}</p>;
 }
 
-function MutationContent() {
-  const { mutate } = useMutation({
+interface MutationContentProps {
+  /** 부르는 쪽이 실패를 골라 보고하는 뮤테이션인지 */
+  isReportedByCaller?: boolean;
+}
+
+function MutationContent({ isReportedByCaller = false }: MutationContentProps) {
+  const { mutate, isError } = useMutation({
     mutationFn: () => httpClient.post(TEST_PATH),
+    ...(isReportedByCaller && { meta: { errorReport: "caller" } }),
   });
 
   return (
-    <button type="button" onClick={() => mutate()}>
-      보내기
-    </button>
+    <>
+      <button type="button" onClick={() => mutate()}>
+        보내기
+      </button>
+      {isError && <p>보내지 못했어요</p>}
+    </>
   );
 }
 
@@ -209,6 +218,20 @@ describe("Sentry 보고", () => {
 
     await vi.waitFor(() => expect(sentEvents).toHaveLength(1));
     expect(sentEvents[0].tags).toMatchObject({ source: "mutation" });
+  });
+
+  // 재시도 루프와 주기 요청은 연속 실패의 첫 번째와 포기한 실패만 부르는 쪽이 보내요
+  it("부르는 쪽이 보고하는 Mutation(meta.errorReport: caller)은 MutationCache에서 보고하지 않는다", async () => {
+    // 앞 테스트와 같은 오류면 SDK가 바로 앞 이벤트와 같다고 버려, 보고하지 않았는지 볼 수 없어요
+    mockServer.use(
+      http.post(`*${TEST_PATH}`, () => new HttpResponse(null, { status: 500 })),
+    );
+
+    renderApp(<MutationContent isReportedByCaller />);
+    fireEvent.click(screen.getByRole("button", { name: "보내기" }));
+
+    expect(await screen.findByText("보내지 못했어요")).toBeInTheDocument();
+    expect(await flushEvents()).toHaveLength(0);
   });
 
   // 바로 앞 이벤트와만 비교하는 dedupeIntegration이 아니라, SDK가 오류 객체에 남기는 표시로 막는지 보려고 다른 오류를 끼워요
@@ -312,6 +335,138 @@ describe("Sentry 보고", () => {
       ],
       ["GET", "/api/v1/workspaces/:id/recordings", "500"],
     ]);
+  });
+
+  it("연결이 끊겨 여러 API가 함께 실패하면 묶음 기준을 하나로 두고, 어느 API였는지는 태그로 남긴다", async () => {
+    mockServer.use(
+      http.get("*/api/v1/workspaces/:workspaceId/documents", () =>
+        HttpResponse.error(),
+      ),
+      http.get("*/api/v1/workspaces/:workspaceId", () => HttpResponse.error()),
+    );
+    const requestError = (url: string) =>
+      httpClient.get(url).catch((error: unknown) => error);
+
+    captureRequestError({
+      error: await requestError("/api/v1/workspaces/1/documents"),
+      source: "query",
+    });
+    captureRequestError({
+      error: await requestError("/api/v1/workspaces/1"),
+      source: "query",
+    });
+
+    const events = await flushEvents();
+    expect(events.map(({ fingerprint }) => fingerprint)).toEqual([
+      ["http-network", "network"],
+      ["http-network", "network"],
+    ]);
+    expect(events.map(({ tags }) => tags?.["http.path"])).toEqual([
+      "/api/v1/workspaces/:id/documents",
+      "/api/v1/workspaces/:id",
+    ]);
+  });
+
+  describe("떠나는 페이지와 숨긴 탭", () => {
+    const networkError = async () => {
+      mockServer.use(http.get(`*${TEST_PATH}`, () => HttpResponse.error()));
+
+      return httpClient.get(TEST_PATH).catch((error: unknown) => error);
+    };
+
+    afterEach(() => {
+      window.dispatchEvent(new Event("pageshow"));
+    });
+
+    it("페이지를 떠나는 중에 응답을 받지 못한 요청은 보내지 않는다", async () => {
+      const error = await networkError();
+
+      window.dispatchEvent(new Event("pagehide"));
+      captureRequestError({ error, source: "query" });
+
+      expect(await flushEvents()).toHaveLength(0);
+    });
+
+    it("뒤로 가기로 페이지에 돌아오면 다시 보낸다", async () => {
+      window.dispatchEvent(new Event("pagehide"));
+      window.dispatchEvent(new Event("pageshow"));
+
+      captureRequestError({ error: await networkError(), source: "query" });
+
+      expect(await flushEvents()).toHaveLength(1);
+    });
+
+    it("숨긴 탭에서 응답을 받지 못한 요청은 보내지 않는다", async () => {
+      const error = await networkError();
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+
+      captureRequestError({ error, source: "query" });
+
+      expect(await flushEvents()).toHaveLength(0);
+    });
+  });
+
+  it("응답을 받지 못한 요청은 warning, 그 밖의 오류는 error로 보낸다", async () => {
+    mockServer.use(
+      http.get(`*${TEST_PATH}`, () => HttpResponse.error()),
+      http.post(`*${TEST_PATH}`, () => new HttpResponse(null, { status: 500 })),
+    );
+
+    captureRequestError({
+      error: await httpClient.get(TEST_PATH).catch((e: unknown) => e),
+      source: "query",
+    });
+    captureRequestError({
+      error: await httpClient.post(TEST_PATH).catch((e: unknown) => e),
+      source: "mutation",
+    });
+
+    const events = await flushEvents();
+    expect(events.map(({ level }) => level)).toEqual(["warning", "error"]);
+  });
+
+  it("요청 실패에는 요청 정보를 태그로, 요청 ID를 context로 붙인다", async () => {
+    mockServer.use(
+      http.get("*/api/v1/workspaces/:workspaceId/documents", () =>
+        HttpResponse.json(
+          { code: "INTERNAL_SERVER_ERROR" },
+          { status: 500, headers: { "X-Request-ID": "req-500" } },
+        ),
+      ),
+    );
+    const error = await httpClient
+      .get("/api/v1/workspaces/1/documents")
+      .catch((e: unknown) => e);
+
+    captureRequestError({ error, source: "query" });
+
+    const [event] = await flushEvents();
+    expect(event.tags).toMatchObject({
+      source: "query",
+      "http.method": "GET",
+      "http.path": "/api/v1/workspaces/:id/documents",
+      "http.status": "500",
+      "http.error_type": "serverError",
+      "error.code": "INTERNAL_SERVER_ERROR",
+    });
+    expect(event.contexts?.apiRequest).toEqual({ requestId: "req-500" });
+  });
+
+  // 처리하지 않은 mutateAsync 실패는 전역 unhandledrejection으로 들어와요
+  it("우리 함수를 거치지 않고 들어온 요청 실패에도 같은 묶음 기준과 태그를 붙인다", async () => {
+    mockServer.use(
+      http.post(`*${TEST_PATH}`, () => new HttpResponse(null, { status: 502 })),
+    );
+    const error = await httpClient.post(TEST_PATH).catch((e: unknown) => e);
+
+    Sentry.captureException(error);
+
+    const [event] = await flushEvents();
+    expect(event.fingerprint).toEqual(["POST", TEST_PATH, "502"]);
+    expect(event.tags).toMatchObject({
+      "http.path": TEST_PATH,
+      "http.status": "502",
+    });
   });
 
   describe("잡고 넘어간 실패", () => {

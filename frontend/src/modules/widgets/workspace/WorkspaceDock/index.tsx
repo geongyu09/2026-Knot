@@ -12,10 +12,15 @@ import { useWorkspaceDock } from "./model/useWorkspaceDock";
 import DockHintTooltip from "./ui/DockHintTooltip";
 import DockRecordingChip from "./ui/DockRecordingChip";
 
-/** 폭이 벌어지는 동안 안의 내용이 살짝 흐렸다가 또렷해지며 뒤따라 나타나는 모션 */
+/**
+ * 폭이 벌어지는 동안 안의 내용이 살짝 흐렸다가 또렷해지며 뒤따라 나타나는 모션.
+ *
+ * 투명에서 시작하지 않고 옅게 보이는 데서 시작해요. 탭을 옮겨 독이 펼쳐지고 접힐 때마다 안의 내용이 새로 그려지는데,
+ * 투명에서 시작하면 늦게 나타나는 동안 아이콘까지 다 사라진 빈 독이 보여 깜빡여 보여요.
+ */
 const fadeIn = keyframes`
   from {
-    opacity: 0;
+    opacity: 0.6;
     filter: blur(2px);
   }
 `;
@@ -184,7 +189,7 @@ export default function WorkspaceDock() {
  * 두 모양을 다른 요소로 두면 모션이 끊기므로, 한 요소의 폭만 바꿔 늘고 줄게 해요.
  * 녹음 칩이 있으면 접힌 폭이 내용만큼(`auto`)이라, `interpolate-size`로 `auto`와 길이 사이도 이어서 움직여요.
  * 이를 지원하지 않는 브라우저에서는 이때만 모션 없이 바로 바뀌어요.
- * 펼칠 때는 길게(0.44초), 접을 때는 조금 짧게(0.36초) 움직이고, 안의 내용은 폭이 어느 정도 벌어진 뒤 뒤따라 나타나요.
+ * 펼칠 때는 길게(0.44초), 접을 때는 조금 짧게(0.36초) 움직이고, 안의 내용은 폭이 어느 정도 벌어진 뒤 뒤따라 또렷해져요.
  */
 const Bar = styled.form<{
   $isExpanded: boolean;

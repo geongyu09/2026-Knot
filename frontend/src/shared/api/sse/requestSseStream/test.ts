@@ -2,6 +2,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { AUTH_CSRF_API_PATH } from "@api/fetch/api/v1/auth/csrf";
+import { getCsrfToken } from "@api/httpClient";
 import { csrfTokenResponse } from "@api/mock/responses/auth";
 import { mockServer } from "@api/mock/server";
 
@@ -29,20 +30,25 @@ const captureRequest = () => {
 interface ForbiddenThenStreamParams {
   /** 처음 몇 번 403으로 거절할지 */
   failures: number;
+  /** 403 응답의 서버 오류 코드. 기본값은 CSRF 실패(`FORBIDDEN`)예요 */
+  code?: string;
 }
 
 /**
  * 처음 `failures`번은 403으로 거절하고 그 뒤로는 이벤트 하나로 응답해요. 받은 요청을 남겨요.
- * 서버가 CSRF 쿠키를 지운 뒤 낡은 토큰으로 온 요청을 흉내 내요.
+ * 기본값은 서버가 CSRF 쿠키를 지운 뒤 낡은 토큰으로 온 요청을 흉내 내요.
  */
-const forbiddenThenStream = ({ failures }: ForbiddenThenStreamParams) => {
+const forbiddenThenStream = ({
+  failures,
+  code = "FORBIDDEN",
+}: ForbiddenThenStreamParams) => {
   const requests: Request[] = [];
 
   mockServer.use(
     http.all(`*${SSE_PATH}`, ({ request }) => {
       requests.push(request.clone());
       if (requests.length <= failures) {
-        return new HttpResponse(null, { status: 403 });
+        return HttpResponse.json({ code }, { status: 403 });
       }
 
       return new HttpResponse("data: 1\n\n", {
@@ -178,6 +184,23 @@ describe("requestSseStream", () => {
     expect(error).toBeInstanceOf(SseRequestError);
     expect(error).toMatchObject({ status: 403 });
     expect(requests).toHaveLength(3);
+  });
+
+  it("POST가 업무 403(SEARCH_ACCESS_DENIED)을 받으면 CSRF 토큰을 다시 받지 않고 그 오류를 던진다", async () => {
+    const requests = forbiddenThenStream({
+      failures: 1,
+      code: "SEARCH_ACCESS_DENIED",
+    });
+    await getCsrfToken();
+    const csrf = countingCsrfHandler();
+
+    const error = await catchError(
+      requestSseStream({ method: "POST", path: SSE_PATH, body: {} }),
+    );
+
+    expect(error).toMatchObject({ status: 403, code: "SEARCH_ACCESS_DENIED" });
+    expect(requests).toHaveLength(1);
+    expect(csrf.issued).toBe(0);
   });
 
   it("GET은 403을 받아도 CSRF 토큰을 다시 받거나 다시 보내지 않는다", async () => {
