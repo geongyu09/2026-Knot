@@ -2,6 +2,7 @@ import type { AxiosInstance } from "axios";
 import axios from "axios";
 
 import type { HttpInterceptor } from "../../types/interceptor";
+import { toErrorCode } from "../httpError";
 
 /** CSRF 토큰을 발급받는 경로. 응답 본문으로 토큰을 주고 `XSRF-TOKEN` 쿠키도 함께 내려줘요. */
 export const CSRF_API_PATH = "/api/v1/auth/csrf";
@@ -13,6 +14,14 @@ const MUTATING_METHODS = ["post", "put", "patch", "delete"];
 
 /** 403을 받았을 때 토큰을 다시 받아 다시 보내는 최대 횟수. SSE 요청도 같은 횟수를 써요. */
 export const MAX_CSRF_RETRIES = 2;
+
+/**
+ * 서버가 CSRF 검사에서 거절한 403의 오류 코드. 인증 경로는 `CSRF_INVALID`, 그 밖의 경로는 `FORBIDDEN`이에요.
+ *
+ * 그 밖의 403(`RECORDING_CONTROL_DENIED`, `WORKSPACE_ACCESS_DENIED`, `SEARCH_ACCESS_DENIED` 등)은 권한을 따진 업무 거절이라
+ * 토큰을 바꿔 다시 보내도 결과가 같아요. SSE 요청도 같은 코드로 판별해요.
+ */
+export const CSRF_REJECTED_CODES = ["FORBIDDEN", "CSRF_INVALID"];
 
 interface CsrfTokenResponse {
   token: string;
@@ -70,11 +79,14 @@ export const getCsrfToken = async (client: AxiosInstance) =>
 const isMutatingRequest = (method?: string) =>
   MUTATING_METHODS.includes((method ?? "get").toLowerCase());
 
-const isForbidden = (error: unknown) =>
-  axios.isAxiosError(error) && error.response?.status === 403;
+const isCsrfRejected = (error: unknown) =>
+  axios.isAxiosError(error) &&
+  error.response?.status === 403 &&
+  CSRF_REJECTED_CODES.includes(toErrorCode(error.response.data) ?? "");
 
 /**
- * 상태를 바꾸는 요청에 CSRF 토큰을 헤더로 붙이고, 토큰이 낡아 403이 오면 새로 받아 최대 두 번까지 다시 보냅니다.
+ * 상태를 바꾸는 요청에 CSRF 토큰을 헤더로 붙이고, 토큰이 낡아 CSRF 검사에서 거절되면 새로 받아 최대 두 번까지 다시 보냅니다.
+ * 업무 403은 다시 보내지 않고 그대로 던져요(`CSRF_REJECTED_CODES`).
  *
  * 서버는 이 헤더와 `XSRF-TOKEN` 쿠키를 비교해 우리 화면에서 온 요청인지 판별해요.
  * 쿠키는 브라우저가 알아서 보내지만, 프론트와 API의 도메인이 달라
@@ -96,7 +108,7 @@ export const csrfInterceptor: HttpInterceptor =
       try {
         return await next(config);
       } catch (error) {
-        if (!isForbidden(error) || retriesLeft === 0) throw error;
+        if (!isCsrfRejected(error) || retriesLeft === 0) throw error;
 
         config.headers.set(CSRF_HEADER_NAME, await loadCsrfToken(client));
       }

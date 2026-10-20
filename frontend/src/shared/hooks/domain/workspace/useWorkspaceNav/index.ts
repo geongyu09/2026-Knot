@@ -34,6 +34,10 @@ const useWorkspaceNav = () => {
   // 문서 하나를 보는 `/documents/:documentId`도 문서 화면이므로 하위 경로까지 매칭해요
   const isDocumentsActive =
     useMatch({ path: PATH_ROUTE.DOCUMENTS, end: false }) !== null;
+  // 탭 순서(홈, 탐색, 문서)에서 지금 탭의 자리. 녹음처럼 탭이 아닌 화면이면 -1이에요
+  const activeTabIndex = [isHomeActive, isChatActive, isDocumentsActive].indexOf(
+    true,
+  );
 
   const navigateToHome = () => {
     if (!workspaceId || isAtPath(PATH_ROUTE.WORKSPACE_HOME)) return;
@@ -68,6 +72,7 @@ const useWorkspaceNav = () => {
     isHomeActive,
     isChatActive,
     isDocumentsActive,
+    activeTabIndex,
     navigateToHome,
     navigateToExplore,
     navigateToDocuments,

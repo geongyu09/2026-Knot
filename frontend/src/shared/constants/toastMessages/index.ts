@@ -1,4 +1,4 @@
-import type { ToastControls } from "..";
+import type { ToastControls } from "@provider/context/toastContext";
 
 /**
  * 현재 V2 MVP 토스트의 종류와 문구. show(TOAST_MESSAGES.COPY_FAILED)처럼 사용해요.

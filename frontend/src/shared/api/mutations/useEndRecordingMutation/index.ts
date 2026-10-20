@@ -15,9 +15,12 @@ interface EndRecordingMutationVariables extends PostRecordingEndRequestInput {
  *
  * 종료 성공은 업로드 완료를 뜻하지 않아,
  * 최종 오디오는 이어서 업로드 URL을 받아 올려야 해요. 무효화할 쿼리는 없어요.
+ *
+ * PCM 녹음은 일시 실패를 간격을 두고 다시 보내므로, 실패는 부르는 쪽이 골라 보고해요(`meta.errorReport`).
  */
 const useEndRecordingMutation = () => {
   return useMutation({
+    meta: { errorReport: "caller" },
     mutationFn: ({
       workspaceId,
       recordingId,

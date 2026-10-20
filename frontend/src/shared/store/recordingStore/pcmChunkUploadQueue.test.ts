@@ -18,7 +18,6 @@ import {
   recordingAudioChunkReserveResponse,
 } from "@api/mock/responses/recording";
 import { mockServer } from "@api/mock/server";
-import { captureRequestError } from "@provider/sentry";
 import { setupSentryEvents } from "@provider/sentry/mock";
 import type { RecordingAudioChunkReserveRequest } from "@api/mock/types/recording";
 
@@ -301,6 +300,8 @@ describe("PcmChunkUploadQueue", () => {
       vi.setSystemTime(0);
       // 해시 계산이 실제 스레드를 타지 않게 해 가짜 타이머만으로 흐름이 진행되게 해요
       vi.spyOn(crypto.subtle, "digest").mockResolvedValue(new ArrayBuffer(32));
+      // 다시 시도하는 실패는 콘솔에 남겨요. 테스트 출력에 섞이지 않게 막아요
+      vi.spyOn(console, "error").mockImplementation(() => {});
     });
 
     afterEach(() => {
@@ -490,13 +491,14 @@ describe("PcmChunkUploadQueue", () => {
         await vi.advanceTimersByTimeAsync(2_500);
         await drained;
 
-        const events = await flushRealEvents();
-        expect(events).toHaveLength(1);
-        expect(events[0].tags).toMatchObject({ feature: "recording" });
-        expect(events[0].extra).toEqual({ lostChunkCount: 2 });
-        expect(events[0].exception?.values?.[0]?.value).toBe(
-          "조각 접수 시한이 지났어요",
+        // 다시 시도하던 예약의 첫 실패도 따로 보고해요
+        const lostEvents = (await flushRealEvents()).filter(
+          ({ exception }) =>
+            exception?.values?.[0]?.value === "조각 접수 시한이 지났어요",
         );
+        expect(lostEvents).toHaveLength(1);
+        expect(lostEvents[0].tags).toMatchObject({ feature: "recording" });
+        expect(lostEvents[0].extra).toEqual({ lostChunkCount: 2 });
       });
 
       it("시한 전에 모든 조각을 올렸으면 시한이 지나도 보고하지 않는다", async () => {
@@ -521,7 +523,11 @@ describe("PcmChunkUploadQueue", () => {
         queue.clear();
         await Promise.all(tasks);
 
-        expect(await flushRealEvents()).toHaveLength(0);
+        // 다시 시도하던 예약의 첫 실패만 남아요
+        const events = await flushRealEvents();
+        expect(
+          events.map(({ exception }) => exception?.values?.[0]?.value),
+        ).toEqual(["HTTP 요청 실패: serverError"]);
       });
 
       it("해시를 계산하지 못하면 그 조각과 뒤 조각이 함께 멈추고, 그 오류를 한 번만 보고한다", async () => {
@@ -541,14 +547,11 @@ describe("PcmChunkUploadQueue", () => {
         expect(events[0].tags).toMatchObject({ feature: "recording" });
       });
 
-      // 앱에서는 조각 요청이 뮤테이션이라 실패가 MutationCache로 먼저 보고돼요
-      it("요청 실패로 멈춘 조각은 react-query가 보낸 같은 오류라 다시 보고하지 않는다", async () => {
+      // 조각 요청 뮤테이션은 MutationCache가 보고하지 않아(meta.errorReport: caller) 큐가 보고해요
+      it("요청을 고쳐야 하는 실패로 멈춘 조각은 큐가 한 번 보고한다", async () => {
         const { queue, complete } = createFakeQueue();
         const error = apiError(HTTP_ERROR_TYPE.forbidden);
-        complete.mockImplementation(async () => {
-          captureRequestError({ error, source: "mutation" });
-          throw error;
-        });
+        complete.mockRejectedValue(error);
 
         await expect(queue.enqueue(silentPcm(CHUNK_FRAMES))).rejects.toBe(
           error,
@@ -556,7 +559,34 @@ describe("PcmChunkUploadQueue", () => {
 
         const events = await flushRealEvents();
         expect(events).toHaveLength(1);
-        expect(events[0].tags).toMatchObject({ source: "mutation" });
+        expect(events[0].tags).toMatchObject({
+          source: "caught",
+          feature: "recording",
+        });
+      });
+
+      // 일시 실패는 횟수 제한 없이 다시 시도해, 시도마다 보내면 장애 한 번이 이벤트 수십 건이 돼요
+      it("예약이 거듭 일시 실패하면 연속 실패의 첫 번째만 보고하고, 저장이 확인되면 다시 센다", async () => {
+        const { queue, reserve } = createFakeQueue();
+        reserve
+          .mockRejectedValueOnce(apiError(HTTP_ERROR_TYPE.serverError))
+          .mockRejectedValueOnce(apiError(HTTP_ERROR_TYPE.serverError))
+          .mockRejectedValueOnce(apiError(HTTP_ERROR_TYPE.serverError));
+
+        const first = queue.enqueue(silentPcm(CHUNK_FRAMES));
+        await vi.advanceTimersByTimeAsync(7_000);
+        await first;
+        reserve.mockRejectedValueOnce(apiError(HTTP_ERROR_TYPE.serverError));
+        const second = queue.enqueue(silentPcm(CHUNK_FRAMES));
+        await vi.advanceTimersByTimeAsync(1_000);
+        await second;
+
+        const events = await flushRealEvents();
+        expect(reserve).toHaveBeenCalledTimes(6);
+        expect(events.map(({ extra }) => extra)).toEqual([
+          { consecutiveFailures: 1 },
+          { consecutiveFailures: 1 },
+        ]);
       });
     });
   });
