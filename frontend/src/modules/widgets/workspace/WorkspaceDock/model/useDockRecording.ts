@@ -21,6 +21,7 @@ import { useMatch, useParams } from "react-router";
  * 녹음 화면이 아닌 곳에서 녹음이 이어지고 있으면 마이크 대신 녹음 칩을 보여줘요.
  * 칩을 누르면 권한을 다시 묻지 않고 녹음 화면으로 가고, 중지를 누르면 녹음을 끝내 올린 뒤 그 녹음의 문서 정리 화면으로 가요.
  * 이 탭의 녹음이 없을 때 현재 녹음 조회가 녹음 중·일시정지로 답하면 다른 탭의 녹음(`isOtherTabRecording`)으로 칩을 보여줘요.
+ * 문서 정리 중인 녹음은 이미 끝난 녹음이라 칩으로 보여 주지 않고, 새 녹음을 시작할 수 있게 마이크를 둬요.
  * 조회 중이거나 실패하면 마이크를 둬요.
  *
  * 독은 어느 화면에서나 떠 있으므로, 녹음 중에 마이크가 끊겼다는 알림도 여기서 같은 알림으로 띄워요.
@@ -39,7 +40,9 @@ export const useDockRecording = () => {
     useServerRecording();
   const { startRecording, syncPause, endRecording } = useRecordingControl();
 
-  const isOtherTabRecording = !isRecordingActive && serverStatus !== null;
+  const isOtherTabRecording =
+    !isRecordingActive &&
+    (serverStatus === "recording" || serverStatus === "paused");
   const hasRecording = isRecordingActive || isOtherTabRecording;
 
   // 녹음 중 마이크가 끊기면 알림을 띄워요
