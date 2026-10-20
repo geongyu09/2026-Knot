@@ -53,6 +53,26 @@ export const TOAST_MESSAGES = {
     variant: "error",
     message: "질문을 보내지 못했어요. 잠시 후 다시 시도해 주세요.",
   },
+  /** 문서 확인 요청이 401·409가 아닌 이유로 실패했을 때. Figma 4826:33512 */
+  DOCUMENT_CONFIRM_FAILED: {
+    variant: "error",
+    message: "확인하지 못했어요. 다시 시도해 주세요.",
+  },
+  /** 전사·문서 생성 다시 시도가 거절(409·404)이나 401이 아닌 이유로 접수되지 않았을 때(STT-R22). Figma 4826:33517 */
+  RETRY_REQUEST_FAILED: {
+    variant: "error",
+    message: "다시 시도하지 못했어요. 잠시 후 다시 시도해 주세요.",
+  },
+  /** 나가기 확인 창의 [나가기] 요청이 실패했을 때. 창은 닫지 않아요. Figma 4826:33522 */
+  WORKSPACE_LEAVE_FAILED: {
+    variant: "error",
+    message: "워크스페이스에서 나가지 못했어요. 다시 시도해 주세요.",
+  },
+  /** owner 나가기 창의 [넘기고 나가기] 요청이 실패했을 때. 창은 닫지 않아요. Figma 4826:33527 */
+  OWNERSHIP_TRANSFER_FAILED: {
+    variant: "error",
+    message: "권한을 넘기지 못했어요. 다시 시도해 주세요.",
+  },
   COPY_FAILED: {
     variant: "error",
     message: "복사하지 못했어요. 다시 시도해 주세요.",
