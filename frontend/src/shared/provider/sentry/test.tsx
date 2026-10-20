@@ -314,6 +314,50 @@ describe("Sentry 보고", () => {
     ]);
   });
 
+  it("요청 실패에는 요청 정보를 태그로, 요청 ID를 context로 붙인다", async () => {
+    mockServer.use(
+      http.get("*/api/v1/workspaces/:workspaceId/documents", () =>
+        HttpResponse.json(
+          { code: "INTERNAL_SERVER_ERROR" },
+          { status: 500, headers: { "X-Request-ID": "req-500" } },
+        ),
+      ),
+    );
+    const error = await httpClient
+      .get("/api/v1/workspaces/1/documents")
+      .catch((e: unknown) => e);
+
+    captureRequestError({ error, source: "query" });
+
+    const [event] = await flushEvents();
+    expect(event.tags).toMatchObject({
+      source: "query",
+      "http.method": "GET",
+      "http.path": "/api/v1/workspaces/:id/documents",
+      "http.status": "500",
+      "http.error_type": "serverError",
+      "error.code": "INTERNAL_SERVER_ERROR",
+    });
+    expect(event.contexts?.apiRequest).toEqual({ requestId: "req-500" });
+  });
+
+  // 처리하지 않은 mutateAsync 실패는 전역 unhandledrejection으로 들어와요
+  it("우리 함수를 거치지 않고 들어온 요청 실패에도 같은 묶음 기준과 태그를 붙인다", async () => {
+    mockServer.use(
+      http.post(`*${TEST_PATH}`, () => new HttpResponse(null, { status: 502 })),
+    );
+    const error = await httpClient.post(TEST_PATH).catch((e: unknown) => e);
+
+    Sentry.captureException(error);
+
+    const [event] = await flushEvents();
+    expect(event.fingerprint).toEqual(["POST", TEST_PATH, "502"]);
+    expect(event.tags).toMatchObject({
+      "http.path": TEST_PATH,
+      "http.status": "502",
+    });
+  });
+
   describe("잡고 넘어간 실패", () => {
     it("기능 이름을 태그로 붙이고, 요청 실패는 API마다 묶음 기준을 달리해 보낸다", async () => {
       mockServer.use(

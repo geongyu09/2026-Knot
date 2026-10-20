@@ -6,7 +6,7 @@ import axios from "axios";
 const NUMERIC_SEGMENT_PATTERN = /\/\d+(?=\/|$)/g;
 
 /** 주소에서 오리진, 쿼리 파라미터, 해시를 빼고 숫자 ID와 초대 토큰을 지운 경로 */
-const toPathPattern = (url: string) =>
+export const toPathPattern = (url: string) =>
   // 상대 경로도 읽으려고 아무 오리진이나 붙여요
   scrubUrl(new URL(url, "http://localhost").pathname).replace(
     NUMERIC_SEGMENT_PATTERN,
