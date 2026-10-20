@@ -125,7 +125,7 @@ git diff --check
 - `./gradlew test spotlessCheck integrationTest --tests '*DocumentGenerationExecutionIntegrationTest' --tests '*DocumentGenerationJobRetryTransactionIntegrationTest'`: 성공.
 - 전체 단위 테스트 2,021건, 관련 PostgreSQL 통합 테스트 28건. 실패·오류·skip 0건. 통합 테스트는 Testcontainers PostgreSQL에서 실행했다.
 - Governance 검증기 단위 테스트 10건과 `git diff --check`: 성공.
-- Persona 실행 레일은 새 worktree에서 미초기화이며 구현 차단 없이 계속하라고 반환했다. `finish implement`는 `workflow-state-uninitialized`로 실패했다. 기존 사용자 환경을 재초기화하지 않았으며 Persona 완료 인증을 받았다고 주장하지 않는다.
+- Persona 실행 레일은 새 worktree에서 미초기화이며 구현 차단 없이 계속하라고 반환했다. 최초 `finish implement`는 `workflow-state-uninitialized`, 로컬 implementation/review 보고서 작성 후에는 `plan-not-accepted`로 실패했다. 이 worktree에는 Persona가 승인한 plan 상태가 없다. 기존 사용자 환경을 재초기화하지 않았으며 Persona 완료 인증을 받았다고 주장하지 않는다.
 - 운영 LLM 재호출, 운영 Job 재접수, 병합·배포는 수행하지 않았다.
 
 ## 6. 완료 기준과 다음 작업
