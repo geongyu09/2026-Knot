@@ -270,6 +270,53 @@ describe("RecordingListCard", () => {
     expect(requestCount).toBe(2);
   });
 
+  it("문서 정리 중에 다시 조회가 다시 물어도 결과가 같은 오류(4xx)로 실패하면 다시 조회를 멈추고, 받은 정리 중 상태를 그대로 보여 준다", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let requestCount = 0;
+    respondCurrentRecording(() => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return HttpResponse.json({
+          ...currentRecordingResponse,
+          status: "PROCESSING",
+        });
+      }
+      return HttpResponse.json(null, { status: 403 });
+    });
+    vi.useFakeTimers();
+    renderCard();
+    await advanceTimers(0); // 조회 응답을 흘려보내요
+
+    // 다시 조회한 응답이 도착할 때까지 간격보다 조금 더 진행해요
+    await advanceTimers(ORGANIZING_POLL_INTERVAL_MS + 100);
+    await advanceTimers(ORGANIZING_POLL_INTERVAL_MS * 3);
+
+    expect(requestCount).toBe(2);
+    expect(screen.getByText(ORGANIZING_TEXT)).toBeInTheDocument();
+  });
+
+  it("문서 정리 중에 다시 조회가 서버 오류(5xx)로 실패하면 잠깐의 문제일 수 있어 계속 다시 조회한다", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let requestCount = 0;
+    respondCurrentRecording(() => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return HttpResponse.json({
+          ...currentRecordingResponse,
+          status: "PROCESSING",
+        });
+      }
+      return HttpResponse.json(null, { status: 500 });
+    });
+    vi.useFakeTimers();
+    renderCard();
+    await advanceTimers(0); // 조회 응답을 흘려보내요
+
+    await advanceTimers(ORGANIZING_POLL_INTERVAL_MS * 3 + 100);
+
+    expect(requestCount).toBe(4);
+  });
+
   it("녹음 중이면 현재 녹음을 주기적으로 다시 조회하지 않는다", async () => {
     let requestCount = 0;
     respondCurrentRecording(() => {
@@ -288,11 +335,14 @@ describe("RecordingListCard", () => {
   it("이 탭에서 녹음 중이면 앞 녹음의 문서를 정리하는 중이어도 이 탭의 녹음을 보여 준다", async () => {
     respondStatus("PROCESSING");
     await startRecordingInThisTab();
+    vi.useFakeTimers();
 
     renderCard();
+    // 이 탭의 녹음 칸은 현재 녹음 조회를 기다리지 않고 보여요. 정리 중 응답까지 흘려보낸 뒤에 확인해요
+    await advanceTimers(0);
 
     expect(
-      await screen.findByRole("button", { name: OPEN_RECORDING }),
+      screen.getByRole("button", { name: OPEN_RECORDING }),
     ).toBeInTheDocument();
     expect(screen.queryByText(ORGANIZING_TEXT)).not.toBeInTheDocument();
   });

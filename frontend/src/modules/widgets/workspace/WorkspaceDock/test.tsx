@@ -1126,23 +1126,27 @@ describe("WorkspaceDock", () => {
         consoleError.mockRestore();
       });
 
-      it("현재 녹음 조회가 문서를 정리하는 중인 녹음을 주면 다른 탭의 녹음으로 보지 않고 마이크를 보여준다 (#866)", async () => {
-        let isCurrentRequested = false;
-        mockServer.events.on("request:start", ({ request }) => {
-          if (request.url.endsWith("/recordings/current")) {
-            isCurrentRequested = true;
-          }
-        });
-        respondCurrentRecordingStatus("PROCESSING");
+      it("다른 탭 녹음이 끝나 문서를 정리하는 중이 되면 칩 대신 마이크를 보여준다 (#866)", async () => {
+        respondCurrentRecordingStatus("RECORDING");
         renderDock();
+        expect(
+          await screen.findByRole("img", { name: "녹음 중" }),
+        ).toBeInTheDocument();
 
-        await waitFor(() => expect(isCurrentRequested).toBe(true));
+        // 마이크는 응답을 받기 전에도 보여서, 칩이 보이던 상태에서 정리 중 응답으로 바뀐 뒤 마이크가 새로 나타나는지 봐요
+        respondCurrentRecordingStatus("PROCESSING");
+        act(() => {
+          focusManager.setFocused(false);
+          focusManager.setFocused(true);
+        });
+
         expect(
           await screen.findByRole("button", { name: "회의 녹음 시작" }),
         ).toBeInTheDocument();
         expect(
           screen.queryByRole("img", { name: "녹음 중" }),
         ).not.toBeInTheDocument();
+        focusManager.setFocused(undefined);
       });
     });
 
