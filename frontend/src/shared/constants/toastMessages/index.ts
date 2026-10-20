@@ -33,7 +33,7 @@ export const TOAST_MESSAGES = {
     message:
       "최대 녹음 시간까지 15분 남았어요. 시간이 되면 녹음을 끝내고 문서로 정리해요",
   },
-  /** 로그인 화면으로 이동하며 navigateWithToast로 전달해요. */
+  /** 로그인했던 탭의 토큰 재발급이 거절돼 로그인 화면에 왔을 때 로그인 화면이 띄워요(`useSessionExpiredToast`). 처음 온 비로그인 사용자에게는 띄우지 않아요. */
   SESSION_EXPIRED: {
     variant: "caution",
     message: "로그인이 만료됐어요. 다시 로그인해 주세요.",

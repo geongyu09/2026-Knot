@@ -1,7 +1,12 @@
 import { captureCaughtError } from "@provider/sentry";
+import {
+  markAuthSessionConfirmed,
+  markAuthSessionExpired,
+} from "@utils/authSession";
 import type { AxiosInstance } from "axios";
 import axios from "axios";
 
+import { HTTP_ERROR_TYPE, isHttpError } from "../../error";
 import type { HttpInterceptor } from "../../types/interceptor";
 import { CSRF_API_PATH } from "../csrf";
 
@@ -15,6 +20,12 @@ const REFRESH_API_PATH = "/api/v1/auth/refresh";
  * CSRF 토큰 조회는 재발급 요청이 CSRF 토큰을 받으려고 부르는 요청이라 같은 이유로 뺍니다.
  */
 const SKIPPED_PATHS = [REFRESH_API_PATH, CSRF_API_PATH];
+
+/**
+ * 로그인 확인 경로. 성공하면 이 탭이 로그인한 상태였다고 기록해, 그 뒤의 재발급 거절을 로그인 만료로 알릴 수 있게 해요.
+ * 재발급 경로처럼 요청 함수 폴더를 import하면 서로를 import하게 돼서 경로만 따로 적어요.
+ */
+const AUTH_ME_API_PATH = "/api/v1/auth/me";
 
 const isSkippedRequest = (url?: string) =>
   SKIPPED_PATHS.some((path) => url?.startsWith(path));
@@ -62,6 +73,11 @@ const refreshTokens = (client: AxiosInstance) => {
       refreshCount += 1;
     })
     .catch((error: unknown) => {
+      // 서버가 refresh 토큰을 거절한(401) 것만 만료로 봐요. 서버 오류·연결 문제로 실패한 재발급은 로그인이 풀렸는지 알 수 없어요.
+      // 재발급은 `client`로 보내 바깥의 `httpErrorInterceptor`를 거치므로 HttpError로 와요
+      if (isHttpError(error, HTTP_ERROR_TYPE.unauthorized)) {
+        markAuthSessionExpired();
+      }
       captureCaughtError({ error, feature: "auth" });
       throw error;
     })
@@ -85,6 +101,9 @@ const refreshTokens = (client: AxiosInstance) => {
  * 백엔드는 이미 쓴 refresh 토큰이 다시 오면 그 세션을 끊으므로, 같은 토큰으로 재발급이 두 번 나가면 로그인이 풀려요.
  * 원래 요청은 잠금을 놓은 뒤에 다시 보내, 다른 탭의 재발급을 오래 막지 않아요.
  *
+ * 로그인 확인이 성공하면 이 탭을 로그인한 상태로, 그 뒤 재발급이 401로 거절되면 로그인 만료로 기록해요(`authSession`).
+ * 로그인 화면은 이 기록으로 만료 토스트를 띄워요. 처음 온 비로그인 사용자의 재발급 실패는 기록하지 않아요.
+ *
  * 401을 보고 판단하므로 `httpErrorInterceptor`보다 안쪽에 `use`하고,
  * 다시 보낸 요청에도 CSRF 토큰이 붙도록 `csrfInterceptor`보다 바깥에 `use`해요.
  */
@@ -95,7 +114,10 @@ export const refreshInterceptor: HttpInterceptor =
     const refreshCountAtSend = refreshCount;
 
     try {
-      return await next(config);
+      const response = await next(config);
+      if (config.url === AUTH_ME_API_PATH) markAuthSessionConfirmed();
+
+      return response;
     } catch (error) {
       if (!isUnauthorized(error)) throw error;
 
