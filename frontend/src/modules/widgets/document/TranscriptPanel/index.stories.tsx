@@ -10,6 +10,7 @@ import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
 import { delay, http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
+import { spyOn, userEvent, within } from "storybook/test";
 
 import TranscriptPanel from ".";
 
@@ -66,6 +67,7 @@ const ISOLATED_DOCS = { story: { inline: false, iframeHeight: 1000 } };
  * - 패널의 폭과 높이의 한계는 패널을 놓는 자리가 정해요. 시안의 폭은 400px이에요.
  *   패널이 자리보다 길어지면 발화 목록만 세로로 스크롤하고, 제목 · 날짜 줄과 맨 아래 문구는 그대로 보여요.
  * - 패널 안에는 닫기 버튼이 없어요. 패널을 여닫는 버튼은 GNB에 두기 때문이에요.
+ * - 제목 「원문」의 오른쪽 끝에 「복사」가 있어요. 누르면 보이는 발화 줄을 `02:40 참여자 1: 문장`처럼 한 줄씩 이어 복사하고, 3초 동안 「복사됨」으로 바뀌어요.
  * - 원문을 받기 전에는 불러오는 중 모습이 패널 전체를 대신 그려요. 제목 「원문」은 그대로 두고, 날짜 줄과 발화 줄 자리를 회색 덩어리로 채워요.
  *   덩어리 사이 간격을 실제 발화 줄과 같게 둬서, 원문을 받은 뒤 내용이 크게 움직이지 않아요.
  * - 원문을 불러오지 못하면 제목 아래에 「원문을 불러오지 못했어요. 다시 시도해 주세요.」와 `다시 시도`를 보여 줘요.
@@ -118,6 +120,28 @@ type Story = StoryObj<typeof meta>;
  * `08:20`의 「네, 좋아요.」는 화자를 알 수 없는 구간이라 문장만 보여요.
  */
 export const Default: Story = {};
+
+/** 머리의 「복사」를 누른 직후예요. 보이는 발화 줄을 한 줄씩 이어 복사하고, 버튼이 3초 동안 「복사됨」으로 바뀐 뒤 「복사」로 돌아와요. */
+export const Copied: Story = {
+  // 스토리북 화면은 클립보드 쓰기 권한이 없을 수 있어서, 클립보드를 대신하고 스토리가 끝나면 되돌려요
+  beforeEach: () => {
+    const clipboardSpy = spyOn(
+      navigator.clipboard,
+      "writeText",
+    ).mockResolvedValue();
+
+    return () => {
+      clipboardSpy.mockRestore();
+    };
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // 원문을 받기 전에는 복사 버튼이 없어 보일 때까지 기다려요
+    const copyButton = await canvas.findByRole("button", { name: "복사" });
+
+    await userEvent.click(copyButton);
+  },
+};
 
 /**
  * 패널을 놓는 자리가 패널보다 짧을 때예요. 발화 목록만 세로로 스크롤되고, 제목 · 날짜 줄과 맨 아래 문구는 그대로 보여요.
