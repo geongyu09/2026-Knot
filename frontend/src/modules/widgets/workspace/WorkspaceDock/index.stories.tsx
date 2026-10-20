@@ -97,6 +97,7 @@ const grantSilentMicrophone = () => {
  * - 접혀 있든 펼쳐 있든 회의 녹음(마이크) 버튼을 둬요. 누르면 녹음 화면에 들어가기 전에 마이크 권한을 받아 녹음을 시작하고 녹음 화면으로 옮겨 가요.
  * - 마이크 권한을 받지 못하면 모달로 알리고 지금 화면에 남아요. 「다시 시도」는 권한을 다시 묻고, 「닫기」나 `Esc`는 모달만 닫아요.
  * - 서버가 녹음 시작을 거절하면(409, 새로고침 전 녹음이 아직 열려 있음) 마이크를 끄고 「녹음을 시작할 수 없어요」 모달로 알린 뒤 지금 화면에 남아요. 「새로고침」은 페이지를 새로고침하고, 「닫기」·바깥·`Esc`는 모달만 닫아요.
+ * - 녹음 시작 요청이 네트워크 문제로 응답을 받지 못하면 마이크를 끄고 「연결이 잠시 끊겼어요」 모달로 알린 뒤 지금 화면에 남아요. 「다시 시도」는 같은 시작 요청을 다시 보내고, 「닫기」·바깥·`Esc`는 모달만 닫아요.
  * - 새로고침 전 녹음이 이미 끝났거나 버려졌으면 새 녹음으로 한 번만 다시 시작해요. 시작 요청이 오가는 동안 마이크를 다시 눌러도 겹쳐 보내지 않아요.
  * - 녹음 화면이 아닌 곳에서 녹음 중이면 마이크 자리에 녹음한 시간 칩을 둬요. 칩을 누르면 권한을 다시 묻지 않고 녹음 화면으로 가요.
  * - 다른 탭에서 녹음 중이면 접힌 독과 펼친 독 모두 마이크 자리에 점과 녹음한 시간만 보여 줘요. 녹음 중이면 빨간 점, 일시정지면 회색 점이에요. 녹음 화면은 녹음을 시작한 탭에서만 열 수 있어 칩을 누를 수 없고 중지 버튼도 두지 않아요.
@@ -321,6 +322,36 @@ export const RecordingStartRefused: Story = {
               { code: "ACTIVE_RECORDING_ALREADY_EXISTS" },
               { status: 409 },
             ),
+        ),
+      },
+    },
+  },
+  beforeEach: grantSilentMicrophone,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    await userEvent.click(
+      canvas.getByRole("button", { name: "회의 녹음 시작" }),
+    );
+  },
+};
+
+/**
+ * 회의 녹음을 눌렀지만 시작 요청이 네트워크 문제로 응답을 받지 못한 상태예요. 마이크를 끄고 모달로 알린 뒤 지금 화면에 남아요.
+ * 「다시 시도」는 같은 시작 요청을 다시 보내요.
+ * 예: 회의실 와이파이가 잠깐 끊긴 사용자
+ */
+export const RecordingStartNetworkError: Story = {
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3804-8372",
+    },
+    msw: {
+      handlers: {
+        startRecording: http.post(
+          "*/api/v1/workspaces/:workspaceId/recordings",
+          () => HttpResponse.error(),
         ),
       },
     },

@@ -3,6 +3,7 @@ import useNavigateToRecording from "@hooks/domain/recording/useNavigateToRecordi
 import useRecordingState from "@hooks/domain/recording/useRecordingState";
 import useRecordingControl from "@hooks/domain/recording/useRecordingControl";
 import useRecordingElapsedTime from "@hooks/domain/recording/useRecordingElapsedTime";
+import useRecordingStartNetworkErrorDialog from "@hooks/domain/recording/useRecordingStartNetworkErrorDialog";
 import useRecordingStartRefusedDialog from "@hooks/domain/recording/useRecordingStartRefusedDialog";
 import useServerRecording from "@hooks/domain/recording/useServerRecording";
 import { PATH_ROUTE } from "@routes/PATH_ROUTE";
@@ -15,6 +16,7 @@ import { useMatch, useParams } from "react-router";
  *
  * 마이크를 누르면 녹음 화면에 들어가기 전에 마이크 권한을 받고 서버에 녹음을 열어 시작한 뒤 녹음 화면으로 가요.
  * 권한을 받지 못하면 권한을 허용하는 방법을 알리는 [확인] 알림을, 서버가 시작을 거절하면 [닫기]/[새로고침] 모달을 띄워요.
+ * 시작 요청이 네트워크 문제로 응답을 받지 못하면 [닫기]/[다시 시도] 모달을 띄우고, [다시 시도]는 마이크를 누른 것처럼 다시 시작해요(ERR-18).
  * 알림을 닫으면 제자리에 남고, 마이크를 다시 누르면 권한을 다시 받아요.
  * 녹음 화면에서는 갈 곳이 없어 마이크를 숨겨요.
  *
@@ -33,6 +35,8 @@ export const useDockRecording = () => {
   const { navigateToRecording } = useNavigateToRecording();
   const { openMicrophoneUnavailableDialog } = useMicrophoneUnavailableDialog();
   const { openRecordingStartRefusedDialog } = useRecordingStartRefusedDialog();
+  const { openRecordingStartNetworkErrorDialog } =
+    useRecordingStartNetworkErrorDialog();
   const { status, isRecordingActive, isMicrophoneLost, clearMicrophoneLost } =
     useRecordingState();
   const { elapsedSeconds } = useRecordingElapsedTime();
@@ -70,6 +74,12 @@ export const useDockRecording = () => {
     }
     if (result === "refused") {
       openRecordingStartRefusedDialog();
+      return;
+    }
+    if (result === "networkFailed") {
+      openRecordingStartNetworkErrorDialog({
+        onRetry: () => void handleMicClick(),
+      });
       return;
     }
     if (result !== "started") return;

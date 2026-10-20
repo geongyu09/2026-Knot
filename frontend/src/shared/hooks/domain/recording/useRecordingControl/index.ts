@@ -307,7 +307,7 @@ const useRecordingControl = () => {
     [closeRecording, sendHeartbeat],
   );
 
-  /** 마이크를 받아 서버에 녹음을 열어요. 결과는 `started`·`microphoneUnavailable`·`refused`·`failed`예요 */
+  /** 마이크를 받아 서버에 녹음을 열어요. 결과는 `started`·`microphoneUnavailable`·`refused`·`networkFailed`·`failed`예요 */
   const connectAndStartRecording = useCallback(
     async (workspaceId: number) => {
       const store = useRecordingStore.getState();
@@ -413,9 +413,11 @@ const useRecordingControl = () => {
         logRequestError({ feature: "recording", action: "녹음 시작", error });
         useRecordingStore.getState().discardRecording();
 
-        return isHttpError(error, HTTP_ERROR_TYPE.conflict)
-          ? "refused"
-          : "failed";
+        if (isHttpError(error, HTTP_ERROR_TYPE.conflict)) return "refused";
+        // 응답을 받지 못했어요(연결 끊김, timeout). 남긴 증명으로 다시 시도할 수 있게 부른 쪽이 안내해요
+        if (isHttpError(error, HTTP_ERROR_TYPE.network)) return "networkFailed";
+
+        return "failed";
       }
     },
     [
@@ -427,8 +429,8 @@ const useRecordingControl = () => {
   );
 
   /**
-   * 녹음을 시작해요. 결과는 `started`·`microphoneUnavailable`·`refused`·`failed`·`ignored`·`uploading`이고,
-   * 마이크를 받지 못했거나 서버가 거절한 경우만 부른 쪽이 안내해요
+   * 녹음을 시작해요. 결과는 `started`·`microphoneUnavailable`·`refused`·`networkFailed`·`failed`·`ignored`·`uploading`이고,
+   * 마이크를 받지 못했거나, 서버가 거절했거나, 시작 요청이 응답을 받지 못한 경우만 부른 쪽이 안내해요
    */
   const startRecording = useCallback(
     async (workspaceId: number) => {
