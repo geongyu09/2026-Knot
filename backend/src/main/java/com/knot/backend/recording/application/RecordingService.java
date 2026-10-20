@@ -1,5 +1,12 @@
 package com.knot.backend.recording.application;
 
+import com.knot.backend.document.application.DocumentGenerationProgressService;
+import com.knot.backend.document.domain.model.DocumentGenerationProcessingStatus;
+import com.knot.backend.recording.application.dto.result.CurrentRecordingStatus;
+import com.knot.backend.recording.domain.model.AudioFinalizationStatus;
+import com.knot.backend.recording.domain.model.RecordingTranscription;
+import com.knot.backend.recording.domain.model.TranscriptionStatus;
+import com.knot.backend.recording.domain.repository.RecordingTranscriptionRepository;
 import com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository;
 import com.knot.backend.recording.domain.model.RecordingAudioSealKind;
 import com.knot.backend.recording.domain.model.RecordingAudioChunk;
@@ -34,6 +41,7 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
 @Service
 @RequiredArgsConstructor
@@ -49,6 +57,8 @@ public class RecordingService {
     private final RecordingAudioChunkRepository chunks;
     private final RecordingAudioFinalizationRepository finalizations;
     private final RecordingAudioCleanupRepository audioCleanup;
+    private final RecordingTranscriptionRepository transcriptions;
+    private final DocumentGenerationProgressService documentProgress;
 
     @Transactional
     public RecordingStartResult start(
@@ -124,7 +134,7 @@ public class RecordingService {
         });
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Optional<RecordingCurrentResult> findCurrent(
             long workspaceId,
             long memberId
@@ -133,15 +143,18 @@ public class RecordingService {
                 workspaceId,
                 memberId
         );
-        Optional<RecordingSession> activeSession = recordingSessionRepository.findActiveByWorkspaceIdAndMemberId(
+        Optional<RecordingSession> latestSession = recordingSessionRepository.findLatestByWorkspaceIdAndMemberId(
                 workspaceId,
                 memberId
         );
         Instant now = clock.instant();
-        return activeSession.map(
-                session -> RecordingCurrentResult.of(
-                        session,
-                        now
+        return latestSession.flatMap(
+                session -> currentStatus(session).map(
+                        status -> RecordingCurrentResult.of(
+                                session,
+                                status,
+                                now
+                        )
                 )
         );
     }
@@ -316,6 +329,51 @@ public class RecordingService {
                 );
             }
         });
+    }
+
+    private Optional<CurrentRecordingStatus> currentStatus(RecordingSession session) {
+        if (session.isActive()) {
+            return Optional.of(
+                    CurrentRecordingStatus.valueOf(
+                            session.getStatus()
+                                    .name()
+                    )
+            );
+        }
+        if (session.getStatus() != RecordingStatus.ENDED) {
+            return Optional.empty();
+        }
+        boolean processing = documentProgress.findProgress(
+                session.getWorkspaceId(),
+                session.getId()
+        )
+                .map(progress -> isDocumentProcessing(progress.status()))
+                .orElseGet(() -> isRecordingProcessing(session.getId()));
+        if (!processing) {
+            return Optional.empty();
+        }
+        return Optional.of(CurrentRecordingStatus.PROCESSING);
+    }
+
+    private boolean isDocumentProcessing(DocumentGenerationProcessingStatus status) {
+        return status == DocumentGenerationProcessingStatus.QUEUED
+                || status == DocumentGenerationProcessingStatus.RUNNING;
+    }
+
+    private boolean isRecordingProcessing(long recordingId) {
+        boolean transcriptionFailed = transcriptions.findByRecordingSessionId(recordingId)
+                .map(RecordingTranscription::getStatus)
+                .filter(TranscriptionStatus.FAILED::equals)
+                .isPresent();
+        if (transcriptionFailed) {
+            return false;
+        }
+        return finalizations.findByRecordingId(recordingId)
+                .map(
+                        finalization -> finalization.getStatus() != AudioFinalizationStatus.FAILED
+                                && finalization.getStatus() != AudioFinalizationStatus.DISCARDED
+                )
+                .orElse(true);
     }
 
     private void normalSeal(

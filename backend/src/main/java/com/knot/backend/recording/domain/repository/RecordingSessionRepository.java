@@ -34,6 +34,11 @@ public interface RecordingSessionRepository {
             long memberId
     );
 
+    Optional<RecordingSession> findLatestByWorkspaceIdAndMemberId(
+            long workspaceId,
+            long memberId
+    );
+
     List<RecordingSession> findAllActiveByWorkspaceIdForUpdate(long workspaceId);
 
     List<RecordingSession> findAllActiveByWorkspaceIdAndMemberIdForUpdate(

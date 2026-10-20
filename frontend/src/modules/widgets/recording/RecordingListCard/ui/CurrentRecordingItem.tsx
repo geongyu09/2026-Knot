@@ -12,8 +12,8 @@ interface CurrentRecordingItemProps {
   title: string;
   /** 녹음한 시간. 예: `12:48` */
   elapsedTime: string;
-  /** 넘기지 않으면 「녹음 화면으로」 버튼을 숨겨요 */
-  onOpenRecording?: () => void;
+  /** 녹음 화면 또는 문서 정리 화면을 여는 버튼. 넘기지 않으면 숨겨요 */
+  onOpen?: () => void;
 }
 
 /**
@@ -23,10 +23,10 @@ export default function CurrentRecordingItem({
   recordingStatus,
   title,
   elapsedTime,
-  onOpenRecording,
+  onOpen,
 }: CurrentRecordingItemProps) {
   const { label, hint } = RECORDING_STATUS_COPY[recordingStatus];
-  const isPaused = recordingStatus === "paused";
+  const isRecording = recordingStatus === "recording";
 
   return (
     <Container>
@@ -35,8 +35,8 @@ export default function CurrentRecordingItem({
       </IconChip>
 
       <Info>
-        <Status $isPaused={isPaused}>
-          <StatusDot aria-hidden="true" $isPaused={isPaused} />
+        <Status $isRecording={isRecording}>
+          <StatusDot aria-hidden="true" $isRecording={isRecording} />
           <StatusText>
             {label} · {elapsedTime}
           </StatusText>
@@ -45,9 +45,9 @@ export default function CurrentRecordingItem({
         <Hint>{hint}</Hint>
       </Info>
 
-      {onOpenRecording && (
-        <Button size="sm" variant="filled" onClick={onOpenRecording}>
-          녹음 화면으로
+      {onOpen && (
+        <Button size="sm" variant="filled" onClick={onOpen}>
+          {recordingStatus === "processing" ? "보기" : "녹음 화면으로"}
         </Button>
       )}
     </Container>
@@ -86,23 +86,23 @@ const Info = styled.div`
   min-width: 0;
 `;
 
-/** 녹음 중이면 빨간 글자, 일시정지면 회색 글자예요. */
-const Status = styled.p<{ $isPaused: boolean }>`
+/** 녹음 중이면 빨간 글자, 일시정지·문서 생성 중이면 회색 글자예요. */
+const Status = styled.p<{ $isRecording: boolean }>`
   display: flex;
   align-items: center;
   gap: 0.375rem; /* 6px */
-  color: ${({ theme, $isPaused }) =>
-    $isPaused ? theme.neutral[600] : theme.sub.warning[600]};
+  color: ${({ theme, $isRecording }) =>
+    $isRecording ? theme.sub.warning[600] : theme.neutral[600]};
   ${({ theme }) => theme.text.caption02};
 `;
 
-const StatusDot = styled.span<{ $isPaused: boolean }>`
+const StatusDot = styled.span<{ $isRecording: boolean }>`
   flex-shrink: 0;
   width: 0.5rem; /* 8px */
   height: 0.5rem;
   border-radius: 50%;
-  background-color: ${({ theme, $isPaused }) =>
-    $isPaused ? theme.neutral[400] : theme.sub.warning[600]};
+  background-color: ${({ theme, $isRecording }) =>
+    $isRecording ? theme.sub.warning[600] : theme.neutral[400]};
 `;
 
 const StatusText = styled.span`

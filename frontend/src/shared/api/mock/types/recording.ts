@@ -2,8 +2,7 @@
 export type RecordingSessionStatus = "RECORDING" | "PAUSED" | "ENDED";
 
 /** 현재 녹음의 화면용 종합 상태 */
-export type CurrentRecordingStatus =
-  "RECORDING" | "PAUSED" | "ENDED" | "PROCESSING" | "FAILED";
+export type CurrentRecordingStatus = "RECORDING" | "PAUSED" | "PROCESSING";
 
 export interface CurrentRecordingResponse {
   recordingId: number;

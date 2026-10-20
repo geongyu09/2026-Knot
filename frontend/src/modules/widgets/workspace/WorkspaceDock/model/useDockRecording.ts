@@ -39,7 +39,9 @@ export const useDockRecording = () => {
     useServerRecording();
   const { startRecording, syncPause, endRecording } = useRecordingControl();
 
-  const isOtherTabRecording = !isRecordingActive && serverStatus !== null;
+  const isOtherTabRecording =
+    !isRecordingActive &&
+    (serverStatus === "recording" || serverStatus === "paused");
   const hasRecording = isRecordingActive || isOtherTabRecording;
 
   // 녹음 중 마이크가 끊기면 알림을 띄워요

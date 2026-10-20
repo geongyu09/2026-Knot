@@ -91,7 +91,9 @@ const respondNoCurrentRecording = () =>
   );
 
 /** 현재 녹음 조회가 다른 탭의 녹음을 이 상태로 답하게 해요 */
-const respondCurrentRecordingStatus = (status: "RECORDING" | "PAUSED") =>
+const respondCurrentRecordingStatus = (
+  status: "RECORDING" | "PAUSED" | "PROCESSING",
+) =>
   mockServer.use(
     http.get(CURRENT_RECORDING_URL, () =>
       HttpResponse.json({ ...currentRecordingResponse, status }),
@@ -653,6 +655,38 @@ describe("WorkspaceDock", () => {
       await clickMic();
 
       expect(getUserMedia).toHaveBeenCalledWith({ audio: true });
+      expect(useRecordingStore.getState().status).toBe("recording");
+      expect(router.state.location.pathname).toBe(RECORDING_PATH);
+    });
+
+    it("문서 생성 중에는 녹음 칩 대신 마이크를 두고 새 녹음을 시작할 수 있다", async () => {
+      respondCurrentRecordingStatus("PROCESSING");
+      let currentRequests = 0;
+      mockServer.events.on("response:mocked", ({ request }) => {
+        if (
+          new URL(request.url).pathname ===
+          CURRENT_RECORDING_API_PATH(Number(WORKSPACE_ID))
+        ) {
+          currentRequests += 1;
+        }
+      });
+      const { router } = renderDock();
+      await waitFor(() => expect(currentRequests).toBe(1));
+      await act(async () => {});
+
+      expect(
+        screen.queryByRole("img", { name: "녹음 중" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "회의 녹음 시작" }),
+      ).toBeInTheDocument();
+      expandDock();
+      expect(
+        screen.getByRole("button", { name: "회의 녹음 시작" }),
+      ).toBeInTheDocument();
+
+      await clickMic();
+
       expect(useRecordingStore.getState().status).toBe("recording");
       expect(router.state.location.pathname).toBe(RECORDING_PATH);
     });

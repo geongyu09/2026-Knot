@@ -62,6 +62,7 @@ const renderCard = () => {
     [
       { path: PATH_ROUTE.WORKSPACE_HOME, element: <RecordingListCard /> },
       { path: PATH_ROUTE.RECORDING, element: null },
+      { path: PATH_ROUTE.RECORDING_DOCUMENTS, element: null },
     ],
     { initialEntries: [HOME_PATH] },
   );
@@ -88,7 +89,7 @@ const respondNoRecording = () =>
   respondCurrentRecording(() => new HttpResponse(null, { status: 204 }));
 
 const respondStatus = (
-  status: "RECORDING" | "PAUSED" | "ENDED" | "PROCESSING" | "FAILED",
+  status: "RECORDING" | "PAUSED" | "PROCESSING",
 ) =>
   respondCurrentRecording(() =>
     HttpResponse.json({ ...currentRecordingResponse, status }),
@@ -201,16 +202,80 @@ describe("RecordingListCard", () => {
     ).toBeInTheDocument();
   });
 
-  it.each(["ENDED", "PROCESSING", "FAILED"] as const)(
-    "%s처럼 녹음 중·일시정지가 아닌 녹음은 빈 상태로 보여 준다",
-    async (status) => {
-      respondStatus(status);
+  it("문서 생성 중이면 상태와 멈춘 녹음 시간을 보여 준다", async () => {
+    respondStatus("PROCESSING");
+    vi.useFakeTimers();
+    renderCard();
+    await advanceTimers(0);
 
-      renderCard();
+    await advanceTimers(3 * MS_PER_SECOND);
 
-      expect(await screen.findByText(EMPTY_TEXT)).toBeInTheDocument();
-    },
-  );
+    expect(
+      screen.getByText(`문서 생성 중 · ${elapsedTimeAfter(0)}`),
+    ).toBeInTheDocument();
+    expect(screen.getByText(RECORDING_TITLE)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "보기" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: OPEN_RECORDING }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("문서 생성 중인 녹음의 보기를 누르면 해당 녹음의 문서 정리 화면으로 간다", async () => {
+    respondStatus("PROCESSING");
+    const { router } = renderCard();
+
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "보기" }));
+    });
+
+    expect(router.state.location.pathname).toBe(
+      getRouterPath({
+        routeKey: "RECORDING_DOCUMENTS",
+        params: {
+          workspaceId: String(WORKSPACE_ID),
+          recordingId: String(expectedRecording.recordingId),
+        },
+      }),
+    );
+  });
+
+  it("주기적으로 녹음에서 문서 생성 상태로 갱신하고 완료 응답(204) 뒤에는 조회를 멈춘다", async () => {
+    let requests = 0;
+    respondCurrentRecording(() => {
+      requests += 1;
+      if (requests === 1) return HttpResponse.json(currentRecordingResponse);
+      if (requests === 2) {
+        return HttpResponse.json({
+          ...currentRecordingResponse,
+          status: "PROCESSING",
+        });
+      }
+      return new HttpResponse(null, { status: 204 });
+    });
+    vi.useFakeTimers();
+    renderCard();
+    await advanceTimers(0);
+
+    expect(
+      screen.getByText(`녹음 중 · ${elapsedTimeAfter(0)}`),
+    ).toBeInTheDocument();
+
+    await advanceTimers(5 * MS_PER_SECOND + 1);
+    await advanceTimers(0);
+    expect(
+      screen.getByText(`문서 생성 중 · ${elapsedTimeAfter(0)}`),
+    ).toBeInTheDocument();
+
+    await advanceTimers(5 * MS_PER_SECOND + 1);
+    await advanceTimers(0);
+    expect(screen.getByText(EMPTY_TEXT)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "보기" }),
+    ).not.toBeInTheDocument();
+
+    await advanceTimers(10 * MS_PER_SECOND);
+    expect(requests).toBe(3);
+  });
 
   it("조회에 실패하면 빈 상태 대신 카드 안에 실패 안내와 다시 시도를 보여 주고, 오류는 콘솔에도 남긴다 (ERR-09)", async () => {
     const consoleError = vi

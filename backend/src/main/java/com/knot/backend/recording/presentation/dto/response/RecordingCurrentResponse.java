@@ -1,13 +1,13 @@
 package com.knot.backend.recording.presentation.dto.response;
 
 import com.knot.backend.recording.application.dto.result.RecordingCurrentResult;
-import com.knot.backend.recording.domain.model.RecordingStatus;
+import com.knot.backend.recording.application.dto.result.CurrentRecordingStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 
 public record RecordingCurrentResponse(
         @Schema(description = "녹음 세션 ID") long recordingId,
-        @Schema(description = "RECORDING 또는 PAUSED") RecordingStatus status,
+        @Schema(description = "녹음 중·일시정지·오디오 준비와 전사·문서 생성 중 상태") CurrentRecordingStatus status,
         @Schema(description = "서버가 확정한 녹음 시작 시각") Instant startedAt,
         @Schema(description = "조회 시점까지의 누적 녹음 시간(ms). 일시정지 구간은 제외") long elapsedMillis
 ) {
