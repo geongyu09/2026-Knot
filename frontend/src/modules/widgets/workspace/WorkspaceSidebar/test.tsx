@@ -5,12 +5,13 @@ import { workspaceDetailResponse } from "@api/mock/responses/workspace";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import WorkspaceSidebar from ".";
@@ -33,7 +34,18 @@ const renderSidebar = () => {
     defaultOptions: { queries: { retry: false } },
   });
   const router = createMemoryRouter(
-    [{ path: PATH_ROUTE.WORKSPACE_HOME, element: <WorkspaceSidebar /> }],
+    [
+      {
+        element: (
+          <ToastProvider>
+            <Outlet />
+          </ToastProvider>
+        ),
+        children: [
+          { path: PATH_ROUTE.WORKSPACE_HOME, element: <WorkspaceSidebar /> },
+        ],
+      },
+    ],
     { initialEntries: [HOME_PATH] },
   );
 

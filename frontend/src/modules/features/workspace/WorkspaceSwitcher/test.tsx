@@ -10,8 +10,10 @@ import {
   workspacesResponse,
 } from "@api/mock/responses/workspace";
 import type { WorkspaceDetailResponse } from "@api/mock/types/workspace";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
@@ -28,8 +30,8 @@ import {
   clearRecordingStartProof,
   getRecordingStartProof,
 } from "@utils/recordingControlProof";
-import { http, HttpResponse } from "msw";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { delay, http, HttpResponse } from "msw";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import WorkspaceSwitcher from ".";
@@ -64,9 +66,18 @@ const renderSwitcher = () => {
   });
   const router = createMemoryRouter(
     [
-      { path: PATH_ROUTE.WORKSPACE_HOME, element: <WorkspaceSwitcher /> },
-      { path: PATH_ROUTE.WORKSPACE_CREATE, element: null },
-      { path: PATH_ROUTE.HOME, element: null },
+      {
+        element: (
+          <ToastProvider>
+            <Outlet />
+          </ToastProvider>
+        ),
+        children: [
+          { path: PATH_ROUTE.WORKSPACE_HOME, element: <WorkspaceSwitcher /> },
+          { path: PATH_ROUTE.WORKSPACE_CREATE, element: null },
+          { path: PATH_ROUTE.HOME, element: null },
+        ],
+      },
     ],
     { initialEntries: [HOME_PATH] },
   );
@@ -188,6 +199,17 @@ describe("WorkspaceSwitcher", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("다른 워크스페이스로 옮기면 「워크스페이스를 옮겼어요」 토스트를 띄운다 (WS-09)", async () => {
+    renderSwitcher();
+    await openMenu();
+
+    fireEvent.click(await findWorkspaceItem(otherWorkspace.name));
+
+    expect(
+      await screen.findByText(TOAST_MESSAGES.WORKSPACE_CHANGED.message),
+    ).toBeInTheDocument();
+  });
+
   it("지금 워크스페이스를 고르면 이동하지 않고 메뉴만 닫는다", async () => {
     const { router } = renderSwitcher();
     await openMenu();
@@ -257,6 +279,9 @@ describe("WorkspaceSwitcher", () => {
       );
       expect(useRecordingStore.getState().status).toBe("idle");
       expect(count).toEqual({ end: 1, complete: 1 });
+      expect(
+        await screen.findByText(TOAST_MESSAGES.WORKSPACE_CHANGED.message),
+      ).toBeInTheDocument();
     });
 
     it("종료 요청이 실패하면 이동하지 않고 녹음을 이어 간다", async () => {
@@ -511,7 +536,7 @@ describe("WorkspaceSwitcher", () => {
       expect(router.state.location.pathname).toBe(HOME_PATH);
     });
 
-    it("나가기를 누르면 창을 닫고, 탈퇴를 요청한 뒤 진입 분기로 이동한다", async () => {
+    it("나가기를 누르면 탈퇴를 요청하고, 성공하면 창을 닫고 진입 분기로 이동한다", async () => {
       const leave = vi.fn();
       mockServer.use(
         http.delete(LEAVE_API, () => {
@@ -525,11 +550,54 @@ describe("WorkspaceSwitcher", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "나가기" }));
 
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       await waitFor(() =>
         expect(router.state.location.pathname).toBe(PATH_ROUTE.HOME),
       );
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       expect(leave).toHaveBeenCalledTimes(1);
+    });
+
+    it("나가기 요청이 실패하면 창을 닫지 않고 오류 토스트를 띄운다 (Dialog 규칙 4번)", async () => {
+      mockServer.use(
+        http.delete(LEAVE_API, () => new HttpResponse(null, { status: 500 })),
+      );
+      respondWorkspace({ myRole: "MEMBER" });
+      const { router } = renderSwitcher();
+      await clickLeave();
+
+      fireEvent.click(screen.getByRole("button", { name: "나가기" }));
+
+      expect(
+        await screen.findByText(TOAST_MESSAGES.WORKSPACE_LEAVE_FAILED.message),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("dialog", { name: LEAVE_DIALOG }),
+      ).toBeInTheDocument();
+      expect(router.state.location.pathname).toBe(HOME_PATH);
+    });
+
+    it("나가기 요청을 기다리는 동안 다시 눌러도 탈퇴는 한 번만 요청한다", async () => {
+      const leave = vi.fn();
+      mockServer.use(
+        http.delete(LEAVE_API, async () => {
+          leave();
+          await delay(50);
+          return new HttpResponse(null, { status: 500 });
+        }),
+      );
+      respondWorkspace({ myRole: "MEMBER" });
+      renderSwitcher();
+      await clickLeave();
+
+      fireEvent.click(screen.getByRole("button", { name: "나가기" }));
+      fireEvent.click(screen.getByRole("button", { name: "나가기" }));
+
+      await screen.findByText(TOAST_MESSAGES.WORKSPACE_LEAVE_FAILED.message);
+      expect(leave).toHaveBeenCalledTimes(1);
+
+      // 실패한 뒤에는 창이 남아 있어 다시 시도할 수 있어요
+      fireEvent.click(screen.getByRole("button", { name: "나가기" }));
+      await waitFor(() => expect(leave).toHaveBeenCalledTimes(2));
     });
 
     it("혼자 남은 워크스페이스에서 나가기를 눌러도 탈퇴를 요청한 뒤 진입 분기로 이동한다", async () => {
@@ -544,7 +612,7 @@ describe("WorkspaceSwitcher", () => {
       );
     });
 
-    it("멤버를 골라 넘기고 나가기를 누르면 창을 닫고, 고른 멤버로 승계를 요청한 뒤 진입 분기로 이동한다", async () => {
+    it("멤버를 골라 넘기고 나가기를 누르면 고른 멤버로 승계를 요청하고, 성공하면 창을 닫고 진입 분기로 이동한다", async () => {
       const transfer = vi.fn();
       const leave = vi.fn();
       mockServer.use(
@@ -568,15 +636,45 @@ describe("WorkspaceSwitcher", () => {
         within(dialog).getByRole("button", { name: "넘기고 나가기" }),
       );
 
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       await waitFor(() =>
         expect(router.state.location.pathname).toBe(PATH_ROUTE.HOME),
       );
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       expect(transfer).toHaveBeenCalledExactlyOnceWith({
         successorMemberId: secondMember.memberId,
       });
       // 승계 요청이 탈퇴까지 처리하므로 탈퇴를 따로 요청하지 않아요
       expect(leave).not.toHaveBeenCalled();
+    });
+
+    it("승계 요청이 실패하면 멤버 선택 창을 닫지 않고 오류 토스트를 띄운다 (Dialog 규칙 4번)", async () => {
+      mockServer.use(
+        http.post(TRANSFER_API, () => new HttpResponse(null, { status: 500 })),
+      );
+      const { router } = renderSwitcher();
+      await clickLeave();
+      const dialog = await findTransferDialog();
+      fireEvent.click(
+        within(dialog).getByRole("radio", { name: secondMember.nickname }),
+      );
+
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "넘기고 나가기" }),
+      );
+
+      expect(
+        await screen.findByText(
+          TOAST_MESSAGES.OWNERSHIP_TRANSFER_FAILED.message,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("dialog", { name: TRANSFER_DIALOG }),
+      ).toBeInTheDocument();
+      // 고른 멤버도 그대로 남아 바로 다시 누를 수 있어요
+      expect(
+        within(dialog).getByRole("radio", { name: secondMember.nickname }),
+      ).toBeChecked();
+      expect(router.state.location.pathname).toBe(HOME_PATH);
     });
 
     it("삭제 확인 창에서 삭제를 누르면 요청 없이 창만 닫는다", async () => {

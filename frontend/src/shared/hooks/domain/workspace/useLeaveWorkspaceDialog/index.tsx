@@ -2,11 +2,13 @@ import useLeaveWorkspaceMutation from "@api/mutations/useLeaveWorkspaceMutation"
 import useTransferWorkspaceOwnershipMutation from "@api/mutations/useTransferWorkspaceOwnershipMutation";
 import useOwnershipTransferCandidatesQuery from "@api/queries/useOwnershipTransferCandidatesQuery";
 import useWorkspaceQuery from "@api/queries/useWorkspaceQuery";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import useKeyDown from "@hooks/common/useKeyDown";
 import ConfirmDialog from "@primitives/ui/ConfirmDialog";
 import Dim from "@primitives/ui/Dim";
 import MemberSelectDialog from "@primitives/ui/MemberSelectDialog";
 import { useDialog } from "@provider/context/dialogContext";
+import { useToast } from "@provider/context/toastContext";
 import { PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
 import { useState } from "react";
@@ -46,8 +48,9 @@ interface OwnerLeaveDialogProps {
  *
  * 어떤 창을 띄울지는 워크스페이스 조회의 내 역할과 멤버 수로 정해요.
  * 일반 멤버와 혼자인 경우는 나가기를, owner는 고른 멤버로 승계를 요청해요. 승계 요청이 탈퇴까지 처리해요.
- * 요청이 성공하면 이 탭에서 하던 녹음(일시정지 포함)을 버리고 진입 분기(`/`)로 보내, 남은 워크스페이스나 선택 화면으로 가게 해요.
- * 요청이 실패하면 지금 화면과 녹음을 그대로 둬요.
+ * 요청이 성공하면 창을 닫고 이 탭에서 하던 녹음(일시정지 포함)을 버린 뒤 진입 분기(`/`)로 보내, 남은 워크스페이스나 선택 화면으로 가게 해요.
+ * 요청이 실패하면 창과 지금 화면, 녹음을 그대로 두고 오류 토스트로 알려 바로 다시 누를 수 있게 해요(Dialog 규칙 4번).
+ * 요청을 기다리는 동안 주 버튼을 다시 눌러도 요청을 또 보내지 않아요.
  *
  * 워크스페이스 삭제는 호출할 API가 없어(ADR 410) [삭제]를 눌러도 녹음만 버리고 창을 닫아요.
  *
@@ -57,6 +60,7 @@ const useLeaveWorkspaceDialog = ({
   workspaceId,
 }: UseLeaveWorkspaceDialogParams) => {
   const { open } = useDialog();
+  const { show } = useToast();
   const navigate = useNavigate();
   const discardRecording = useRecordingStore((state) => state.discardRecording);
   // 레이아웃의 진입 판정과 같은 쿼리라 요청은 한 번만 나가요
@@ -70,23 +74,37 @@ const useLeaveWorkspaceDialog = ({
     if (workspace === undefined) return;
 
     const { myRole, activeMemberCount } = workspace;
+    // 창이 다시 그려져도 유지되도록 창을 그리는 함수 밖에 둬요
+    let isRequesting = false;
 
     open(({ close }) => {
-      /** 창을 먼저 닫아 요청이 두 번 나가지 않게 하고, 요청이 성공했을 때만 녹음을 버리고 떠나요 */
-      const leaveBy = async (request: () => Promise<unknown>) => {
-        close();
+      /** 요청이 성공했을 때만 창을 닫고 녹음을 버리고 떠나요. 실패하면 창을 둔 채 `failedToast`로 알려요 */
+      const leaveBy = async (
+        request: () => Promise<unknown>,
+        failedToast: Parameters<typeof show>[0],
+      ) => {
+        if (isRequesting) return;
+        isRequesting = true;
 
         try {
           await request();
         } catch {
+          show(failedToast);
           return;
+        } finally {
+          isRequesting = false;
         }
 
+        close();
         discardRecording();
         navigate(PATH_ROUTE.HOME, { replace: true });
       };
 
-      const leave = () => leaveBy(() => leaveWorkspace({ workspaceId }));
+      const leave = () =>
+        leaveBy(
+          () => leaveWorkspace({ workspaceId }),
+          TOAST_MESSAGES.WORKSPACE_LEAVE_FAILED,
+        );
 
       if (activeMemberCount === 1) {
         return (
@@ -106,8 +124,9 @@ const useLeaveWorkspaceDialog = ({
             workspaceId={workspaceId}
             onCancel={close}
             onTransfer={(successorMemberId) =>
-              leaveBy(() =>
-                transferOwnership({ workspaceId, successorMemberId }),
+              leaveBy(
+                () => transferOwnership({ workspaceId, successorMemberId }),
+                TOAST_MESSAGES.OWNERSHIP_TRANSFER_FAILED,
               )
             }
             onDelete={() => {
