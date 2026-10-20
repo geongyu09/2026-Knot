@@ -13,7 +13,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { saveLastConversationId } from "@utils/lastConversation";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { createBrowserRouter, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 
 import WorkspaceGnb from ".";
@@ -72,16 +72,15 @@ const renderGnb = (initialPath = HOME_PATH) => {
       />
     </>
   );
-  const router = createMemoryRouter(
-    [
-      { path: PATH_ROUTE.WORKSPACE_HOME, element },
-      { path: PATH_ROUTE.CHAT, element },
-      { path: PATH_ROUTE.CHAT_SESSION, element },
-      { path: PATH_ROUTE.DOCUMENTS, element },
-      { path: PATH_ROUTE.DOCUMENT, element },
-    ],
-    { initialEntries: [initialPath] },
-  );
+  // 앱처럼 브라우저 주소를 쓰는 라우터로 그려요. 지금 화면인지는 누른 순간의 브라우저 주소로 판단하기 때문이에요
+  window.history.replaceState(null, "", initialPath);
+  const router = createBrowserRouter([
+    { path: PATH_ROUTE.WORKSPACE_HOME, element },
+    { path: PATH_ROUTE.CHAT, element },
+    { path: PATH_ROUTE.CHAT_SESSION, element },
+    { path: PATH_ROUTE.DOCUMENTS, element },
+    { path: PATH_ROUTE.DOCUMENT, element },
+  ]);
 
   render(
     <ThemeProvider theme={theme}>
@@ -199,6 +198,31 @@ describe("WorkspaceGnb", () => {
 
     expect(router.state.historyAction).toBe("POP");
     expect(router.state.location.pathname).toBe(DOCUMENTS_PATH);
+  });
+
+  it("문서 목록에서 문서를 열어 주소가 바뀌고 화면은 아직 목록일 때 문서를 누르면 문서 목록으로 간다", async () => {
+    const { router, documentsButton } = renderGnb(DOCUMENTS_PATH);
+    // 라우터는 주소를 먼저 바꾸고 화면은 transition으로 나중에 그려요. 그 사이를 주소만 바꿔 만들어요
+    window.history.pushState(null, "", DOCUMENT_PATH);
+
+    await act(async () => {
+      fireEvent.click(documentsButton);
+    });
+
+    expect(window.location.pathname).toBe(DOCUMENTS_PATH);
+    expect(router.state.historyAction).toBe("PUSH");
+  });
+
+  it("홈에서 문서를 열어 주소가 바뀌고 화면은 아직 홈일 때 홈을 누르면 홈으로 돌아온다", async () => {
+    const { homeButton } = renderGnb(HOME_PATH);
+    // 라우터는 주소를 먼저 바꾸고 화면은 transition으로 나중에 그려요. 그 사이를 주소만 바꿔 만들어요
+    window.history.pushState(null, "", DOCUMENT_PATH);
+
+    await act(async () => {
+      fireEvent.click(homeButton);
+    });
+
+    expect(window.location.pathname).toBe(HOME_PATH);
   });
 
   it("이미 있는 화면의 버튼은 눌러도 이동하지 않는다", async () => {
