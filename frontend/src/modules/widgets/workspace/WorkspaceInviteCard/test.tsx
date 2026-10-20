@@ -2,7 +2,9 @@ import { PostWorkspaceInvitationResponseDto } from "@api/dto/workspaceInvitation
 import { WORKSPACE_INVITATIONS_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations";
 import { workspaceInvitationResponse } from "@api/mock/responses/workspaceInvitation";
 import { mockServer } from "@api/mock/server";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import { ThemeProvider } from "@emotion/react";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -14,7 +16,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import WorkspaceInviteCard from ".";
@@ -43,11 +45,23 @@ const renderCard = (workspaceId = String(WORKSPACE_ID)) => {
   });
   const router = createMemoryRouter(
     [
-      { path: ELSEWHERE_PATH, element: <p>다른 화면</p> },
-      { path: PATH_ROUTE.WORKSPACE_INVITE, element: <WorkspaceInviteCard /> },
-      { path: PATH_ROUTE.WORKSPACE_HOME, element: <p>워크스페이스 홈</p> },
-      { path: PATH_ROUTE.WORKSPACE, element: <p>워크스페이스 선택</p> },
-      { path: PATH_ROUTE.LOGIN, element: <p>로그인</p> },
+      {
+        element: (
+          <ToastProvider>
+            <Outlet />
+          </ToastProvider>
+        ),
+        children: [
+          { path: ELSEWHERE_PATH, element: <p>다른 화면</p> },
+          {
+            path: PATH_ROUTE.WORKSPACE_INVITE,
+            element: <WorkspaceInviteCard />,
+          },
+          { path: PATH_ROUTE.WORKSPACE_HOME, element: <p>워크스페이스 홈</p> },
+          { path: PATH_ROUTE.WORKSPACE, element: <p>워크스페이스 선택</p> },
+          { path: PATH_ROUTE.LOGIN, element: <p>로그인</p> },
+        ],
+      },
     ],
     { initialEntries: [ELSEWHERE_PATH, invitePath] },
   );
@@ -112,7 +126,6 @@ describe("WorkspaceInviteCard", () => {
       value: { writeText },
       configurable: true,
     });
-    vi.spyOn(window, "alert").mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -194,6 +207,32 @@ describe("WorkspaceInviteCard", () => {
     expect(
       screen.queryByRole("button", { name: "복사됨" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("복사에 성공하면 알림 창 없이 버튼 표시로만 알린다", async () => {
+    const alert = vi.spyOn(window, "alert");
+    renderCard();
+    await waitForInvitation();
+
+    await click(getCodeButton());
+    await click(getCopyLinkButton());
+
+    expect(alert).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "복사됨" })).toBeInTheDocument();
+  });
+
+  it("참여 코드나 링크 복사에 실패하면 오류 토스트를 띄우고 버튼은 「복사」로 남는다", async () => {
+    writeText.mockRejectedValue(new Error("클립보드 권한이 없어요"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    renderCard();
+    await waitForInvitation();
+
+    await click(getCopyLinkButton());
+
+    expect(
+      await screen.findByText(TOAST_MESSAGES.COPY_FAILED.message),
+    ).toBeInTheDocument();
+    expect(getCopyLinkButton()).toBeInTheDocument();
   });
 
   it("다음을 누르면 워크스페이스 홈으로 이동한다", async () => {

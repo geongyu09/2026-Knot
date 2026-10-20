@@ -2,12 +2,13 @@ import { GetMeResponseDto } from "@api/dto/auth";
 import { meResponse } from "@api/mock/responses/auth";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import WorkspaceHomePage from ".";
@@ -30,7 +31,18 @@ const renderHomePage = () => {
     defaultOptions: { queries: { retry: false } },
   });
   const router = createMemoryRouter(
-    [{ path: PATH_ROUTE.WORKSPACE_HOME, element: <WorkspaceHomePage /> }],
+    [
+      {
+        element: (
+          <ToastProvider>
+            <Outlet />
+          </ToastProvider>
+        ),
+        children: [
+          { path: PATH_ROUTE.WORKSPACE_HOME, element: <WorkspaceHomePage /> },
+        ],
+      },
+    ],
     { initialEntries: [HOME_PATH] },
   );
 

@@ -12,6 +12,7 @@ import {
   DOCUMENT_FROM_PARAM,
   DOCUMENT_FROM_RECORDING,
 } from "@constants/document";
+import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
 import { delay, http, HttpResponse } from "msw";
@@ -135,9 +136,11 @@ const meta = {
           }),
         ]}
       >
-        <Routes>
-          <Route path={PATH_ROUTE.DOCUMENT} element={<Story />} />
-        </Routes>
+        <ToastProvider>
+          <Routes>
+            <Route path={PATH_ROUTE.DOCUMENT} element={<Story />} />
+          </Routes>
+        </ToastProvider>
       </MemoryRouter>
     ),
   ],

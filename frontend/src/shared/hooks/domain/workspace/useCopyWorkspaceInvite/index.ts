@@ -21,7 +21,7 @@ interface CopyInviteParams {
  * 실패 안내에서 다시 받으려면 `retryInvitation`을 불러요. 활성 초대 조회만 다시 보내요.
  *
  * 복사 뒤의 피드백(`복사됨` 표시 등)은 화면마다 다르므로 여기서 정하지 않고
- * `onCopySuccess`로 쓰는 쪽에 맡깁니다. 클립보드에 쓰지 못하면 조용히 넘어가요.
+ * `onCopySuccess`로 쓰는 쪽에 맡깁니다. 클립보드에 쓰지 못하면 `useClipboard`가 오류 토스트를 띄워요.
  */
 const useCopyWorkspaceInvite = ({
   workspaceId,

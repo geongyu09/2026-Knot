@@ -1,5 +1,6 @@
 import { WORKSPACE_INVITATIONS_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations";
 import { workspaceInvitationResponse } from "@api/mock/responses/workspaceInvitation";
+import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
 import { delay, http, HttpResponse } from "msw";
@@ -50,9 +51,11 @@ const meta = {
   decorators: [
     (Story) => (
       <MemoryRouter initialEntries={[HOME_PATH]}>
-        <Routes>
-          <Route path={PATH_ROUTE.WORKSPACE_HOME} element={<Story />} />
-        </Routes>
+        <ToastProvider>
+          <Routes>
+            <Route path={PATH_ROUTE.WORKSPACE_HOME} element={<Story />} />
+          </Routes>
+        </ToastProvider>
       </MemoryRouter>
     ),
   ],

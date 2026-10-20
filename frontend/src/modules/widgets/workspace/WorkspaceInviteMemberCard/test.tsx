@@ -2,13 +2,15 @@ import { PostWorkspaceInvitationResponseDto } from "@api/dto/workspaceInvitation
 import { WORKSPACE_INVITATIONS_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations";
 import { workspaceInvitationResponse } from "@api/mock/responses/workspaceInvitation";
 import { mockServer } from "@api/mock/server";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import { ThemeProvider } from "@emotion/react";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import WorkspaceInviteMemberCard from ".";
@@ -34,8 +36,17 @@ const renderCard = () => {
   const router = createMemoryRouter(
     [
       {
-        path: PATH_ROUTE.WORKSPACE_HOME,
-        element: <WorkspaceInviteMemberCard />,
+        element: (
+          <ToastProvider>
+            <Outlet />
+          </ToastProvider>
+        ),
+        children: [
+          {
+            path: PATH_ROUTE.WORKSPACE_HOME,
+            element: <WorkspaceInviteMemberCard />,
+          },
+        ],
       },
     ],
     { initialEntries: [HOME_PATH] },
@@ -157,7 +168,7 @@ describe("WorkspaceInviteMemberCard", () => {
     expect(copyCodeButton).toHaveTextContent("초대 코드 복사");
   });
 
-  it("클립보드에 쓰지 못하면 화면이 바뀌지 않는다", async () => {
+  it("클립보드에 쓰지 못하면 버튼은 그대로 두고 오류 토스트를 띄운다 (ERR-08)", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     writeText.mockRejectedValue(new Error("denied"));
     const { copyLinkButton, copyCodeButton } = renderCard();
@@ -169,6 +180,9 @@ describe("WorkspaceInviteMemberCard", () => {
     expect(copyLinkButton).toHaveTextContent("복사");
     expect(copyLinkButton).not.toHaveTextContent("복사됨");
     expect(copyCodeButton).toHaveTextContent("초대 코드 복사");
+    expect(
+      screen.getByText(TOAST_MESSAGES.COPY_FAILED.message),
+    ).toBeInTheDocument();
   });
 
   it("초대를 불러오지 못하면 제목은 두고, 링크 칸과 초대 코드 복사 대신 실패 안내와 다시 시도를 보여준다 (ERR-09)", async () => {

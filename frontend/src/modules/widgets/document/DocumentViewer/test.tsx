@@ -22,6 +22,8 @@ import {
   DOCUMENT_FROM_RECORDING,
 } from "@constants/document";
 import { ThemeProvider } from "@emotion/react";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -37,7 +39,7 @@ import {
 import { formatDate } from "@utils/formatDate";
 import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
 import { delay, http, HttpResponse } from "msw";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import DocumentViewer from ".";
@@ -116,15 +118,24 @@ const writeText = vi.fn<(text: string) => Promise<void>>();
 /** 녹음 직후 정리 화면에서 문서 보기로 넘어왔다는 주소 쿼리. 이 쿼리가 있을 때만 스테퍼가 보여요 */
 const FROM_RECORDING_SEARCH = `?${DOCUMENT_FROM_PARAM}=${DOCUMENT_FROM_RECORDING}`;
 
-// 이동을 확인할 수 있게 로그인 경로에 표시만 하는 화면을 둬요
+// 이동을 확인할 수 있게 로그인 경로에 표시만 하는 화면을 둬요. 토스트는 앱처럼 라우터 안의 Provider가 그려요
 const renderViewerAt = (initialEntry: string) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const router = createMemoryRouter(
     [
-      { path: PATH_ROUTE.DOCUMENT, element: <DocumentViewer /> },
-      { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
+      {
+        element: (
+          <ToastProvider>
+            <Outlet />
+          </ToastProvider>
+        ),
+        children: [
+          { path: PATH_ROUTE.DOCUMENT, element: <DocumentViewer /> },
+          { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
+        ],
+      },
     ],
     { initialEntries: [initialEntry] },
   );
@@ -486,6 +497,33 @@ describe("DocumentViewer", () => {
     expect(
       screen.queryByRole("button", { name: "복사됨" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("복사에 실패하면 오류 토스트를 띄우고 버튼은 「복사」로 남는다", async () => {
+    writeText.mockRejectedValue(new Error("클립보드 권한이 없어요"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    renderViewer(String(expected.id));
+    await screen.findByRole("heading", { level: 2, name: expected.title });
+
+    await click(screen.getByRole("button", { name: "복사" }));
+
+    expect(
+      await screen.findByText(TOAST_MESSAGES.COPY_FAILED.message),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "복사" })).toBeInTheDocument();
+  });
+
+  it("클립보드를 쓸 수 없는 브라우저에서도 복사 실패 토스트를 띄운다", async () => {
+    Reflect.deleteProperty(navigator, "clipboard");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    renderViewer(String(expected.id));
+    await screen.findByRole("heading", { level: 2, name: expected.title });
+
+    await click(screen.getByRole("button", { name: "복사" }));
+
+    expect(
+      await screen.findByText(TOAST_MESSAGES.COPY_FAILED.message),
+    ).toBeInTheDocument();
   });
 
   it("아직 확인하지 않았으면 확인 버튼을 보여주고, 누르면 누를 수 없는 「확인했어요」로 바뀌고 확인 수가 늘어난다", async () => {
