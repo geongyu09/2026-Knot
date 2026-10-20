@@ -1,6 +1,8 @@
 import { DialogProvider } from "@provider/context/dialogContext";
+import { ToastProvider } from "@provider/context/toastContext";
 import { useRecordingStore } from "@store/recordingStore";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
+import { MemoryRouter } from "react-router";
 import { spyOn, userEvent, within } from "storybook/test";
 
 import RecorderBar from ".";
@@ -68,7 +70,12 @@ const meta = {
   decorators: [
     (Story) => (
       <DialogProvider>
-        <Story />
+        {/* 끝내기와 이어서 녹음의 결과로 화면을 옮기거나 토스트를 띄워요 */}
+        <MemoryRouter>
+          <ToastProvider>
+            <Story />
+          </ToastProvider>
+        </MemoryRouter>
       </DialogProvider>
     ),
   ],

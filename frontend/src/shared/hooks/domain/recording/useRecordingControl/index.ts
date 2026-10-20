@@ -12,9 +12,11 @@ import useUploadRecordingAudioChunkMutation from "@api/mutations/useUploadRecord
 import useUploadRecordingAudioMutation from "@api/mutations/useUploadRecordingAudioMutation";
 import { recordingKeys } from "@api/queryKey/recording";
 import { RECORDING_AUDIO_MODE } from "@constants/recording";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import useNavigateToRecordingDocuments from "@hooks/domain/recording/useNavigateToRecordingDocuments";
 import useRecordingEndedAnalytics from "@hooks/domain/recording/useRecordingEndedAnalytics";
 import useNavigateToWorkspaceHome from "@hooks/domain/workspace/useNavigateToWorkspaceHome";
+import { useToast } from "@provider/context/toastContext";
 import {
   type RecordingSession,
   useRecordingStore,
@@ -148,6 +150,7 @@ const useRecordingControl = () => {
   const { mutateAsync: completeAudioChunk } =
     useCompleteRecordingAudioChunkMutation();
   const { openEndRecordingDialog } = useEndRecordingDialog();
+  const { show } = useToast();
   const queryClient = useQueryClient();
   const isStartingRef = useRef(false);
 
@@ -261,11 +264,20 @@ const useRecordingControl = () => {
         action: "녹음 생존 신호",
         error,
       });
-      if (!isLateResponse() && isUnreachableRecordingError(error)) {
+      if (isLateResponse()) return;
+
+      if (isUnreachableRecordingError(error)) {
         closeRecording(session.workspaceId);
+      } else if (
+        isHttpError(error, HTTP_ERROR_TYPE.forbidden) &&
+        error.code === "RECORDING_CONTROL_DENIED"
+      ) {
+        // 이 탭은 더 제어할 수 없어 서버가 곧 녹음을 끝내요. 오디오도 올릴 수 없어 버리고, 신호를 되풀이하지 않게 녹음을 닫아요
+        closeRecording(session.workspaceId);
+        show(TOAST_MESSAGES.RECORDING_CONTROL_LOST);
       }
     }
-  }, [closeRecording, sendRecordingHeartbeat, uploadRecordedAudio]);
+  }, [closeRecording, sendRecordingHeartbeat, show, uploadRecordedAudio]);
 
   const handleControlError = useCallback(
     ({ action, error, workspaceId }: HandleControlErrorParams) => {

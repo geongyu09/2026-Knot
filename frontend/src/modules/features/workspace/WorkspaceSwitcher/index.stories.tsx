@@ -4,6 +4,7 @@ import {
 } from "@api/mock/responses/workspace";
 import type { WorkspaceDetailResponse } from "@api/mock/types/workspace";
 import { DialogProvider } from "@provider/context/dialogContext";
+import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
@@ -106,17 +107,19 @@ const meta = {
     (Story) => (
       <DialogProvider>
         <MemoryRouter initialEntries={[HOME_PATH]}>
-          <Routes>
-            <Route
-              path={PATH_ROUTE.WORKSPACE_HOME}
-              element={
-                // 사이드바 안쪽 폭(280px에서 여백을 뺀 248px)과 메뉴가 펼쳐질 높이만큼 자리를 줘요
-                <div style={{ width: "15.5rem", height: "20rem" }}>
-                  <Story />
-                </div>
-              }
-            />
-          </Routes>
+          <ToastProvider>
+            <Routes>
+              <Route
+                path={PATH_ROUTE.WORKSPACE_HOME}
+                element={
+                  // 사이드바 안쪽 폭(280px에서 여백을 뺀 248px)과 메뉴가 펼쳐질 높이만큼 자리를 줘요
+                  <div style={{ width: "15.5rem", height: "20rem" }}>
+                    <Story />
+                  </div>
+                }
+              />
+            </Routes>
+          </ToastProvider>
         </MemoryRouter>
       </DialogProvider>
     ),

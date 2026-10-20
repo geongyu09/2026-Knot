@@ -1,6 +1,7 @@
 import { documentsResponse } from "@api/mock/responses/document";
 import { resetDocumentMockState } from "@api/mock/state/document";
 import { DialogProvider } from "@provider/context/dialogContext";
+import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
 import { MemoryRouter, Outlet, Route, Routes } from "react-router";
@@ -61,26 +62,28 @@ const meta = {
     (Story, { parameters }) => (
       <DialogProvider>
         <MemoryRouter initialEntries={[parameters.initialPath]}>
-          <Routes>
-            <Route
-              element={
-                // 레이아웃처럼 화면이 바뀌어도 사이드바가 남도록, 화면들을 감싸는 자리에 둬요
-                <>
-                  {/* 드로어는 감싸는 패널의 높이를 그대로 채우므로 화면 높이만큼 자리를 줘요 */}
-                  <div style={{ height: "40rem" }}>
-                    <Story />
-                  </div>
-                  <Outlet />
-                </>
-              }
-            >
-              <Route path={PATH_ROUTE.WORKSPACE_HOME} />
+          <ToastProvider>
+            <Routes>
               <Route
-                path={PATH_ROUTE.DOCUMENT}
-                element={<p>문서 보기 화면이에요.</p>}
-              />
-            </Route>
-          </Routes>
+                element={
+                  // 레이아웃처럼 화면이 바뀌어도 사이드바가 남도록, 화면들을 감싸는 자리에 둬요
+                  <>
+                    {/* 드로어는 감싸는 패널의 높이를 그대로 채우므로 화면 높이만큼 자리를 줘요 */}
+                    <div style={{ height: "40rem" }}>
+                      <Story />
+                    </div>
+                    <Outlet />
+                  </>
+                }
+              >
+                <Route path={PATH_ROUTE.WORKSPACE_HOME} />
+                <Route
+                  path={PATH_ROUTE.DOCUMENT}
+                  element={<p>문서 보기 화면이에요.</p>}
+                />
+              </Route>
+            </Routes>
+          </ToastProvider>
         </MemoryRouter>
       </DialogProvider>
     ),

@@ -9,6 +9,7 @@ import { searchAnswerStreamResponse } from "@api/mock/responses/search";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import {
@@ -135,7 +136,11 @@ const renderDock = (initialPath = HOME_PATH) => {
   const router = createMemoryRouter(
     [
       {
-        element: <WorkspaceDock />,
+        element: (
+          <ToastProvider>
+            <WorkspaceDock />
+          </ToastProvider>
+        ),
         children: [
           PATH_ROUTE.WORKSPACE_HOME,
           PATH_ROUTE.CHAT,

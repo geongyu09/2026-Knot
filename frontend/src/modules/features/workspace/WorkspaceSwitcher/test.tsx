@@ -12,6 +12,7 @@ import {
 import type { WorkspaceDetailResponse } from "@api/mock/types/workspace";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
@@ -29,7 +30,7 @@ import {
   getRecordingStartProof,
 } from "@utils/recordingControlProof";
 import { http, HttpResponse } from "msw";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import WorkspaceSwitcher from ".";
@@ -64,9 +65,18 @@ const renderSwitcher = () => {
   });
   const router = createMemoryRouter(
     [
-      { path: PATH_ROUTE.WORKSPACE_HOME, element: <WorkspaceSwitcher /> },
-      { path: PATH_ROUTE.WORKSPACE_CREATE, element: null },
-      { path: PATH_ROUTE.HOME, element: null },
+      {
+        element: (
+          <ToastProvider>
+            <Outlet />
+          </ToastProvider>
+        ),
+        children: [
+          { path: PATH_ROUTE.WORKSPACE_HOME, element: <WorkspaceSwitcher /> },
+          { path: PATH_ROUTE.WORKSPACE_CREATE, element: null },
+          { path: PATH_ROUTE.HOME, element: null },
+        ],
+      },
     ],
     { initialEntries: [HOME_PATH] },
   );

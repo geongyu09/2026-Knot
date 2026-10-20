@@ -1,6 +1,7 @@
 import { createHttpError, HTTP_ERROR_TYPE } from "@api/httpClient/error";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { useRecordingStore } from "@store/recordingStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -173,7 +174,9 @@ const renderRecordingControl = () => {
     <ThemeProvider theme={theme}>
       <QueryClientProvider client={queryClient}>
         <DialogProvider>
-          <MemoryRouter>{children}</MemoryRouter>
+          <MemoryRouter>
+            <ToastProvider>{children}</ToastProvider>
+          </MemoryRouter>
         </DialogProvider>
       </QueryClientProvider>
     </ThemeProvider>

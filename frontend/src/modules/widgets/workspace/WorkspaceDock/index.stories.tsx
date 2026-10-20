@@ -2,6 +2,7 @@ import { CURRENT_RECORDING_API_PATH } from "@api/fetch/api/v1/workspaces/[worksp
 import { currentRecordingResponse } from "@api/mock/responses/recording";
 import DockColumn from "@primitives/layout/DockColumn";
 import { DialogProvider } from "@provider/context/dialogContext";
+import { ToastProvider } from "@provider/context/toastContext";
 import { PATH_ROUTE, getRouterPath } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
 import { useSearchAnswerStore } from "@store/searchAnswerStore";
@@ -142,23 +143,25 @@ const meta = {
     (Story, { parameters }) => (
       <DialogProvider>
         <MemoryRouter initialEntries={[parameters.initialPath]}>
-          <Routes>
-            <Route
-              path={`${PATH_ROUTE.WORKSPACE_HOME}/*`}
-              element={
-                // 레이아웃과 같은 열에 두고, 위로 뜨는 안내 말풍선이 잘리지 않게 위쪽에 자리를 둬요
-                <DockColumn
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    paddingTop: "5rem",
-                  }}
-                >
-                  <Story />
-                </DockColumn>
-              }
-            />
-          </Routes>
+          <ToastProvider>
+            <Routes>
+              <Route
+                path={`${PATH_ROUTE.WORKSPACE_HOME}/*`}
+                element={
+                  // 레이아웃과 같은 열에 두고, 위로 뜨는 안내 말풍선이 잘리지 않게 위쪽에 자리를 둬요
+                  <DockColumn
+                    style={{
+                      display: "flex",
+                      justifyContent: "center",
+                      paddingTop: "5rem",
+                    }}
+                  >
+                    <Story />
+                  </DockColumn>
+                }
+              />
+            </Routes>
+          </ToastProvider>
         </MemoryRouter>
       </DialogProvider>
     ),

@@ -2,7 +2,11 @@ import { PostRecordingHeartbeatResponseDto } from "@api/dto/recording";
 import { recordingHeartbeatResponse } from "@api/mock/responses/recording";
 import { mockServer } from "@api/mock/server";
 import { MAX_RECORDING_DURATION_MS } from "@constants/recording";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
+import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
+import { ToastProvider } from "@provider/context/toastContext";
+import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -40,9 +44,11 @@ const renderRecordingHeartbeat = () => {
     [
       {
         element: (
-          <RecordingHeartbeat>
-            <Outlet />
-          </RecordingHeartbeat>
+          <ToastProvider>
+            <RecordingHeartbeat>
+              <Outlet />
+            </RecordingHeartbeat>
+          </ToastProvider>
         ),
         children: [
           { path: PATH_ROUTE.WORKSPACE_HOME, element: <p>홈 화면</p> },
@@ -58,11 +64,13 @@ const renderRecordingHeartbeat = () => {
   });
 
   render(
-    <QueryClientProvider client={queryClient}>
-      <DialogProvider>
-        <RouterProvider router={router} />
-      </DialogProvider>
-    </QueryClientProvider>,
+    <ThemeProvider theme={theme}>
+      <QueryClientProvider client={queryClient}>
+        <DialogProvider>
+          <RouterProvider router={router} />
+        </DialogProvider>
+      </QueryClientProvider>
+    </ThemeProvider>,
   );
 
   return { router };
@@ -213,34 +221,52 @@ describe("RecordingHeartbeat", () => {
     expect(requests).toEqual([]);
   });
 
-  it.each([
-    [500, "INTERNAL_SERVER_ERROR", ["heartbeat"]],
-    [403, "RECORDING_CONTROL_DENIED", CSRF_RETRIED_HEARTBEAT],
-  ])(
-    "신호가 실패(%i %s)하면 곧바로 다시 보내지 않고 녹음을 이어 가다 다음 주기에 보낸다",
-    async (status, code, sent) => {
-      respondHeartbeatWithError(status, code);
-      const requests = collectRequests();
-      await startRecording();
-      const { router } = renderRecordingHeartbeat();
+  it("신호가 실패(500)하면 곧바로 다시 보내지 않고 녹음을 이어 가다 다음 주기에 보낸다", async () => {
+    respondHeartbeatWithError(500, "INTERNAL_SERVER_ERROR");
+    const requests = collectRequests();
+    await startRecording();
+    const { router } = renderRecordingHeartbeat();
 
-      passHeartbeatInterval();
+    passHeartbeatInterval();
 
-      await waitFor(() =>
-        expect(console.error).toHaveBeenCalledWith(
-          "녹음 생존 신호 요청에 실패했어요",
-          expect.anything(),
-        ),
-      );
-      expect(requests).toEqual(sent);
-      expect(useRecordingStore.getState().status).toBe("recording");
-      expect(router.state.location.pathname).toBe(RECORDING_PATH);
+    await waitFor(() =>
+      expect(console.error).toHaveBeenCalledWith(
+        "녹음 생존 신호 요청에 실패했어요",
+        expect.anything(),
+      ),
+    );
+    expect(requests).toEqual(["heartbeat"]);
+    expect(useRecordingStore.getState().status).toBe("recording");
+    expect(router.state.location.pathname).toBe(RECORDING_PATH);
 
-      passHeartbeatInterval();
+    passHeartbeatInterval();
 
-      await waitFor(() => expect(requests).toEqual([...sent, ...sent]));
-    },
-  );
+    await waitFor(() => expect(requests).toEqual(["heartbeat", "heartbeat"]));
+  });
+
+  it("이 탭의 녹음 제어가 거절(403 RECORDING_CONTROL_DENIED)되면 녹음을 닫고 홈으로 가며 주의 토스트를 띄우고, 다음 주기부터 신호를 보내지 않는다", async () => {
+    respondHeartbeatWithError(403, "RECORDING_CONTROL_DENIED");
+    const requests = collectRequests();
+    await startRecording();
+    const { router } = renderRecordingHeartbeat();
+
+    passHeartbeatInterval();
+
+    await waitFor(() => expect(router.state.location.pathname).toBe(HOME_PATH));
+    expect(
+      await screen.findByText(TOAST_MESSAGES.RECORDING_CONTROL_LOST.message),
+    ).toBeInTheDocument();
+    expect(useRecordingStore.getState().status).toBe("idle");
+    expect(getRecordingControlProof()).toBeNull();
+    // 오디오를 올리지 않아요. 올릴 권한도 이 탭에 없어요
+    expect(requests).toEqual(CSRF_RETRIED_HEARTBEAT);
+
+    passHeartbeatInterval();
+    passHeartbeatInterval();
+
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(requests).toEqual(CSRF_RETRIED_HEARTBEAT);
+  });
 
   it("서버가 끝낸 녹음(ENDED)이면 종료 요청 없이 오디오를 올리고 증명을 지운 뒤 홈으로 간다", async () => {
     respondHeartbeat(() =>
