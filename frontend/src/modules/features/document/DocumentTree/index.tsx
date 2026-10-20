@@ -39,7 +39,7 @@ export default function DocumentTree() {
     refetch,
   } = useDocumentsQuery({ workspaceId });
 
-  // 로그인이 풀렸으면 로그인 화면으로, 워크스페이스에 들어갈 수 없으면 선택 화면으로 보내요
+  // 로그인이 풀렸으면 로그인 화면으로, 워크스페이스에 들어갈 수 없으면 마지막으로 본 다른 워크스페이스나 선택 화면으로 보내고 알려요
   const { isRedirecting } = useWorkspaceAccessGuard({ error });
 
   const currentTopic = documentList?.items.find(

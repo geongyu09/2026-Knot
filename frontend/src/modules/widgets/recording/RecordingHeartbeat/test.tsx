@@ -1,8 +1,18 @@
 import { PostRecordingHeartbeatResponseDto } from "@api/dto/recording";
+import { WORKSPACES_API_PATH } from "@api/fetch/api/v1/workspaces";
 import { recordingHeartbeatResponse } from "@api/mock/responses/recording";
+import {
+  workspaceDetailResponse,
+  workspacesResponse,
+} from "@api/mock/responses/workspace";
 import { mockServer } from "@api/mock/server";
 import { MAX_RECORDING_DURATION_MS } from "@constants/recording";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
+import { ThemeProvider } from "@emotion/react";
+import WorkspaceLayout from "@pages/_layout/WorkspaceLayout";
+import AppProviders from "@provider/AppProviders";
 import { DialogProvider } from "@provider/context/dialogContext";
+import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -298,6 +308,89 @@ describe("RecordingHeartbeat", () => {
       expect(getRecordingControlProof()).toBeNull();
     },
   );
+
+  it("녹음 중에 워크스페이스에서 내보내지면(403 WORKSPACE_ACCESS_DENIED) 녹음을 버리고 마지막으로 본 다른 워크스페이스 홈으로 보내며 오류 토스트를 띄운다 (ERR-11, D7)", async () => {
+    const OTHER_WORKSPACE_ID = 2;
+    const otherHomePath = getRouterPath({
+      routeKey: "WORKSPACE_HOME",
+      params: { workspaceId: String(OTHER_WORKSPACE_ID) },
+    });
+    mockServer.use(
+      http.get(`*${WORKSPACES_API_PATH}`, () =>
+        HttpResponse.json({
+          ...workspacesResponse,
+          lastViewedWorkspaceId: OTHER_WORKSPACE_ID,
+        }),
+      ),
+    );
+    await startRecording();
+    // 실제 라우트처럼 레이아웃을 감싸, 레이아웃의 진입 판정이 이동과 안내를 맡는지 봐요
+    const layouts = [
+      {
+        handle: { hasDock: true },
+        element: (
+          <RecordingHeartbeat>
+            <WorkspaceLayout />
+          </RecordingHeartbeat>
+        ),
+        children: [
+          { path: PATH_ROUTE.WORKSPACE_HOME, element: <p>홈 화면</p> },
+          { path: PATH_ROUTE.RECORDING, element: <p>녹음 화면</p> },
+        ],
+      },
+    ];
+    const router = createMemoryRouter(
+      [
+        {
+          element: (
+            <AppProviders routes={layouts}>
+              <Outlet />
+            </AppProviders>
+          ),
+          children: layouts,
+        },
+      ],
+      { initialEntries: [RECORDING_PATH] },
+    );
+    render(
+      <ThemeProvider theme={theme}>
+        <QueryClientProvider
+          client={
+            new QueryClient({
+              defaultOptions: {
+                queries: { retry: false },
+                mutations: { retry: false },
+              },
+            })
+          }
+        >
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </ThemeProvider>,
+    );
+    await screen.findByText("녹음 화면");
+
+    respondHeartbeatWithError(403, "WORKSPACE_ACCESS_DENIED");
+    mockServer.use(
+      http.get("*/api/v1/workspaces/:workspaceId", ({ params }) =>
+        params.workspaceId === WORKSPACE_ID
+          ? HttpResponse.json(
+              { code: "WORKSPACE_ACCESS_DENIED" },
+              { status: 403 },
+            )
+          : HttpResponse.json(workspaceDetailResponse),
+      ),
+    );
+    passHeartbeatInterval();
+
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(otherHomePath),
+    );
+    expect(
+      await screen.findByText(TOAST_MESSAGES.WORKSPACE_ACCESS_DENIED.message),
+    ).toBeInTheDocument();
+    expect(useRecordingStore.getState().status).toBe("idle");
+  });
 
   it("끝내는 중에 늦게 도착한 응답으로는 녹음한 시간을 되돌리지 않는다", async () => {
     const heartbeat = holdHeartbeat(recordingHeartbeatResponse);

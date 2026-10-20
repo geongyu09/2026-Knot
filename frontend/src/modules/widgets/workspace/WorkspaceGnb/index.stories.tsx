@@ -1,5 +1,6 @@
 import DockablePanel from "@composites/DockablePanel";
 import SearchEvidenceToggle from "@features/search/SearchEvidenceToggle";
+import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
 import WorkspaceSidebar from "@widgets/workspace/WorkspaceSidebar";
@@ -79,31 +80,33 @@ const meta = {
   decorators: [
     (Story, { parameters }) => (
       <MemoryRouter initialEntries={[parameters.initialPath]}>
-        <Routes>
-          {/* 찾은 기록 버튼이 대화 ID를 읽도록 대화 경로를 따로 둬요 */}
-          {[`${PATH_ROUTE.WORKSPACE_HOME}/*`, PATH_ROUTE.CHAT_SESSION].map(
-            (path) => (
-              <Route
-                key={path}
-                path={path}
-                element={
-                  // 화면 레이아웃처럼 GNB 위에 여백을, 아래에 사이드바를 고정할 자리를 둬요
-                  <div style={{ paddingTop: "1.5rem" }}>
-                    <Story />
-                    <div
-                      id={DOCK_RAIL_ID}
-                      style={{
-                        display: "flex",
-                        height: "30rem",
-                        padding: "1.25rem 0 0 2.5rem",
-                      }}
-                    />
-                  </div>
-                }
-              />
-            ),
-          )}
-        </Routes>
+        <ToastProvider>
+          <Routes>
+            {/* 찾은 기록 버튼이 대화 ID를 읽도록 대화 경로를 따로 둬요 */}
+            {[`${PATH_ROUTE.WORKSPACE_HOME}/*`, PATH_ROUTE.CHAT_SESSION].map(
+              (path) => (
+                <Route
+                  key={path}
+                  path={path}
+                  element={
+                    // 화면 레이아웃처럼 GNB 위에 여백을, 아래에 사이드바를 고정할 자리를 둬요
+                    <div style={{ paddingTop: "1.5rem" }}>
+                      <Story />
+                      <div
+                        id={DOCK_RAIL_ID}
+                        style={{
+                          display: "flex",
+                          height: "30rem",
+                          padding: "1.25rem 0 0 2.5rem",
+                        }}
+                      />
+                    </div>
+                  }
+                />
+              ),
+            )}
+          </Routes>
+        </ToastProvider>
       </MemoryRouter>
     ),
   ],

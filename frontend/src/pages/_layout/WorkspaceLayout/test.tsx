@@ -2,7 +2,11 @@ import { GetDocumentResponseDto } from "@api/dto/document";
 import { GetSearchMessagesResponseDto } from "@api/dto/search";
 import { LAST_VIEWED_WORKSPACE_API_PATH } from "@api/fetch/api/v1/members/me/lastViewedWorkspace";
 import { documentDetailsResponse } from "@api/mock/responses/document";
-import { workspaceDetailResponse } from "@api/mock/responses/workspace";
+import { WORKSPACES_API_PATH } from "@api/fetch/api/v1/workspaces";
+import {
+  workspaceDetailResponse,
+  workspacesResponse,
+} from "@api/mock/responses/workspace";
 import {
   searchAnswerStreamResponse,
   searchConversationsResponse,
@@ -21,6 +25,7 @@ import { useSearchAnswerStore } from "@store/searchAnswerStore";
 import { useTranscriptPanelStore } from "@store/transcriptPanelStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ANALYTICS_SCROLL_ROOT_ATTRIBUTE } from "@constants/analytics";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import { saveLastConversationId } from "@utils/lastConversation";
 import {
   act,
@@ -312,18 +317,113 @@ describe("WorkspaceLayout", () => {
     expect(router.state.location.pathname).toBe(ELSEWHERE_PATH);
   });
 
-  it.each([403, 404])(
-    "%i면 워크스페이스 선택 화면으로 replace 이동한다",
-    async (status) => {
-      overrideWorkspaceStatus(status);
+  describe("들어갈 수 없는 워크스페이스(ERR-11, D7)", () => {
+    const OTHER_WORKSPACE_ID = 2;
+    const OTHER_HOME_PATH = getRouterPath({
+      routeKey: "WORKSPACE_HOME",
+      params: { workspaceId: String(OTHER_WORKSPACE_ID) },
+    });
+
+    /** 이 워크스페이스만 `status`로 거절하고, 다른 워크스페이스는 그대로 들어갈 수 있게 해요 */
+    const denyThisWorkspace = (status: number) => {
+      mockServer.use(
+        http.get(WORKSPACE_PATH_PATTERN, ({ params }) =>
+          params.workspaceId === String(WORKSPACE_ID)
+            ? new HttpResponse(null, { status })
+            : HttpResponse.json(workspaceDetailResponse),
+        ),
+      );
+    };
+
+    /**
+     * 도착 화면이 토스트를 띄운 뒤 이동 기록의 토스트를 비울 때까지 기다려요.
+     * 비우는 이동보다 뒤로 가기가 먼저 실행되면, 비우는 이동이 돌아간 기록을 덮어써요
+     */
+    const waitForToastConsumed = (
+      router: ReturnType<typeof createMemoryRouter>,
+    ) =>
+      waitFor(() => {
+        expect(router.state.location.state).toBeNull();
+      });
+
+    const respondLastViewedWorkspace = (lastViewedWorkspaceId: number) => {
+      mockServer.use(
+        http.get(`*${WORKSPACES_API_PATH}`, () =>
+          HttpResponse.json({ ...workspacesResponse, lastViewedWorkspaceId }),
+        ),
+      );
+    };
+
+    it.each([403, 404])(
+      "%i면 마지막으로 본 다른 워크스페이스 홈으로 replace 이동하고 오류 토스트를 띄운다",
+      async (status) => {
+        denyThisWorkspace(status);
+        respondLastViewedWorkspace(OTHER_WORKSPACE_ID);
+        const { router } = renderLayout();
+
+        await waitForPath(router, OTHER_HOME_PATH);
+        expect(
+          await screen.findByText(
+            TOAST_MESSAGES.WORKSPACE_ACCESS_DENIED.message,
+          ),
+        ).toBeInTheDocument();
+        await waitForToastConsumed(router);
+        await goBack(router);
+
+        expect(router.state.location.pathname).toBe(ELSEWHERE_PATH);
+      },
+    );
+
+    it.each([403, 404])(
+      "%i인데 마지막으로 본 워크스페이스가 바로 그 워크스페이스면 선택 화면으로 replace 이동하고 오류 토스트를 띄운다",
+      async (status) => {
+        overrideWorkspaceStatus(status);
+        respondLastViewedWorkspace(WORKSPACE_ID);
+        const { router } = renderLayout();
+
+        await waitForPath(router, PATH_ROUTE.WORKSPACE);
+        expect(
+          await screen.findByText(
+            TOAST_MESSAGES.WORKSPACE_ACCESS_DENIED.message,
+          ),
+        ).toBeInTheDocument();
+        await waitForToastConsumed(router);
+        await goBack(router);
+
+        expect(router.state.location.pathname).toBe(ELSEWHERE_PATH);
+      },
+    );
+
+    it("워크스페이스 목록을 받지 못해도 선택 화면으로 보내고 오류 토스트를 띄운다", async () => {
+      overrideWorkspaceStatus(403);
+      mockServer.use(
+        http.get(
+          `*${WORKSPACES_API_PATH}`,
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      );
       const { router } = renderLayout();
 
       await waitForPath(router, PATH_ROUTE.WORKSPACE);
-      await goBack(router);
+      expect(
+        await screen.findByText(TOAST_MESSAGES.WORKSPACE_ACCESS_DENIED.message),
+      ).toBeInTheDocument();
+    });
 
-      expect(router.state.location.pathname).toBe(ELSEWHERE_PATH);
-    },
-  );
+    it("이미 들어온 워크스페이스에서 내보내져 다시 조회가 403이면 마지막으로 본 다른 워크스페이스로 보낸다", async () => {
+      respondLastViewedWorkspace(OTHER_WORKSPACE_ID);
+      const { router, queryClient } = renderLayout();
+      await screen.findByText(HOME_TEXT);
+
+      denyThisWorkspace(403);
+      await act(() => queryClient.refetchQueries());
+
+      await waitForPath(router, OTHER_HOME_PATH);
+      expect(
+        await screen.findByText(TOAST_MESSAGES.WORKSPACE_ACCESS_DENIED.message),
+      ).toBeInTheDocument();
+    });
+  });
 
   it("workspaceId가 정수가 아니면 조회하지 않고 워크스페이스 선택 화면으로 replace 이동한다", async () => {
     const { router } = renderLayout(

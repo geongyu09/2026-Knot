@@ -2,6 +2,7 @@ import { DOCUMENTS_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/d
 import { documentsResponse } from "@api/mock/responses/document";
 import { resetDocumentMockState } from "@api/mock/state/document";
 import type { DocumentsResponse } from "@api/mock/types/document";
+import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
 import { delay, http, HttpResponse } from "msw";
@@ -38,7 +39,7 @@ const EMPTY_DOCUMENTS_RESPONSE = {
  *   `다시 시도`를 누르면 화면을 새로고침하지 않고 처음부터 다시 받아요. 새로고침하면 진행 중인 녹음이 사라지기 때문이에요.
  * - 주소의 워크스페이스 번호는 숫자인지 확인하지 않고 그대로 요청해요. 잘못된 주소인지는 서버가 판단하고, 서버가 거절하면 같은 불러오기 실패 안내를 보여 줘요.
  *   같은 기준을 화면에도 두면 기준이 두 곳에 생기기 때문이에요.
- * - 로그인이 풀렸으면 로그인 화면으로, 워크스페이스 멤버가 아니거나 없는 워크스페이스면 워크스페이스 선택 화면으로 보내요.
+ * - 로그인이 풀렸으면 로그인 화면으로, 워크스페이스 멤버가 아니거나 없는 워크스페이스면 마지막으로 본 다른 워크스페이스 홈이나 워크스페이스 선택 화면으로 보내고 오류 토스트로 알려요.
  */
 const meta = {
   title: "Document/DocumentList",
@@ -65,13 +66,15 @@ const meta = {
           }),
         ]}
       >
-        <Routes>
-          <Route path={PATH_ROUTE.DOCUMENTS} element={<Story />} />
-          <Route
-            path={PATH_ROUTE.DOCUMENT}
-            element={<p>문서 보기 화면으로 이동했어요.</p>}
-          />
-        </Routes>
+        <ToastProvider>
+          <Routes>
+            <Route path={PATH_ROUTE.DOCUMENTS} element={<Story />} />
+            <Route
+              path={PATH_ROUTE.DOCUMENT}
+              element={<p>문서 보기 화면으로 이동했어요.</p>}
+            />
+          </Routes>
+        </ToastProvider>
       </MemoryRouter>
     ),
   ],

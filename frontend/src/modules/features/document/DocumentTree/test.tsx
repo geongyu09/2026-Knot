@@ -3,6 +3,7 @@ import { documentsResponse } from "@api/mock/responses/document";
 import { mockServer } from "@api/mock/server";
 import type { DocumentsResponse } from "@api/mock/types/document";
 import { ThemeProvider } from "@emotion/react";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -81,15 +82,27 @@ const renderDocumentTree = (initialEntry = HOME_PATH) => {
   const router = createMemoryRouter(
     [
       {
-        element: <SidebarStub />,
+        element: (
+          <ToastProvider>
+            <Outlet />
+          </ToastProvider>
+        ),
         children: [
-          { path: PATH_ROUTE.WORKSPACE_HOME, element: <p>홈 화면</p> },
-          { path: PATH_ROUTE.DOCUMENT, element: <DocumentViewStub /> },
+          {
+            element: <SidebarStub />,
+            children: [
+              { path: PATH_ROUTE.WORKSPACE_HOME, element: <p>홈 화면</p> },
+              { path: PATH_ROUTE.DOCUMENT, element: <DocumentViewStub /> },
+            ],
+          },
+          // 이동을 확인할 수 있게 로그인 · 워크스페이스 선택 경로에 표시만 하는 화면을 둬요
+          { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
+          {
+            path: PATH_ROUTE.WORKSPACE,
+            element: <p>워크스페이스 선택 화면</p>,
+          },
         ],
       },
-      // 이동을 확인할 수 있게 로그인 · 워크스페이스 선택 경로에 표시만 하는 화면을 둬요
-      { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
-      { path: PATH_ROUTE.WORKSPACE, element: <p>워크스페이스 선택 화면</p> },
     ],
     { initialEntries: [initialEntry] },
   );

@@ -15,7 +15,7 @@ interface UseWorkspaceEntryParams {
  *
  * 워크스페이스 조회로 판정해요.
  * - 성공: `isReady`가 `true`가 되고, 마지막으로 본 워크스페이스를 한 번 갱신해요(ADR 265). 갱신 실패는 진입을 막지 않아요.
- * - 401: 로그인 화면으로, 403·404: 선택 화면(`/workspace`)으로 `replace` 이동해요(`useWorkspaceAccessGuard`).
+ * - 401: 로그인 화면으로, 403·404: 마지막으로 본 다른 워크스페이스 홈이나 선택 화면(`/workspace`)으로 `replace` 이동하고 알려요(`useWorkspaceAccessGuard`).
  * - 정수가 아닌 workspaceId: 조회할 수 없으니 404처럼 선택 화면으로 보내요.
  *
  * 처음 조회가 응답 없음(네트워크 끊김·timeout)이나 5xx로 실패하면 이동하지 않고 `entryError`로 알려요.

@@ -2,6 +2,7 @@ import { DOCUMENTS_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/d
 import { documentsResponse } from "@api/mock/responses/document";
 import { resetDocumentMockState } from "@api/mock/state/document";
 import type { DocumentsResponse } from "@api/mock/types/document";
+import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
 import { delay, http, HttpResponse } from "msw";
@@ -46,7 +47,7 @@ const CURRENT_DOCUMENT_PATH = getRouterPath({
  *   불러오는 중에는 회색 덩어리를, 문서가 하나도 없으면 「아직 문서가 없어요」를, 불러오지 못하면 안내와 `다시 시도`를 보여 줘요.
  *   `다시 시도`를 누르면 화면을 새로고침하지 않고 문서 목록만 다시 받아요. 새로고침하면 진행 중인 녹음이 사라지기 때문이에요.
  * - 문서를 한 번 받은 뒤에는 다시 불러오기가 실패해도 받은 목록을 계속 보여 줘요. 예: 다른 탭에 다녀와 목록을 다시 받을 때 서버 오류가 난 경우
- * - 로그인이 풀렸으면(401) 로그인 화면으로, 워크스페이스 멤버가 아니거나(403) 없는 워크스페이스면(404) 워크스페이스 선택 화면으로 보내요.
+ * - 로그인이 풀렸으면(401) 로그인 화면으로, 워크스페이스 멤버가 아니거나(403) 없는 워크스페이스면(404) 마지막으로 본 다른 워크스페이스 홈이나 워크스페이스 선택 화면으로 보내고 오류 토스트로 알려요.
  */
 const meta = {
   title: "Document/DocumentTree",
@@ -67,33 +68,35 @@ const meta = {
   decorators: [
     (Story, { parameters }) => (
       <MemoryRouter initialEntries={[parameters.initialPath]}>
-        <Routes>
-          <Route
-            element={
-              // 사이드바처럼 화면이 바뀌어도 문서 목록이 남도록, 화면들을 감싸는 자리에 둬요
-              <>
-                {/* 사이드바의 안쪽 폭(280px - 좌우 여백 32px)이에요. 사이드바처럼 세로로 쌓아, 남은 높이를 채우는 화면이 `treeHeight`를 받게 해요 */}
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    width: "15.5rem",
-                    height: parameters.treeHeight,
-                  }}
-                >
-                  <Story />
-                </div>
-                <Outlet />
-              </>
-            }
-          >
-            <Route path={PATH_ROUTE.WORKSPACE_HOME} />
+        <ToastProvider>
+          <Routes>
             <Route
-              path={PATH_ROUTE.DOCUMENT}
-              element={<p>문서 보기 화면이에요.</p>}
-            />
-          </Route>
-        </Routes>
+              element={
+                // 사이드바처럼 화면이 바뀌어도 문서 목록이 남도록, 화면들을 감싸는 자리에 둬요
+                <>
+                  {/* 사이드바의 안쪽 폭(280px - 좌우 여백 32px)이에요. 사이드바처럼 세로로 쌓아, 남은 높이를 채우는 화면이 `treeHeight`를 받게 해요 */}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      width: "15.5rem",
+                      height: parameters.treeHeight,
+                    }}
+                  >
+                    <Story />
+                  </div>
+                  <Outlet />
+                </>
+              }
+            >
+              <Route path={PATH_ROUTE.WORKSPACE_HOME} />
+              <Route
+                path={PATH_ROUTE.DOCUMENT}
+                element={<p>문서 보기 화면이에요.</p>}
+              />
+            </Route>
+          </Routes>
+        </ToastProvider>
       </MemoryRouter>
     ),
   ],

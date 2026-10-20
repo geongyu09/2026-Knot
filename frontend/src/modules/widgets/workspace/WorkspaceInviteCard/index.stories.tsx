@@ -129,18 +129,6 @@ export const Loading: Story = {
   },
 };
 
-/** 링크의 「복사」를 눌러 초대 링크를 복사한 직후예요. 버튼이 2초 동안 「복사됨」으로 바뀌어요. */
-export const LinkCopied: Story = {
-  beforeEach: fakeCopy,
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-
-    // 초대를 받기 전에는 복사 버튼이 잠겨 있어 코드가 보일 때까지 기다려요
-    await canvas.findByText(workspaceInvitationResponse.code);
-    await userEvent.click(canvas.getByRole("button", { name: "복사" }));
-  },
-};
-
 /** 링크 복사가 실패했을 때예요. 버튼은 「복사」로 남고 화면 아래에 오류 토스트가 떠요(ERR-08). */
 export const CopyFailed: Story = {
   beforeEach: failCopy,
@@ -153,6 +141,18 @@ export const CopyFailed: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
 
+    await canvas.findByText(workspaceInvitationResponse.code);
+    await userEvent.click(canvas.getByRole("button", { name: "복사" }));
+  },
+};
+
+/** 링크의 「복사」를 눌러 초대 링크를 복사한 직후예요. 버튼이 2초 동안 「복사됨」으로 바뀌어요. */
+export const LinkCopied: Story = {
+  beforeEach: fakeCopy,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    // 초대를 받기 전에는 복사 버튼이 잠겨 있어 코드가 보일 때까지 기다려요
     await canvas.findByText(workspaceInvitationResponse.code);
     await userEvent.click(canvas.getByRole("button", { name: "복사" }));
   },

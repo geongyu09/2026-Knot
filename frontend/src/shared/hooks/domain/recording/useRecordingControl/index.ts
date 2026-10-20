@@ -11,6 +11,7 @@ import useStartRecordingMutation from "@api/mutations/useStartRecordingMutation"
 import useUploadRecordingAudioChunkMutation from "@api/mutations/useUploadRecordingAudioChunkMutation";
 import useUploadRecordingAudioMutation from "@api/mutations/useUploadRecordingAudioMutation";
 import { recordingKeys } from "@api/queryKey/recording";
+import { workspaceKeys } from "@api/queryKey/workspace";
 import { RECORDING_AUDIO_MODE } from "@constants/recording";
 import useNavigateToRecordingDocuments from "@hooks/domain/recording/useNavigateToRecordingDocuments";
 import useRecordingEndedAnalytics from "@hooks/domain/recording/useRecordingEndedAnalytics";
@@ -263,9 +264,18 @@ const useRecordingControl = () => {
       });
       if (!isLateResponse() && isUnreachableRecordingError(error)) {
         closeRecording(session.workspaceId);
+        // 내보내졌거나 없어진 워크스페이스인지 레이아웃의 진입 판정이 다시 확인해, 그렇다면 다른 곳으로 보내고 알려요(ERR-11)
+        void queryClient.invalidateQueries({
+          queryKey: workspaceKeys.detail(session.workspaceId),
+        });
       }
     }
-  }, [closeRecording, sendRecordingHeartbeat, uploadRecordedAudio]);
+  }, [
+    closeRecording,
+    queryClient,
+    sendRecordingHeartbeat,
+    uploadRecordedAudio,
+  ]);
 
   const handleControlError = useCallback(
     ({ action, error, workspaceId }: HandleControlErrorParams) => {
