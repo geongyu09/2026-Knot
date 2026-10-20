@@ -344,6 +344,45 @@ describe("Sentry 보고", () => {
     ]);
   });
 
+  describe("떠나는 페이지와 숨긴 탭", () => {
+    const networkError = async () => {
+      mockServer.use(http.get(`*${TEST_PATH}`, () => HttpResponse.error()));
+
+      return httpClient.get(TEST_PATH).catch((error: unknown) => error);
+    };
+
+    afterEach(() => {
+      window.dispatchEvent(new Event("pageshow"));
+    });
+
+    it("페이지를 떠나는 중에 응답을 받지 못한 요청은 보내지 않는다", async () => {
+      const error = await networkError();
+
+      window.dispatchEvent(new Event("pagehide"));
+      captureRequestError({ error, source: "query" });
+
+      expect(await flushEvents()).toHaveLength(0);
+    });
+
+    it("뒤로 가기로 페이지에 돌아오면 다시 보낸다", async () => {
+      window.dispatchEvent(new Event("pagehide"));
+      window.dispatchEvent(new Event("pageshow"));
+
+      captureRequestError({ error: await networkError(), source: "query" });
+
+      expect(await flushEvents()).toHaveLength(1);
+    });
+
+    it("숨긴 탭에서 응답을 받지 못한 요청은 보내지 않는다", async () => {
+      const error = await networkError();
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+
+      captureRequestError({ error, source: "query" });
+
+      expect(await flushEvents()).toHaveLength(0);
+    });
+  });
+
   it("요청 실패에는 요청 정보를 태그로, 요청 ID를 context로 붙인다", async () => {
     mockServer.use(
       http.get("*/api/v1/workspaces/:workspaceId/documents", () =>

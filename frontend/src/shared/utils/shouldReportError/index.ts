@@ -5,6 +5,7 @@ import {
 } from "@api/httpClient/error";
 import { SseRequestError } from "@api/sse/requestSseStream";
 import { isCancelledError } from "@tanstack/react-query";
+import { getNetworkFailureReason } from "@utils/getNetworkFailureReason";
 import axios from "axios";
 
 /**
@@ -80,8 +81,12 @@ const isAbortError = (error: unknown) =>
   "name" in error &&
   error.name === "AbortError";
 
+/** 페이지를 떠나며 브라우저가 끊은 요청도 취소로 봐요 */
 const isCanceled = (error: unknown) =>
-  axios.isCancel(error) || isCancelledError(error) || isAbortError(error);
+  axios.isCancel(error) ||
+  isCancelledError(error) ||
+  isAbortError(error) ||
+  getNetworkFailureReason(error) === "aborted";
 
 const isExpectedMicrophoneError = (error: unknown) =>
   error instanceof DOMException &&
@@ -113,6 +118,10 @@ interface ShouldReportErrorParams {
   error: unknown;
   /** 오류가 났을 때 브라우저가 온라인이었는지(`navigator.onLine`) */
   isOnline: boolean;
+  /** 페이지를 떠나는 중(`pagehide` 뒤)인지. 기본값은 `false`예요 */
+  isPageHiding?: boolean;
+  /** 탭이 숨겨져 있는지(`document.visibilityState`가 `hidden`). 기본값은 `false`예요 */
+  isHidden?: boolean;
 
   /** 코드가 잡고 넘어간 실패면 잡은 기능 이름(이벤트의 `feature` 태그). 예: `recording` */
   feature?: string;
@@ -128,7 +137,8 @@ interface ShouldReportErrorParams {
  *   그래서 이 경로의 401은 Sentry에도 남지 않아요. 로그인 이동은 #551에서 한 곳으로 모으고, 그때 이 경로들도 함께 다뤄요.
  * - 사용자 입력 검증 400, 워크스페이스 접근 거부 403
  * - 도메인 리소스가 없는 404, 상태 충돌 409, 요청 제한 429: 화면마다 안내 문구나 이동이 있어요
- * - 오프라인에서 응답을 받지 못한 요청
+ * - 오프라인, 페이지를 떠나는 중, 숨긴 탭에서 응답을 받지 못한 요청: 연결이 끊긴 것이 아니라 브라우저가 멈추거나 끊은 요청이 섞여요.
+ *   새로고침이나 이동으로 끊긴 요청(`Request aborted`)은 취소로 봐요
  * - 녹음에서 마이크 권한 거절, 마이크 없음: 마이크 안내 창이 안내해요
  *
  * 4xx를 통째로 빼지 않아요. 요청 계약 위반 400, CSRF 재시도 뒤에도 남은 403, 없는 API 경로 404,
@@ -140,16 +150,19 @@ interface ShouldReportErrorParams {
 export const shouldReportError = ({
   error,
   isOnline,
+  isPageHiding = false,
+  isHidden = false,
   feature,
 }: ShouldReportErrorParams) => {
   if (isCanceled(error)) return false;
   if (feature === "recording" && isExpectedMicrophoneError(error)) return false;
 
   const failure = toRequestFailure(error);
+  const isConnected = isOnline && !isPageHiding && !isHidden;
 
-  if (failure?.type === HTTP_ERROR_TYPE.network) return isOnline;
+  if (failure?.type === HTTP_ERROR_TYPE.network) return isConnected;
   if (failure) return !isExpectedFailure(failure);
-  if (isFetchNetworkError(error)) return isOnline;
+  if (isFetchNetworkError(error)) return isConnected;
 
   return true;
 };

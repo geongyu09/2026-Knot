@@ -7,7 +7,7 @@ import {
 import { mockServer } from "@api/mock/server";
 import { SseRequestError } from "@api/sse/requestSseStream";
 import { CancelledError } from "@tanstack/react-query";
-import axios from "axios";
+import axios, { AxiosError } from "axios";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -134,6 +134,28 @@ describe("shouldReportError", () => {
     ])("%s는 보고하지 않는다", (_, error) => {
       expect(isReported(error)).toBe(false);
     });
+
+    // 새로고침, 탭 닫기, 다른 주소로 이동할 때 브라우저가 진행 중이던 요청을 끊어요
+    it("페이지를 떠나며 끊긴 요청(Request aborted)은 보고하지 않는다", () => {
+      const error = createHttpError({
+        type: HTTP_ERROR_TYPE.network,
+        cause: new AxiosError("Request aborted", AxiosError.ECONNABORTED),
+      });
+
+      expect(isReported(error)).toBe(false);
+    });
+
+    it("시간 초과는 취소가 아니라 보고한다", () => {
+      const error = createHttpError({
+        type: HTTP_ERROR_TYPE.network,
+        cause: new AxiosError(
+          "timeout of 10000ms exceeded",
+          AxiosError.ECONNABORTED,
+        ),
+      });
+
+      expect(isReported(error)).toBe(true);
+    });
   });
 
   describe("네트워크 오류", () => {
@@ -145,6 +167,36 @@ describe("shouldReportError", () => {
     it("온라인인데 응답을 받지 못한 오류는 보고한다", () => {
       expect(isReported(httpError(HTTP_ERROR_TYPE.network), true)).toBe(true);
       expect(isReported(new TypeError("Failed to fetch"), true)).toBe(true);
+    });
+
+    it.each([
+      ["페이지를 떠나는 중", { isPageHiding: true }],
+      ["숨긴 탭", { isHidden: true }],
+    ])("%s에 응답을 받지 못한 오류는 보고하지 않는다", (_, state) => {
+      expect(
+        shouldReportError({
+          error: httpError(HTTP_ERROR_TYPE.network),
+          isOnline: true,
+          ...state,
+        }),
+      ).toBe(false);
+      expect(
+        shouldReportError({
+          error: new TypeError("Failed to fetch"),
+          isOnline: true,
+          ...state,
+        }),
+      ).toBe(false);
+    });
+
+    it("숨긴 탭이어도 응답을 받은 5xx는 보고한다", () => {
+      expect(
+        shouldReportError({
+          error: httpError(HTTP_ERROR_TYPE.serverError),
+          isOnline: true,
+          isHidden: true,
+        }),
+      ).toBe(true);
     });
 
     it("오프라인이어도 네트워크와 관계없는 TypeError는 보고한다", () => {

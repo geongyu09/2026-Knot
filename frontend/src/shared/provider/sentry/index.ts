@@ -62,6 +62,26 @@ const addReplayIntegration = async () => {
 };
 
 /**
+ * 페이지를 떠나는 중인지. 떠날 때 브라우저가 끊는 요청의 실패를 보고에서 빼려고 써요.
+ * 뒤로 가기 캐시(bfcache)로 페이지에 돌아오면 다시 `false`가 돼요.
+ */
+let isPageHiding = false;
+
+const markPageHiding = () => {
+  isPageHiding = true;
+};
+
+const markPageShowing = () => {
+  isPageHiding = false;
+};
+
+/** 같은 함수를 다시 등록해도 한 번만 불려, `initSentry`를 여러 번 불러도 괜찮아요 */
+const watchPageHiding = () => {
+  window.addEventListener("pagehide", markPageHiding);
+  window.addEventListener("pageshow", markPageShowing);
+};
+
+/**
  * httpClient 요청 실패에 묶음 기준(fingerprint), 요청 정보 태그, 요청 ID context를 붙여요. 그 밖의 오류는 그대로 둬요.
  *
  * 수집 경로마다 붙이지 않고 `beforeSend` 한 곳에서 붙여, 처리하지 않은 `mutateAsync` 실패(`unhandledrejection`)도 같은 모양으로 남겨요.
@@ -98,6 +118,8 @@ const beforeSend = (event: ErrorEvent, hint: EventHint) => {
     !shouldReportError({
       error: hint.originalException,
       isOnline: navigator.onLine,
+      isPageHiding,
+      isHidden: document.visibilityState === "hidden",
       feature: typeof feature === "string" ? feature : undefined,
     })
   ) {
@@ -164,6 +186,7 @@ export const initSentry = ({
     ...(transport && { transport }),
   });
 
+  watchPageHiding();
   void addReplayIntegration();
 
   return true;
