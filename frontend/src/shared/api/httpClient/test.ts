@@ -458,7 +458,7 @@ describe("httpClient의 토큰 재발급", () => {
       ]);
     });
 
-    it("재발급 요청이 응답을 받지 못하면 보고한다", async () => {
+    it("재발급 요청이 응답을 받지 못하면 연결 실패로 묶어 보고하고, 재발급 경로는 태그로 남긴다", async () => {
       mockServer.use(
         http.post(`*${AUTH_REFRESH_API_PATH}`, () => HttpResponse.error()),
         failingThenOkHandler({ status: 401, failures: 1 }).handler,
@@ -469,10 +469,12 @@ describe("httpClient의 토큰 재발급", () => {
       const events = await flushEvents();
       expect(events).toHaveLength(1);
       expect(events[0].fingerprint).toEqual([
-        "POST",
-        AUTH_REFRESH_API_PATH,
+        "http-network",
         HTTP_ERROR_TYPE.network,
       ]);
+      expect(events[0].tags).toMatchObject({
+        "http.path": AUTH_REFRESH_API_PATH,
+      });
     });
 
     it("재발급 응답이 401이면(refresh 토큰 만료) 로그인 화면으로 보내는 예상 실패라 보고하지 않는다", async () => {

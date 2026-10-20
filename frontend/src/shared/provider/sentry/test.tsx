@@ -314,6 +314,36 @@ describe("Sentry 보고", () => {
     ]);
   });
 
+  it("연결이 끊겨 여러 API가 함께 실패하면 묶음 기준을 하나로 두고, 어느 API였는지는 태그로 남긴다", async () => {
+    mockServer.use(
+      http.get("*/api/v1/workspaces/:workspaceId/documents", () =>
+        HttpResponse.error(),
+      ),
+      http.get("*/api/v1/workspaces/:workspaceId", () => HttpResponse.error()),
+    );
+    const requestError = (url: string) =>
+      httpClient.get(url).catch((error: unknown) => error);
+
+    captureRequestError({
+      error: await requestError("/api/v1/workspaces/1/documents"),
+      source: "query",
+    });
+    captureRequestError({
+      error: await requestError("/api/v1/workspaces/1"),
+      source: "query",
+    });
+
+    const events = await flushEvents();
+    expect(events.map(({ fingerprint }) => fingerprint)).toEqual([
+      ["http-network", "network"],
+      ["http-network", "network"],
+    ]);
+    expect(events.map(({ tags }) => tags?.["http.path"])).toEqual([
+      "/api/v1/workspaces/:id/documents",
+      "/api/v1/workspaces/:id",
+    ]);
+  });
+
   it("요청 실패에는 요청 정보를 태그로, 요청 ID를 context로 붙인다", async () => {
     mockServer.use(
       http.get("*/api/v1/workspaces/:workspaceId/documents", () =>
