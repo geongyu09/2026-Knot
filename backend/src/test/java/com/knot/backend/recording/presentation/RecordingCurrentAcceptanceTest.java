@@ -173,8 +173,8 @@ class RecordingCurrentAcceptanceTest {
     }
 
     @Test
-    @DisplayName("종료한 녹음은 현재 녹음으로 반환하지 않고 204를 반환한다")
-    void findCurrent_success_endedRecordingExcluded() throws Exception {
+    @DisplayName("종료한 녹음은 업로드와 문서 처리가 끝날 때까지 문서 생성 중으로 반환한다")
+    void findCurrent_success_endedRecordingProcessing() throws Exception {
         // given
         long memberId = saveMember("member");
         long workspaceId = saveWorkspace("팀");
@@ -200,7 +200,48 @@ class RecordingCurrentAcceptanceTest {
         );
 
         // then
-        result.andExpect(status().isNoContent());
+        result.andExpect(status().isOk())
+                .andExpect(jsonPath("$.recordingId").value(recording.id()))
+                .andExpect(jsonPath("$.status").value("PROCESSING"))
+                .andExpect(jsonPath("$.length()").value(4));
+    }
+
+    @Test
+    @DisplayName("문서 생성 중이던 최신 녹음이 완료되면 다음 조회에서 본문 없는 204를 반환한다")
+    void findCurrent_success_completedProcessingDisappears() throws Exception {
+        // given
+        long memberId = saveMember("completed-member");
+        long workspaceId = saveWorkspace("문서 팀");
+        saveWorkspaceMember(
+                workspaceId,
+                memberId
+        );
+        StartedRecording recording = startRecording(
+                workspaceId,
+                memberId
+        );
+        end(
+                workspaceId,
+                recording.id(),
+                memberId,
+                recording.tabId()
+        ).andExpect(status().isOk());
+        findCurrent(
+                workspaceId,
+                memberId
+        ).andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PROCESSING"));
+        saveSucceededBatch(recording.id());
+
+        // when
+        ResultActions result = findCurrent(
+                workspaceId,
+                memberId
+        );
+
+        // then
+        result.andExpect(status().isNoContent())
+                .andExpect(content().string(""));
     }
 
     @Test
@@ -348,8 +389,48 @@ class RecordingCurrentAcceptanceTest {
                         jsonPath(currentPath + ".responses['404'].content['application/json'].schema['$ref']")
                                 .value(errorResponseRef)
                 )
+                .andExpect(jsonPath("$.components.schemas.RecordingCurrentResponse.properties.length()").value(4))
+                .andExpect(
+                        jsonPath("$.components.schemas.RecordingCurrentResponse.properties.status.enum").value(
+                                org.hamcrest.Matchers.contains(
+                                        "RECORDING",
+                                        "PAUSED",
+                                        "PROCESSING"
+                                )
+                        )
+                )
                 .andExpect(jsonPath(currentPath + ".security[*].accessTokenCookie").exists())
                 .andExpect(jsonPath(currentPath + ".parameters[?(@.name == 'X-XSRF-TOKEN')]").isEmpty());
+    }
+
+    private void saveSucceededBatch(long recordingId) {
+        long transcriptId = jdbcClient.sql("""
+                INSERT INTO transcripts (recording_session_id, content, created_at)
+                VALUES (:recordingId, '회의 내용', CURRENT_TIMESTAMP)
+                RETURNING id
+                """)
+                .param(
+                        "recordingId",
+                        recordingId
+                )
+                .query(Long.class)
+                .single();
+        jdbcClient.sql("""
+                INSERT INTO document_generation_batches
+                    (recording_session_id, transcript_id, topic_registration_state,
+                        accepted_at, registered_at, processing_status, finished_at)
+                VALUES (:recordingId, :transcriptId, 'TOPICS_REGISTERED',
+                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'SUCCEEDED', CURRENT_TIMESTAMP)
+                """)
+                .param(
+                        "recordingId",
+                        recordingId
+                )
+                .param(
+                        "transcriptId",
+                        transcriptId
+                )
+                .update();
     }
 
     private ResultActions findCurrent(

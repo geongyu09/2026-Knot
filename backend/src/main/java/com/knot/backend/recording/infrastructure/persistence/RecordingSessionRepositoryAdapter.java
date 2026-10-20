@@ -88,6 +88,17 @@ public class RecordingSessionRepositoryAdapter implements RecordingSessionReposi
     }
 
     @Override
+    public Optional<RecordingSession> findLatestByWorkspaceIdAndMemberId(
+            long workspaceId,
+            long memberId
+    ) {
+        return recordingSessionJpaRepository.findFirstByWorkspaceIdAndMemberIdOrderByStartedAtDescIdDesc(
+                workspaceId,
+                memberId
+        );
+    }
+
+    @Override
     public List<RecordingSession> findAllActiveByWorkspaceIdForUpdate(long workspaceId) {
         return recordingSessionJpaRepository.findAllByWorkspaceIdAndStatusInOrderByIdAsc(
                 workspaceId,

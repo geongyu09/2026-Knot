@@ -19,7 +19,7 @@ concurrency:
 env:
   API_BASE_URL: ${{ vars.API_BASE_URL_DEV }}
   POSTHOG_KEY: ${{ vars.POSTHOG_KEY_DEV }}
-  POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
+  # 다른 Sentry 프로젝트로 바꾸면 frontend/src/worker/relay의 Sentry 프로젝트 상수도 함께 바꿔요
   SENTRY_DSN: ${{ vars.SENTRY_DSN }}
   SENTRY_ENVIRONMENT: development
   SENTRY_ORG: ${{ vars.SENTRY_ORG }}

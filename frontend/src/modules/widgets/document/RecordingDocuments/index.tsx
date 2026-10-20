@@ -3,6 +3,7 @@ import LoadingIndicator from "@primitives/ui/LoadingIndicator";
 import { useParams } from "react-router";
 
 import { useRecordingDocuments } from "./model/useRecordingDocuments";
+import { useRecordingDocumentsAnalytics } from "./model/useRecordingDocumentsAnalytics";
 import { useRecordingDocumentsRedirect } from "./model/useRecordingDocumentsRedirect";
 import DocumentFailedState from "./ui/DocumentFailedState";
 import DraftingState from "./ui/DraftingState";
@@ -33,6 +34,7 @@ export default function RecordingDocuments() {
     isRetrying,
   } = useRecordingDocuments({ workspaceId, recordingId });
   useRecordingDocumentsRedirect({ workspaceId, recordingId, viewStatus });
+  useRecordingDocumentsAnalytics({ workspaceId, recordingId, viewStatus });
   const { navigateToWorkspaceHome } = useNavigateToWorkspaceHome();
 
   const handleGoHome = () =>

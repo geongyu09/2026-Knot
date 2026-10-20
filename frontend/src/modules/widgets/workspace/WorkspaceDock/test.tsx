@@ -91,7 +91,9 @@ const respondNoCurrentRecording = () =>
   );
 
 /** 현재 녹음 조회가 다른 탭의 녹음을 이 상태로 답하게 해요 */
-const respondCurrentRecordingStatus = (status: "RECORDING" | "PAUSED") =>
+const respondCurrentRecordingStatus = (
+  status: "RECORDING" | "PAUSED" | "PROCESSING",
+) =>
   mockServer.use(
     http.get(CURRENT_RECORDING_URL, () =>
       HttpResponse.json({ ...currentRecordingResponse, status }),
@@ -1122,6 +1124,29 @@ describe("WorkspaceDock", () => {
           screen.getByRole("button", { name: "회의 녹음 시작" }),
         ).toBeInTheDocument();
         consoleError.mockRestore();
+      });
+
+      it("다른 탭 녹음이 끝나 문서를 정리하는 중이 되면 칩 대신 마이크를 보여준다 (#866)", async () => {
+        respondCurrentRecordingStatus("RECORDING");
+        renderDock();
+        expect(
+          await screen.findByRole("img", { name: "녹음 중" }),
+        ).toBeInTheDocument();
+
+        // 마이크는 응답을 받기 전에도 보여서, 칩이 보이던 상태에서 정리 중 응답으로 바뀐 뒤 마이크가 새로 나타나는지 봐요
+        respondCurrentRecordingStatus("PROCESSING");
+        act(() => {
+          focusManager.setFocused(false);
+          focusManager.setFocused(true);
+        });
+
+        expect(
+          await screen.findByRole("button", { name: "회의 녹음 시작" }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole("img", { name: "녹음 중" }),
+        ).not.toBeInTheDocument();
+        focusManager.setFocused(undefined);
       });
     });
 

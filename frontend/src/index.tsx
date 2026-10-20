@@ -12,14 +12,25 @@ import AppErrorBoundary from "@provider/AppErrorBoundary";
 import AppProviders from "@provider/AppProviders";
 import { getRootErrorHandlers, initSentry } from "@provider/sentry";
 import { routes } from "@routes/routes";
+import { ANALYTICS_SCROLL_ROOT_ATTRIBUTE } from "@constants/analytics";
+import { attachAnalyticsWorkspace } from "@utils/analyticsWorkspace";
 import { syncAnalyticsUser } from "@utils/syncAnalyticsUser";
 import posthog from "posthog-js";
 
-// 키가 없는 환경(로컬, 테스트)에서는 사용 기록을 보내지 않아요
-if (process.env.POSTHOG_KEY && process.env.POSTHOG_HOST) {
+// 키가 없는 환경(로컬, 테스트)에서는 사용 기록을 보내지 않아요.
+// 광고 차단에 막히지 않게 PostHog 주소가 아니라 우리 주소의 중계 경로로 보내고, 프론트 Worker(src/worker)가 PostHog로 넘겨요(ADR 838).
+// 이 경로는 src/worker/relay의 POSTHOG_RELAY_PATH, wrangler.jsonc의 run_worker_first와 같아야 해요.
+// 개발 서버(webpack serve)에는 이 중계가 없어서, 로컬에 키를 넣어도 기록이 PostHog로 가지 않아요.
+// ui_host는 툴바 · 링크가 PostHog 화면을 가리키게 하는 값이에요. 지역(us)은 Worker의 PostHog 주소와 맞춰요
+if (process.env.POSTHOG_KEY) {
   posthog.init(process.env.POSTHOG_KEY, {
-    api_host: process.env.POSTHOG_HOST,
+    api_host: "/relay/p",
+    ui_host: "https://us.posthog.com",
     defaults: "2026-08-30",
+    // 워크스페이스 화면의 이벤트에 workspace_id를 붙여요
+    before_send: attachAnalyticsWorkspace,
+    // 스크롤 깊이는 표시가 있는 본문을 먼저 재고, 없는 화면(랜딩 · 로그인)은 창 전체를 재요
+    scroll_root_selector: [`[${ANALYTICS_SCROLL_ROOT_ATTRIBUTE}]`, "html"],
   });
   syncAnalyticsUser(queryClient);
 }

@@ -518,6 +518,102 @@ class RecordingSessionRepositoryIntegrationTest {
         assertThat(found).isEmpty();
     }
 
+    @Test
+    @DisplayName("최신 녹음 조회는 상태와 관계없이 시작 시각이 가장 최근인 본인 녹음 한 건을 반환한다")
+    void findLatestByWorkspaceIdAndMemberId_success_startedAtBeforeId() {
+        // given
+        long memberId = saveMember("latest-member");
+        long workspaceId = saveWorkspaceWithMember(
+                memberId,
+                "최신 팀"
+        );
+        RecordingSession latest = RecordingSession.start(
+                workspaceId,
+                memberId,
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                CONTROL_TOKEN_HASH,
+                STARTED_AT.plusSeconds(100)
+        );
+        latest.end(STARTED_AT.plusSeconds(110));
+        saveAndFlush(latest);
+        RecordingSession earlier = startRecording(
+                workspaceId,
+                memberId,
+                UUID.randomUUID()
+        );
+        earlier.discard(STARTED_AT.plusSeconds(10));
+        saveAndFlush(earlier);
+        entityManager.clear();
+
+        // when
+        Optional<RecordingSession> found = recordingSessionRepository.findLatestByWorkspaceIdAndMemberId(
+                workspaceId,
+                memberId
+        );
+
+        // then
+        assertThat(found).hasValueSatisfying(session -> {
+            assertThat(session.getId()).isEqualTo(latest.getId());
+            assertThat(session.getStatus()).isEqualTo(RecordingStatus.ENDED);
+        });
+    }
+
+    @Test
+    @DisplayName("시작 시각이 같으면 ID가 큰 녹음을 선택하고 다른 멤버와 Workspace 녹음은 제외한다")
+    void findLatestByWorkspaceIdAndMemberId_success_tieAndIsolation() {
+        // given
+        long memberId = saveMember("tie-member");
+        long otherMemberId = saveMember("other-tie-member");
+        long workspaceId = saveWorkspaceWithMember(
+                memberId,
+                "현재 팀"
+        );
+        long otherWorkspaceId = saveWorkspaceWithMember(
+                memberId,
+                "다른 팀"
+        );
+        saveEndedRecording(
+                workspaceId,
+                memberId
+        );
+        RecordingSession latest = saveEndedRecording(
+                workspaceId,
+                memberId
+        );
+        saveEndedRecording(
+                workspaceId,
+                otherMemberId
+        );
+        saveEndedRecording(
+                otherWorkspaceId,
+                memberId
+        );
+        entityManager.clear();
+
+        // when
+        Optional<RecordingSession> found = recordingSessionRepository.findLatestByWorkspaceIdAndMemberId(
+                workspaceId,
+                memberId
+        );
+
+        // then
+        assertThat(found).hasValueSatisfying(session -> assertThat(session.getId()).isEqualTo(latest.getId()));
+    }
+
+    private RecordingSession saveEndedRecording(
+            long workspaceId,
+            long memberId
+    ) {
+        RecordingSession session = startRecording(
+                workspaceId,
+                memberId,
+                UUID.randomUUID()
+        );
+        session.end(STARTED_AT.plusSeconds(10));
+        return saveAndFlush(session);
+    }
+
     private String storedStatus(long recordingSessionId) {
         return jdbcClient.sql("SELECT status FROM recording_sessions WHERE id = :recordingSessionId")
                 .param(

@@ -12,3 +12,11 @@ export const recordingKeys = {
   audioSave: ({ workspaceId, recordingId }: RecordingDetailKeyParams) =>
     [...recordingKeys.all, "audioSave", workspaceId, recordingId] as const,
 };
+
+/** 녹음 뮤테이션의 키. 정리 화면의 사용 기록이 뮤테이션 캐시에서 다시 시도 응답을 찾을 때 써요 */
+export const recordingMutationKeys = {
+  transcriptionRetry: () =>
+    [...recordingKeys.all, "transcriptionRetry"] as const,
+  documentGenerationRetry: () =>
+    [...recordingKeys.all, "documentGenerationRetry"] as const,
+};

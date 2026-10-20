@@ -27,7 +27,8 @@ Spotless, bootJar에는 Gradle build cache를 허용함.
 
 대상은 ap-northeast-2의 개발 프로젝트와 개발 pipeline임. 운영 프로젝트에 자동 적용하지 않음.
 프로젝트가 inline buildspec을 사용하므로 저장소 파일 변경만으로 AWS 명령이 갱신되지 않음.
-inline 내용과 루트 `buildspec.yml`을 함께 갱신하고 적용된 화면을 확인해야 함.
+Blue-Green 이행 전까지는 AWS inline buildspec이 적용본이며, 저장소 `buildspec.yml` 수정만으로
+해당 설정이 바뀌지 않음. Blue-Green 전환 시 적용 방법은 아래 artifact 절차를 따름.
 
 S3 캐시는 `techcourse-project-2026-artifacts/knot/codebuild-cache/dev`를 사용함.
 키는 그룹, Gradle 설정 해시와 소스 파일 해시로 구분하고 같은 설정의 이전 키를
@@ -41,6 +42,31 @@ Gradle 인증 설정을 넣지 않음. 동일 키의 S3 캐시는 불변이므�
 XML과 HTML도 artifact 수집 대상으로 두며 실패 실행에서는 CloudWatch 로그와
 실제로 업로드된 리포트를 각각 확인해야 함. 설정에 경로가 있다는 사실만으로
 실패 리포트 업로드 성공을 판정하지 않음.
+
+## Dev Blue-Green artifact
+
+Blue-Green Dev artifact는 루트 `buildspec.yml`의 `DEPLOYMENT_MODE=dev-bluegreen`으로
+생성한다. 이 모드는 `appspec-dev-bluegreen.yml`을 artifact 루트의 `appspec.yml`로
+패키징하고 두 slot의 systemd unit을 `scripts/systemd/`에 포함한다. 기본값은
+`legacy-in-place`이므로 기존 artifact 모양과 Prod 배포 동작은 유지한다.
+
+현재 Dev CodeBuild 프로젝트는 inline buildspec을 사용하므로 저장소 buildspec을 바꿔도
+빌드에는 적용되지 않는다. Blue-Green 배포를 연결할 때 Build 프로젝트가 저장소의
+`buildspec.yml`을 사용하도록 설정하고, 프로젝트 환경 변수 `DEPLOYMENT_MODE`를
+`dev-bluegreen`으로 지정한다. Pipeline의 기존 `CI_GROUP=remaining` override와 별도
+IntegrationTest action은 유지한다. Deploy action은 기존 그룹을 수정하지 않고 새
+`knot-backend-dev-bluegreen` 그룹을 대상으로 지정한다.
+
+새 그룹의 첫 배포와 자동 롤백 설정은 저장소 파일에 반영되지 않는다. AWS 변경 후에는
+CodeDeploy 그룹 이름·인스턴스 태그·자동 롤백 설정과 CodePipeline Deploy action의 대상
+그룹을 콘솔에서 다시 확인한다. 실제 첫 배포 전에 artifact 루트 AppSpec이
+`appspec-dev-bluegreen.yml`에서 복사된 것인지, `scripts/systemd/`와
+`scripts/dev_bluegreen_deploy.sh`가 포함됐는지 확인한다.
+
+Hook이 `/var/lib/knot-backend-deploy/blue-green/route-uncertain`을 남기면 다음 배포는
+자동으로 거부된다. Nginx의 디스크 설정과 실행 중인 upstream을 확인하고 이전 서버의
+health가 정상인 상태에서 route를 복구한 뒤, marker를 지우고 재시도한다. marker가 있는
+동안에는 두 프로세스가 남을 수 있으므로 자원 사용량도 확인한다.
 
 ## 검증 기록
 

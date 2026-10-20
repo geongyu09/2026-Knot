@@ -14,8 +14,9 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
+import { readAuthReturnPath } from "@utils/authReturnPath";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import WorkspaceJoinCard from ".";
 
@@ -26,6 +27,8 @@ const WORKSPACE_ID = String(expected.workspaceId);
 const HOME_PATH = `/workspace/${expected.workspaceId}`;
 const ELSEWHERE_PATH = "/elsewhere";
 const CREDENTIAL = "X35D3S";
+/** 로그인 뒤 돌아올 초대 주소. 초대 링크 게이트가 다시 미리보기부터 타요 */
+const INVITE_PATH = `/invite/${CREDENTIAL}`;
 const WORKSPACE_NAME = "Knot 팀";
 const DESCRIPTION = "초대를 수락하면 함께 기록할 수 있어요";
 
@@ -124,6 +127,8 @@ const goBack = async (router: ReturnType<typeof createMemoryRouter>) => {
 };
 
 describe("WorkspaceJoinCard", () => {
+  afterEach(() => sessionStorage.clear());
+
   it("state의 워크스페이스 이름과 안내 문구를 보여준다", () => {
     renderCard();
 
@@ -144,6 +149,7 @@ describe("WorkspaceJoinCard", () => {
 
       await waitForPath(router, HOME_PATH);
       expect(bodies).toEqual([{ credential: CREDENTIAL }]);
+      expect(readAuthReturnPath()).toBeUndefined();
     },
   );
 
@@ -171,16 +177,19 @@ describe("WorkspaceJoinCard", () => {
       await goBack(router);
 
       expect(router.state.location.pathname).toBe(ELSEWHERE_PATH);
+      expect(readAuthReturnPath()).toBeUndefined();
     },
   );
 
-  it("401이면 로그인 화면으로 replace 이동한다", async () => {
+  it("401이면 돌아올 초대 주소를 기억하고 로그인 화면으로 replace 이동한다", async () => {
     overrideAcceptStatus(401);
     const { router } = renderCard();
 
     fireEvent.click(getJoinButton());
 
     await waitForPath(router, PATH_ROUTE.LOGIN);
+    expect(readAuthReturnPath()).toBe(INVITE_PATH);
+
     await goBack(router);
 
     expect(router.state.location.pathname).toBe(ELSEWHERE_PATH);

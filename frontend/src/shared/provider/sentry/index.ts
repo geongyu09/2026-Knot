@@ -20,6 +20,12 @@ import type { createReplayIntegration } from "./replay";
 
 type ReplayIntegration = ReturnType<typeof createReplayIntegration>;
 
+/**
+ * Sentry로 보낼 우리 주소의 중계 경로. 프론트 Worker(`src/worker/relay`)가 Sentry로 넘겨요(ADR 838).
+ * Worker의 `SENTRY_RELAY_PATH`와 같아야 하고, wrangler.jsonc의 `run_worker_first`(`/relay/*`) 안에 있어야 해요
+ */
+const SENTRY_RELAY_PATH = "/relay/s";
+
 /** production에서 성능을 측정할 페이지 로딩 · 화면 이동의 비율. 그 밖의 환경은 모두 측정해요 */
 const PRODUCTION_TRACES_SAMPLE_RATE = 0.2;
 
@@ -92,7 +98,9 @@ interface InitSentryParams {
 /**
  * Sentry를 켜요. DSN이 없으면 `Sentry.init`을 부르지 않고 `false`를 돌려줘요.
  *
- * 개인 정보는 모으지 않아요(`dataCollection`).
+ * 광고 차단에 막히지 않게 Sentry 주소가 아니라 우리 주소의 중계 경로(`/relay/s`)로 보내요(`tunnel`).
+ * 개발 서버(webpack serve)에는 이 중계가 없어서, 로컬에 DSN을 넣어도 보고가 Sentry로 가지 않아요.
+ * 사용자 정보, 쿠키, 요청 헤더와 본문, 쿼리는 모으지 않아요(`dataCollection`). 세션 리플레이에는 화면에 보이는 글자가 그대로 남아요.
  * SDK v11에서 `sendDefaultPii`가 없어지고 `dataCollection`으로 바뀌었는데, 기본값이 모두 모으기라 끄는 값을 직접 넣어요.
  * 보낼 오류는 `shouldReportError`로 고르고, 보내기 전에 `scrubSentryEvent`로 민감한 값을 지워요.
  *
@@ -109,6 +117,8 @@ export const initSentry = ({
 
   Sentry.init({
     dsn,
+    // 이 경로로 보내면 SDK가 봉투 머리에 DSN을 넣고, Worker는 그 DSN이 우리 프로젝트일 때만 넘겨요
+    tunnel: SENTRY_RELAY_PATH,
     environment: environment || undefined,
     release: release || undefined,
     dataCollection: {

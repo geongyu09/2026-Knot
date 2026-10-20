@@ -7,7 +7,6 @@ declare namespace NodeJS {
     API_MOCKING: "true" | "false";
     /** 비어 있으면 PostHog 사용 기록을 켜지 않아요 */
     POSTHOG_KEY: string;
-    POSTHOG_HOST: string;
     /** 비어 있으면 Sentry 오류 보고를 켜지 않아요 */
     SENTRY_DSN: string;
     /** Sentry 배포 환경 이름. 예: `production`, `development` */

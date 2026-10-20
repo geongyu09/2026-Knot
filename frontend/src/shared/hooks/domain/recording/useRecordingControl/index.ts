@@ -13,6 +13,7 @@ import useUploadRecordingAudioMutation from "@api/mutations/useUploadRecordingAu
 import { recordingKeys } from "@api/queryKey/recording";
 import { RECORDING_AUDIO_MODE } from "@constants/recording";
 import useNavigateToRecordingDocuments from "@hooks/domain/recording/useNavigateToRecordingDocuments";
+import useRecordingEndedAnalytics from "@hooks/domain/recording/useRecordingEndedAnalytics";
 import useNavigateToWorkspaceHome from "@hooks/domain/workspace/useNavigateToWorkspaceHome";
 import {
   type RecordingSession,
@@ -579,7 +580,7 @@ const useRecordingControl = () => {
    * 결과는 `uploaded`(업로드 완료를 확인받음. PCM은 봉인해 끝냄)·`notUploaded`(끝냈지만 오디오를 올리지 못함)·`notEnded`예요.
    * `notEnded`는 이미 끝내는 중이거나 종료 요청이 실패해 녹음을 이어 가는 경우예요
    */
-  const endRecordingWithoutConfirm = useCallback(async () => {
+  const endAndUploadRecording = useCallback(async () => {
     const { session, isEnding, beginEnding } = useRecordingStore.getState();
     const proof = getRecordingControlProof();
     if (!session || !proof || isEnding) return "notEnded";
@@ -619,6 +620,9 @@ const useRecordingControl = () => {
     endRecordingSession,
     uploadRecordedAudio,
   ]);
+  // 확인 창과 워크스페이스 옮기기가 모두 이 함수로 끝내요. 끝낸 결과는 사용 기록으로도 보내요
+  const { endAndTrackRecording: endRecordingWithoutConfirm } =
+    useRecordingEndedAnalytics(endAndUploadRecording);
 
   const endRecording = useCallback(() => {
     // 끝내는 동안 다시 눌러도 이미 끝내는 중이라 확인 창을 또 띄우지 않아요

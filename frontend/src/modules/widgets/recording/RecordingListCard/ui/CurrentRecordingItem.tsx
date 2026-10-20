@@ -1,3 +1,4 @@
+import type { Theme } from "@emotion/react";
 import styled from "@emotion/styled";
 import Button from "@primitives/ui/Button";
 
@@ -10,10 +11,12 @@ interface CurrentRecordingItemProps {
   recordingStatus: CurrentRecordingStatus;
   /** 녹음 이름. 예: `유월 님의 녹음` */
   title: string;
-  /** 녹음한 시간. 예: `12:48` */
-  elapsedTime: string;
-  /** 넘기지 않으면 「녹음 화면으로」 버튼을 숨겨요 */
+  /** 녹음한 시간. 예: `12:48`. 문서 정리 중에는 넘기지 않아 상태 줄에 시간이 없어요 */
+  elapsedTime?: string;
+  /** 넘기면 녹음 화면으로 가는 「녹음 화면으로」 버튼을 보여 줘요 */
   onOpenRecording?: () => void;
+  /** 넘기면 문서 정리 화면으로 가는 「보기」 버튼을 보여 줘요 */
+  onOpenRecordingDocuments?: () => void;
 }
 
 /**
@@ -24,9 +27,9 @@ export default function CurrentRecordingItem({
   title,
   elapsedTime,
   onOpenRecording,
+  onOpenRecordingDocuments,
 }: CurrentRecordingItemProps) {
   const { label, hint } = RECORDING_STATUS_COPY[recordingStatus];
-  const isPaused = recordingStatus === "paused";
 
   return (
     <Container>
@@ -35,10 +38,10 @@ export default function CurrentRecordingItem({
       </IconChip>
 
       <Info>
-        <Status $isPaused={isPaused}>
-          <StatusDot aria-hidden="true" $isPaused={isPaused} />
+        <Status $recordingStatus={recordingStatus}>
+          <StatusDot aria-hidden="true" $recordingStatus={recordingStatus} />
           <StatusText>
-            {label} · {elapsedTime}
+            {elapsedTime === undefined ? label : `${label} · ${elapsedTime}`}
           </StatusText>
         </Status>
         <Title>{title}</Title>
@@ -50,9 +53,22 @@ export default function CurrentRecordingItem({
           녹음 화면으로
         </Button>
       )}
+      {onOpenRecordingDocuments && (
+        <Button size="sm" variant="outline" onClick={onOpenRecordingDocuments}>
+          보기
+        </Button>
+      )}
     </Container>
   );
 }
+
+/** 상태 줄의 글자색과 점 색. 녹음 중은 빨강, 일시정지는 회색, 문서 정리 중은 청록이에요 */
+const statusColors = (theme: Theme) =>
+  ({
+    recording: { text: theme.sub.warning[600], dot: theme.sub.warning[600] },
+    paused: { text: theme.neutral[600], dot: theme.neutral[400] },
+    organizing: { text: theme.sub.accent[700], dot: theme.sub.accent[500] },
+  }) satisfies Record<CurrentRecordingStatus, { text: string; dot: string }>;
 
 const Container = styled.div`
   display: flex;
@@ -86,23 +102,22 @@ const Info = styled.div`
   min-width: 0;
 `;
 
-/** 녹음 중이면 빨간 글자, 일시정지면 회색 글자예요. */
-const Status = styled.p<{ $isPaused: boolean }>`
+const Status = styled.p<{ $recordingStatus: CurrentRecordingStatus }>`
   display: flex;
   align-items: center;
   gap: 0.375rem; /* 6px */
-  color: ${({ theme, $isPaused }) =>
-    $isPaused ? theme.neutral[600] : theme.sub.warning[600]};
+  color: ${({ theme, $recordingStatus }) =>
+    statusColors(theme)[$recordingStatus].text};
   ${({ theme }) => theme.text.caption02};
 `;
 
-const StatusDot = styled.span<{ $isPaused: boolean }>`
+const StatusDot = styled.span<{ $recordingStatus: CurrentRecordingStatus }>`
   flex-shrink: 0;
   width: 0.5rem; /* 8px */
   height: 0.5rem;
   border-radius: 50%;
-  background-color: ${({ theme, $isPaused }) =>
-    $isPaused ? theme.neutral[400] : theme.sub.warning[600]};
+  background-color: ${({ theme, $recordingStatus }) =>
+    statusColors(theme)[$recordingStatus].dot};
 `;
 
 const StatusText = styled.span`

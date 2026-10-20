@@ -431,7 +431,7 @@ describe("Sentry 보고", () => {
   });
 
   // 리플레이는 첫 화면 번들에서 빼고 init 뒤에 받아 붙여요. SDK가 실제로 쓰는 설정을 봐요
-  it("리플레이는 오류가 난 세션만 남기고 화면의 글자, 입력, 이미지와 네트워크 내용을 가린다", async () => {
+  it("리플레이는 오류가 난 세션만 남기고 화면의 글자, 입력, 이미지는 보이게, 네트워크 내용은 남기지 않는다", async () => {
     const client = Sentry.getClient();
 
     expect(client?.getOptions()).toMatchObject({
@@ -440,15 +440,43 @@ describe("Sentry 보고", () => {
     });
     await vi.waitFor(() =>
       expect(client?.getIntegrationByName("Replay")).toMatchObject({
-        _recordingOptions: { maskAllText: true, maskAllInputs: true },
+        _recordingOptions: { maskAllText: false, maskAllInputs: false },
         _initialOptions: {
-          blockAllMedia: true,
+          blockAllMedia: false,
           networkDetailAllowUrls: [],
           networkCaptureBodies: false,
         },
       }),
     );
   });
+
+  // SDK는 글자를 보이게 해도 이 속성들은 따로 가려요. 기록할 때 쓰는 함수로 봐요
+  it.each(["title", "placeholder", "aria-label"])(
+    "리플레이는 %s 속성 값도 가리지 않는다",
+    async (attribute) => {
+      const replay = await vi.waitFor(() => {
+        const integration = Sentry.getClient()?.getIntegrationByName("Replay");
+        expect(integration).toBeDefined();
+        return integration as unknown as {
+          _recordingOptions: {
+            maskAttributeFn: (
+              key: string,
+              value: string,
+              element: HTMLElement,
+            ) => string;
+          };
+        };
+      });
+
+      expect(
+        replay._recordingOptions.maskAttributeFn(
+          attribute,
+          "무엇이든 요청하세요",
+          document.createElement("button"),
+        ),
+      ).toBe("무엇이든 요청하세요");
+    },
+  );
 });
 
 describe("성능 측정 비율", () => {
@@ -465,6 +493,40 @@ describe("성능 측정 비율", () => {
     initSentry({ dsn: SENTRY_DSN, environment, transport: testTransport });
 
     expect(Sentry.getClient()?.getOptions().tracesSampleRate).toBe(sampleRate);
+  });
+});
+
+describe("중계 경로로 보내기", () => {
+  afterEach(async () => {
+    sentEvents.length = 0;
+    await Sentry.close();
+  });
+
+  it("광고 차단에 막히지 않게 Sentry 주소가 아니라 우리 주소의 중계 경로(/relay/s)로 보낸다", () => {
+    const transport = vi.fn(testTransport);
+
+    initSentry({ dsn: SENTRY_DSN, environment: "test", transport });
+
+    expect(transport).toHaveBeenCalledWith(
+      expect.objectContaining({ url: "/relay/s" }),
+    );
+  });
+
+  // 중계 Worker는 봉투 머리의 DSN을 보고 우리 프로젝트일 때만 넘겨요
+  it("보내는 봉투의 머리(첫 줄)에 DSN을 넣는다", async () => {
+    initSentry({
+      dsn: SENTRY_DSN,
+      environment: "test",
+      transport: testTransport,
+    });
+
+    sendEnvelope.mockClear();
+    Sentry.captureException(new Error("중계로 보낼 오류"));
+    await Sentry.flush();
+
+    const [[{ body }]] = sendEnvelope.mock.calls;
+    const [header] = textOf(body).split("\n");
+    expect(JSON.parse(header)).toMatchObject({ dsn: SENTRY_DSN });
   });
 });
 

@@ -12,8 +12,9 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { saveLastConversationId } from "@utils/lastConversation";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import WorkspaceGnb from ".";
 
@@ -25,6 +26,14 @@ const HOME_PATH = getRouterPath({
 const CHAT_PATH = getRouterPath({
   routeKey: "CHAT",
   params: { workspaceId: WORKSPACE_ID },
+});
+const LAST_CONVERSATION_ID = 10;
+const LAST_CONVERSATION_PATH = getRouterPath({
+  routeKey: "CHAT_SESSION",
+  params: {
+    workspaceId: WORKSPACE_ID,
+    sessionId: String(LAST_CONVERSATION_ID),
+  },
 });
 const DOCUMENTS_PATH = getRouterPath({
   routeKey: "DOCUMENTS",
@@ -67,6 +76,7 @@ const renderGnb = (initialPath = HOME_PATH) => {
     [
       { path: PATH_ROUTE.WORKSPACE_HOME, element },
       { path: PATH_ROUTE.CHAT, element },
+      { path: PATH_ROUTE.CHAT_SESSION, element },
       { path: PATH_ROUTE.DOCUMENTS, element },
       { path: PATH_ROUTE.DOCUMENT, element },
     ],
@@ -91,6 +101,9 @@ const renderGnb = (initialPath = HOME_PATH) => {
 };
 
 describe("WorkspaceGnb", () => {
+  // 마지막으로 본 대화는 브라우저에 남아 테스트끼리 이어지므로 비워요
+  afterEach(() => sessionStorage.clear());
+
   it("홈 화면에서는 내비 필의 홈만 현재 화면으로 표시한다", () => {
     const { homeButton, exploreButton, documentsButton } = renderGnb();
 
@@ -99,7 +112,7 @@ describe("WorkspaceGnb", () => {
     expect(documentsButton).not.toHaveAttribute("aria-current");
   });
 
-  it("탐색을 누르면 탐색 화면으로 이동하고 표시가 옮겨간다", async () => {
+  it("이 워크스페이스에서 본 대화가 없으면 탐색을 눌렀을 때 새 대화로 이동하고 표시가 옮겨간다", async () => {
     const { router, exploreButton } = renderGnb();
 
     await act(async () => {
@@ -114,6 +127,38 @@ describe("WorkspaceGnb", () => {
     expect(screen.getByRole("button", { name: "홈" })).not.toHaveAttribute(
       "aria-current",
     );
+  });
+
+  it("이 워크스페이스에서 마지막으로 본 대화가 있으면 탐색을 눌렀을 때 그 대화로 이동한다", async () => {
+    saveLastConversationId({
+      workspaceId: WORKSPACE_ID,
+      conversationId: LAST_CONVERSATION_ID,
+    });
+    const { router, exploreButton } = renderGnb();
+
+    await act(async () => {
+      fireEvent.click(exploreButton);
+    });
+
+    expect(router.state.location.pathname).toBe(LAST_CONVERSATION_PATH);
+    expect(screen.getByRole("button", { name: "탐색" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  it("다른 워크스페이스에서 본 대화로는 이동하지 않는다", async () => {
+    saveLastConversationId({
+      workspaceId: "2",
+      conversationId: LAST_CONVERSATION_ID,
+    });
+    const { router, exploreButton } = renderGnb();
+
+    await act(async () => {
+      fireEvent.click(exploreButton);
+    });
+
+    expect(router.state.location.pathname).toBe(CHAT_PATH);
   });
 
   it("문서를 누르면 문서 목록 화면으로 이동하고 표시가 옮겨간다", async () => {
