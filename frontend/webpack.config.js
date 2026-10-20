@@ -113,6 +113,9 @@ export default (env, argv) => {
                   ],
                   "@babel/preset-typescript", // 타입스크립트를 변환해요
                 ],
+                // 개발 모드에서만 JSX에 소스 위치 속성을 붙여 LocatorJS가 Option(Alt)+클릭으로 에디터를 열게 해요.
+                // 패키지 이름만 쓰면 babel이 @locator/babel-plugin-babel-jsx로 바꿔 찾으므로 /dist까지 적어요
+                plugins: isDev ? ["@locator/babel-jsx/dist"] : [],
               },
             },
           ],
