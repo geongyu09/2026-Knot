@@ -24,7 +24,7 @@ const resetRecording = () => {
 };
 
 /**
- * 워크스페이스 홈의 「진행 중인 녹음」 카드예요. 내 최신 녹음의 녹음·문서 생성 진행 상태 하나만 보여 줘요.
+ * 워크스페이스 홈의 「진행 중인 녹음」 카드예요. 내가 지금 진행 중인 녹음 하나만 보여 줘요.
  *
  * **동작 규칙**
  * - 다른 사람의 녹음은 보이지 않고, 개수도 표시하지 않아요. 함께 녹음·여러 녹음은 이후 버전이에요.
@@ -35,8 +35,8 @@ const resetRecording = () => {
  * - 녹음이 없으면 빈 상태 문구로 독의 마이크에서 녹음을 시작하도록 안내해요.
  * - 녹음 상태를 불러오지 못하면 칸 자리에 실패 안내와 「다시 시도」를 둬요. 「다시 시도」는 이 카드의 녹음만 다시 불러와요. 표시만 실패한 것이라 녹음은 멈추지 않고, 이 탭에서 시작한 녹음은 그대로 보여요.
  * - 녹음이나 내 닉네임을 불러오는 동안에는 칸 자리를 뼈대로 채워 카드 높이가 흔들리지 않게 해요. 카드 제목은 그대로 보여요.
- * - 홈에 들어올 때와 다른 창에서 돌아올 때 녹음을 다시 불러와요. 진행 상태가 있으면 5초마다 갱신해요.
- * - 문서 생성 중이면 녹음 시간은 멈추고 「보기」 버튼으로 해당 녹음의 문서 정리 화면에 가요. 완료·실패·내용 없음·폐기는 빈 상태로 돌아가요.
+ * - 홈에 들어올 때와 다른 창에서 돌아올 때 녹음을 다시 불러와요.
+ * - 문서 정리 중·문서 정리 실패 상태는 아직 다루지 않아 녹음이 없는 모습으로 보여요.
  */
 const meta = {
   title: "Recording/RecordingListCard",
@@ -105,23 +105,6 @@ export const Paused: Story = {
     design: {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2377-35853",
-    },
-  },
-};
-
-/** 녹음을 끝내고 오디오 준비·전사·문서 생성을 기다릴 때예요. 「보기」로 문서 정리 화면에 갈 수 있어요. */
-export const Processing: Story = {
-  parameters: {
-    docs: ISOLATED_DOCS,
-    msw: {
-      handlers: {
-        currentRecording: http.get(CURRENT_URL, () =>
-          HttpResponse.json({
-            ...currentRecordingResponse,
-            status: "PROCESSING",
-          }),
-        ),
-      },
     },
   },
 };

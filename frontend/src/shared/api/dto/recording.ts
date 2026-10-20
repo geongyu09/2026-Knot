@@ -187,10 +187,17 @@ export class RecordingAudioSaveDto {
 
 // GET /api/v1/workspaces/{workspaceId}/recordings/current
 
-/** 현재 녹음의 화면용 상태. `PROCESSING`은 종료 후 오디오 준비·전사·문서 생성 중이에요 */
-export type CurrentRecordingStatus = "RECORDING" | "PAUSED" | "PROCESSING";
+/**
+ * 현재 녹음의 화면용 종합 상태. `ENDED`는 종료 후 최종 오디오 업로드 확인 전,
+ * `PROCESSING`은 전사·문서 작업 중, `FAILED`는 처리 실패예요
+ */
+export type CurrentRecordingStatus =
+  "RECORDING" | "PAUSED" | "ENDED" | "PROCESSING" | "FAILED";
 
-/** 현재 워크스페이스에서 내가 시작한 최신 녹음 한 건의 서버 응답 모양 */
+/**
+ * 내 현재 녹음 조회의 서버 응답 모양.
+ * 명세의 종료 시각·실패 원인·단계별 처리 상태 필드는 화면에서 쓰지 않아 담지 않아요
+ */
 export interface GetCurrentRecordingResponseRaw {
   recordingId: number;
   status: CurrentRecordingStatus;
@@ -202,7 +209,7 @@ export interface GetCurrentRecordingResponseRaw {
 export class GetCurrentRecordingResponseDto {
   /** 녹음 세션 ID */
   recordingId: number;
-  /** 화면에 표시할 진행 상태. 최신 녹음이 완료·실패·폐기됐으면 본문 없이 204예요 */
+  /** 화면용 종합 상태. 녹음 중·일시정지인 녹음이 먼저 오고, 없으면 가장 최근의 종료·처리 중·실패 녹음이 와요 */
   status: CurrentRecordingStatus;
   /** 녹음 시작 시각(ISO 8601) */
   startedAt: string;
