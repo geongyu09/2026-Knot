@@ -383,6 +383,25 @@ describe("Sentry 보고", () => {
     });
   });
 
+  it("응답을 받지 못한 요청은 warning, 그 밖의 오류는 error로 보낸다", async () => {
+    mockServer.use(
+      http.get(`*${TEST_PATH}`, () => HttpResponse.error()),
+      http.post(`*${TEST_PATH}`, () => new HttpResponse(null, { status: 500 })),
+    );
+
+    captureRequestError({
+      error: await httpClient.get(TEST_PATH).catch((e: unknown) => e),
+      source: "query",
+    });
+    captureRequestError({
+      error: await httpClient.post(TEST_PATH).catch((e: unknown) => e),
+      source: "mutation",
+    });
+
+    const events = await flushEvents();
+    expect(events.map(({ level }) => level)).toEqual(["warning", "error"]);
+  });
+
   it("요청 실패에는 요청 정보를 태그로, 요청 ID를 context로 붙인다", async () => {
     mockServer.use(
       http.get("*/api/v1/workspaces/:workspaceId/documents", () =>

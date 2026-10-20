@@ -12,7 +12,10 @@ import {
   scrubSentryEvent,
   scrubSentrySpan,
 } from "@utils/scrubSentryEvent";
-import { shouldReportError } from "@utils/shouldReportError";
+import {
+  getErrorReportLevel,
+  shouldReportError,
+} from "@utils/shouldReportError";
 import type { RootOptions } from "react-dom/client";
 import { useLayoutEffect } from "react";
 import { matchPath, useLocation, useRoutes } from "react-router";
@@ -82,16 +85,17 @@ const watchPageHiding = () => {
 };
 
 /**
- * httpClient 요청 실패에 묶음 기준(fingerprint), 요청 정보 태그, 요청 ID context를 붙여요. 그 밖의 오류는 그대로 둬요.
+ * 오류의 심각도(level)를 정하고, httpClient 요청 실패에는 묶음 기준(fingerprint), 요청 정보 태그, 요청 ID context를 붙여요.
  *
  * 수집 경로마다 붙이지 않고 `beforeSend` 한 곳에서 붙여, 처리하지 않은 `mutateAsync` 실패(`unhandledrejection`)도 같은 모양으로 남겨요.
  */
-const describeRequestError = (event: ErrorEvent, error: unknown) => {
+const describeError = (event: ErrorEvent, error: unknown) => {
   const fingerprint = getRequestErrorFingerprint(error);
   const context = getRequestErrorContext(error);
 
   return {
     ...event,
+    level: getErrorReportLevel(error),
     ...(fingerprint && { fingerprint }),
     ...(context && { tags: { ...event.tags, ...context.tags } }),
     ...(context?.requestId && {
@@ -126,7 +130,7 @@ const beforeSend = (event: ErrorEvent, hint: EventHint) => {
     return null;
   }
 
-  return scrubSentryEvent(describeRequestError(event, hint.originalException));
+  return scrubSentryEvent(describeError(event, hint.originalException));
 };
 
 interface InitSentryParams {

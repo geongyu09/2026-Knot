@@ -166,3 +166,18 @@ export const shouldReportError = ({
 
   return true;
 };
+
+/**
+ * Sentry 이벤트의 심각도(level)를 정해요. 보고하기로 한 오류에만 써요.
+ *
+ * 응답을 받지 못한 요청(연결 실패, 시간 초과)은 사용자의 네트워크 탓일 수 있어 `warning`으로 낮추고,
+ * Sentry 알림은 영향을 받은 사용자 수로 판단해요. 그 밖의 오류(5xx, 계약 위반 4xx, 남은 403, 렌더링 오류)는 `error`예요.
+ *
+ * @example
+ * getErrorReportLevel(error); // "warning"
+ */
+export const getErrorReportLevel = (error: unknown) =>
+  toRequestFailure(error)?.type === HTTP_ERROR_TYPE.network ||
+  isFetchNetworkError(error)
+    ? ("warning" as const)
+    : ("error" as const);

@@ -11,7 +11,7 @@ import axios, { AxiosError } from "axios";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { shouldReportError } from ".";
+import { getErrorReportLevel, shouldReportError } from ".";
 
 const httpError = (type: HttpErrorType, code?: string) =>
   createHttpError({ type, code });
@@ -244,5 +244,33 @@ describe("shouldReportError", () => {
 
   it("요청과 관계없는 렌더링 오류는 보고한다", () => {
     expect(isReported(new Error("렌더링 실패"))).toBe(true);
+  });
+});
+
+describe("getErrorReportLevel", () => {
+  it.each([
+    ["응답을 받지 못한 요청 실패", httpError(HTTP_ERROR_TYPE.network)],
+    [
+      "시간 초과 실패",
+      createHttpError({
+        type: HTTP_ERROR_TYPE.network,
+        cause: new AxiosError(
+          "timeout of 10000ms exceeded",
+          AxiosError.ECONNABORTED,
+        ),
+      }),
+    ],
+    ["응답을 받지 못한 SSE 요청 실패", new TypeError("Failed to fetch")],
+  ])("%s는 warning이다", (_, error) => {
+    expect(getErrorReportLevel(error)).toBe("warning");
+  });
+
+  it.each([
+    ["5xx", httpError(HTTP_ERROR_TYPE.serverError)],
+    ["요청 계약 위반 400", httpError(HTTP_ERROR_TYPE.badRequest)],
+    ["SSE 5xx", sseError(503)],
+    ["렌더링", new Error("렌더링 실패")],
+  ])("%s 오류는 error다", (_, error) => {
+    expect(getErrorReportLevel(error)).toBe("error");
   });
 });
