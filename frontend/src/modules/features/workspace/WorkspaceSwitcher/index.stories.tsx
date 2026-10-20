@@ -77,6 +77,7 @@ const clickLeaveWorkspace = async (canvasElement: HTMLElement) => {
  * - 메뉴에는 내가 속한 워크스페이스 목록, 「새 워크스페이스 만들기」, 「워크스페이스 나가기」가 차례로 있어요. 지금 워크스페이스는 체크 없이 배경과 글자색으로만 구분해요.
  * - 다른 워크스페이스를 고르면 그 워크스페이스 홈으로, 「새 워크스페이스 만들기」를 고르면 워크스페이스 생성 화면으로 옮겨 가요. 지금 워크스페이스를 고르면 메뉴만 닫혀요.
  * - 「워크스페이스 나가기」를 고르면 내 처지에 맞는 확인 창이 떠요. 일반 멤버는 나갈지 묻는 창, 다른 멤버가 있는 owner는 owner를 넘길 멤버를 고르는 창, 혼자면 워크스페이스도 함께 삭제된다고 알리는 창이에요.
+ * - owner를 넘길 멤버 목록을 불러오지 못하면 목록 자리에 「멤버 목록을 불러오지 못했어요. 다시 시도해 주세요.」와 「다시 시도」를 둬요. 「다시 시도」는 멤버 목록만 다시 받아요.
  * - 멤버를 고르는 창은 고르기 전에는 「넘기고 나가기」를 누를 수 없어요. 「워크스페이스 삭제하기」를 누르면 삭제 확인 창으로 바뀌고, 거기서 「취소」하면 고른 멤버가 남은 채로 돌아와요. 잘못 눌러 고른 멤버를 잃지 않도록, 고른 뒤에는 바깥을 눌러도 닫히지 않고 「취소」나 `Esc`로 닫아요.
  * - 어떤 창을 띄울지는 워크스페이스 조회로 받은 내 역할과 멤버 수로 정하고, owner를 넘길 멤버 목록은 창이 뜬 뒤에 받아 와요.
  * - 「나가기」나 「넘기고 나가기」를 누르면 창을 닫고 서버에 요청해요. 성공하면 이 탭에서 하던 녹음을 버리고, 남은 워크스페이스나 워크스페이스 선택 화면으로 옮겨 가요. 실패하면 화면과 녹음을 그대로 둬요.
@@ -188,6 +189,27 @@ export const LeaveAsOwner: Story = {
     design: {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2979-13959",
+    },
+  },
+  play: async ({ canvasElement }) => {
+    await clickLeaveWorkspace(canvasElement);
+  },
+};
+
+/**
+ * owner가 「워크스페이스 나가기」를 골랐는데 넘길 멤버 목록을 불러오지 못했을 때예요. 서버 오류와 네트워크 문제가 모두 이 모습이에요.
+ * 창은 그대로 두고 목록 자리에 안내와 「다시 시도」를 보여 줘요. 이 스토리에서는 「다시 시도」를 눌러도 계속 실패해요.
+ */
+export const LeaveAsOwnerCandidatesLoadFailed: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    msw: {
+      handlers: {
+        ownershipTransferCandidates: http.get(
+          "*/api/v1/workspaces/:workspaceId/ownership-transfer-candidates",
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      },
     },
   },
   play: async ({ canvasElement }) => {
