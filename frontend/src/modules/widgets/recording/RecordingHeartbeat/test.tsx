@@ -518,4 +518,90 @@ describe("RecordingHeartbeat", () => {
     expect(requests).toEqual(["heartbeat"]);
     expect(useRecordingStore.getState().status).toBe("recording");
   });
+
+  describe("최대 녹음 시간 15분 전 안내 (STT-R15)", () => {
+    const WARNING_BEFORE_MS = 15 * 60 * 1000;
+    const WARNING = TOAST_MESSAGES.RECORDING_TIME_LIMIT_APPROACHING.message;
+    /** 주의 토스트가 떠 있는 시간과 사라지는 시간 */
+    const CAUTION_TOAST_MS = 8000;
+    const TOAST_LEAVE_MS = 250;
+
+    beforeEach(() => {
+      // 토스트가 떠 있는 시간까지 세야 해서 시계를 모두 가짜로 돌려요. 10초 주기 신호가 나가기 전에 확인을 마쳐요
+      vi.useFakeTimers({
+        toFake: [
+          "setTimeout",
+          "clearTimeout",
+          "setInterval",
+          "clearInterval",
+          "Date",
+        ],
+      });
+    });
+
+    const advance = (ms: number) => {
+      act(() => {
+        vi.advanceTimersByTime(ms);
+      });
+    };
+
+    it("남은 시간이 15분에 닿으면 생존 신호를 보내지 않고 주의 토스트를 띄운다", async () => {
+      const requests = collectRequests();
+      await startRecording();
+      renderRecordingHeartbeat();
+      leaveUntilMaxDuration(WARNING_BEFORE_MS + 1000);
+
+      advance(999);
+      expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
+
+      advance(1);
+      expect(screen.getByText(WARNING)).toBeInTheDocument();
+      expect(requests).toEqual([]);
+    });
+
+    it("일시정지 중에는 띄우지 않는다", async () => {
+      await startRecording();
+      renderRecordingHeartbeat();
+      await act(() => useRecordingStore.getState().pauseRecording());
+      leaveUntilMaxDuration(WARNING_BEFORE_MS + 1000);
+
+      advance(2000);
+
+      expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
+    });
+
+    it("녹음한 시간이 다시 맞춰져 15분 전을 또 지나도 한 녹음에 한 번만 띄운다", async () => {
+      await startRecording();
+      renderRecordingHeartbeat();
+      leaveUntilMaxDuration(WARNING_BEFORE_MS + 1000);
+      advance(1000);
+      expect(screen.getByText(WARNING)).toBeInTheDocument();
+
+      // 서버 시간이 조금 늦어 15분 전보다 앞선 시간으로 다시 맞춰진 상황이에요
+      leaveUntilMaxDuration(WARNING_BEFORE_MS + 1000);
+      advance(1000);
+
+      // 다시 띄웠다면 떠 있는 시간을 처음부터 다시 세서 아직 남아 있어요
+      advance(CAUTION_TOAST_MS - 1000);
+      advance(TOAST_LEAVE_MS);
+      expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
+    });
+
+    it("새로 시작한 녹음에서는 다시 띄운다", async () => {
+      await startRecording();
+      renderRecordingHeartbeat();
+      leaveUntilMaxDuration(WARNING_BEFORE_MS + 1000);
+      advance(1000);
+      advance(CAUTION_TOAST_MS);
+      advance(TOAST_LEAVE_MS);
+      expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
+
+      act(() => useRecordingStore.getState().discardRecording());
+      await startRecording(expected.recordingId + 1);
+      leaveUntilMaxDuration(WARNING_BEFORE_MS + 1000);
+      advance(1000);
+
+      expect(screen.getByText(WARNING)).toBeInTheDocument();
+    });
+  });
 });
