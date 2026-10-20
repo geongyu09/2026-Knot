@@ -284,6 +284,56 @@ describe("RecordingHeartbeat", () => {
     expect(getRecordingControlProof()).toBeNull();
   });
 
+  it("탭이 열려 있는 동안 서버가 연결 끊김으로 끝낸 녹음(ENDED, CONNECTION_EXPIRED)이면 오디오를 올린 뒤 홈으로 가며 주의 토스트로 알린다 (STT-R26)", async () => {
+    respondHeartbeat(() =>
+      HttpResponse.json({
+        ...recordingHeartbeatResponse,
+        status: "ENDED",
+        endReason: "CONNECTION_EXPIRED",
+      }),
+    );
+    const requests = collectRequests();
+    await startRecording();
+    const { router } = renderRecordingHeartbeat();
+
+    passHeartbeatInterval();
+
+    await waitFor(() => expect(router.state.location.pathname).toBe(HOME_PATH));
+    expect(requests).toEqual(["heartbeat", ...UPLOAD_REQUESTS]);
+    expect(
+      await screen.findByText(TOAST_MESSAGES.RECORDING_CONNECTION_LOST.message),
+    ).toBeInTheDocument();
+  });
+
+  it("연결 끊김으로 끝난 녹음의 오디오를 끝내 올리지 못하면 연결 끊김 대신 업로드 실패로 알린다", async () => {
+    respondHeartbeat(() =>
+      HttpResponse.json({
+        ...recordingHeartbeatResponse,
+        status: "ENDED",
+        endReason: "CONNECTION_EXPIRED",
+      }),
+    );
+    mockServer.use(
+      http.post(
+        "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/audio-upload-url",
+        () => HttpResponse.json({ code: "INVALID_REQUEST" }, { status: 400 }),
+      ),
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await startRecording();
+    const { router } = renderRecordingHeartbeat();
+
+    passHeartbeatInterval();
+
+    await waitFor(() => expect(router.state.location.pathname).toBe(HOME_PATH));
+    expect(
+      await screen.findByText(TOAST_MESSAGES.RECORDING_UPLOAD_FAILED.message),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(TOAST_MESSAGES.RECORDING_CONNECTION_LOST.message),
+    ).not.toBeInTheDocument();
+  });
+
   it.each([
     [
       "DISCARDED",
@@ -379,6 +429,10 @@ describe("RecordingHeartbeat", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe(HOME_PATH));
     expect(requests).toEqual(["heartbeat", ...UPLOAD_REQUESTS]);
     expect(useRecordingStore.getState().status).toBe("idle");
+    // 연결이 끊긴 게 아니라 연결 끊김 안내를 띄우지 않아요
+    expect(
+      screen.queryByText(TOAST_MESSAGES.RECORDING_CONNECTION_LOST.message),
+    ).not.toBeInTheDocument();
   });
 
   it("일시정지 중에는 2시간 신호를 보내지 않고, 이어서 녹음하면 남은 시간 뒤에 보낸다", async () => {

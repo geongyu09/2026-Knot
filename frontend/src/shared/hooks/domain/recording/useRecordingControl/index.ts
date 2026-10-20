@@ -241,20 +241,30 @@ const useRecordingControl = () => {
     };
 
     try {
-      const { status, elapsedMillis, endedAt } = await sendRecordingHeartbeat({
-        ...session,
-        ...proof,
-      });
+      const { status, elapsedMillis, endedAt, endReason } =
+        await sendRecordingHeartbeat({
+          ...session,
+          ...proof,
+        });
       if (isLateResponse()) return;
+
+      const isConnectionExpired = endReason === "CONNECTION_EXPIRED";
 
       if (status === "ENDED" && session.audioMode === "PCM16_CHUNKS_V1") {
         // 서버가 먼저 끝낸 녹음은 봉인할 수 없어 남은 소리를 버리고, 예약한 조각만 시한 안에 올려요
         closeRecording(session.workspaceId, acceptUntilFrom(endedAt));
+        if (isConnectionExpired) {
+          show(TOAST_MESSAGES.RECORDING_CONNECTION_LOST);
+        }
       } else if (status === "ENDED") {
         // 서버가 이미 끝낸 녹음이라 종료 요청 없이 여기까지의 오디오를 올려요
         const audio = await useRecordingStore.getState().stopRecording();
-        await uploadRecordedAudio({ ...session, audio });
+        const isUploaded = await uploadRecordedAudio({ ...session, audio });
         closeRecording(session.workspaceId);
+        // 올리지 못했으면 문서로 정리하지 않으므로, 업로드 실패 안내만 남겨요
+        if (isUploaded && isConnectionExpired) {
+          show(TOAST_MESSAGES.RECORDING_CONNECTION_LOST);
+        }
       } else if (status === "DISCARDED") {
         closeRecording(session.workspaceId);
       } else {

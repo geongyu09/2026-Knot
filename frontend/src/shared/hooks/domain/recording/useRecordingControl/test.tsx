@@ -1,11 +1,12 @@
 import { createHttpError, HTTP_ERROR_TYPE } from "@api/httpClient/error";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
 import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { useRecordingStore } from "@store/recordingStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, screen, waitFor } from "@testing-library/react";
 import {
   clearRecordingStartProof,
   getRecordingControlProof,
@@ -744,7 +745,7 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
       expect(count("complete")).toBe(1);
     });
 
-    it("생존 신호가 서버가 끝낸 녹음이라 답하면 남은 소리를 봉인하지 않고 버리고, 예약한 조각만 마저 올린다", async () => {
+    it("생존 신호가 연결 끊김으로 서버가 끝낸 녹음이라 답하면 남은 소리를 봉인하지 않고 버리고, 예약한 조각만 마저 올리며 주의 토스트로 알린다", async () => {
       collectRequests();
       const { respond } = holdResponses("complete");
       mockServer.use(
@@ -773,6 +774,11 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
       expect(collector.isClosed).toBe(true);
       expect(events).not.toContain("flush");
       expect(endRecordingApi).not.toHaveBeenCalled();
+      expect(
+        await screen.findByText(
+          TOAST_MESSAGES.RECORDING_CONNECTION_LOST.message,
+        ),
+      ).toBeInTheDocument();
       respond();
       await waitFor(() => expect(isUploadingChunks()).toBe(false));
       expect(count("audio-chunks")).toBe(1);
