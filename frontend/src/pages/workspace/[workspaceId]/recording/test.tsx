@@ -1,6 +1,7 @@
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { useRecordingStore } from "@store/recordingStore";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
@@ -42,7 +43,11 @@ const renderRecordingPage = () => {
   const router = createMemoryRouter(
     [
       {
-        element: <Outlet />,
+        element: (
+          <ToastProvider>
+            <Outlet />
+          </ToastProvider>
+        ),
         children: [
           { path: PATH_ROUTE.WORKSPACE_HOME, element: <p>홈 화면</p> },
           { path: PATH_ROUTE.RECORDING, element: <RecordingPage /> },

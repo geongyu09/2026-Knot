@@ -5,6 +5,7 @@ import { workspaceDetailResponse } from "@api/mock/responses/workspace";
 import { mockServer } from "@api/mock/server";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -33,7 +34,16 @@ const renderSidebar = () => {
     defaultOptions: { queries: { retry: false } },
   });
   const router = createMemoryRouter(
-    [{ path: PATH_ROUTE.WORKSPACE_HOME, element: <WorkspaceSidebar /> }],
+    [
+      {
+        path: PATH_ROUTE.WORKSPACE_HOME,
+        element: (
+          <ToastProvider>
+            <WorkspaceSidebar />
+          </ToastProvider>
+        ),
+      },
+    ],
     { initialEntries: [HOME_PATH] },
   );
 

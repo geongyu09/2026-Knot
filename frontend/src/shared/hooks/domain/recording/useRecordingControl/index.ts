@@ -12,9 +12,11 @@ import useUploadRecordingAudioChunkMutation from "@api/mutations/useUploadRecord
 import useUploadRecordingAudioMutation from "@api/mutations/useUploadRecordingAudioMutation";
 import { recordingKeys } from "@api/queryKey/recording";
 import { RECORDING_AUDIO_MODE } from "@constants/recording";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import useNavigateToRecordingDocuments from "@hooks/domain/recording/useNavigateToRecordingDocuments";
 import useRecordingEndedAnalytics from "@hooks/domain/recording/useRecordingEndedAnalytics";
 import useNavigateToWorkspaceHome from "@hooks/domain/workspace/useNavigateToWorkspaceHome";
+import { useToast } from "@provider/context/toastContext";
 import {
   type RecordingSession,
   useRecordingStore,
@@ -100,7 +102,7 @@ interface UploadRecordedAudioParams {
 
 type ControlProof = NonNullable<ReturnType<typeof getRecordingControlProof>>;
 
-// TODO: 실패 안내·재시도 정책은 기획 논의가 필요해요. 정해질 때까지 안내 UI 없이 콘솔에만 남겨요(#465)
+// TODO: 시작의 그 밖의 실패(`failed`)와 일시정지 실패는 안내 정책이 없어 콘솔에만 남겨요(#465)
 /**
  * 녹음을 시작·일시정지·이어서 녹음·끝내며 서버 녹음 세션과 맞추는 도메인 훅.
  *
@@ -109,13 +111,15 @@ type ControlProof = NonNullable<ReturnType<typeof getRecordingControlProof>>;
  *   돌려준 녹음이 이미 끝났거나 버려졌으면 새 증명으로 한 번만 다시 보내요. 시작 중에 다시 불러도 겹쳐 보내지 않아요.
  *   저장 방식이 PCM이면 시작 요청에 `audioMode`를 싣고, 조각 예약·PUT·저장 확인 요청에 세션과 최초 탭 증명을 묶어 저장소에 넘겨요.
  *   16kHz 수집기를 만들 수 없는 브라우저이거나 서버가 조각 저장을 꺼 뒀으면(409 `AUDIO_MODE_DISABLED`) 안내 없이 WebM으로 시작해요.
+ *   시작 요청이 응답을 받지 못하면(연결 끊김, timeout) `networkFailed`로 돌려줘 부른 쪽이 다시 시도를 안내해요(ERR-18).
  * - 일시정지·이어서 녹음(WebM): 브라우저 녹음을 먼저 바꾸고 서버에 알려요. 서버 요청이 실패해도 다시 보내지 않고
  *   사용자가 누른 대로 둬요.
  * - 일시정지·이어서 녹음(PCM): 일시정지는 남은 소리를 봉인해 큐에 넣은 뒤 서버에 알리고, 이어서 녹음은 서버 재개가
  *   성공한 뒤에 수집을 이어 가요. 연타는 앞 요청이 끝난 뒤 순서대로 처리해요.
+ *   서버 재개가 실패해 일시정지로 남으면 오류 토스트로 알려요.
  * - 끝내기(WebM): 확인 창에서 [녹음 끝내기]를 고르면 종료 요청 → 업로드 URL 발급 → 오디오 PUT → 업로드 완료 확인 → 녹음 비우기 → 그 녹음의 문서 정리 화면.
- *   끝내는 동안에는 확인 창을 다시 띄우지 않아요. 종료가 실패하면 녹음을 그대로 두고,
- *   업로드가 일시 실패하면 URL 발급부터 3번까지 다시 시도하고, 그래도 실패하면 오디오를 버리고 홈으로 가요.
+ *   끝내는 동안에는 확인 창을 다시 띄우지 않아요. 종료가 실패하면 녹음을 그대로 두고 오류 토스트로 알려요(ERR-21).
+ *   업로드가 일시 실패하면 URL 발급부터 3번까지 다시 시도하고, 그래도 실패하면 오디오를 버리고 주의 토스트와 함께 홈으로 가요.
  *   종료 요청이 이미 끝났거나 버려진 녹음으로 거절돼도 정리할 오디오가 없어 홈으로 가요.
  *   워크스페이스를 옮길 때처럼 부른 쪽이 따로 확인받고 갈 곳도 정하면 `endRecordingWithoutConfirm`으로 끝내요.
  * - 끝내기(PCM): 수집을 멈추고 마지막 조각을 봉인한 뒤, 예약 응답을 아직 받지 못한 조각을 `audioSeal`에 담아 종료 요청을 보내요.
@@ -125,12 +129,16 @@ type ControlProof = NonNullable<ReturnType<typeof getRecordingControlProof>>;
  *   큐에 조각이 남아 있는 동안은 새 녹음을 시작하지 않아요(`uploading`). 안내 화면은 #814에서 붙여요.
  * - 생존 신호: 응답의 서버 상태를 따라가요. 서버가 끝낸 녹음(`ENDED`)이면 종료 요청 없이 WebM은 여기까지의 오디오를 올리고,
  *   PCM은 남은 소리를 봉인하지 않고 버린 뒤 예약한 조각만 종료 뒤 120초까지 올려요.
+ *   연결 끊김(`CONNECTION_EXPIRED`)으로 끝난 녹음이면 넘긴 뒤 주의 토스트로 알려요(STT-R26).
  *   버렸거나(`DISCARDED`) 더는 볼 수 없는 녹음(403 `WORKSPACE_ACCESS_DENIED`, 404)이면 오디오와 조각을 버려요. 모두 홈으로 가요.
+ *   이 탭의 제어가 거절되면(403 `RECORDING_CONTROL_DENIED`) 오디오와 조각을 버리고 주의 토스트와 함께 홈으로 가요.
+ *   녹음을 비웠으니 다음 주기부터는 보내지 않아요.
  *   그 밖의 실패는 다시 보내지 않고 부르는 쪽의 다음 주기에 맡겨요. 끝내는 중에는 보내지 않아요.
  * - 일시정지나 이어서 녹음이 서버에서 이미 끝난 녹음(409 `RECORDING_ALREADY_ENDED`)이라고 거절되면 오디오를 버리지 않고
  *   생존 신호를 바로 한 번 보내 그 응답대로 처리해요. 이미 버려진 녹음(409)이면 오디오를 버리고 홈으로 가요.
  *
- * 최초 탭 증명은 sessionStorage에 두고, 실패는 안내 없이 콘솔에만 남겨요.
+ * 최초 탭 증명은 sessionStorage에 두고, 실패는 콘솔에 남겨요. 위에 적은 경우만 토스트나 모달로 안내해요.
+ * 안내하는 이동은 모두 독이 있는 화면끼리라 `show`로 띄운 토스트가 이동 뒤에도 남아요.
  * 독의 마이크 끊김 알림처럼 효과 안에서 부르는 곳이 있어 동작의 참조를 고정해요.
  */
 const useRecordingControl = () => {
@@ -155,6 +163,7 @@ const useRecordingControl = () => {
   const { mutateAsync: completeAudioChunk } =
     useCompleteRecordingAudioChunkMutation();
   const { openEndRecordingDialog } = useEndRecordingDialog();
+  const { show } = useToast();
   const queryClient = useQueryClient();
   const isStartingRef = useRef(false);
 
@@ -185,7 +194,7 @@ const useRecordingControl = () => {
   );
 
   /**
-   * 일시 실패면 URL 발급부터 최대 `AUDIO_UPLOAD_MAX_RETRIES`번 다시 시도해요. 최종 실패는 콘솔에만 남겨요.
+   * 일시 실패면 URL 발급부터 최대 `AUDIO_UPLOAD_MAX_RETRIES`번 다시 시도해요. 최종 실패는 콘솔에 남기고 주의 토스트로 알려요.
    * 업로드 완료를 확인받았으면 `true`를 돌려줘요
    */
   const uploadRecordedAudio = useCallback(
@@ -216,12 +225,14 @@ const useRecordingControl = () => {
             action: "녹음 파일 업로드",
             error,
           });
+          // 오디오를 버려 문서가 만들어지지 않아요. 홈으로 가는 이동은 같은 독 레이아웃 안이라 토스트가 남아요
+          show(TOAST_MESSAGES.RECORDING_UPLOAD_FAILED);
 
           return false;
         }
       }
     },
-    [completeAudioUpload, issueAudioUploadUrl, uploadAudio],
+    [completeAudioUpload, issueAudioUploadUrl, show, uploadAudio],
   );
 
   /**
@@ -243,21 +254,31 @@ const useRecordingControl = () => {
     };
 
     try {
-      const { status, elapsedMillis, endedAt } = await sendRecordingHeartbeat({
-        ...session,
-        ...proof,
-      });
+      const { status, elapsedMillis, endedAt, endReason } =
+        await sendRecordingHeartbeat({
+          ...session,
+          ...proof,
+        });
       heartbeatFailures.reset();
       if (isLateResponse()) return;
+
+      const isConnectionExpired = endReason === "CONNECTION_EXPIRED";
 
       if (status === "ENDED" && session.audioMode === "PCM16_CHUNKS_V1") {
         // 서버가 먼저 끝낸 녹음은 봉인할 수 없어 남은 소리를 버리고, 예약한 조각만 시한 안에 올려요
         closeRecording(session.workspaceId, acceptUntilFrom(endedAt));
+        if (isConnectionExpired) {
+          show(TOAST_MESSAGES.RECORDING_CONNECTION_LOST);
+        }
       } else if (status === "ENDED") {
         // 서버가 이미 끝낸 녹음이라 종료 요청 없이 여기까지의 오디오를 올려요
         const audio = await useRecordingStore.getState().stopRecording();
-        await uploadRecordedAudio({ ...session, audio });
+        const isUploaded = await uploadRecordedAudio({ ...session, audio });
         closeRecording(session.workspaceId);
+        // 올리지 못했으면 문서로 정리하지 않으므로, 업로드 실패 안내만 남겨요
+        if (isUploaded && isConnectionExpired) {
+          show(TOAST_MESSAGES.RECORDING_CONNECTION_LOST);
+        }
       } else if (status === "DISCARDED") {
         closeRecording(session.workspaceId);
       } else {
@@ -265,11 +286,20 @@ const useRecordingControl = () => {
       }
     } catch (error) {
       heartbeatFailures.report({ error, scope: session.recordingId });
-      if (!isLateResponse() && isUnreachableRecordingError(error)) {
+      if (isLateResponse()) return;
+
+      if (isUnreachableRecordingError(error)) {
         closeRecording(session.workspaceId);
+      } else if (
+        isHttpError(error, HTTP_ERROR_TYPE.forbidden) &&
+        error.code === "RECORDING_CONTROL_DENIED"
+      ) {
+        // 이 탭은 더 제어할 수 없어 서버가 곧 녹음을 끝내요. 오디오도 올릴 수 없어 버리고, 신호를 되풀이하지 않게 녹음을 닫아요
+        closeRecording(session.workspaceId);
+        show(TOAST_MESSAGES.RECORDING_CONTROL_LOST);
       }
     }
-  }, [closeRecording, sendRecordingHeartbeat, uploadRecordedAudio]);
+  }, [closeRecording, sendRecordingHeartbeat, show, uploadRecordedAudio]);
 
   const handleControlError = useCallback(
     ({ action, error, workspaceId }: HandleControlErrorParams) => {
@@ -287,7 +317,7 @@ const useRecordingControl = () => {
     [closeRecording, sendHeartbeat],
   );
 
-  /** 마이크를 받아 서버에 녹음을 열어요. 결과는 `started`·`microphoneUnavailable`·`refused`·`failed`예요 */
+  /** 마이크를 받아 서버에 녹음을 열어요. 결과는 `started`·`microphoneUnavailable`·`refused`·`networkFailed`·`failed`예요 */
   const connectAndStartRecording = useCallback(
     async (workspaceId: number) => {
       const store = useRecordingStore.getState();
@@ -393,9 +423,11 @@ const useRecordingControl = () => {
         logRequestError({ feature: "recording", action: "녹음 시작", error });
         useRecordingStore.getState().discardRecording();
 
-        return isHttpError(error, HTTP_ERROR_TYPE.conflict)
-          ? "refused"
-          : "failed";
+        if (isHttpError(error, HTTP_ERROR_TYPE.conflict)) return "refused";
+        // 응답을 받지 못했어요(연결 끊김, timeout). 남긴 증명으로 다시 시도할 수 있게 부른 쪽이 안내해요
+        if (isHttpError(error, HTTP_ERROR_TYPE.network)) return "networkFailed";
+
+        return "failed";
       }
     },
     [
@@ -407,8 +439,8 @@ const useRecordingControl = () => {
   );
 
   /**
-   * 녹음을 시작해요. 결과는 `started`·`microphoneUnavailable`·`refused`·`failed`·`ignored`·`uploading`이고,
-   * 마이크를 받지 못했거나 서버가 거절한 경우만 부른 쪽이 안내해요
+   * 녹음을 시작해요. 결과는 `started`·`microphoneUnavailable`·`refused`·`networkFailed`·`failed`·`ignored`·`uploading`이고,
+   * 마이크를 받지 못했거나, 서버가 거절했거나, 시작 요청이 응답을 받지 못한 경우만 부른 쪽이 안내해요
    */
   const startRecording = useCallback(
     async (workspaceId: number) => {
@@ -491,13 +523,17 @@ const useRecordingControl = () => {
           error,
           workspaceId: session.workspaceId,
         });
+        // 서버가 끝냈거나 버린 녹음은 위에서 마저 처리하니, 일시정지로 남는 실패만 알려요
+        if (!isClosedRecordingError(error)) {
+          show(TOAST_MESSAGES.RECORDING_RESUME_FAILED);
+        }
 
         return true;
       }
     }
 
     return useRecordingStore.getState().resumeRecording();
-  }, [handleControlError, resumeRecordingSession]);
+  }, [handleControlError, resumeRecordingSession, show]);
 
   /** 이어서 녹음해요. 마이크를 다시 받지 못하면 `false`를 돌려주고 서버에는 알리지 않아요 */
   const resumeRecording = useCallback(async () => {
@@ -614,6 +650,7 @@ const useRecordingControl = () => {
       }
 
       useRecordingStore.getState().cancelEnding();
+      show(TOAST_MESSAGES.RECORDING_END_FAILED);
 
       return "notEnded";
     }
@@ -627,6 +664,7 @@ const useRecordingControl = () => {
     clearRecording,
     endPcmRecording,
     endRecordingSession,
+    show,
     uploadRecordedAudio,
   ]);
   // 확인 창과 워크스페이스 옮기기가 모두 이 함수로 끝내요. 끝낸 결과는 사용 기록으로도 보내요
