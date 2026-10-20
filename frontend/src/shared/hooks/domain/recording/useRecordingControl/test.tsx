@@ -505,6 +505,61 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
     ]);
   });
 
+  describe("이어서 녹음이 실패하면", () => {
+    const respondResume = (resolver: () => Response) =>
+      mockServer.use(http.post(`${RECORDING_PATH}/resume`, resolver));
+
+    const resumeAfterPause = async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const result = renderRecordingControl();
+      const collector = await startRecording(result);
+      await pauseRecording(result);
+
+      let isResumed: boolean | undefined;
+      await act(async () => {
+        isResumed = await result.current.resumeRecording();
+      });
+
+      return { collector, isResumed };
+    };
+
+    it.each([
+      ["서버 오류(500)", () => new HttpResponse(null, { status: 500 })],
+      ["네트워크 문제", () => HttpResponse.error()],
+    ])(
+      "%s면 일시정지로 남고 오류 토스트로 알린다",
+      async (_, resolver) => {
+        respondResume(resolver);
+
+        const { collector, isResumed } = await resumeAfterPause();
+
+        // 마이크는 받았으므로 마이크 알림을 띄우지 않게 true로 답해요
+        expect(isResumed).toBe(true);
+        expect(getStatus()).toBe("paused");
+        expect(collector.isCollecting).toBe(false);
+        expect(
+          await screen.findByText(
+            TOAST_MESSAGES.RECORDING_RESUME_FAILED.message,
+          ),
+        ).toBeInTheDocument();
+      },
+    );
+
+    it("서버가 이미 끝낸 녹음이라 거절되면 생존 신호로 마저 처리하고 오류 토스트는 띄우지 않는다", async () => {
+      respondResume(() =>
+        HttpResponse.json({ code: "RECORDING_ALREADY_ENDED" }, { status: 409 }),
+      );
+      collectRequests();
+
+      await resumeAfterPause();
+
+      await waitFor(() => expect(events).toContain("heartbeat"));
+      expect(
+        screen.queryByText(TOAST_MESSAGES.RECORDING_RESUME_FAILED.message),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("일시정지와 이어서 녹음을 연타해도 앞 요청의 응답을 받은 뒤 다음을 처리한다", async () => {
     collectRequests();
     const { respond } = holdResponses("pause");
