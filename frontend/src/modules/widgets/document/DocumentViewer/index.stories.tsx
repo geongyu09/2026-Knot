@@ -94,7 +94,8 @@ const ISOLATED_DOCS = { story: { inline: false, iframeHeight: 760 } };
  *   같은 녹음의 문서 목록을 받기 전이거나 받지 못하면 스테퍼만 그리지 않고, 문서는 그대로 보여 줘요.
  * - 본문 아래 줄 오른쪽의 확인 버튼은 확인 대상에게만 보여요. 문서가 만들어질 때의 워크스페이스 멤버가 확인 대상이고, 그 뒤에 들어온 사람은 읽기만 해요.
  *   아직 확인하지 않았으면 「문서를 확인했어요」가 보여요. 누르면 응답을 기다리는 동안 누를 수 없고, 응답이 오면 누를 수 없는 「확인했어요」로 바뀌며 확인 수가 1 늘어요. 확인은 되돌릴 수 없어요.
- *   확인 대상이 아니라는 응답을 받으면 문서를 다시 불러와 버튼을 없애요. 그 밖의 실패에서는 버튼이 그대로 남아 다시 누를 수 있어요.
+ *   확인 대상이 아니라는 응답을 받으면 문서를 다시 불러와 버튼을 없애요. 그 밖의 실패에서는 버튼이 그대로 남아 다시 누를 수 있고, 오류 토스트 「확인하지 못했어요. 다시 시도해 주세요.」로 알려요.
+ *   확인으로 같은 녹음에서 내가 확인할 문서가 남지 않으면 「문서를 모두 확인했어요」 토스트를 띄워요. 하나씩 확인하는 동안에는 띄우지 않아요.
  */
 const meta = {
   title: "Document/DocumentViewer",
@@ -241,6 +242,55 @@ export const Confirming: Story = {
     });
 
     await userEvent.click(confirmButton);
+  },
+};
+
+/**
+ * 「문서를 확인했어요」를 눌러 같은 녹음에서 내가 확인할 문서가 더 남지 않은 때예요.
+ * 버튼이 「확인했어요」로 바뀌고 「문서를 모두 확인했어요」 토스트가 떠요.
+ */
+export const AllConfirmed: Story = {
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1785-3439",
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    await userEvent.click(
+      await canvas.findByRole("button", { name: "문서를 확인했어요" }),
+    );
+  },
+};
+
+/**
+ * 「문서를 확인했어요」를 눌렀지만 서버 오류로 확인하지 못했을 때예요.
+ * 버튼은 그대로 남아 다시 누를 수 있고, 오류 토스트로 알려요. 이 스토리에서는 다시 눌러도 계속 실패해요.
+ */
+export const ConfirmFailed: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    msw: {
+      handlers: {
+        myConfirmation: http.put(
+          MY_CONFIRMATION_REQUEST,
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      },
+    },
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4826-33512",
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    await userEvent.click(
+      await canvas.findByRole("button", { name: "문서를 확인했어요" }),
+    );
   },
 };
 
