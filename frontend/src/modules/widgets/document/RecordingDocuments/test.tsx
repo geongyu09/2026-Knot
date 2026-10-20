@@ -93,6 +93,8 @@ const TRANSCRIPTION_FAILED_TITLE = "녹음을 글로 옮기지 못했어요";
 const NO_CONTENT_TITLE = "문서로 만들 내용이 없었어요";
 const LOAD_FAILED_TITLE = "문서를 불러오지 못했어요";
 const RECORDING_KEPT_NOTICE = "녹음은 보관해 두었어요.";
+const AUDIO_SAVE_CHECK_FAILED_NOTICE =
+  "녹음 저장 상태를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.";
 
 // 정리가 끝난 mock 녹음에서 나온 문서. 서버가 준 순서 그대로라 첫 문서가 정리 뒤에 보내는 문서예요
 const completedRecordingDocumentItems = documentsResponse.items.filter(
@@ -1712,25 +1714,95 @@ describe("RecordingDocuments", () => {
       expect(audioSaveRequestCount).toBe(0);
     });
 
-    it("저장 상태 조회가 서버 오류로 실패하면(503) 정리 중을 유지하고 같은 간격으로 계속 조회한다", async () => {
-      const counts = mockAwaitingAudioSave(
-        () => new HttpResponse(null, { status: 503 }),
+    it.each([
+      ["서버 오류(503)", () => new HttpResponse(null, { status: 503 })],
+      ["네트워크 오류", () => HttpResponse.error()],
+    ])(
+      "저장 상태 조회가 %s로 실패하면 정리 중 대신 그 자리에 확인하지 못했다는 안내와 다시 시도를 두고, 같은 간격으로 계속 조회한다",
+      async (_, respond) => {
+        const counts = mockAwaitingAudioSave(respond);
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        renderRecordingDocuments(organizingRecording.recordingId);
+
+        expect(await screen.findByRole("alert")).toHaveTextContent(
+          AUDIO_SAVE_CHECK_FAILED_NOTICE,
+        );
+        expect(
+          screen.getByRole("button", { name: "다시 시도" }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole("heading", { level: 2, name: ORGANIZING_TITLE }),
+        ).not.toBeInTheDocument();
+        expect(counts.audioSave).toBe(1);
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+        });
+
+        await waitFor(() => expect(counts.audioSave).toBe(2));
+        expect(screen.queryByText("워크스페이스 홈")).not.toBeInTheDocument();
+      },
+    );
+
+    it("저장 상태를 다시 받으면 안내를 거두고 정리 중으로 돌아간다", async () => {
+      let isAudioSaveDown = true;
+      mockAwaitingAudioSave(() =>
+        isAudioSaveDown
+          ? new HttpResponse(null, { status: 503 })
+          : respondAudioSave({ audioSaveStatus: "DRAINING" }),
       );
       vi.useFakeTimers({ shouldAdvanceTime: true });
+      renderRecordingDocuments(organizingRecording.recordingId);
+      await screen.findByRole("alert");
+
+      isAudioSaveDown = false;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+      });
+
+      expect(
+        await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("안내의 다시 시도를 누르면 저장 상태만 바로 다시 조회한다", async () => {
+      let isAudioSaveDown = true;
+      const counts = mockAwaitingAudioSave(() =>
+        isAudioSaveDown
+          ? new HttpResponse(null, { status: 503 })
+          : respondAudioSave({ audioSaveStatus: "DRAINING" }),
+      );
+      renderRecordingDocuments(organizingRecording.recordingId);
+      await screen.findByRole("alert");
+      const recordingCountBeforeRetry = counts.recording;
+
+      isAudioSaveDown = false;
+      fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
+
+      expect(
+        await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE }),
+      ).toBeInTheDocument();
+      expect(counts.audioSave).toBe(2);
+      expect(counts.recording).toBe(recordingCountBeforeRetry);
+    });
+
+    it("WebM 녹음이라 저장 상태가 없으면(409) 안내 없이 정리 중을 유지한다", async () => {
+      const counts = mockAwaitingAudioSave(() =>
+        HttpResponse.json(
+          { code: "AUDIO_MODE_CONFLICT", message: "PCM 조각 녹음이 아닙니다." },
+          { status: 409 },
+        ),
+      );
       renderRecordingDocuments(organizingRecording.recordingId);
 
       await screen.findByRole("heading", { level: 2, name: ORGANIZING_TITLE });
       await waitFor(() => expect(counts.audioSave).toBe(1));
 
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
-      });
-
-      await waitFor(() => expect(counts.audioSave).toBe(2));
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
       expect(
         screen.getByRole("heading", { level: 2, name: ORGANIZING_TITLE }),
       ).toBeInTheDocument();
-      expect(screen.queryByText("워크스페이스 홈")).not.toBeInTheDocument();
     });
   });
 });

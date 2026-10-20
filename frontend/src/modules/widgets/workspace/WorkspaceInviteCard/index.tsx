@@ -1,6 +1,7 @@
 import styled from "@emotion/styled";
 import Button from "@primitives/ui/Button";
 import Divider from "@primitives/ui/Divider";
+import InlineError from "@primitives/ui/InlineError";
 import Input from "@primitives/ui/Input";
 import Spinner from "@primitives/ui/Spinner";
 
@@ -11,11 +12,16 @@ import { useWorkspaceInvite } from "./model/useWorkspaceInvite";
 
 /**
  * 팀원 초대 카드.
+ *
+ * 초대를 불러오지 못하면 제목과 `다음`은 그대로 두고, 참여 코드와 초대 링크 자리에 실패 안내를 둬요.
+ * 홈의 팀원 초대 카드(ERR-09)와 같은 안내예요. `다시 시도`는 초대만 다시 받아요.
  */
 export default function WorkspaceInviteCard() {
   const {
     inviteCode,
     isLoading,
+    isLoadFailed,
+    handleRetry,
     isCodeCopied,
     isLinkCopied,
     displayInviteLink,
@@ -34,48 +40,58 @@ export default function WorkspaceInviteCard() {
           <Description>참여 코드나 링크를 팀원에게 공유하세요</Description>
         </Header>
 
-        <ShareOptions>
-          <CodeBox
-            type="button"
-            aria-label={
-              isInviteReady ? `참여 코드 ${inviteCode} 복사` : "참여 코드 복사"
-            }
-            aria-busy={isLoading}
-            disabled={!isInviteReady}
-            onClick={handleCopyCode}
-          >
-            {isLoading ? <Spinner /> : <Code>{inviteCode}</Code>}
-            {!isLoading && (isCodeCopied ? <CheckIcon /> : <CopyIcon />)}
-          </CodeBox>
-
-          <Divider label="또는" />
-
-          <LinkField>
-            <LinkInput
-              variant="copy"
-              status="filled"
-              value={displayInviteLink ?? ""}
-              readOnly
-              aria-label="초대 링크"
+        {isLoadFailed ? (
+          <InlineErrorWrapper>
+            <InlineError
+              message="초대 링크를 불러오지 못했어요. 다시 시도해 주세요."
+              onRetry={handleRetry}
+              align="center"
             />
-            <CopyButton
-              size="sm"
-              variant={isLinkCopied ? "accent" : "filled"}
-              isLoading={isLoading}
+          </InlineErrorWrapper>
+        ) : (
+          <ShareOptions>
+            <CodeBox
+              type="button"
+              aria-label={
+                isInviteReady ? `참여 코드 ${inviteCode} 복사` : "참여 코드 복사"
+              }
+              aria-busy={isLoading}
               disabled={!isInviteReady}
-              onClick={handleCopyLink}
+              onClick={handleCopyCode}
             >
-              {isLinkCopied ? (
-                <>
-                  <CheckIcon />
-                  복사됨
-                </>
-              ) : (
-                "복사"
-              )}
-            </CopyButton>
-          </LinkField>
-        </ShareOptions>
+              {isLoading ? <Spinner /> : <Code>{inviteCode}</Code>}
+              {!isLoading && (isCodeCopied ? <CheckIcon /> : <CopyIcon />)}
+            </CodeBox>
+
+            <Divider label="또는" />
+
+            <LinkField>
+              <LinkInput
+                variant="copy"
+                status="filled"
+                value={displayInviteLink ?? ""}
+                readOnly
+                aria-label="초대 링크"
+              />
+              <CopyButton
+                size="sm"
+                variant={isLinkCopied ? "accent" : "filled"}
+                isLoading={isLoading}
+                disabled={!isInviteReady}
+                onClick={handleCopyLink}
+              >
+                {isLinkCopied ? (
+                  <>
+                    <CheckIcon />
+                    복사됨
+                  </>
+                ) : (
+                  "복사"
+                )}
+              </CopyButton>
+            </LinkField>
+          </ShareOptions>
+        )}
       </Content>
 
       <Button size="lg" isFullWidth onClick={handleNext}>
@@ -123,6 +139,13 @@ const Title = styled.h1`
 const Description = styled.p`
   color: ${({ theme }) => theme.neutral[600]};
   ${({ theme }) => theme.text.body01};
+`;
+
+/** 참여 코드와 초대 링크가 있던 자리의 가운데에 안내를 놓아요 */
+const InlineErrorWrapper = styled.div`
+  display: flex;
+  justify-content: center;
+  width: 100%;
 `;
 
 const ShareOptions = styled.div`

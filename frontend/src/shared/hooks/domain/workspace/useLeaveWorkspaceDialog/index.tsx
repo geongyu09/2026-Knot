@@ -5,6 +5,7 @@ import useWorkspaceQuery from "@api/queries/useWorkspaceQuery";
 import useKeyDown from "@hooks/common/useKeyDown";
 import ConfirmDialog from "@primitives/ui/ConfirmDialog";
 import Dim from "@primitives/ui/Dim";
+import InlineError from "@primitives/ui/InlineError";
 import MemberSelectDialog from "@primitives/ui/MemberSelectDialog";
 import { useDialog } from "@provider/context/dialogContext";
 import { PATH_ROUTE } from "@routes/PATH_ROUTE";
@@ -171,6 +172,7 @@ function LeaveConfirmDialog({
  * 다른 멤버가 있는 owner가 나갈 때의 모달. owner를 넘길 멤버를 고르거나 워크스페이스를 삭제해요.
  *
  * 고를 수 있는 멤버는 승계 후보 조회로 받아 오고, 받아 오기 전에는 목록을 비워 둬요.
+ * 받지 못하고 실패하면 목록 자리에 실패 안내와 `다시 시도`를 둬요. `다시 시도`는 승계 후보만 다시 받아요.
  * 멤버 선택 창은 ESC로 닫히고, 바깥 클릭은 잘못 눌러 고른 멤버를 잃지 않도록 고르기 전에만 닫아요.
  * 삭제 확인 창의 [취소], 바깥 클릭, ESC는 고른 멤버를 그대로 둔 채 멤버 선택 창으로 돌아가요.
  *
@@ -183,7 +185,10 @@ function OwnerLeaveDialog({
   onTransfer,
   onDelete,
 }: OwnerLeaveDialogProps) {
-  const { data } = useOwnershipTransferCandidatesQuery({ workspaceId });
+  const { data, isError, refetch } = useOwnershipTransferCandidatesQuery({
+    workspaceId,
+  });
+  const isCandidatesLoadFailed = data === undefined && isError;
   const [selectedMemberId, setSelectedMemberId] = useState<number | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
 
@@ -232,6 +237,17 @@ function OwnerLeaveDialog({
           id: memberId,
           name: nickname,
         }))}
+        memberListNotice={
+          isCandidatesLoadFailed && (
+            <InlineError
+              message="멤버 목록을 불러오지 못했어요. 다시 시도해 주세요."
+              onRetry={() => {
+                refetch();
+              }}
+              align="center"
+            />
+          )
+        }
         selectedMemberId={selectedMemberId}
         onSelectMember={setSelectedMemberId}
         cancelLabel="취소"
