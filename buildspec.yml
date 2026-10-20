@@ -4,6 +4,7 @@ env:
   shell: bash
   variables:
     CI_GROUP: all
+    DEPLOYMENT_MODE: legacy-in-place
 
 phases:
   install:
@@ -24,6 +25,10 @@ phases:
           all|integration|remaining) ;;
           *) printf 'Unknown CI_GROUP: %s\n' "$CI_GROUP" >&2; exit 2 ;;
         esac
+        case "$DEPLOYMENT_MODE" in
+          legacy-in-place|dev-bluegreen) ;;
+          *) printf 'Unknown DEPLOYMENT_MODE: %s\n' "$DEPLOYMENT_MODE" >&2; exit 2 ;;
+        esac
 
         ./backend/gradlew -p backend testClasses --build-cache
 
@@ -43,8 +48,7 @@ phases:
         JAR_FILE=$(find backend/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-plain.jar' | head -n 1)
         test -n "$JAR_FILE"
         cp "$JAR_FILE" app.jar
-        cp backend/appspec.yml appspec.yml
-        cp -R backend/scripts scripts
+        bash backend/ops/codebuild/package-deployment-artifact.sh
 
 artifacts:
   files:
