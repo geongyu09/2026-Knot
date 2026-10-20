@@ -101,15 +101,24 @@ function QueryContent() {
   return <p>{data?.text}</p>;
 }
 
-function MutationContent() {
-  const { mutate } = useMutation({
+interface MutationContentProps {
+  /** 부르는 쪽이 실패를 골라 보고하는 뮤테이션인지 */
+  isReportedByCaller?: boolean;
+}
+
+function MutationContent({ isReportedByCaller = false }: MutationContentProps) {
+  const { mutate, isError } = useMutation({
     mutationFn: () => httpClient.post(TEST_PATH),
+    ...(isReportedByCaller && { meta: { errorReport: "caller" } }),
   });
 
   return (
-    <button type="button" onClick={() => mutate()}>
-      보내기
-    </button>
+    <>
+      <button type="button" onClick={() => mutate()}>
+        보내기
+      </button>
+      {isError && <p>보내지 못했어요</p>}
+    </>
   );
 }
 
@@ -209,6 +218,20 @@ describe("Sentry 보고", () => {
 
     await vi.waitFor(() => expect(sentEvents).toHaveLength(1));
     expect(sentEvents[0].tags).toMatchObject({ source: "mutation" });
+  });
+
+  // 재시도 루프와 주기 요청은 연속 실패의 첫 번째와 포기한 실패만 부르는 쪽이 보내요
+  it("부르는 쪽이 보고하는 Mutation(meta.errorReport: caller)은 MutationCache에서 보고하지 않는다", async () => {
+    // 앞 테스트와 같은 오류면 SDK가 바로 앞 이벤트와 같다고 버려, 보고하지 않았는지 볼 수 없어요
+    mockServer.use(
+      http.post(`*${TEST_PATH}`, () => new HttpResponse(null, { status: 500 })),
+    );
+
+    renderApp(<MutationContent isReportedByCaller />);
+    fireEvent.click(screen.getByRole("button", { name: "보내기" }));
+
+    expect(await screen.findByText("보내지 못했어요")).toBeInTheDocument();
+    expect(await flushEvents()).toHaveLength(0);
   });
 
   // 바로 앞 이벤트와만 비교하는 dedupeIntegration이 아니라, SDK가 오류 객체에 남기는 표시로 막는지 보려고 다른 오류를 끼워요

@@ -12,9 +12,12 @@ interface UploadRecordingAudioChunkMutationVariables {
  *
  * 우리 API가 아니라 요청 DTO가 없고, 실패는 axios 오류 그대로 넘겨요(이미 객체가 있으면 412).
  * PUT 성공은 저장 완료가 아니라서 이어서 저장 확인 뮤테이션을 보내야 해요.
+ *
+ * 조각 전송 큐가 실패하면 새 URL로 다시 올리므로, 실패는 큐가 골라 보고해요(`meta.errorReport`).
  */
 const useUploadRecordingAudioChunkMutation = () => {
   return useMutation({
+    meta: { errorReport: "caller" },
     mutationFn: (variables: UploadRecordingAudioChunkMutationVariables) =>
       uploadRecordingAudioChunkApi(variables),
   });

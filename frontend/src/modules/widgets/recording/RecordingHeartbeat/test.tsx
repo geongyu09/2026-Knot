@@ -3,6 +3,7 @@ import { recordingHeartbeatResponse } from "@api/mock/responses/recording";
 import { mockServer } from "@api/mock/server";
 import { MAX_RECORDING_DURATION_MS } from "@constants/recording";
 import { DialogProvider } from "@provider/context/dialogContext";
+import { setupSentryEvents } from "@provider/sentry/mock";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -429,5 +430,49 @@ describe("RecordingHeartbeat", () => {
     await waitPastMaxDuration();
     expect(requests).toEqual(["heartbeat"]);
     expect(useRecordingStore.getState().status).toBe("recording");
+  });
+
+  // 10초마다 실패할 때마다 보내면 장애 한 번이 이벤트 수십 건이 돼 심각도를 가늠할 수 없어요
+  describe("실패 보고", () => {
+    const { flushEvents } = setupSentryEvents();
+    /** 다른 테스트의 실패 기록과 섞이지 않게 이 테스트만의 녹음으로 보내요 */
+    const REPORTED_RECORDING_ID = expected.recordingId + 100;
+
+    /** 응답을 받아 처리할 틈을 줘요 */
+    const settleHeartbeat = () =>
+      act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+    // SDK는 바로 앞과 같은 오류 이벤트를 버리므로, 성공 뒤의 실패는 다른 상태 코드로 봐요
+    it("신호가 거듭 실패하면 연속 실패의 첫 번째만 보고하고, 성공한 뒤 다시 실패하면 처음부터 센다", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const statuses = [500, 500, 500, 200, 503, 503];
+      respondHeartbeat(() => {
+        const status = statuses.shift();
+
+        return status === 200
+          ? HttpResponse.json(recordingHeartbeatResponse)
+          : HttpResponse.json({ code: "SERVER_ERROR" }, { status });
+      });
+      await startRecording(REPORTED_RECORDING_ID);
+      renderRecordingHeartbeat();
+
+      for (let beat = 0; beat < 6; beat += 1) {
+        passHeartbeatInterval();
+        await settleHeartbeat();
+      }
+
+      const events = await flushEvents();
+      expect(events).toHaveLength(2);
+      expect(events.map(({ tags }) => tags?.feature)).toEqual([
+        "recording",
+        "recording",
+      ]);
+      expect(events.map(({ extra }) => extra)).toEqual([
+        { consecutiveFailures: 1 },
+        { consecutiveFailures: 1 },
+      ]);
+      // 콘솔에는 실패마다 남겨요
+      expect(console.error).toHaveBeenCalledTimes(5);
+    });
   });
 });
