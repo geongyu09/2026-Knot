@@ -212,12 +212,14 @@ const useRecordingControl = () => {
             action: "녹음 파일 업로드",
             error,
           });
+          // 오디오를 버려 문서가 만들어지지 않아요. 홈으로 가는 이동은 같은 독 레이아웃 안이라 토스트가 남아요
+          show(TOAST_MESSAGES.RECORDING_UPLOAD_FAILED);
 
           return false;
         }
       }
     },
-    [completeAudioUpload, issueAudioUploadUrl, uploadAudio],
+    [completeAudioUpload, issueAudioUploadUrl, show, uploadAudio],
   );
 
   /**
@@ -617,6 +619,7 @@ const useRecordingControl = () => {
       }
 
       useRecordingStore.getState().cancelEnding();
+      show(TOAST_MESSAGES.RECORDING_END_FAILED);
 
       return "notEnded";
     }
@@ -630,6 +633,7 @@ const useRecordingControl = () => {
     clearRecording,
     endPcmRecording,
     endRecordingSession,
+    show,
     uploadRecordedAudio,
   ]);
   // 확인 창과 워크스페이스 옮기기가 모두 이 함수로 끝내요. 끝낸 결과는 사용 기록으로도 보내요

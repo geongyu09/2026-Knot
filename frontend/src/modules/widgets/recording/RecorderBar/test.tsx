@@ -3,6 +3,7 @@ import {
   recordingHeartbeatResponse,
 } from "@api/mock/responses/recording";
 import { mockServer } from "@api/mock/server";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
 import { ToastProvider } from "@provider/context/toastContext";
@@ -461,6 +462,56 @@ describe("RecorderBar", () => {
         expect(router.state.location.pathname).toBe(DOCUMENTS_PATH),
       );
       expect(count.end).toBe(1);
+    });
+
+    it("종료 요청이 실패하면 녹음을 이어 가며 오류 토스트로 알린다 (ERR-21)", async () => {
+      vi.useRealTimers();
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      mockServer.use(
+        http.post(
+          "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/end",
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      );
+      await startRecording();
+      const { router } = renderRecorderBar();
+
+      await clickEndRecording();
+      await chooseInEndRecordingDialog("녹음 끝내기");
+
+      expect(
+        await screen.findByText(TOAST_MESSAGES.RECORDING_END_FAILED.message),
+      ).toBeInTheDocument();
+      expect(screen.getByText("녹음 중")).toBeInTheDocument();
+      expect(router.state.location.pathname).toBe(RECORDING_PATH);
+    });
+
+    it("오디오를 다시 시도해도 올리지 못하면 홈으로 가며 주의 토스트로 알린다", async () => {
+      vi.useRealTimers();
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const requests = collectRequests();
+      mockServer.use(
+        http.post(
+          "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/audio-upload-url",
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      );
+      await startRecording();
+      const { router } = renderRecorderBar();
+
+      await clickEndRecording();
+      await chooseInEndRecordingDialog("녹음 끝내기");
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(HOME_PATH),
+      );
+      expect(
+        await screen.findByText(TOAST_MESSAGES.RECORDING_UPLOAD_FAILED.message),
+      ).toBeInTheDocument();
+      // 첫 시도에 더해 다시 시도한 3번까지 모두 실패한 뒤에만 알려요
+      expect(requests.filter((path) => path === "audio-upload-url")).toHaveLength(
+        4,
+      );
     });
   });
 

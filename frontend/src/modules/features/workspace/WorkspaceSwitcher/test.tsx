@@ -4,6 +4,7 @@ import {
   GetWorkspacesResponseDto,
 } from "@api/dto/workspace";
 import { mockServer } from "@api/mock/server";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import {
   ownershipTransferCandidatesResponse,
   workspaceDetailResponse,
@@ -269,7 +270,30 @@ describe("WorkspaceSwitcher", () => {
       expect(count).toEqual({ end: 1, complete: 1 });
     });
 
-    it("종료 요청이 실패하면 이동하지 않고 녹음을 이어 간다", async () => {
+    it("끝내고 이동에서 오디오를 끝내 올리지 못하면 그대로 이동하며 주의 토스트로 알린다", async () => {
+      mockServer.use(
+        http.post(
+          "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/audio-upload-url",
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      );
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      await startRecording();
+      const { router } = renderSwitcher();
+      await openMenu();
+      fireEvent.click(await findWorkspaceItem(otherWorkspace.name));
+
+      fireEvent.click(screen.getByRole("button", { name: "끝내고 이동" }));
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(OTHER_HOME_PATH),
+      );
+      expect(
+        await screen.findByText(TOAST_MESSAGES.RECORDING_UPLOAD_FAILED.message),
+      ).toBeInTheDocument();
+    });
+
+    it("종료 요청이 실패하면 이동하지 않고 녹음을 이어 가며 오류 토스트로 알린다 (ERR-21)", async () => {
       mockServer.use(
         http.post(
           "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/end",
@@ -289,6 +313,9 @@ describe("WorkspaceSwitcher", () => {
       );
       expect(useRecordingStore.getState().status).toBe("recording");
       expect(router.state.location.pathname).toBe(HOME_PATH);
+      expect(
+        await screen.findByText(TOAST_MESSAGES.RECORDING_END_FAILED.message),
+      ).toBeInTheDocument();
     });
 
     it("취소를 누르면 녹음과 화면을 그대로 둔다", async () => {
