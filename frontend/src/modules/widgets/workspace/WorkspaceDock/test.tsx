@@ -91,7 +91,9 @@ const respondNoCurrentRecording = () =>
   );
 
 /** 현재 녹음 조회가 다른 탭의 녹음을 이 상태로 답하게 해요 */
-const respondCurrentRecordingStatus = (status: "RECORDING" | "PAUSED") =>
+const respondCurrentRecordingStatus = (
+  status: "RECORDING" | "PAUSED" | "PROCESSING",
+) =>
   mockServer.use(
     http.get(CURRENT_RECORDING_URL, () =>
       HttpResponse.json({ ...currentRecordingResponse, status }),
@@ -1122,6 +1124,25 @@ describe("WorkspaceDock", () => {
           screen.getByRole("button", { name: "회의 녹음 시작" }),
         ).toBeInTheDocument();
         consoleError.mockRestore();
+      });
+
+      it("현재 녹음 조회가 문서를 정리하는 중인 녹음을 주면 다른 탭의 녹음으로 보지 않고 마이크를 보여준다 (#866)", async () => {
+        let isCurrentRequested = false;
+        mockServer.events.on("request:start", ({ request }) => {
+          if (request.url.endsWith("/recordings/current")) {
+            isCurrentRequested = true;
+          }
+        });
+        respondCurrentRecordingStatus("PROCESSING");
+        renderDock();
+
+        await waitFor(() => expect(isCurrentRequested).toBe(true));
+        expect(
+          await screen.findByRole("button", { name: "회의 녹음 시작" }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole("img", { name: "녹음 중" }),
+        ).not.toBeInTheDocument();
       });
     });
 

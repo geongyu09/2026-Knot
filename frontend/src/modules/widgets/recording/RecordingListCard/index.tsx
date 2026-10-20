@@ -1,6 +1,7 @@
 import styled from "@emotion/styled";
 import useServerRecording from "@hooks/domain/recording/useServerRecording";
 
+import { useOpenRecordingDocuments } from "./model/useOpenRecordingDocuments";
 import { useRecordingTitle } from "./model/useRecordingTitle";
 import { useThisTabRecording } from "./model/useThisTabRecording";
 import { useTitleId } from "./model/useTitleId";
@@ -10,14 +11,15 @@ import LoadingFallback from "./ui/LoadingFallback";
 import RecordingLoadFailed from "./ui/RecordingLoadFailed";
 
 /**
- * 홈의 「진행 중인 녹음」 카드. 내가 지금 진행 중인 녹음 하나만 보여 주고, 없으면 빈 상태 문구를 보여 줘요.
+ * 홈의 「진행 중인 녹음」 카드. 내 가장 최근 녹음 하나의 진행 상태를 보여 주고, 없으면 빈 상태 문구를 보여 줘요.
  *
  * 이 탭에서 시작한 녹음이 이어지고 있으면(녹음 탭) 이 탭의 상태와 시간을 보여 주고,
  * 「녹음 화면으로」로 녹음 화면에 갈 수 있게 해요.
  *
- * 그 밖에는(관찰 탭) 현재 `:workspaceId`의 현재 녹음 조회 응답을 보여 주고 버튼은 숨겨요.
+ * 그 밖에는(관찰 탭) 현재 `:workspaceId`의 현재 녹음 조회 응답을 보여 주고, 녹음 중·일시정지면 버튼을 숨겨요.
  * 응답의 누적 시간에 응답을 받은 뒤 흐른 시간을 더해 녹음 중이면 매초 늘리고, 일시정지면 멈춰 둬요.
- * 녹음 중·일시정지가 아닌 녹음(문서 정리 중·실패)은 녹음이 없는 것으로 보여 줘요.
+ * 녹음을 끝내고 문서를 정리하는 중이면 시간 없이 「문서 정리 중」을 보여 주고, 「보기」로 그 녹음의 문서 정리 화면에 가요.
+ * 정리가 끝나면 서버가 표시할 녹음이 없다고 답해 빈 상태로 돌아가요.
  * 조회에 실패하면 칸 자리에 실패 안내(ERR-09)를 두고, `다시 시도`는 이 카드의 녹음만 다시 조회해요.
  * 이 탭의 녹음은 조회와 관계없이 알 수 있어 조회에 실패해도 그대로 보여 줘요.
  */
@@ -31,11 +33,15 @@ export default function RecordingListCard() {
   } = useThisTabRecording();
   const {
     status: serverStatus,
+    recordingId: serverRecordingId,
     elapsedTime: serverElapsedTime,
     isLoading: isServerLoading,
     isLoadFailed: isServerLoadFailed,
     retry: retryServerRecording,
   } = useServerRecording();
+  const { handleOpenRecordingDocuments } = useOpenRecordingDocuments({
+    recordingId: serverRecordingId,
+  });
 
   // 이 탭의 녹음은 현재 녹음 조회를 기다리지 않고 바로 보여 줘요. 녹음 이름은 어느 쪽이든 칸에 들어가 기다려요
   const isLoading =
@@ -58,6 +64,12 @@ export default function RecordingListCard() {
         />
       ) : isServerLoadFailed ? (
         <RecordingLoadFailed onRetry={retryServerRecording} />
+      ) : serverStatus === "organizing" ? (
+        <CurrentRecordingItem
+          recordingStatus={serverStatus}
+          title={title}
+          onOpenRecordingDocuments={handleOpenRecordingDocuments}
+        />
       ) : serverStatus ? (
         <CurrentRecordingItem
           recordingStatus={serverStatus}

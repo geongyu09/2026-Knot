@@ -1,5 +1,8 @@
-/** 현재 녹음 조회에서 화면에 보여 주는 녹음 상태. 문서 정리 중·실패는 아직 다루지 않아요 */
-export type CurrentRecordingStatus = "recording" | "paused";
+/**
+ * 현재 녹음 조회에서 화면에 보여 주는 녹음 상태.
+ * `organizing`은 녹음을 끝낸 뒤 문서를 정리하는 중이에요. 정리 화면과 같은 이름(`getRecordingDocumentsStatus`)을 써요
+ */
+export type CurrentRecordingStatus = "recording" | "paused" | "organizing";
 
 /**
  * 오디오 저장 방식. `FINAL_WEBM_V1`은 끝낸 뒤 WebM 파일 하나를 올리는 기존 방식,
