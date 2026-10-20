@@ -30,6 +30,10 @@ const useWorkspaceNav = () => {
     useMatch({ path: PATH_ROUTE.DOCUMENTS, end: false }) !== null;
   // 문서 목록 화면 그 자체인지. 문서 하나를 보는 중에는 목록으로 보내야 해서 따로 봐요
   const isDocumentListActive = useMatch(PATH_ROUTE.DOCUMENTS) !== null;
+  // 탭 순서(홈, 탐색, 문서)에서 지금 탭의 자리. 녹음처럼 탭이 아닌 화면이면 -1이에요
+  const activeTabIndex = [isHomeActive, isChatActive, isDocumentsActive].indexOf(
+    true,
+  );
 
   const navigateToHome = () => {
     if (!workspaceId || isHomeActive) return;
@@ -63,6 +67,7 @@ const useWorkspaceNav = () => {
     isHomeActive,
     isChatActive,
     isDocumentsActive,
+    activeTabIndex,
     navigateToHome,
     navigateToExplore,
     navigateToDocuments,

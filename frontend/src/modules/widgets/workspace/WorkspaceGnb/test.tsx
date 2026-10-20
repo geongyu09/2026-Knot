@@ -13,7 +13,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { saveLastConversationId } from "@utils/lastConversation";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 
 import WorkspaceGnb from ".";
@@ -72,13 +72,24 @@ const renderGnb = (initialPath = HOME_PATH) => {
       />
     </>
   );
+  // 실제 앱처럼 GNB는 레이아웃에 남고 화면만 바뀌어요
   const router = createMemoryRouter(
     [
-      { path: PATH_ROUTE.WORKSPACE_HOME, element },
-      { path: PATH_ROUTE.CHAT, element },
-      { path: PATH_ROUTE.CHAT_SESSION, element },
-      { path: PATH_ROUTE.DOCUMENTS, element },
-      { path: PATH_ROUTE.DOCUMENT, element },
+      {
+        element: (
+          <>
+            {element}
+            <Outlet />
+          </>
+        ),
+        children: [
+          PATH_ROUTE.WORKSPACE_HOME,
+          PATH_ROUTE.CHAT,
+          PATH_ROUTE.CHAT_SESSION,
+          PATH_ROUTE.DOCUMENTS,
+          PATH_ROUTE.DOCUMENT,
+        ].map((path) => ({ path, element: null })),
+      },
     ],
     { initialEntries: [initialPath] },
   );
@@ -199,6 +210,34 @@ describe("WorkspaceGnb", () => {
 
     expect(router.state.historyAction).toBe("POP");
     expect(router.state.location.pathname).toBe(DOCUMENTS_PATH);
+  });
+
+  it("탭을 빠르게 연달아 누르면 마지막에 누른 탭의 화면으로 가고 그 탭만 현재 화면으로 표시한다", async () => {
+    const { router, exploreButton, documentsButton, homeButton } = renderGnb();
+
+    await act(async () => {
+      fireEvent.click(exploreButton);
+      fireEvent.click(documentsButton);
+      fireEvent.click(homeButton);
+      fireEvent.click(documentsButton);
+    });
+
+    expect(router.state.location.pathname).toBe(DOCUMENTS_PATH);
+    expect(documentsButton).toHaveAttribute("aria-current", "page");
+    expect(homeButton).not.toHaveAttribute("aria-current");
+    expect(exploreButton).not.toHaveAttribute("aria-current");
+  });
+
+  it("탭을 눌러 화면이 바뀌어도 포커스는 누른 탭에 남는다", async () => {
+    const { exploreButton } = renderGnb();
+
+    exploreButton.focus();
+    await act(async () => {
+      fireEvent.click(exploreButton);
+    });
+
+    expect(exploreButton).toHaveAttribute("aria-current", "page");
+    expect(exploreButton).toHaveFocus();
   });
 
   it("이미 있는 화면의 버튼은 눌러도 이동하지 않는다", async () => {
