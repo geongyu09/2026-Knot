@@ -12,14 +12,12 @@ export default function DocumentSkeleton() {
       <BreadcrumbRow>
         <Skeleton width={7.5} />
       </BreadcrumbRow>
-      <TopRow>
-        {/* 복사 버튼 자리: 60 × 40px, 모서리 12px */}
-        <Skeleton width={3.75} height={2.5} radius={0.75} />
-      </TopRow>
       <TitleBlock>
         <TitleRow>
           {/* 덩어리 28px, 모서리 8px */}
           <Skeleton width="40%" height={1.75} radius={0.5} />
+          {/* 복사 버튼 자리: 60 × 40px, 모서리 12px */}
+          <Skeleton width={3.75} height={2.5} radius={0.75} />
         </TitleRow>
         <MetaRow>
           <Skeleton width={9} />
@@ -51,12 +49,6 @@ const BreadcrumbRow = styled.div`
   height: 1.3125rem; /* 21px */
 `;
 
-/** 복사 버튼 줄. 버튼은 오른쪽 끝에 놓여요 */
-const TopRow = styled.div`
-  display: flex;
-  justify-content: flex-end;
-`;
-
 /** 피그마 TitleBlock: 제목과 날짜 줄 사이 4px */
 const TitleBlock = styled.div`
   display: flex;
@@ -64,11 +56,13 @@ const TitleBlock = styled.div`
   gap: 0.25rem; /* 4px */
 `;
 
-/** 제목 한 줄(heading02 26px × 줄 높이 1.5)과 같은 높이 */
+/** 제목 줄. 제목(39px)보다 높은 복사 버튼(40px)이 높이를 정하고, 버튼은 오른쪽 끝에 놓여요 */
 const TitleRow = styled.div`
   display: flex;
   align-items: center;
-  height: 2.4375rem; /* 39px */
+  justify-content: space-between;
+  gap: 1rem; /* 16px */
+  height: 2.5rem; /* 40px */
 `;
 
 /** 날짜 · 녹음 길이 · 확인 수가 놓이는 줄과 같은 높이 */

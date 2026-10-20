@@ -16,7 +16,9 @@ import { useDocumentParams } from "./model/useDocumentParams";
 import { useTitleId } from "./model/useTitleId";
 import TranscriptLine from "./ui/TranscriptLine";
 import TranscriptLoadFailed from "./ui/TranscriptLoadFailed";
+import TranscriptCopyButton from "./ui/TranscriptCopyButton";
 import TranscriptSkeleton from "./ui/TranscriptSkeleton";
+import { formatTranscriptText } from "./utils/formatTranscriptText";
 
 /** 원문이 없어졌거나 볼 수 없게 된 실패. 경로 형식 오류(400) · 워크스페이스 멤버 아님(403) · 문서나 원문 없음(404) */
 const UNAVAILABLE_TYPES: HttpErrorType[] = [
@@ -33,6 +35,7 @@ const isUnavailableError = (error: unknown) =>
  *
  * 문서 보기 화면의 오른쪽에 놓여요. 패널을 여닫는 버튼은 GNB에 있어서, 패널 안에는 닫기 버튼을 두지 않아요(DOC-R3).
  * 발화가 많으면 패널 전체가 아니라 발화 목록만 세로로 스크롤해요(DOC-R4).
+ * 머리의 「원문」 오른쪽 끝에는 보이는 발화 줄을 그대로 복사하는 버튼을 둬요.
  *
  * 원문을 받지 못한 동안에는 상태 화면이 패널 전체를 대신 그려요.
  * - 불러오는 중: `TranscriptSkeleton`. 로그인이 풀려(401) 로그인 화면으로 보내는 동안에도 이 화면이에요.
@@ -80,7 +83,12 @@ export default function TranscriptPanel() {
 
   return (
     <Container aria-labelledby={titleId}>
-      <Title id={titleId}>원문</Title>
+      <Header>
+        <Title id={titleId}>원문</Title>
+        <TranscriptCopyButton
+          text={formatTranscriptText(transcript.segments)}
+        />
+      </Header>
       <Meta>
         {documentDetail !== undefined && (
           <CreatedDate dateTime={documentDetail.createdAt}>
@@ -125,6 +133,15 @@ const Container = styled.section`
   border-radius: 1.25rem; /* 20px */
   background-color: ${({ theme }) => theme.neutral[0]};
   box-shadow: ${({ theme }) => theme.shadow03};
+`;
+
+/** 피그마 Header: 왼쪽에 제목, 오른쪽 끝에 복사 버튼. 둘 사이 8px, 세로 가운데 */
+const Header = styled.div`
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem; /* 8px */
 `;
 
 const Title = styled.h2`

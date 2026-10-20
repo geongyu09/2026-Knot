@@ -25,4 +25,4 @@ export const getCsrfToken = () => getCsrfTokenWith(httpClient);
 /** httpClient가 쓰는 CSRF 토큰을 새로 받아 돌려줍니다. 이미 받는 중이면 그 결과를 함께 써요. */
 export const reloadCsrfToken = () => reloadCsrfTokenWith(httpClient);
 
-export { MAX_CSRF_RETRIES } from "./interceptors/csrf";
+export { CSRF_REJECTED_CODES, MAX_CSRF_RETRIES } from "./interceptors/csrf";

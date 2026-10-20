@@ -29,6 +29,7 @@ import ChatListIcon from "@/assets/icons/chatList.svg";
 import SidebarIcon from "@/assets/icons/sidebar.svg";
 
 import { WORKSPACE_DOCK_RAIL_ID } from "./constants/dockRail";
+import { useTabScreenMotion } from "./model/useTabScreenMotion";
 import type { DockedPanelName } from "./types/dockedPanel";
 
 /**
@@ -36,6 +37,7 @@ import type { DockedPanelName } from "./types/dockedPanel";
  *
  * 워크스페이스 입장 후의 내부 페이지(홈, 탐색)가 공유한다.
  * 위에 GNB를 두고, 그 아래를 왼쪽 레일과 본문이 나눠 쓴다.
+ * GNB 탭을 옮기면 본문의 화면만 탭 방향에서 살짝 밀려 들어오고, GNB, 독, 양옆 패널은 움직이지 않는다(`useTabScreenMotion`).
  *
  * GNB 좌측 버튼이 여는 패널(사이드바·대화 목록)은 스쳐 지나가면 본문 위에 겹쳐 뜨고,
  * 누르면 왼쪽 레일로 옮겨 가 폭을 차지한다. 레일은 한 번에 한 패널만 담는다.
@@ -70,7 +72,7 @@ export default function WorkspaceLayout() {
   const { isReady, entryError } = useWorkspaceEntry({
     workspaceId: Number(workspaceId),
   });
-  const { isChatActive } = useWorkspaceNav();
+  const { isChatActive, activeTabIndex } = useWorkspaceNav();
   const { isTranscriptPanelOpen } = useTranscriptPanel();
   const [pickedPanel, setPickedPanel] = useState<DockedPanelName>(null);
 
@@ -79,6 +81,8 @@ export default function WorkspaceLayout() {
   useOpenEvidenceOnAnswerComplete();
   // 화면은 창이 아니라 본문 안에서 스크롤돼서, 화면을 옮길 때 본문의 스크롤 위치를 맞춰요
   const { scrollRef: mainRef } = useScrollRestoration();
+  // 탭을 옮기면 본문만 탭 방향에서 살짝 들어와요. GNB, 독, 양옆 패널은 그대로예요
+  useTabScreenMotion({ screenRootRef: mainRef, activeTabIndex });
 
   // 대화 목록 버튼은 탐색 화면에만 있으므로, 홈으로 나가면 고른 적 없던 것으로 봐요
   const dockedPanel =

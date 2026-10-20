@@ -53,15 +53,18 @@ const Title = styled.h2`
   ${({ theme }) => theme.text.label01};
 `;
 
-/** 피그마 Empty: 높이 160px 영역의 가운데, 두 줄 사이 4px */
+/**
+ * 피그마 Empty: 머리 아래 남은 영역을 채우고 그 가운데에 두 줄을 놓아요. 두 줄 사이 4px.
+ * 위 2px은 머리와 안내 사이(14px)가 「확인이 필요한 문서」 카드(머리 아래 8px + 8px)보다 2px 좁은 만큼이에요. 두 카드가 함께 비었을 때 안내가 같은 높이에 보여요
+ */
 const Notice = styled.div`
   display: flex;
-  flex-shrink: 0;
+  flex: 1;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 0.25rem; /* 4px */
-  height: 10rem; /* 160px */
+  padding-top: 0.125rem; /* 2px */
   text-align: center;
 `;
 
