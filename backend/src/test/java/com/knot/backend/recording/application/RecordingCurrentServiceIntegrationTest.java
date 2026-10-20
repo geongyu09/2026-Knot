@@ -6,12 +6,16 @@ import com.knot.backend.recording.application.dto.command.RecordingControlComman
 import com.knot.backend.recording.application.dto.command.RecordingStartCommand;
 import com.knot.backend.recording.application.dto.result.RecordingCurrentResult;
 import com.knot.backend.recording.application.dto.result.RecordingPauseResult;
-import com.knot.backend.recording.domain.model.RecordingStatus;
+import com.knot.backend.recording.application.dto.result.CurrentRecordingStatus;
 import com.knot.backend.testsupport.TestApplicationProperties;
 import com.knot.backend.testsupport.TestcontainersConfiguration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Optional;
+import java.util.Map;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import com.knot.backend.document.domain.model.DocumentGenerationProcessingStatus;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -79,7 +83,7 @@ class RecordingCurrentServiceIntegrationTest {
         // then
         assertThat(result).hasValueSatisfying(current -> {
             assertThat(current.recordingId()).isEqualTo(recording.id());
-            assertThat(current.status()).isEqualTo(RecordingStatus.RECORDING);
+            assertThat(current.status()).isEqualTo(CurrentRecordingStatus.RECORDING);
             assertThat(current.startedAt()).isEqualTo(before.startedAt());
         });
         assertThat(storedRecording(recording.id())).isEqualTo(before);
@@ -119,10 +123,211 @@ class RecordingCurrentServiceIntegrationTest {
 
         // then
         assertThat(result).hasValueSatisfying(current -> {
-            assertThat(current.status()).isEqualTo(RecordingStatus.PAUSED);
+            assertThat(current.status()).isEqualTo(CurrentRecordingStatus.PAUSED);
             assertThat(current.elapsedMillis()).isEqualTo(paused.elapsedMillis());
         });
         assertThat(storedRecording(recording.id())).isEqualTo(before);
+    }
+
+    @Test
+    @DisplayName("종료 후 문서 생성 중인 녹음을 반복 조회해도 녹음과 배치 저장값은 바뀌지 않는다")
+    void findCurrent_success_processingReadDoesNotChangeState() {
+        // given
+        long memberId = saveMember("processing-member");
+        long workspaceId = saveWorkspace("처리 팀");
+        saveWorkspaceMember(
+                workspaceId,
+                memberId
+        );
+        StartedRecording recording = startRecording(
+                workspaceId,
+                memberId
+        );
+        recordingService.end(
+                workspaceId,
+                memberId,
+                recording.id(),
+                recording.control()
+        );
+        saveBatch(
+                recording.id(),
+                DocumentGenerationProcessingStatus.RUNNING
+        );
+        Map<String, Object> beforeRecording = storedRow(
+                "recording_sessions",
+                recording.id()
+        );
+        Map<String, Object> beforeBatch = storedBatch(recording.id());
+        recordingService.findCurrent(
+                workspaceId,
+                memberId
+        );
+
+        // when
+        Optional<RecordingCurrentResult> result = recordingService.findCurrent(
+                workspaceId,
+                memberId
+        );
+
+        // then
+        assertThat(result).hasValueSatisfying(current -> {
+            assertThat(current.recordingId()).isEqualTo(recording.id());
+            assertThat(current.status()).isEqualTo(CurrentRecordingStatus.PROCESSING);
+        });
+        assertThat(
+                storedRow(
+                        "recording_sessions",
+                        recording.id()
+                )
+        ).isEqualTo(beforeRecording);
+        assertThat(storedBatch(recording.id())).isEqualTo(beforeBatch);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = DocumentGenerationProcessingStatus.class, names = {"SUCCEEDED", "FAILED", "NO_CONTENT"})
+    @DisplayName("최신 녹음이 최종 처리 상태면 이전 생성 중 녹음으로 대체하지 않는다")
+    void findCurrent_success_latestTerminalDoesNotFallBack(DocumentGenerationProcessingStatus status) {
+        // given
+        long memberId = saveMember("terminal-member");
+        long workspaceId = saveWorkspace("최신 팀");
+        saveWorkspaceMember(
+                workspaceId,
+                memberId
+        );
+        StartedRecording previous = startRecording(
+                workspaceId,
+                memberId
+        );
+        recordingService.end(
+                workspaceId,
+                memberId,
+                previous.id(),
+                previous.control()
+        );
+        saveBatch(
+                previous.id(),
+                DocumentGenerationProcessingStatus.RUNNING
+        );
+        StartedRecording latest = startRecording(
+                workspaceId,
+                memberId
+        );
+        recordingService.end(
+                workspaceId,
+                memberId,
+                latest.id(),
+                latest.control()
+        );
+        saveBatch(
+                latest.id(),
+                status
+        );
+
+        // when
+        Optional<RecordingCurrentResult> result = recordingService.findCurrent(
+                workspaceId,
+                memberId
+        );
+
+        // then
+        assertThat(result).isEmpty();
+        assertThat(storedBatch(previous.id()).get("processing_status")).isEqualTo("RUNNING");
+    }
+
+    private Map<String, Object> storedRow(
+            String table,
+            long id
+    ) {
+        return jdbcClient.sql("SELECT * FROM " + table + " WHERE id = :id")
+                .param(
+                        "id",
+                        id
+                )
+                .query()
+                .singleRow();
+    }
+
+    private Map<String, Object> storedBatch(long recordingId) {
+        return jdbcClient.sql("SELECT * FROM document_generation_batches WHERE recording_session_id = :id")
+                .param(
+                        "id",
+                        recordingId
+                )
+                .query()
+                .singleRow();
+    }
+
+    private void saveBatch(
+            long recordingId,
+            DocumentGenerationProcessingStatus status
+    ) {
+        long transcriptId = jdbcClient.sql("""
+                INSERT INTO transcripts (recording_session_id, content, created_at)
+                VALUES (:recordingId, '회의 내용', CURRENT_TIMESTAMP)
+                RETURNING id
+                """)
+                .param(
+                        "recordingId",
+                        recordingId
+                )
+                .query(Long.class)
+                .single();
+        String registrationState = "TOPICS_REGISTERED";
+        if (status == DocumentGenerationProcessingStatus.NO_CONTENT) {
+            registrationState = "NO_CONTENT";
+        }
+        java.sql.Timestamp finishedAt = null;
+        if (status == DocumentGenerationProcessingStatus.SUCCEEDED
+                || status == DocumentGenerationProcessingStatus.FAILED
+                || status == DocumentGenerationProcessingStatus.NO_CONTENT) {
+            finishedAt = java.sql.Timestamp.from(CREATED_AT);
+        }
+        java.sql.Timestamp cleanupRequestedAt = null;
+        if (status == DocumentGenerationProcessingStatus.NO_CONTENT) {
+            cleanupRequestedAt = java.sql.Timestamp.from(CREATED_AT);
+        }
+        jdbcClient.sql("""
+                INSERT INTO document_generation_batches
+                    (recording_session_id, transcript_id, topic_registration_state,
+                        accepted_at, registered_at, cleanup_requested_at, processing_status, finished_at)
+                VALUES (:recordingId, :transcriptId, :registrationState,
+                    :acceptedAt, :registeredAt, :cleanupRequestedAt, :status, :finishedAt)
+                """)
+                .param(
+                        "recordingId",
+                        recordingId
+                )
+                .param(
+                        "transcriptId",
+                        transcriptId
+                )
+                .param(
+                        "registrationState",
+                        registrationState
+                )
+                .param(
+                        "acceptedAt",
+                        java.sql.Timestamp.from(CREATED_AT)
+                )
+                .param(
+                        "registeredAt",
+                        java.sql.Timestamp.from(CREATED_AT)
+                )
+                .param(
+                        "cleanupRequestedAt",
+                        cleanupRequestedAt,
+                        java.sql.Types.TIMESTAMP
+                )
+                .param(
+                        "status",
+                        status.name()
+                )
+                .param(
+                        "finishedAt",
+                        finishedAt,
+                        java.sql.Types.TIMESTAMP
+                )
+                .update();
     }
 
     private StartedRecording startRecording(

@@ -15,7 +15,7 @@ import com.knot.backend.member.domain.MemberRepository;
 import com.knot.backend.recording.application.dto.result.RecordingCurrentResult;
 import com.knot.backend.recording.domain.model.RecordingSession;
 import com.knot.backend.recording.domain.repository.RecordingSessionRepository;
-import com.knot.backend.recording.domain.model.RecordingStatus;
+import com.knot.backend.recording.application.dto.result.CurrentRecordingStatus;
 import com.knot.backend.workspace.domain.model.Workspace;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
@@ -32,6 +32,14 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import com.knot.backend.document.application.dto.result.DocumentGenerationProgressResult;
+import com.knot.backend.document.domain.model.DocumentGenerationProcessingStatus;
+import com.knot.backend.recording.domain.model.AudioFinalizationStatus;
+import com.knot.backend.recording.domain.model.RecordingAudioFinalization;
+import com.knot.backend.recording.domain.model.RecordingTranscription;
+import com.knot.backend.recording.domain.model.TranscriptionStatus;
 
 class RecordingCurrentServiceTest {
     private static final Instant STARTED_AT = Instant.parse("2026-10-05T00:00:00Z");
@@ -45,6 +53,9 @@ class RecordingCurrentServiceTest {
     private WorkspaceRepository workspaceRepository;
     private WorkspaceMemberRepository workspaceMemberRepository;
     private RecordingSessionRepository recordingSessionRepository;
+    private com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository finalizations;
+    private com.knot.backend.recording.domain.repository.RecordingTranscriptionRepository transcriptions;
+    private com.knot.backend.document.application.DocumentGenerationProgressService documentProgress;
     private RecordingService service;
 
     @BeforeEach
@@ -52,6 +63,9 @@ class RecordingCurrentServiceTest {
         workspaceRepository = mock(WorkspaceRepository.class);
         workspaceMemberRepository = mock(WorkspaceMemberRepository.class);
         recordingSessionRepository = mock(RecordingSessionRepository.class);
+        finalizations = mock(com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository.class);
+        transcriptions = mock(com.knot.backend.recording.domain.repository.RecordingTranscriptionRepository.class);
+        documentProgress = mock(com.knot.backend.document.application.DocumentGenerationProgressService.class);
         service = new RecordingService(
                 new RecordingAccess(
                         workspaceRepository,
@@ -70,8 +84,10 @@ class RecordingCurrentServiceTest {
                 mock(RecordingAudioStreamRepository.class),
                 new RecordingAudioChunksProperties(false),
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository.class),
-                mock(com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository.class),
-                mock(com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository.class)
+                finalizations,
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository.class),
+                transcriptions,
+                documentProgress
         );
     }
 
@@ -82,7 +98,7 @@ class RecordingCurrentServiceTest {
         prepareAccess();
         RecordingSession session = recordingSession();
         when(
-                recordingSessionRepository.findActiveByWorkspaceIdAndMemberId(
+                recordingSessionRepository.findLatestByWorkspaceIdAndMemberId(
                         WORKSPACE_ID,
                         MEMBER_ID
                 )
@@ -98,7 +114,7 @@ class RecordingCurrentServiceTest {
         assertThat(result).contains(
                 new RecordingCurrentResult(
                         RECORDING_ID,
-                        RecordingStatus.RECORDING,
+                        CurrentRecordingStatus.RECORDING,
                         STARTED_AT,
                         600_123L
                 )
@@ -113,7 +129,7 @@ class RecordingCurrentServiceTest {
         RecordingSession session = recordingSession();
         session.pause(STARTED_AT.plusSeconds(20));
         when(
-                recordingSessionRepository.findActiveByWorkspaceIdAndMemberId(
+                recordingSessionRepository.findLatestByWorkspaceIdAndMemberId(
                         WORKSPACE_ID,
                         MEMBER_ID
                 )
@@ -127,7 +143,7 @@ class RecordingCurrentServiceTest {
 
         // then
         assertThat(result).hasValueSatisfying(current -> {
-            assertThat(current.status()).isEqualTo(RecordingStatus.PAUSED);
+            assertThat(current.status()).isEqualTo(CurrentRecordingStatus.PAUSED);
             assertThat(current.elapsedMillis()).isEqualTo(20_000L);
         });
     }
@@ -148,7 +164,7 @@ class RecordingCurrentServiceTest {
                 NOW
         );
         when(
-                recordingSessionRepository.findActiveByWorkspaceIdAndMemberId(
+                recordingSessionRepository.findLatestByWorkspaceIdAndMemberId(
                         WORKSPACE_ID,
                         MEMBER_ID
                 )
@@ -172,8 +188,10 @@ class RecordingCurrentServiceTest {
                 mock(RecordingAudioStreamRepository.class),
                 new RecordingAudioChunksProperties(false),
                 mock(com.knot.backend.recording.domain.repository.RecordingAudioChunkRepository.class),
-                mock(com.knot.backend.recording.domain.repository.RecordingAudioFinalizationRepository.class),
-                mock(com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository.class)
+                finalizations,
+                mock(com.knot.backend.recording.domain.repository.RecordingAudioCleanupRepository.class),
+                transcriptions,
+                documentProgress
         );
 
         // when
@@ -184,18 +202,18 @@ class RecordingCurrentServiceTest {
 
         // then
         assertThat(result).hasValueSatisfying(current -> {
-            assertThat(current.status()).isEqualTo(RecordingStatus.RECORDING);
+            assertThat(current.status()).isEqualTo(CurrentRecordingStatus.RECORDING);
             assertThat(current.elapsedMillis()).isEqualTo(20_001L);
         });
     }
 
     @Test
-    @DisplayName("요청 Workspace에 본인 활성 녹음이 없으면 빈 결과를 반환한다")
-    void findCurrent_success_noActiveRecording() {
+    @DisplayName("요청 Workspace에 본인 녹음이 없으면 빈 결과를 반환한다")
+    void findCurrent_success_noRecording() {
         // given
         prepareAccess();
         when(
-                recordingSessionRepository.findActiveByWorkspaceIdAndMemberId(
+                recordingSessionRepository.findLatestByWorkspaceIdAndMemberId(
                         WORKSPACE_ID,
                         MEMBER_ID
                 )
@@ -218,7 +236,7 @@ class RecordingCurrentServiceTest {
         prepareAccess();
         RecordingSession session = recordingSession();
         when(
-                recordingSessionRepository.findActiveByWorkspaceIdAndMemberId(
+                recordingSessionRepository.findLatestByWorkspaceIdAndMemberId(
                         WORKSPACE_ID,
                         MEMBER_ID
                 )
@@ -312,9 +330,221 @@ class RecordingCurrentServiceTest {
         verify(
                 recordingSessionRepository,
                 never()
+        ).findLatestByWorkspaceIdAndMemberId(
+                anyLong(),
+                anyLong()
+        );
+    }
+
+    @Test
+    @DisplayName("종료 직후 업로드와 처리 결과가 없으면 문서 생성 중으로 반환한다")
+    void findCurrent_success_waitingForAudio() {
+        // given
+        prepareEndedRecording();
+
+        // when
+        Optional<RecordingCurrentResult> result = service.findCurrent(
+                WORKSPACE_ID,
+                MEMBER_ID
+        );
+
+        // then
+        assertThat(result).hasValueSatisfying(current -> {
+            assertThat(current.status()).isEqualTo(CurrentRecordingStatus.PROCESSING);
+            assertThat(current.elapsedMillis()).isEqualTo(20_000L);
+        });
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = DocumentGenerationProcessingStatus.class, names = {"QUEUED", "RUNNING"})
+    @DisplayName("문서 생성 배치가 대기 또는 실행 중이면 문서 생성 중으로 반환한다")
+    void findCurrent_success_documentGenerationInProgress(DocumentGenerationProcessingStatus status) {
+        // given
+        prepareEndedRecording();
+        when(
+                documentProgress.findProgress(
+                        WORKSPACE_ID,
+                        RECORDING_ID
+                )
+        ).thenReturn(Optional.of(progress(status)));
+
+        // when
+        Optional<RecordingCurrentResult> result = service.findCurrent(
+                WORKSPACE_ID,
+                MEMBER_ID
+        );
+
+        // then
+        assertThat(result).hasValueSatisfying(
+                current -> assertThat(current.status()).isEqualTo(CurrentRecordingStatus.PROCESSING)
+        );
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = DocumentGenerationProcessingStatus.class, names = {"SUCCEEDED", "FAILED", "NO_CONTENT"})
+    @DisplayName("문서 생성 배치가 최종 상태면 최신 녹음을 표시하지 않는다")
+    void findCurrent_success_terminalDocumentGeneration(DocumentGenerationProcessingStatus status) {
+        // given
+        prepareEndedRecording();
+        when(
+                documentProgress.findProgress(
+                        WORKSPACE_ID,
+                        RECORDING_ID
+                )
+        ).thenReturn(Optional.of(progress(status)));
+
+        // when
+        Optional<RecordingCurrentResult> result = service.findCurrent(
+                WORKSPACE_ID,
+                MEMBER_ID
+        );
+
+        // then
+        assertThat(result).isEmpty();
+        verify(
+                recordingSessionRepository,
+                never()
         ).findActiveByWorkspaceIdAndMemberId(
                 anyLong(),
                 anyLong()
+        );
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = TranscriptionStatus.class, names = {"QUEUED", "PROCESSING", "SUCCEEDED"})
+    @DisplayName("문서 배치 없이 전사 작업이 진행되거나 배치 생성을 기다리면 문서 생성 중이다")
+    void findCurrent_success_transcriptionInProgress(TranscriptionStatus status) {
+        // given
+        prepareEndedRecording();
+        RecordingTranscription transcription = mock(RecordingTranscription.class);
+        when(transcription.getStatus()).thenReturn(status);
+        when(transcriptions.findByRecordingSessionId(RECORDING_ID)).thenReturn(Optional.of(transcription));
+
+        // when
+        Optional<RecordingCurrentResult> result = service.findCurrent(
+                WORKSPACE_ID,
+                MEMBER_ID
+        );
+
+        // then
+        assertThat(result).hasValueSatisfying(
+                current -> assertThat(current.status()).isEqualTo(CurrentRecordingStatus.PROCESSING)
+        );
+    }
+
+    @Test
+    @DisplayName("전사가 최종 실패한 최신 녹음은 문서 생성 중으로 표시하지 않는다")
+    void findCurrent_success_failedTranscriptionExcluded() {
+        // given
+        prepareEndedRecording();
+        RecordingTranscription transcription = mock(RecordingTranscription.class);
+        when(transcription.getStatus()).thenReturn(TranscriptionStatus.FAILED);
+        when(transcriptions.findByRecordingSessionId(RECORDING_ID)).thenReturn(Optional.of(transcription));
+
+        // when
+        Optional<RecordingCurrentResult> result = service.findCurrent(
+                WORKSPACE_ID,
+                MEMBER_ID
+        );
+
+        // then
+        assertThat(result).isEmpty();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = AudioFinalizationStatus.class, names = {"QUEUED", "PROCESSING", "READY"})
+    @DisplayName("오디오 준비 또는 전사 대기 중인 최신 녹음은 문서 생성 중으로 반환한다")
+    void findCurrent_success_audioInProgress(AudioFinalizationStatus status) {
+        // given
+        prepareEndedRecording();
+        RecordingAudioFinalization finalization = mock(RecordingAudioFinalization.class);
+        when(finalization.getStatus()).thenReturn(status);
+        when(finalizations.findByRecordingId(RECORDING_ID)).thenReturn(Optional.of(finalization));
+
+        // when
+        Optional<RecordingCurrentResult> result = service.findCurrent(
+                WORKSPACE_ID,
+                MEMBER_ID
+        );
+
+        // then
+        assertThat(result).hasValueSatisfying(
+                current -> assertThat(current.status()).isEqualTo(CurrentRecordingStatus.PROCESSING)
+        );
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = AudioFinalizationStatus.class, names = {"FAILED", "DISCARDED"})
+    @DisplayName("오디오 준비가 실패하거나 폐기되면 문서 생성 중으로 표시하지 않는다")
+    void findCurrent_success_terminalAudioExcluded(AudioFinalizationStatus status) {
+        // given
+        prepareEndedRecording();
+        RecordingAudioFinalization finalization = mock(RecordingAudioFinalization.class);
+        when(finalization.getStatus()).thenReturn(status);
+        when(finalizations.findByRecordingId(RECORDING_ID)).thenReturn(Optional.of(finalization));
+
+        // when
+        Optional<RecordingCurrentResult> result = service.findCurrent(
+                WORKSPACE_ID,
+                MEMBER_ID
+        );
+
+        // then
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("폐기된 최신 녹음은 표시하지 않고 처리 상태도 조회하지 않는다")
+    void findCurrent_success_discardedExcluded() {
+        // given
+        prepareAccess();
+        RecordingSession session = recordingSession();
+        session.discard(STARTED_AT.plusSeconds(20));
+        when(
+                recordingSessionRepository.findLatestByWorkspaceIdAndMemberId(
+                        WORKSPACE_ID,
+                        MEMBER_ID
+                )
+        ).thenReturn(Optional.of(session));
+
+        // when
+        Optional<RecordingCurrentResult> result = service.findCurrent(
+                WORKSPACE_ID,
+                MEMBER_ID
+        );
+
+        // then
+        assertThat(result).isEmpty();
+        verifyNoInteractions(
+                transcriptions,
+                finalizations,
+                documentProgress
+        );
+    }
+
+    private void prepareEndedRecording() {
+        prepareAccess();
+        RecordingSession session = recordingSession();
+        session.end(STARTED_AT.plusSeconds(20));
+        when(
+                recordingSessionRepository.findLatestByWorkspaceIdAndMemberId(
+                        WORKSPACE_ID,
+                        MEMBER_ID
+                )
+        ).thenReturn(Optional.of(session));
+    }
+
+    private DocumentGenerationProgressResult progress(DocumentGenerationProcessingStatus status) {
+        return new DocumentGenerationProgressResult(
+                100L,
+                RECORDING_ID,
+                status,
+                0,
+                0,
+                0,
+                0,
+                null,
+                null
         );
     }
 

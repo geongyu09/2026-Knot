@@ -11,7 +11,7 @@ import com.knot.backend.auth.domain.model.AuthenticatedMember;
 import com.knot.backend.global.exception.GlobalExceptionHandler;
 import com.knot.backend.recording.application.RecordingService;
 import com.knot.backend.recording.application.dto.result.RecordingCurrentResult;
-import com.knot.backend.recording.domain.model.RecordingStatus;
+import com.knot.backend.recording.application.dto.result.CurrentRecordingStatus;
 import com.knot.backend.workspace.domain.WorkspaceErrorCode;
 import com.knot.backend.workspace.domain.WorkspaceException;
 import java.time.Instant;
@@ -67,7 +67,7 @@ class RecordingCurrentControllerTest {
                 Optional.of(
                         new RecordingCurrentResult(
                                 RECORDING_ID,
-                                RecordingStatus.PAUSED,
+                                CurrentRecordingStatus.PAUSED,
                                 STARTED_AT,
                                 125_000L
                         )
@@ -91,7 +91,44 @@ class RecordingCurrentControllerTest {
     }
 
     @Test
-    @DisplayName("활성 녹음이 없으면 본문 없는 204를 반환한다")
+    @DisplayName("문서 생성 중이면 PROCESSING과 기존 네 개 필드만 반환한다")
+    void findCurrent_success_processing() throws Exception {
+        // given
+        when(
+                recordingService.findCurrent(
+                        WORKSPACE_ID,
+                        MEMBER_ID
+                )
+        ).thenReturn(
+                Optional.of(
+                        new RecordingCurrentResult(
+                                RECORDING_ID,
+                                CurrentRecordingStatus.PROCESSING,
+                                STARTED_AT,
+                                125_000L
+                        )
+                )
+        );
+
+        // when
+        ResultActions result = mockMvc.perform(
+                get(
+                        "/api/v1/workspaces/{workspaceId}/recordings/current",
+                        WORKSPACE_ID
+                )
+        );
+
+        // then
+        result.andExpect(status().isOk())
+                .andExpect(jsonPath("$.recordingId").value(RECORDING_ID))
+                .andExpect(jsonPath("$.status").value("PROCESSING"))
+                .andExpect(jsonPath("$.startedAt").value("2026-10-05T00:00:00Z"))
+                .andExpect(jsonPath("$.elapsedMillis").value(125_000L))
+                .andExpect(jsonPath("$.length()").value(4));
+    }
+
+    @Test
+    @DisplayName("표시할 녹음이 없으면 본문 없는 204를 반환한다")
     void findCurrent_success_noContent() throws Exception {
         // given
         when(
