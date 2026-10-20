@@ -94,17 +94,54 @@ describe("getRequestErrorFingerprint", () => {
     ]);
   });
 
-  it("응답을 받지 못한 실패는 상태 코드 대신 실패 이유를 쓴다", () => {
-    const error = createHttpError({
-      type: HTTP_ERROR_TYPE.network,
-      cause: axiosCause({ method: "get", url: "/api/v1/workspaces" }),
+  describe("응답을 받지 못한 실패", () => {
+    /** 응답을 받지 못한 httpClient 실패. xhr 어댑터가 던지는 axios 오류를 원래 오류로 담아요 */
+    const networkError = (url: string, message: string, code?: string) =>
+      createHttpError({
+        type: HTTP_ERROR_TYPE.network,
+        cause: new AxiosError(message, code, {
+          method: "get",
+          url,
+          headers: new AxiosHeaders(),
+        }),
+      });
+
+    // 연결이 한 번 끊기면 화면에 떠 있던 요청이 함께 실패해요. API의 결함이 아니라 API별로 나누지 않아요
+    it("연결 실패는 API와 관계없이 하나로 묶는다", () => {
+      expect(
+        getRequestErrorFingerprint(
+          networkError("/api/v1/workspaces/1/documents", "Network Error"),
+        ),
+      ).toEqual(["http-network", "network"]);
+      expect(
+        getRequestErrorFingerprint(networkError("/api/v1/me", "Network Error")),
+      ).toEqual(["http-network", "network"]);
     });
 
-    expect(getRequestErrorFingerprint(error)).toEqual([
-      "GET",
-      "/api/v1/workspaces",
-      "network",
-    ]);
+    it("페이지를 떠나며 끊긴 요청은 끊김끼리 하나로 묶는다", () => {
+      expect(
+        getRequestErrorFingerprint(
+          networkError(
+            "/api/v1/me",
+            "Request aborted",
+            AxiosError.ECONNABORTED,
+          ),
+        ),
+      ).toEqual(["http-network", "aborted"]);
+    });
+
+    // 느린 API를 찾을 수 있게 시간 초과만 API별로 남겨요
+    it("시간 초과는 메서드, 경로, timeout으로 API마다 나눈다", () => {
+      expect(
+        getRequestErrorFingerprint(
+          networkError(
+            "/api/v1/workspaces/1/documents",
+            "timeout of 10000ms exceeded",
+            AxiosError.ECONNABORTED,
+          ),
+        ),
+      ).toEqual(["GET", "/api/v1/workspaces/:id/documents", "timeout"]);
+    });
   });
 
   it("httpClient 요청의 실패가 아니면 묶음 기준을 정하지 않는다", () => {
