@@ -470,6 +470,25 @@ describe("WorkspaceLayout", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
+  it.each([400, 409, 429])(
+    "%i로 조회하지 못하면 스피너를 계속 돌리지 않고, 이동 없이 GNB와 독 없이 ERR-03 화면을 보여준다 (ERR-03)",
+    async (status) => {
+      overrideWorkspaceStatus(status);
+      const { router } = renderLayout();
+
+      expect(
+        await screen.findByRole("heading", { name: SERVER_ERROR_TITLE }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "다시 시도" }),
+      ).toBeInTheDocument();
+      expect(router.state.location.pathname).toBe(HOME_PATH);
+      expect(screen.queryByRole("banner")).not.toBeInTheDocument();
+      expect(screen.queryByText(HOME_TEXT)).not.toBeInTheDocument();
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    },
+  );
+
   it("응답을 받지 못하면(네트워크 끊김) GNB와 독 없이 ERR-02 화면을 보여준다 (ERR-02)", async () => {
     mockServer.use(
       http.get(WORKSPACE_PATH_PATTERN, () => HttpResponse.error()),
