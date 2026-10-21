@@ -1,9 +1,11 @@
 version: 0.0
 os: linux
 
-# 첫 전환 때 이전 revision의 ApplicationStop이 Blue를 끊지 않도록
-# 기존 appspec.yml과 배포 그룹을 분리한다. 활성 app.jar는 복사하지 않는다.
 hooks:
+  BeforeInstall:
+    - location: scripts/dev_bluegreen_preserve_legacy.sh
+      timeout: 300
+      runas: root
   ApplicationStart:
     - location: scripts/dev_bluegreen_deploy.sh
       timeout: 3600
