@@ -1,3 +1,4 @@
+import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
 import Pop from "@primitives/animation/Pop";
 import Button from "@primitives/ui/Button";
@@ -69,6 +70,13 @@ const Container = styled(Pop)`
   border-radius: 1.25rem; /* 20px */
   background-color: ${({ theme }) => theme.neutral[0]};
   box-shadow: ${({ theme }) => theme.shadow03};
+
+  /* 모바일은 화면 아래에 붙는 시트로 그려요. 위 모서리만 둥글고, 기기 안전 영역만큼 아래를 더 띄워요(RESP-R7) */
+  ${MEDIA_QUERY.mobile} {
+    max-width: none;
+    padding: 1.75rem 1.5rem calc(1.5rem + env(safe-area-inset-bottom)); /* 28px 24px 24px */
+    border-radius: 1.25rem 1.25rem 0 0; /* 20px */
+  }
 `;
 
 const Head = styled.div`

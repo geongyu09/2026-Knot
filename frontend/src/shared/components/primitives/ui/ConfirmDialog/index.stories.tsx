@@ -44,3 +44,18 @@ export const Default: Story = {};
 export const Destructive: Story = {
   args: { isDestructive: true },
 };
+
+/**
+ * 767px 이하 모바일 화면이에요. 화면 아래에 붙는 시트 모양으로 바뀌어요.
+ * 폭을 꽉 채우고 위 모서리만 둥글며, 아래에는 기기 안전 영역만큼 여백을 더해요. 실제 화면에서는 `Dim`이 시트를 아래로 모아요.
+ */
+export const MobileSheet: Story = {
+  args: { isDestructive: true },
+  globals: { viewport: { value: "mobile390", isRotated: false } },
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4908-57141",
+    },
+  },
+};
