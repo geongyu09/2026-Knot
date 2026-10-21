@@ -43,6 +43,7 @@ readonly CURL_TIMEOUT_SECONDS="${KNOT_BLUEGREEN_CURL_TIMEOUT_SECONDS:-5}"
 readonly DRAIN_TIMEOUT_SECONDS="${KNOT_BLUEGREEN_DRAIN_TIMEOUT_SECONDS:-900}"
 readonly DRAIN_POLL_INTERVAL_SECONDS="${KNOT_BLUEGREEN_DRAIN_POLL_INTERVAL_SECONDS:-2}"
 readonly HEALTH_HOST="${KNOT_BLUEGREEN_HEALTH_HOST:-$DEFAULT_HEALTH_HOST}"
+readonly PROD_ORIGIN_CA_CERT="${SCRIPT_DIR}/certs/cloudflare-origin-rsa-root.pem"
 readonly INCOMING_JAR="${BUNDLE_ROOT}/app.jar"
 readonly METRICS_NGINX_SOURCE="${SCRIPT_DIR}/nginx/knot-backend-metrics.conf"
 
@@ -66,6 +67,7 @@ PREVIOUS_NGINX_CONFIG=""
 PREVIOUS_NGINX_METRICS_CONFIG=""
 NGINX_METRICS_CONFIG_WAS_PRESENT=false
 NGINX_METRICS_ROUTE_CHANGED=false
+LAST_HEALTH_FAILURE_REASON=""
 
 log() {
   printf '[blue-green:%s] %s\n' "$BLUEGREEN_PROFILE" "$*"
@@ -137,14 +139,23 @@ health_is_up() {
   local response
   local http_status
 
-  if ! response="$(curl --noproxy '*' --fail --silent --show-error --max-time "$CURL_TIMEOUT_SECONDS" --write-out $'\n%{http_code}' "$@" 2>/dev/null)"; then
+  if ! response="$(curl --noproxy '*' --fail --silent --show-error --max-time "$CURL_TIMEOUT_SECONDS" --write-out $'\n%{http_code}' "$@" 2>&1)"; then
+    LAST_HEALTH_FAILURE_REASON="$(printf '%s' "$response" | tr '\n' ' ' | cut -c1-240)"
+    [[ -n "$LAST_HEALTH_FAILURE_REASON" ]] || LAST_HEALTH_FAILURE_REASON="curl exited without a diagnostic"
     return 1
   fi
 
   http_status="${response##*$'\n'}"
-  [[ "$http_status" == "200" ]] || return 1
+  if [[ "$http_status" != "200" ]]; then
+    LAST_HEALTH_FAILURE_REASON="HTTP status ${http_status}"
+    return 1
+  fi
   response="${response%$'\n'*}"
-  health_body_is_up "$response"
+  if ! health_body_is_up "$response"; then
+    LAST_HEALTH_FAILURE_REASON="HTTP 200 body did not report status UP"
+    return 1
+  fi
+  LAST_HEALTH_FAILURE_REASON=""
 }
 
 health_is_up_at_url() {
@@ -168,6 +179,12 @@ if body.get("status") != "UP":
 
 health_is_up_through_nginx() {
   local url="https://${HEALTH_HOST}/actuator/health"
+
+  if [[ "$BLUEGREEN_PROFILE" == "prod" ]]; then
+    health_is_up --cacert "$PROD_ORIGIN_CA_CERT" \
+      --resolve "${HEALTH_HOST}:443:127.0.0.1" "$url"
+    return
+  fi
 
   health_is_up --resolve "${HEALTH_HOST}:443:127.0.0.1" "$url"
 }
@@ -196,6 +213,7 @@ wait_for_nginx_health() {
     sleep "$HEALTH_INTERVAL_SECONDS"
   done
 
+  log "Nginx Health Check failed for ${HEALTH_HOST}: ${LAST_HEALTH_FAILURE_REASON:-no usable response}"
   return 1
 }
 
@@ -638,6 +656,9 @@ assert_numeric_settings
 [[ -f "${SCRIPT_DIR}/systemd/knot-backend-blue.service" ]] || die "Blue systemd unit is missing from the revision"
 [[ -f "${SCRIPT_DIR}/systemd/knot-backend-green.service" ]] || die "Green systemd unit is missing from the revision"
 [[ -f "$METRICS_NGINX_SOURCE" ]] || die "Loopback metrics Nginx config is missing from the revision"
+if [[ "$BLUEGREEN_PROFILE" == "prod" ]]; then
+  [[ -r "$PROD_ORIGIN_CA_CERT" ]] || die "Prod Cloudflare Origin RSA CA root is missing from the revision"
+fi
 [[ -r "$ALLOY_CONFIG" ]] || die "Alloy config is unreadable: ${ALLOY_CONFIG}"
 
 mkdir -p "$STATE_ROOT" "$(dirname "$LOCK_FILE")"
@@ -655,6 +676,10 @@ service_is_active "$ACTIVE_SERVICE" || die "Active service is no longer active"
 
 active_url="http://127.0.0.1:${ACTIVE_PORT}/actuator/health"
 wait_for_health "$active_url" || die "Active Blue health check failed before deployment"
+if [[ "$BLUEGREEN_PROFILE" == "prod" ]]; then
+  wait_for_nginx_health || die "Current Prod Nginx health check failed before deployment; route was not changed"
+  log "Current Prod Nginx returned 200 UP before candidate startup"
+fi
 
 active_migrations="$(migration_files "$ACTIVE_JAR")" || die "Could not read migration files from the active JAR"
 candidate_migrations="$(migration_files "$INCOMING_JAR")" || die "Could not read migration files from the candidate JAR"
