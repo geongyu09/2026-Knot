@@ -10,3 +10,6 @@ export const WAVEFORM_MAX_BAR_HEIGHT = 30;
 
 /** 소리 크기를 재는 간격(ms). 막대가 한 칸씩 왼쪽으로 흘러가는 속도예요. */
 export const WAVEFORM_SAMPLE_INTERVAL_MS = 120;
+
+/** 막대 하나가 차지하는 폭(px). Figma의 4px 막대와 4px 간격을 합친 값이에요. */
+export const WAVEFORM_COLUMN_WIDTH = 8;
