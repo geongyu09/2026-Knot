@@ -6,31 +6,21 @@ import type { DockParticlesHandle } from "../ui/DockParticles";
 interface UseDockParticleEffectsParams {
   /** 독 껍데기. 입자 좌표의 기준이에요 */
   formRef: RefObject<HTMLFormElement | null>;
-  isExpanded: boolean;
   canSubmit: boolean;
-  /** 독이 알약으로 열려 있는지. 파형으로 접혀 있으면 아이콘이 없어 모을 것도 없어요 */
-  isOpen: boolean;
 }
-
-/** 펼침·접힘 모션이 어느 정도 진행된 뒤 실이 지나가요(ms) */
-const ASSEMBLE_DELAY = { expand: 160, collapse: 120 };
 
 /**
  * 독의 입자 반응을 언제 일으킬지 정해요.
  *
- * 펼치고 접을 때는 테두리에 실이 한 번 지나가요.
  * 보낼 수 있게 되면 화살표가 입자로 모이고, 녹음 버튼을 누르면 그 자리에서 입자가 터지며 실이 한 바퀴 돌아요.
  * 좌표는 모두 독 왼쪽 위 기준이라 요소를 받아 가운데를 계산해요.
  */
 export const useDockParticleEffects = ({
   formRef,
-  isExpanded,
   canSubmit,
-  isOpen,
 }: UseDockParticleEffectsParams) => {
   const particlesRef = useRef<DockParticlesHandle>(null);
   const sendIconRef = useRef<ParticleIconHandle>(null);
-  const isFirstRender = useRef(true);
 
   const centerOf = useCallback(
     (element: Element | null | undefined) => {
@@ -65,30 +55,6 @@ export const useDockParticleEffects = ({
     },
     [centerOf],
   );
-
-  useEffect(() => {
-    if (!isOpen) return;
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-
-    const timer = setTimeout(
-      () => {
-        const form = formRef.current;
-        if (form) {
-          particlesRef.current?.trace(
-            isExpanded ? 0 : form.clientWidth,
-            form.clientHeight / 2,
-            0.7,
-          );
-        }
-      },
-      isExpanded ? ASSEMBLE_DELAY.expand : ASSEMBLE_DELAY.collapse,
-    );
-
-    return () => clearTimeout(timer);
-  }, [formRef, isExpanded, isOpen]);
 
   useEffect(() => {
     if (canSubmit) sendIconRef.current?.assemble();

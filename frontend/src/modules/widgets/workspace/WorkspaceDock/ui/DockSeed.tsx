@@ -3,7 +3,7 @@ import styled from "@emotion/styled";
 import { hexToRgb } from "@utils/hexToRgb";
 import { useRef, type PointerEvent } from "react";
 
-import { SEED_CANVAS_HEIGHT, SEED_WAVE_BOTTOM } from "../constants/dockSeed";
+import { SEED_CANVAS_HEIGHT, SEED_CANVAS_OVERFLOW, SEED_WAVE_BOTTOM } from "../constants/dockSeed";
 import { useDockSeed, type DockSeedTone, type SeedSplitTargets } from "../model/useDockSeed";
 
 interface DockSeedProps {
@@ -26,7 +26,7 @@ interface DockSeedProps {
 /**
  * 독이 접혀 있을 때 독 자리에 떠 있는 입자.
  *
- * 대기 중엔 입자가 독을 그대로 스케치해요(알약 윤곽, 채팅 아이콘, 붉은 녹음 구슬). 녹음 중엔 녹음 바와 같은 청록 파형이
+ * 대기 중엔 어두운 유리 알약 위에 입자가 독을 그대로 스케치해요(알약 윤곽, 채팅 아이콘, 붉은 녹음 구슬). 녹음 중엔 녹음 바와 같은 청록 파형이
  * 길게 흐르며 목소리를 따르고 아래에 녹음한 시간이 보여요. 올리면 그 자리에 진짜 독이 나타나고, 벗어나면 다시 입자로 돌아가요.
  * 입자 위에서 포인터는 밀어내기를 일으키고, 누르면 파동이 퍼져요.
  * 파형 자체는 장식이라 낭독기에서 숨기고, 누르는 자리는 「독 열기」 버튼이에요. 키보드로는 Enter나 Space로 열어요.
@@ -34,14 +34,8 @@ interface DockSeedProps {
 export default function DockSeed({ isOpen, tone, analyser, isActive, elapsedTime, hasRecordSide, splitTargets, onOpen }: DockSeedProps) {
   const theme = useTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  // 주변 카드·글처럼 부드럽게 보이도록 스케치는 Neutral 600~700의 옅은 잉크, 구슬은 채도를 낮춘 붉은 톤을 써요
-  const ink = hexToRgb(theme.neutral[700]);
-  const strong = hexToRgb(theme.neutral[800]);
-  const frame = hexToRgb(theme.neutral[500]);
   const accent = hexToRgb(theme.sub.accent[500]);
   const light = hexToRgb(theme.neutral[300]);
-  const warning = hexToRgb(theme.sub.warning[600]);
-  const warningDeep = hexToRgb(theme.sub.warning[700]);
 
   const { setPointer, clearPointer, pulse } = useDockSeed({
     canvasRef,
@@ -52,16 +46,16 @@ export default function DockSeed({ isOpen, tone, analyser, isActive, elapsedTime
     hasRecordSide,
     splitTargets,
     palette: {
-      ink: [`rgba(${strong},0.72)`, `rgba(${ink},0.5)`, `rgba(${frame},0.3)`],
       teal: [`rgba(${accent},0.9)`, `rgba(${accent},0.55)`, `rgba(${accent},0.28)`],
+      // 어두운 알약 위에서 또렷하게 「녹음」으로 읽히도록 열린 독의 구슬과 같은 붉은 다섯 단계예요
       orb: [
-        `rgba(${hexToRgb(theme.sub.warning[200])},0.75)`,
-        `rgba(${warning},0.5)`,
-        `rgba(${warning},0.62)`,
-        `rgba(${warningDeep},0.62)`,
-        `rgba(${warningDeep},0.45)`,
+        `rgba(${hexToRgb(theme.sub.warning[200])},0.92)`,
+        `rgba(${hexToRgb(theme.sub.warning[600])},0.8)`,
+        `rgba(${hexToRgb(theme.sub.warning[600])},0.9)`,
+        `rgba(${hexToRgb(theme.sub.warning[700])},0.9)`,
+        `rgba(${hexToRgb(theme.sub.warning[800])},0.8)`,
       ],
-      light: [`rgba(${hexToRgb(theme.neutral[0])},0.95)`, `rgba(${light},0.75)`, `rgba(${light},0.4)`],
+      light: [`rgba(${hexToRgb(theme.neutral[0])},0.92)`, `rgba(${light},0.7)`, `rgba(${light},0.32)`],
     },
   });
 
@@ -114,7 +108,7 @@ export default function DockSeed({ isOpen, tone, analyser, isActive, elapsedTime
 /** 독 자리 위로 넉넉히 그려요. 열린 뒤에는 독이 포인터를 받도록 비켜요 */
 const Canvas = styled.canvas<{ $isOpen: boolean }>`
   position: absolute;
-  bottom: 0;
+  bottom: -${SEED_CANVAS_OVERFLOW / 16}rem; /* 알약 아래 윤곽이 잘리지 않게 독보다 더 내려가요 */
   left: 0;
   width: 100%;
   height: ${SEED_CANVAS_HEIGHT / 16}rem;
@@ -125,7 +119,7 @@ const Canvas = styled.canvas<{ $isOpen: boolean }>`
 /** 파형 오른쪽 끝 옆에 세로 가운데로 놓여요. 파형 폭은 열 폭의 60%, 최대 360px이에요 */
 const ElapsedTime = styled.span<{ $isVisible: boolean }>`
   position: absolute;
-  bottom: ${SEED_WAVE_BOTTOM / 16}rem;
+  bottom: ${(SEED_WAVE_BOTTOM - SEED_CANVAS_OVERFLOW) / 16}rem;
   left: calc(50% + min(11.25rem, 30%) + 0.75rem); /* 파형 절반(최대 180px) + 12px */
   transform: translateY(50%);
   color: ${({ theme }) => theme.neutral[800]};

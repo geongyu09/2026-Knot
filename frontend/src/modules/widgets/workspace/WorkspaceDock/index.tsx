@@ -119,7 +119,7 @@ export default function WorkspaceDock() {
     isRecordingChipVisible,
   });
   const { particlesRef, sendIconRef, burstAt, traceFrom } =
-    useDockParticleEffects({ formRef, isExpanded, canSubmit, isOpen });
+    useDockParticleEffects({ formRef, canSubmit });
 
   const hasRecordSide = isMicVisible || isRecordingChipVisible;
 
@@ -307,15 +307,14 @@ const Bar = styled.form<{
   /* 접혔을 때만 동그란 알약이고, 펼친 뒤에는 여러 줄로 자라도 모서리가 30px로 고정돼요 */
   border-radius: ${({ $isExpanded }) =>
     $isExpanded ? "1.875rem" : "6.25rem"}; /* 30px : 100px */
-  /* 스케치 상태는 프라이머리(Neutral 800)를 아주 옅게 깐 반투명 유리예요. 뒤가 비치고 살짝 흐려지며 가장자리에 흰 빛 한 줄만 둬요.
-     열리면 기존 독의 Neutral 800이에요 */
+  /* 스케치 상태는 기존 독의 Neutral 800을 살짝 비치는 어두운 유리예요. 뒤가 은은히 흐려지고 가장자리에 옅은 빛 한 줄만 둬요.
+     열리면 기존 독의 Neutral 800 그대로예요 */
   background-color: ${({ theme, $isSketch }) =>
-    $isSketch ? `rgba(${hexToRgb(theme.neutral[800])}, 0.07)` : theme.neutral[800]};
-  backdrop-filter: ${({ $isSketch }) => ($isSketch ? "blur(14px) saturate(1.2)" : "none")};
-  -webkit-backdrop-filter: ${({ $isSketch }) => ($isSketch ? "blur(14px) saturate(1.2)" : "none")};
+    $isSketch ? `rgba(${hexToRgb(theme.neutral[800])}, 0.84)` : theme.neutral[800]};
+  backdrop-filter: ${({ $isSketch }) => ($isSketch ? "blur(10px)" : "none")};
+  -webkit-backdrop-filter: ${({ $isSketch }) => ($isSketch ? "blur(10px)" : "none")};
   box-shadow: ${({ theme, $isSketch, $isRecording }) => {
-    if ($isSketch)
-      return `inset 0 0 0 1px rgba(255, 255, 255, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.7), ${theme.shadow01}`;
+    if ($isSketch) return `inset 0 0 0 1px rgba(255, 255, 255, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.12), ${theme.shadow02}`;
     /* 녹음 중엔 독 아래로 청록 빛이 살짝 비쳐요 */
     return $isRecording
       ? `${theme.shadow03}, 0 10px 30px rgba(46, 133, 163, 0.16)`

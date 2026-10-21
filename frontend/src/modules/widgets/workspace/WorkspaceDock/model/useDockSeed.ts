@@ -71,13 +71,11 @@ export interface SeedSplitTargets {
 }
 
 export interface DockSeedPalette {
-  /** 잉크 세 단계(진한, 보통, 옅은). 밝은 바탕 위의 독 스케치에 써요 */
-  ink: [string, string, string];
   /** 청록 세 단계. 녹음 중 파형에 써요 */
   teal: [string, string, string];
   /** 붉은 다섯 단계(빛 받는 면부터 그늘까지). 녹음 구슬에 써요. 열린 독의 구슬과 같은 색이에요 */
   orb: [string, string, string, string, string];
-  /** 어두운 독 위에 올라간 뒤의 밝은 세 단계 */
+  /** 어두운 알약 위의 밝은 세 단계(아이콘 진한, 아이콘 옅은, 윤곽) */
   light: [string, string, string];
 }
 
@@ -94,8 +92,8 @@ interface UseDockSeedParams {
   palette: DockSeedPalette;
 }
 
-/** 독 자리의 세로 가운데가 캔버스 아래에서 떨어진 거리(px). 접힌 독 높이의 절반이에요 */
-const SLOT_CENTER_BOTTOM = 30;
+/** 독 자리의 세로 가운데가 캔버스 아래에서 떨어진 거리(px). 접힌 독 높이의 절반에 캔버스가 더 내려간 만큼이에요 */
+const SLOT_CENTER_BOTTOM = SEED_WAVE_BOTTOM;
 
 /**
  * 독이 접혀 있을 때 독 자리에 떠 있는 입자를 그려요.
@@ -166,6 +164,9 @@ export const useDockSeed = ({
     let isLite = false;
     let lastLayoutKey = "";
     let isOddFrame = false;
+    let shouldSnap = false;
+    /** 새 자리에 고정한 채 그리지 않고 기다리는 프레임 수. 독 배치를 다시 잰 뒤 살아나게 해요 */
+    let holdFrames = 0;
 
     const resize = () => {
       const nextWidth = canvas.clientWidth;
@@ -261,7 +262,7 @@ export const useDockSeed = ({
       const startX = centerX - waveWidth / 2;
       const columnWidth = waveWidth / SEED_WAVE_COLUMNS;
       // 스케치는 숨 쉬듯 아주 살짝 떠 있어요
-      const drift = isWave ? 0 : Math.sin(frame * 0.017) * 1.5;
+      const drift = isWave ? 0 : Math.sin(frame * 0.017);
 
       // 녹음 구슬: 왼쪽 위에서 빛이 들어오는 구가 천천히 돌아요. 열린 독의 구슬과 같은 계산이에요
       const rotation = frame * 0.006;
@@ -297,10 +298,9 @@ export const useDockSeed = ({
       });
     };
 
-    /** 입자 하나의 색. 스케치는 맡은 부분마다, 파형은 랜딩처럼 세로 위치마다, 독 위에 올라가면 밝은색이에요 */
+    /** 입자 하나의 색. 스케치는 어두운 알약 위라 밝은 입자, 파형은 밝은 바탕 위라 청록이에요 */
     const colorOf = (particle: SeedParticle, colors: DockSeedPalette, isWave: boolean) => {
-      const onDock = blend >= 0.55;
-      if (isWave && !onDock) {
+      if (isWave && blend < 0.55) {
         const strength = Math.abs(particle.level);
         return colors.teal[strength < 0.45 ? 0 : strength < 0.8 ? 1 : 2];
       }
@@ -308,9 +308,9 @@ export const useDockSeed = ({
         case "orb":
           return paramsRef.current.tone === "idle" ? colors.orb[particle.shade] : colors.teal[Math.min(2, particle.shade)];
         case "icon":
-          return (onDock ? colors.light : colors.ink)[particle.seed < 0.7 ? 0 : 1];
+          return colors.light[particle.seed < 0.7 ? 0 : 1];
         default:
-          return onDock ? colors.light[2] : colors.ink[2];
+          return colors.light[2];
       }
     };
 
@@ -343,16 +343,22 @@ export const useDockSeed = ({
       // 녹음이 시작·종료되거나 녹음 쪽이 생기고 없어지면 입자가 옛 자리에서 날아오지 않고 새 자리에서 바로 살아나요
       const layoutKey = `${nextTone}:${paramsRef.current.hasRecordSide}`;
       if (layoutKey !== lastLayoutKey) {
-        if (lastLayoutKey) {
-          particles.forEach((particle) => {
-            particle.x = particle.homeX;
-            particle.y = particle.homeY;
-            particle.vx = 0;
-            particle.vy = 0;
-          });
-          if (!open) alpha = 0;
-        }
+        if (lastLayoutKey) shouldSnap = true;
         lastLayoutKey = layoutKey;
+      }
+      if (shouldSnap) {
+        shouldSnap = false;
+        holdFrames = 3;
+        if (!open) alpha = 0;
+      }
+      if (holdFrames > 0) {
+        holdFrames--;
+        particles.forEach((particle) => {
+          particle.x = particle.homeX;
+          particle.y = particle.homeY;
+          particle.vx = 0;
+          particle.vy = 0;
+        });
       }
 
       const pulses = pulsesRef.current;
@@ -362,7 +368,7 @@ export const useDockSeed = ({
 
       context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
       context.clearRect(0, 0, width, height);
-      const isHidden = alpha < 0.02;
+      const isHidden = alpha < 0.02 || holdFrames > 0;
       if (!isHidden) {
         context.globalAlpha = alpha;
         const step = isLite ? 2 : 1;
@@ -403,14 +409,16 @@ export const useDockSeed = ({
         context.globalAlpha = 1;
       }
 
-      // 숨어서 할 일이 없으면 멈춰요. 파동이나 열림·닫힘이 생기면 다시 깨워요
-      const isSettled = isHidden && pulses.length === 0;
+      // 숨어서 할 일이 없으면 멈춰요. 파동이나 열림·닫힘이 생기면 다시 깨워요. 다시 살아나는 중(alphaGoal 1)에는 멈추지 않아요
+      const isSettled = isHidden && alphaGoal === 0 && pulses.length === 0;
       animation = isSettled ? 0 : requestAnimationFrame(tick);
     };
 
     /** 열림 상태에 맞춰 보일지 정하고, 멈춰 있던 반복을 다시 돌려요 */
     const wake = () => {
       clearTimeout(fadeTimer);
+      // 숨어 있다가 다시 보일 때는 옛 자리에서 날아오지 않고 새 자리에서 살아나요(화면을 옮긴 뒤 등)
+      if (!paramsRef.current.isOpen && alpha < 0.05) shouldSnap = true;
       if (paramsRef.current.isOpen) {
         fadeTimer = window.setTimeout(() => {
           alphaGoal = 0;

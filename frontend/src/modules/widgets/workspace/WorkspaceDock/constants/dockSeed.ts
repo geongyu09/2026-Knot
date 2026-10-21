@@ -14,11 +14,14 @@ export const SEED_WAVE_WIDTH_RATIO = 0.6;
 /** 파형이 위아래로 퍼지는 최대 높이(px). 랜딩의 무대 높이 20%를 독 자리에 맞춘 값이에요 */
 export const SEED_WAVE_AMPLITUDE = 38;
 
-/** 파형 캔버스 높이(px). 독 자리 위로 이만큼 그려요 */
-export const SEED_CANVAS_HEIGHT = 140;
+/** 캔버스가 독 아래로 더 내려가는 거리(px). 알약 윤곽과 떠다니는 흔들림이 잘리지 않게 해요 */
+export const SEED_CANVAS_OVERFLOW = 20;
+
+/** 입자 캔버스 높이(px). 독 자리 위아래로 넉넉히 그려요 */
+export const SEED_CANVAS_HEIGHT = 160;
 
 /** 파형 가운데가 캔버스 아래에서 떨어진 거리(px). 접힌 독의 세로 가운데와 같아요 */
-export const SEED_WAVE_BOTTOM = 30;
+export const SEED_WAVE_BOTTOM = 30 + SEED_CANVAS_OVERFLOW;
 
 /** 포인터 피하기와 클릭 파동의 값은 랜딩과 같은 `@utils/particleMotion`의 기본값을 써요 */
 
