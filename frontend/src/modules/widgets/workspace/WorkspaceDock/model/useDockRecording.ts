@@ -37,8 +37,13 @@ export const useDockRecording = () => {
   const { openRecordingStartRefusedDialog } = useRecordingStartRefusedDialog();
   const { openRecordingStartNetworkErrorDialog } =
     useRecordingStartNetworkErrorDialog();
-  const { status, isRecordingActive, isMicrophoneLost, clearMicrophoneLost } =
-    useRecordingState();
+  const {
+    status,
+    isRecordingActive,
+    isMicrophoneLost,
+    clearMicrophoneLost,
+    analyser,
+  } = useRecordingState();
   const { elapsedSeconds } = useRecordingElapsedTime();
   const { status: serverStatus, elapsedTime: serverElapsedTime } =
     useServerRecording();
@@ -103,6 +108,8 @@ export const useDockRecording = () => {
     elapsedTime: isOtherTabRecording
       ? serverElapsedTime
       : formatRecordingTime(elapsedSeconds),
+    /** 이 탭의 녹음 소리를 읽는 분석기. 다른 탭의 녹음이면 없어요 */
+    analyser: isOtherTabRecording ? null : analyser,
     handleMicClick,
     handleOpenRecording,
     handleStopRecording: () => void endRecording(),
