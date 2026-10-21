@@ -25,8 +25,8 @@ export const SEED_WAVE_BOTTOM = 30;
 /** 포인터가 독을 벗어난 뒤 파형으로 돌아가기까지 기다리는 시간(ms) */
 export const SEED_CLOSE_DELAY_MS = 380;
 
-/** 독이 열린 뒤 파형 입자가 사라지기 시작하는 시간(ms). 그동안 입자가 두 묶음으로 갈라져요 */
-export const SEED_FADE_DELAY_MS = 320;
+/** 독이 열린 뒤 입자가 사라지기 시작하는 시간(ms). 진짜 독이 나타나는 동안 잠깐만 겹쳐요 */
+export const SEED_FADE_DELAY_MS = 140;
 
 /** 독 스케치의 채팅 아이콘 한 변(px)과 녹음 구슬 반지름(px). 열린 독의 아이콘·구슬과 같은 크기예요 */
 export const SEED_ICON_SIZE = 32;

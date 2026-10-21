@@ -310,10 +310,18 @@ export const useParticleOrb = ({
       context.fill();
     };
 
+    let isOddFrame = false;
     const tick = () => {
-      frame++;
       resize();
       const { analyser: node, isActive: active, tone: nextTone, shape: nextShape } = paramsRef.current;
+      // 가만히 떠 있는 구름은 30fps면 충분해요. 모양이 바뀌거나 소리·파동이 있을 땐 60fps예요
+      const isCalm = nextShape === "cloud" && hover < 0.01 && level < 0.01 && pulsesRef.current.length === 0 && !(node && active && nextTone === "recording");
+      isOddFrame = !isOddFrame;
+      if (isCalm && isOddFrame) {
+        animation = requestAnimationFrame(tick);
+        return;
+      }
+      frame++;
       hover += ((nextShape !== "cloud" ? 1 : 0) - hover) * 0.12;
       const measured = node && active && nextTone === "recording" ? measureAnalyserLevel(node) : 0;
       level = smoothLevel({ previous: level, next: measured, attack: 0.35, release: 0.06 });

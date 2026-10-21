@@ -117,7 +117,14 @@ export const useDockParticles = ({ canvasRef, barRef, palette }: UseDockParticle
       return roundedRectPoint({ width, height, radius, inset: RIM_INSET, distance });
     };
 
+    let isOddFrame = false;
     const tick = () => {
+      // 실만 흐를 때는 30fps로 충분해요. 터짐·실 지나감이 있을 때만 60fps예요
+      isOddFrame = !isOddFrame;
+      if (eventsRef.current.length === 0 && isOddFrame) {
+        animation = requestAnimationFrame(tick);
+        return;
+      }
       frame++;
       resize();
       const { width, height } = sizeRef.current;

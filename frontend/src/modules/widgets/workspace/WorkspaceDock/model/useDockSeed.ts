@@ -164,6 +164,8 @@ export const useDockSeed = ({
     let lastFrameAt = 0;
     let slowFrames = 0;
     let isLite = false;
+    let lastLayoutKey = "";
+    let isOddFrame = false;
 
     const resize = () => {
       const nextWidth = canvas.clientWidth;
@@ -180,7 +182,7 @@ export const useDockSeed = ({
         level: Math.random() * 2 - 1,
         jitter: (Math.random() - 0.5) * 0.42,
         seed: Math.random(),
-        size: 0.9 + Math.random() * 0.9,
+        size: 0.8 + Math.random() * 0.7,
         x: width / 2 + (Math.random() - 0.5) * 300,
         y: height - SEED_WAVE_BOTTOM + (Math.random() - 0.5) * 40,
         vx: 0,
@@ -313,8 +315,16 @@ export const useDockSeed = ({
     };
 
     const tick = (now: number) => {
-      frame++;
       resize();
+      // 대기 스케치는 숨만 쉬어서 30fps면 충분해요. 포인터·파동·열림이 있거나 파형일 땐 60fps예요
+      const { isOpen: openNow, tone: toneNow } = paramsRef.current;
+      const isCalmSketch = toneNow === "idle" && !openNow && blend === 0 && pointerRef.current.x < -1000 && pulsesRef.current.length === 0;
+      isOddFrame = !isOddFrame;
+      if (isCalmSketch && isOddFrame) {
+        animation = requestAnimationFrame(tick);
+        return;
+      }
+      frame++;
       // 느린 프레임이 잦으면 가볍게 그려요. 한 번 가벼워지면 그 세션에선 되돌리지 않아 깜빡이지 않아요
       if (lastFrameAt && now - lastFrameAt > SEED_SLOW_FRAME_MS) slowFrames++;
       else slowFrames = Math.max(0, slowFrames - 1);
@@ -327,8 +337,23 @@ export const useDockSeed = ({
       level = smoothLevel({ previous: level, next: measured, attack: 0.35, release: 0.08 });
       blend += ((open ? 1 : 0) - blend) * 0.2;
       if (blend < 0.01) blend = 0;
-      alpha += (alphaGoal - alpha) * 0.16;
+      alpha += (alphaGoal - alpha) * (alphaGoal < alpha ? 0.3 : 0.16);
       placeParticles();
+
+      // 녹음이 시작·종료되거나 녹음 쪽이 생기고 없어지면 입자가 옛 자리에서 날아오지 않고 새 자리에서 바로 살아나요
+      const layoutKey = `${nextTone}:${paramsRef.current.hasRecordSide}`;
+      if (layoutKey !== lastLayoutKey) {
+        if (lastLayoutKey) {
+          particles.forEach((particle) => {
+            particle.x = particle.homeX;
+            particle.y = particle.homeY;
+            particle.vx = 0;
+            particle.vy = 0;
+          });
+          if (!open) alpha = 0;
+        }
+        lastLayoutKey = layoutKey;
+      }
 
       const pulses = pulsesRef.current;
       advancePulses(pulses);

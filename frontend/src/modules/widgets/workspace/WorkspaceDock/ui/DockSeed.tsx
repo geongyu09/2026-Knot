@@ -34,11 +34,14 @@ interface DockSeedProps {
 export default function DockSeed({ isOpen, tone, analyser, isActive, elapsedTime, hasRecordSide, splitTargets, onOpen }: DockSeedProps) {
   const theme = useTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const ink = hexToRgb(theme.neutral[800]);
-  const strong = hexToRgb(theme.neutral[900]);
+  // 주변 카드·글처럼 부드럽게 보이도록 스케치는 Neutral 600~700의 옅은 잉크, 구슬은 채도를 낮춘 붉은 톤을 써요
+  const ink = hexToRgb(theme.neutral[700]);
+  const strong = hexToRgb(theme.neutral[800]);
+  const frame = hexToRgb(theme.neutral[500]);
   const accent = hexToRgb(theme.sub.accent[500]);
   const light = hexToRgb(theme.neutral[300]);
   const warning = hexToRgb(theme.sub.warning[600]);
+  const warningDeep = hexToRgb(theme.sub.warning[700]);
 
   const { setPointer, clearPointer, pulse } = useDockSeed({
     canvasRef,
@@ -49,14 +52,14 @@ export default function DockSeed({ isOpen, tone, analyser, isActive, elapsedTime
     hasRecordSide,
     splitTargets,
     palette: {
-      ink: [`rgba(${strong},0.9)`, `rgba(${ink},0.6)`, `rgba(${ink},0.32)`],
-      teal: [`rgba(${accent},0.95)`, `rgba(${accent},0.6)`, `rgba(${accent},0.3)`],
+      ink: [`rgba(${strong},0.72)`, `rgba(${ink},0.5)`, `rgba(${frame},0.3)`],
+      teal: [`rgba(${accent},0.9)`, `rgba(${accent},0.55)`, `rgba(${accent},0.28)`],
       orb: [
-        `rgba(${hexToRgb(theme.sub.warning[200])},0.95)`,
-        `rgba(${warning},0.9)`,
-        `rgba(${warning},0.95)`,
-        `rgba(${hexToRgb(theme.sub.warning[700])},0.95)`,
-        `rgba(${hexToRgb(theme.sub.warning[800])},0.9)`,
+        `rgba(${hexToRgb(theme.sub.warning[200])},0.75)`,
+        `rgba(${warning},0.5)`,
+        `rgba(${warning},0.62)`,
+        `rgba(${warningDeep},0.62)`,
+        `rgba(${warningDeep},0.45)`,
       ],
       light: [`rgba(${hexToRgb(theme.neutral[0])},0.95)`, `rgba(${light},0.75)`, `rgba(${light},0.4)`],
     },
