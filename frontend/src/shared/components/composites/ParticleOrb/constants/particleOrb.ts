@@ -5,7 +5,7 @@ export const ORB_PARTICLE_COUNT = 600;
 export const ORB_WAVE_COLUMNS = 24;
 
 /** 랜딩 입자처럼 자리로 당기는 힘과 속도가 남는 비율 */
-export const ORB_SPRING = 0.09;
+export const ORB_SPRING = 0.12;
 export const ORB_DAMPING = 0.84;
 
 /** 마이크 모양의 한 변은 구슬 지름의 이 배율이에요 */

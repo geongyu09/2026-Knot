@@ -3,18 +3,22 @@ import { keyframes } from "@emotion/react";
 import styled from "@emotion/styled";
 import { DOCK_HEIGHT } from "@primitives/layout/DockColumn";
 import Textarea from "@primitives/ui/Textarea";
+import { useRef } from "react";
 
-import GhostIcon from "@/assets/icons/ghost.svg";
+import SpeechBubbleIcon from "@/assets/icons/speechBubble.svg";
 import SendIcon from "@/assets/icons/send.svg";
 
+import { useDockOpen } from "./model/useDockOpen";
 import { useDockParticleEffects } from "./model/useDockParticleEffects";
+import { useDockSplitTargets } from "./model/useDockSplitTargets";
 import { useDockRecording } from "./model/useDockRecording";
 import { useWorkspaceDock } from "./model/useWorkspaceDock";
 import DockHintTooltip from "./ui/DockHintTooltip";
 import DockMicButton from "./ui/DockMicButton";
 import DockParticles from "./ui/DockParticles";
 import DockRecordingChip from "./ui/DockRecordingChip";
-import { drawGhostIcon, drawSendIcon } from "./utils/drawDockIcons";
+import DockSeed from "./ui/DockSeed";
+import { drawSendIcon, drawSpeechBubbleIcon } from "./utils/drawDockIcons";
 
 /**
  * 폭이 벌어지는 동안 안의 내용이 살짝 흐렸다가 또렷해지며 뒤따라 나타나는 모션.
@@ -63,8 +67,11 @@ const DOCK_EXPAND_DURATION = "0.44s";
  * 접혀 있든 펼쳐 있든 회의 녹음(마이크) 슬롯을 두고, 누르면 마이크 권한을 받아 녹음을 시작해요.
  * 녹음 화면이 아닌 곳에서 녹음이 이어지고 있으면 마이크 자리에 녹음 칩을 둬요. 접힌 독에는 중지 버튼도 함께 둬요.
  *
- * 랜딩의 입자가 독에도 이어져요. 녹음 버튼은 입자 구슬이고, 아이콘은 펼치고 접을 때 입자로 모였다가 진짜 아이콘이 되고,
- * 테두리에는 옅은 입자 실이 흘러요. 누르거나 보낼 때는 입자가 잠깐 터져 나와요. 기존 동작과 접근성 이름은 그대로예요.
+ * 랜딩의 입자가 독에도 이어져요. 접혀 있을 때는 알약 대신 랜딩 녹음 장면과 같은 입자 파형만 떠 있고(`DockSeed`),
+ * 파형을 누르면 입자가 채팅과 녹음 두 묶음으로 갈라지며 그 뒤에서 말풍선 모양의 독이 자라나요. 포인터가 벗어나면 다시 파형으로 모여요.
+ * 채팅 칸은 고스트 대신 말풍선 아이콘이라 무엇을 하는 자리인지 바로 읽혀요. 녹음 버튼은 입자 구슬이고,
+ * 아이콘은 펼치고 접을 때 입자로 모였다가 진짜 아이콘이 되고, 테두리에는 옅은 입자 실이 흘러요.
+ * 캔버스를 못 쓰거나 움직임 줄이기 설정이면 파형 없이 늘 열린 독이라, 기존 동작과 접근성 이름은 어느 환경에서나 그대로예요.
  * 다른 탭의 녹음이면 칩은 점과 시간만 보여 주고 누를 수 없으며 중지 버튼도 두지 않아요.
  * 녹음 화면에서는 마이크를 숨겨요. Figma에서 숨겨져 있는 글 작성 슬롯은 만들지 않아요.
  *
@@ -94,6 +101,20 @@ export default function WorkspaceDock() {
     handleOpenRecording,
     handleStopRecording,
   } = useDockRecording();
+  const stageRef = useRef<HTMLDivElement>(null);
+  const { isSeedSupported, isOpen, open, scheduleClose, cancelClose } =
+    useDockOpen({
+      stageRef,
+      isExpanded,
+      hasMessage: message.trim().length > 0,
+    });
+  const { splitTargets } = useDockSplitTargets({
+    formRef,
+    isOpen,
+    isExpanded,
+    isMicVisible,
+    isRecordingChipVisible,
+  });
   const {
     particlesRef,
     collapsedGhostRef,
@@ -101,48 +122,73 @@ export default function WorkspaceDock() {
     sendIconRef,
     burstAt,
     traceFrom,
-  } = useDockParticleEffects({ formRef, isExpanded, canSubmit });
+  } = useDockParticleEffects({ formRef, isExpanded, canSubmit, isOpen });
+
+  const hasRecordSide = isMicVisible || isRecordingChipVisible;
 
   return (
-    <Bar
-      ref={formRef}
-      $isExpanded={isExpanded}
-      $hasMic={isMicVisible}
-      $hasRecordingChip={isRecordingChipVisible}
-      $isRecording={isRecordingChipVisible && !isRecordingPaused}
-      onSubmit={(event) => {
-        if (canSubmit) burstAt(event.currentTarget.querySelector("[data-send]"));
-        handleSubmit(event);
+    <Stage
+      ref={stageRef}
+      onPointerEnter={cancelClose}
+      onPointerLeave={(event) => {
+        if (event.pointerType !== "touch") scheduleClose();
+      }}
+      onBlur={(event) => {
+        // 포커스가 독 밖으로 나가면 파형으로 돌아가요. 독 안의 다른 버튼으로 옮기는 건 그대로 둬요
+        if (!stageRef.current?.contains(event.relatedTarget as Node | null)) {
+          scheduleClose();
+        }
       }}
     >
-      <DockParticles ref={particlesRef} barRef={formRef} />
+      {isSeedSupported && (
+        <DockSeed
+          isOpen={isOpen}
+          tone={isRecordingChipVisible ? "recording" : "idle"}
+          analyser={analyser}
+          isActive={!isRecordingPaused}
+          elapsedTime={isRecordingChipVisible ? elapsedTime : null}
+          splitTargets={splitTargets}
+          onOpen={open}
+        />
+      )}
 
       {isHintVisible && <DockHintTooltip />}
 
-      <InputContainer $isHidden={!isExpanded}>
-        <ParticleIcon
-          ref={expandedGhostRef}
-          draw={drawGhostIcon}
-          size={24}
-        >
-          <GhostIcon size={24} />
-        </ParticleIcon>
+      <Bar
+        ref={formRef}
+        $isOpen={isOpen}
+        $isExpanded={isExpanded}
+        $isRecording={isRecordingChipVisible && !isRecordingPaused}
+        onSubmit={(event) => {
+          if (canSubmit) burstAt(event.currentTarget.querySelector("[data-send]"));
+          handleSubmit(event);
+        }}
+      >
+        {isOpen && <DockParticles ref={particlesRef} barRef={formRef} />}
 
-        <MessageField
-          ref={textareaRef}
-          rows={1}
-          aria-label="무엇이든 요청하세요"
-          placeholder="무엇이든 요청하세요"
-          // 접힌 독에서는 보이지 않으므로 Tab으로 들르지 않아요
-          tabIndex={isExpanded ? undefined : -1}
-          value={message}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-        />
-      </InputContainer>
+        <InputContainer $isHidden={!isExpanded}>
+          <ParticleIcon
+            ref={expandedGhostRef}
+            draw={drawSpeechBubbleIcon}
+            size={24}
+          >
+            <SpeechBubbleIcon size={24} />
+          </ParticleIcon>
 
-      {isExpanded ? (
-        <>
+          <MessageField
+            ref={textareaRef}
+            rows={1}
+            aria-label="무엇이든 요청하세요"
+            placeholder="무엇이든 요청하세요"
+            // 접힌 독에서는 보이지 않으므로 Tab으로 들르지 않아요
+            tabIndex={isExpanded ? undefined : -1}
+            value={message}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+          />
+        </InputContainer>
+
+        {isExpanded ? (
           <Controls>
             {isMicVisible && (
               <>
@@ -181,50 +227,84 @@ export default function WorkspaceDock() {
               </ParticleIcon>
             </SubmitButton>
           </Controls>
-        </>
-      ) : (
-        <>
-          <SlotButton
-            type="button"
-            aria-label="무엇이든 요청하기"
-            onClick={handleExpand}
-            onPointerEnter={() => collapsedGhostRef.current?.wake()}
-          >
-            <ParticleIcon
-              ref={collapsedGhostRef}
-              draw={drawGhostIcon}
-              size={24}
-            >
-              <GhostIcon size={24} />
-            </ParticleIcon>
-          </SlotButton>
-
-          {isMicVisible && (
-            <DockMicButton
-              onClick={() => {
-                traceFrom(formRef.current?.querySelector("[data-mic]"));
-                void handleMicClick();
-              }}
-            />
-          )}
-
-          {isRecordingChipVisible && (
+        ) : (
+          isOpen && (
             <>
-              <ControlDivider aria-hidden="true" />
-              <DockRecordingChip
-                elapsedTime={elapsedTime}
-                isPaused={isRecordingPaused}
-                analyser={analyser}
-                onOpen={isOtherTabRecording ? undefined : handleOpenRecording}
-                onStop={isOtherTabRecording ? undefined : handleStopRecording}
-              />
+              <SlotButton
+                type="button"
+                aria-label="무엇이든 요청하기"
+                data-dock-chat
+                onClick={handleExpand}
+                onPointerEnter={() => collapsedGhostRef.current?.wake()}
+              >
+                <ParticleIcon
+                  ref={collapsedGhostRef}
+                  draw={drawSpeechBubbleIcon}
+                  size={24}
+                >
+                  <SpeechBubbleIcon size={24} />
+                </ParticleIcon>
+              </SlotButton>
+
+              {/* 말풍선답게 접혀 있어도 무엇을 할 수 있는지 보여 줘요. 입력창과 같은 안내라 낭독기에서는 읽지 않아요 */}
+              {!isRecordingChipVisible && (
+                <PlaceholderText aria-hidden="true" onClick={handleExpand}>
+                  무엇이든 요청하세요
+                </PlaceholderText>
+              )}
+
+              {hasRecordSide && <ControlDivider aria-hidden="true" />}
+
+              {isMicVisible && (
+                <span data-dock-record>
+                  <DockMicButton
+                    onClick={() => {
+                      traceFrom(formRef.current?.querySelector("[data-mic]"));
+                      void handleMicClick();
+                    }}
+                  />
+                </span>
+              )}
+
+              {isRecordingChipVisible && (
+                <span data-dock-record>
+                  <DockRecordingChip
+                    elapsedTime={elapsedTime}
+                    isPaused={isRecordingPaused}
+                    analyser={analyser}
+                    onOpen={isOtherTabRecording ? undefined : handleOpenRecording}
+                    onStop={isOtherTabRecording ? undefined : handleStopRecording}
+                  />
+                </span>
+              )}
             </>
-          )}
-        </>
-      )}
-    </Bar>
+          )
+        )}
+      </Bar>
+    </Stage>
   );
 }
+
+/**
+ * 파형과 독이 함께 놓이는 자리. 독과 같은 폭이고, 파형 캔버스는 이 위로 넘쳐 그려져요.
+ * 포인터가 이 안에 있는 동안은 독이 열려 있어요.
+ */
+const Stage = styled.div`
+  position: relative;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+`;
+
+/** 접힌 독의 안내 글. 입력창의 안내와 같은 글이고, 누르면 입력창으로 펼쳐져요 */
+const PlaceholderText = styled.span`
+  align-self: center;
+  padding-right: 0.25rem; /* 4px */
+  color: ${({ theme }) => theme.neutral[400]};
+  white-space: nowrap;
+  cursor: text;
+  ${({ theme }) => theme.text.body01};
+`;
 
 /**
  * 접힘·펼침을 오가는 독 껍데기.
@@ -235,25 +315,17 @@ export default function WorkspaceDock() {
  * 펼칠 때는 길게(0.44초), 접을 때는 조금 짧게(0.36초) 움직이고, 안의 내용은 폭이 어느 정도 벌어진 뒤 뒤따라 또렷해져요.
  */
 const Bar = styled.form<{
+  $isOpen: boolean;
   $isExpanded: boolean;
-  $hasMic: boolean;
-  $hasRecordingChip: boolean;
   $isRecording: boolean;
 }>`
-  position: relative; /* 안내 말풍선이 이 자리를 기준으로 위에 놓여요 */
+  position: relative;
   display: flex;
   align-items: flex-end; /* 여러 줄로 자라도 보내기 버튼은 아래에 남아요 */
   gap: ${({ $isExpanded }) =>
     $isExpanded ? "0.625rem" : "0.25rem"}; /* 10px : 4px */
-  /* 펼치면 놓인 자리(대화 열과 같은 폭)를 다 채워요.
-     접혔을 때는 슬롯(40px) 개수만큼: 마이크까지 있으면 108px, 없으면 64px.
-     녹음 칩은 시간이 길어지면 폭이 늘어 내용만큼 둬요 */
-  width: ${({ $isExpanded, $hasMic, $hasRecordingChip }) => {
-    if ($isExpanded) return "100%";
-    if ($hasRecordingChip) return "auto";
-
-    return $hasMic ? "6.75rem" : "4rem"; /* 108px : 64px */
-  }};
+  /* 펼치면 놓인 자리(대화 열과 같은 폭)를 다 채워요. 접혔을 때는 안내 글과 칸들만큼 내용 폭이에요 */
+  width: ${({ $isExpanded }) => ($isExpanded ? "100%" : "auto")};
   min-height: ${DOCK_HEIGHT}; /* 여러 줄이면 이만큼에서부터 늘어나요 */
   padding: ${({ $isExpanded }) =>
     $isExpanded
@@ -269,10 +341,27 @@ const Bar = styled.form<{
       ? `${theme.shadow03}, 0 10px 30px rgba(46, 133, 163, 0.16)`
       : theme.shadow03};
   interpolate-size: allow-keywords;
-  transition-property: width, padding, gap, border-radius, box-shadow;
+  transition-property: width, padding, gap, border-radius, box-shadow, opacity, transform;
   transition-duration: ${({ $isExpanded }) =>
     $isExpanded ? DOCK_EXPAND_DURATION : "0.36s"};
   transition-timing-function: ${DOCK_EASING};
+  /* 파형으로 접혀 있을 땐 보이지 않게 작게 두었다가, 열리면 입자 뒤에서 자라나요 */
+  opacity: ${({ $isOpen }) => ($isOpen ? 1 : 0)};
+  transform: ${({ $isOpen }) => ($isOpen ? "none" : "scale(0.55)")};
+  pointer-events: ${({ $isOpen }) => ($isOpen ? "auto" : "none")};
+
+  /* 말풍선 꼬리. 왼쪽 아래에서 아래를 가리켜요 */
+  &::before {
+    content: "";
+    position: absolute;
+    bottom: -0.3125rem; /* -5px */
+    left: ${({ $isExpanded }) => ($isExpanded ? "1.625rem" : "1.125rem")}; /* 26px : 18px */
+    width: 0.75rem; /* 12px */
+    height: 0.75rem;
+    border-radius: 0.125rem; /* 2px */
+    background-color: ${({ theme }) => theme.neutral[800]};
+    transform: rotate(45deg);
+  }
 
   /* 입자 캔버스가 맨 아래에 깔리고 나머지는 그 위에 놓여요 */
   & > :not(canvas) {

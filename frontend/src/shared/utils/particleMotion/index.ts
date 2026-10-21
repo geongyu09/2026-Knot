@@ -116,3 +116,117 @@ export const smoothLevel = ({ previous, next, attack, release }: SmoothLevelPara
 /** 움직임 줄이기 설정을 켰는지. 캔버스 애니메이션은 CSS 미디어 쿼리를 못 쓰므로 직접 읽어요. */
 export const prefersReducedMotion = () =>
   typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+/* ---------- 랜딩 입자 엔진과 똑같이 쓰는 파형·포인터·파동 계산 ---------- */
+
+/** 파형 전체가 커졌다 작아지는 숨. 랜딩 녹음 장면의 `level`이에요 */
+export const waveBreath = (frame: number) =>
+  0.62 + 0.38 * Math.sin(frame * 0.019) * Math.sin(frame * 0.0073 + 1.3);
+
+interface WaveAmplitudeParams {
+  column: number;
+  columns: number;
+  frame: number;
+  /** 소리가 가장 클 때 막대가 가운데에서 퍼지는 거리(px) */
+  maxAmplitude: number;
+  /** 전체 배율(0~1). 랜딩은 `waveBreath`, 녹음 중엔 소리 크기를 넣어요 */
+  scale: number;
+}
+
+/** 파형 한 막대의 높이. 막대마다 다른 박자로 출렁이고 양 끝으로 갈수록 낮아져요. 랜딩 `updateWaveAmplitudes`와 같아요 */
+export const waveAmplitude = ({ column, columns, frame, maxAmplitude, scale }: WaveAmplitudeParams) => {
+  const energy = Math.abs(
+    Math.sin(column * 0.23 + frame * 0.05) * Math.sin(column * 0.071 - frame * 0.023) +
+      0.35 * Math.sin(column * 0.87 + frame * 0.13),
+  );
+  const taper = Math.pow(Math.sin((Math.PI * (column + 0.5)) / columns), 0.7);
+  return Math.max(2.5, maxAmplitude * Math.min(1, 0.1 + energy) * taper * scale);
+};
+
+interface PointerRepulsionParams {
+  x: number;
+  y: number;
+  pointerX: number;
+  pointerY: number;
+  /** 피하기 시작하는 거리(px). 랜딩은 95예요 */
+  radius?: number;
+  /** 가장 가까울 때의 힘. 랜딩은 6이에요 */
+  strength?: number;
+}
+
+/** 포인터 가까이의 입자를 바깥으로 미는 힘. 랜딩과 같아요 */
+export const pointerRepulsion = ({ x, y, pointerX, pointerY, radius = 95, strength = 6 }: PointerRepulsionParams) => {
+  const dx = x - pointerX;
+  const dy = y - pointerY;
+  const distanceSquared = dx * dx + dy * dy;
+  if (distanceSquared >= radius * radius) return { fx: 0, fy: 0 };
+  const distance = Math.sqrt(distanceSquared) || 1;
+  const closeness = 1 - distance / radius;
+  const force = closeness * closeness * strength;
+  return { fx: (dx / distance) * force, fy: (dy / distance) * force };
+};
+
+/** 누른 자리에서 퍼져 나가는 파동 하나 */
+export interface PulseWave {
+  x: number;
+  y: number;
+  radius: number;
+  max: number;
+  strength: number;
+}
+
+interface PulseBoostParams {
+  lastPulseAt: number;
+  boost: number;
+  now: number;
+}
+
+/** 연달아 누르면 파동이 세져요. 랜딩처럼 1.5초 안이면 1.6배씩, 최대 3.2배예요 */
+export const nextPulseBoost = ({ lastPulseAt, boost, now }: PulseBoostParams) =>
+  now - lastPulseAt < 1500 ? Math.min(3.2, boost * 1.6) : 1;
+
+interface CreatePulseParams {
+  x: number;
+  y: number;
+  /** 파동이 퍼질 무대 크기. 큰 변의 55%까지 퍼져요 */
+  width: number;
+  height: number;
+  /** 기본 세기 5에 곱할 배율 */
+  boost?: number;
+}
+
+/** 랜딩 `addPulse`와 같은 파동을 만들어요 */
+export const createPulse = ({ x, y, width, height, boost = 1 }: CreatePulseParams): PulseWave => ({
+  x,
+  y,
+  radius: 0,
+  max: Math.max(width, height) * 0.55,
+  strength: 5 * boost,
+});
+
+/** 파동을 한 프레임 키우고 다 퍼진 것은 지워요. 랜딩은 한 프레임에 12px씩 퍼져요 */
+export const advancePulses = (pulses: PulseWave[], speed = 12) => {
+  for (let i = pulses.length - 1; i >= 0; i--) {
+    pulses[i].radius += speed;
+    if (pulses[i].radius > pulses[i].max) pulses.splice(i, 1);
+  }
+};
+
+interface PulseForceParams {
+  x: number;
+  y: number;
+  pulse: PulseWave;
+  /** 파동 테두리의 두께(px). 랜딩은 46이에요 */
+  ring?: number;
+}
+
+/** 파동 테두리에 걸린 입자를 바깥으로 미는 힘. 랜딩과 같아요 */
+export const pulseForce = ({ x, y, pulse, ring = 46 }: PulseForceParams) => {
+  const ex = x - pulse.x;
+  const ey = y - pulse.y;
+  const distance = Math.sqrt(ex * ex + ey * ey) || 1;
+  const band = Math.abs(distance - pulse.radius);
+  if (band >= ring) return { fx: 0, fy: 0 };
+  const force = (1 - band / ring) * pulse.strength * (1 - pulse.radius / pulse.max);
+  return { fx: (ex / distance) * force, fy: (ey / distance) * force };
+};

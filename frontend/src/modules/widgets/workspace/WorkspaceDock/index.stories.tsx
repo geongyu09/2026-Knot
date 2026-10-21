@@ -36,6 +36,14 @@ const CURRENT_RECORDING_URL = `*${CURRENT_RECORDING_API_PATH(Number(WORKSPACE_ID
 // 현재 녹음 응답을 바꾸는 스토리는 문서 페이지에서 따로 그려야 다른 스토리와 섞이지 않아요
 const ISOLATED_DOCS = { story: { inline: false, iframeHeight: 160 } };
 
+/** 파형으로 접혀 있으면 먼저 눌러 독을 열어요. 캔버스를 못 쓰는 환경에서는 이미 열려 있어 넘어가요 */
+const openDockFromSeed = async (canvas: ReturnType<typeof within>) => {
+  const seed = canvas.queryByRole("button", { name: "독 열기" });
+  if (!seed) return;
+  await userEvent.click(seed);
+  await canvas.findByRole("button", { name: "무엇이든 요청하기" });
+};
+
 /** 안내를 이미 다 본 사용자로 만들어요. 안내 횟수는 브라우저에 남아 스토리끼리 이어지기 때문이에요. */
 const markHintAsSeen = () => {
   localStorage.setItem(
@@ -94,6 +102,7 @@ const grantSilentMicrophone = () => {
  * - 서버가 질문을 받기 전에 거절하면 보낸 질문을 입력창에 되돌려 다시 보낼 수 있게 하고, 오류 토스트 「질문을 보내지 못했어요. 잠시 후 다시 시도해 주세요.」로 알려요.
  * - 펼친 폭은 탐색 대화 열과 같아요. 고정 패널을 뺀 남은 영역의 가운데에서 양옆 40px을 두고 최대 760px까지 늘어나요. 왼쪽 패널을 고정하면 대화 열과 함께 밀려요.
  * - 탐색 화면은 채팅이 곧 화면이라 독을 늘 펼쳐 둬요.
+ * - 접혀 있을 때는 알약 대신 랜딩 녹음 장면과 같은 입자 파형만 떠 있어요. 올리면 입자가 포인터를 피하고, 누르면 파동이 퍼진 뒤 입자가 채팅(말풍선)과 녹음(구슬) 두 묶음으로 갈라지며 그 뒤에서 말풍선 모양의 독이 나타나요. 포인터가 벗어나면 다시 파형으로 모여요. 캔버스를 못 쓰거나 움직임 줄이기 설정이면 파형 없이 늘 열린 독이에요.
  * - 접혀 있든 펼쳐 있든 회의 녹음 버튼을 둬요. 마이크 아이콘 대신 랜딩의 입자 구슬이라, 올리면 입자가 마이크 모양으로 모이고 누르면 파동이 퍼져요. 누르면 녹음 화면에 들어가기 전에 마이크 권한을 받아 녹음을 시작하고 녹음 화면으로 옮겨 가요.
  * - 독의 아이콘은 펼치고 접을 때 입자로 모였다가 진짜 아이콘이 되고, 테두리에는 옅은 입자 실이 흘러요. 움직임 줄이기 설정에서는 모두 멈춰요.
  * - 마이크 권한을 받지 못하면 모달로 알리고 지금 화면에 남아요. 「다시 시도」는 권한을 다시 묻고, 「닫기」나 `Esc`는 모달만 닫아요.
@@ -201,6 +210,7 @@ export const WithQuestion: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await openDockFromSeed(canvas);
 
     await userEvent.click(
       canvas.getByRole("button", { name: "무엇이든 요청하기" }),
@@ -290,7 +300,7 @@ export const RecordingOnChatScreen: Story = {
   beforeEach: startRecordingAt12m48s,
 };
 
-/** 다른 탭에서 녹음 중인 접힌 독이에요. 마이크 자리에 구슬과 녹음한 시간만 보이고 누를 수 없어요. 예: 녹음을 켜 둔 채 새 탭으로 홈을 연 사용자 */
+/** 다른 탭에서 녹음 중인 접힌 독이에요. 파형이 청록이고 아래에 시간이 떠요. 파형을 누르면 마이크 자리에 구슬과 녹음한 시간만 보이고 누를 수 없어요. 예: 녹음을 켜 둔 채 새 탭으로 홈을 연 사용자 */
 export const RecordingInOtherTab: Story = {
   parameters: {
     docs: ISOLATED_DOCS,
@@ -333,6 +343,7 @@ export const MicrophoneUnavailable: Story = {
   beforeEach: denyMicrophone,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await openDockFromSeed(canvas);
 
     await userEvent.click(
       canvas.getByRole("button", { name: "회의 녹음 시작" }),
@@ -366,6 +377,7 @@ export const RecordingStartRefused: Story = {
   beforeEach: grantSilentMicrophone,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await openDockFromSeed(canvas);
 
     await userEvent.click(
       canvas.getByRole("button", { name: "회의 녹음 시작" }),
@@ -396,6 +408,7 @@ export const RecordingStartNetworkError: Story = {
   beforeEach: grantSilentMicrophone,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await openDockFromSeed(canvas);
 
     await userEvent.click(
       canvas.getByRole("button", { name: "회의 녹음 시작" }),

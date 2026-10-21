@@ -1,4 +1,4 @@
-import { prefersReducedMotion, smoothLevel, stepSpring } from "@utils/particleMotion";
+import { prefersReducedMotion, smoothLevel, stepSpring, waveAmplitude } from "@utils/particleMotion";
 import { sampleShapeTargets } from "@utils/sampleShapeTargets";
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 
@@ -178,14 +178,10 @@ export const useParticleOrb = ({
     };
 
     const updateAmplitudes = (orbRadius: number) => {
-      const maxAmplitude = orbRadius * (0.25 + 0.75 * level);
+      // 랜딩 파형과 같은 공식. 구슬이 작아 바닥값 2.5가 크므로 1/4로 줄여 써요
+      const maxAmplitude = orbRadius * 4 * (0.25 + 0.75 * level);
       for (let column = 0; column < ORB_WAVE_COLUMNS; column++) {
-        const energy = Math.abs(
-          Math.sin(column * 0.23 + frame * 0.09) * Math.sin(column * 0.071 - frame * 0.04) +
-            0.35 * Math.sin(column * 0.87 + frame * 0.2),
-        );
-        const taper = Math.pow(Math.sin((Math.PI * (column + 0.5)) / ORB_WAVE_COLUMNS), 0.9);
-        amplitudes[column] = Math.max(0.6, maxAmplitude * Math.min(1, 0.15 + energy) * taper);
+        amplitudes[column] = waveAmplitude({ column, columns: ORB_WAVE_COLUMNS, frame: frame * 1.8, maxAmplitude, scale: 1 }) / 4;
       }
     };
 

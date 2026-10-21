@@ -8,6 +8,8 @@ interface UseDockParticleEffectsParams {
   formRef: RefObject<HTMLFormElement | null>;
   isExpanded: boolean;
   canSubmit: boolean;
+  /** 독이 알약으로 열려 있는지. 파형으로 접혀 있으면 아이콘이 없어 모을 것도 없어요 */
+  isOpen: boolean;
 }
 
 /** 펼침·접힘 모션이 어느 정도 진행된 뒤 아이콘이 모이기 시작해요(ms) */
@@ -24,6 +26,7 @@ export const useDockParticleEffects = ({
   formRef,
   isExpanded,
   canSubmit,
+  isOpen,
 }: UseDockParticleEffectsParams) => {
   const particlesRef = useRef<DockParticlesHandle>(null);
   const collapsedGhostRef = useRef<ParticleIconHandle>(null);
@@ -66,6 +69,7 @@ export const useDockParticleEffects = ({
   );
 
   useEffect(() => {
+    if (!isOpen) return;
     const ghostRef = isExpanded ? expandedGhostRef : collapsedGhostRef;
     if (isFirstRender.current) {
       isFirstRender.current = false;
@@ -89,7 +93,7 @@ export const useDockParticleEffects = ({
     );
 
     return () => clearTimeout(timer);
-  }, [formRef, isExpanded]);
+  }, [formRef, isExpanded, isOpen]);
 
   useEffect(() => {
     if (canSubmit) sendIconRef.current?.assemble();

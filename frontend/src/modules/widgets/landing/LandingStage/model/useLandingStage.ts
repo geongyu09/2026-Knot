@@ -1,8 +1,8 @@
 import { useTheme } from "@emotion/react";
+import { hexToRgb } from "@utils/hexToRgb";
 import { useEffect, useRef, useState } from "react";
 
 import type { GraphLabel } from "../types/particle";
-import { hexToRgb } from "../utils/particleMath";
 
 import { createLandingEngine, type LandingEngine } from "./createLandingEngine";
 

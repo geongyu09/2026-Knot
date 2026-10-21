@@ -1369,3 +1369,120 @@ describe("WorkspaceDock", () => {
     });
   });
 });
+
+/**
+ * 캔버스를 그릴 수 있는 브라우저처럼 답하는 가짜 문맥.
+ * jsdom은 캔버스를 못 그려 독이 늘 열려 있으므로, 파형으로 접히는 동작은 이 문맥을 깔고 봐요.
+ */
+const createFakeCanvasContext = () =>
+  ({
+    setTransform: () => {},
+    clearRect: () => {},
+    fillRect: () => {},
+    beginPath: () => {},
+    arc: () => {},
+    fill: () => {},
+    stroke: () => {},
+    scale: () => {},
+    createRadialGradient: () => ({ addColorStop: () => {} }),
+    getImageData: () => ({ data: new Uint8ClampedArray(0) }),
+  }) as unknown as CanvasRenderingContext2D;
+
+describe("파형으로 접힌 독", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    respondNoCurrentRecording();
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
+      createFakeCanvasContext(),
+    );
+    // jsdom에는 Path2D가 없어 아이콘 모양을 그릴 때 쓰는 생성자만 흉내 내요
+    vi.stubGlobal("Path2D", class {});
+  });
+
+  afterEach(() => {
+    useSearchAnswerStore.getState().abort();
+    vi.unstubAllGlobals();
+  });
+
+  it("캔버스를 쓸 수 있으면 처음엔 파형만 있고 독 버튼은 없다", () => {
+    renderDock();
+
+    expect(screen.getByRole("button", { name: "독 열기" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "무엇이든 요청하기" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "회의 녹음 시작" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("파형을 누르면 독이 열려 요청하기와 회의 녹음 버튼이 나타난다", () => {
+    renderDock();
+
+    fireEvent.click(screen.getByRole("button", { name: "독 열기" }));
+
+    expect(
+      screen.getByRole("button", { name: "무엇이든 요청하기" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "회의 녹음 시작" }),
+    ).toBeInTheDocument();
+    expect(isDockExpanded()).toBe(false);
+  });
+
+  it("열린 독에서 요청하기를 누르면 그대로 펼쳐진다", () => {
+    renderDock();
+    fireEvent.click(screen.getByRole("button", { name: "독 열기" }));
+
+    expandDock();
+
+    expect(isDockExpanded()).toBe(true);
+  });
+
+  it("포인터가 독을 벗어나면 잠시 뒤 파형으로 돌아간다", async () => {
+    renderDock();
+    const seedButton = screen.getByRole("button", { name: "독 열기" });
+    fireEvent.click(seedButton);
+    expect(
+      screen.getByRole("button", { name: "무엇이든 요청하기" }),
+    ).toBeInTheDocument();
+
+    fireEvent.pointerLeave(seedButton.parentElement!, { pointerType: "mouse" });
+
+    await waitFor(
+      () =>
+        expect(
+          screen.queryByRole("button", { name: "무엇이든 요청하기" }),
+        ).not.toBeInTheDocument(),
+      { timeout: 1500 },
+    );
+  });
+
+  it("파형 상태에서 글자를 치면 독이 바로 펼쳐진다", () => {
+    renderDock();
+
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "무엇이든 요청하세요" }),
+      { target: { value: "ㅇ" } },
+    );
+
+    expect(isDockExpanded()).toBe(true);
+    expect(
+      screen.queryByRole("button", { name: "독 열기" }),
+    ).toBeInTheDocument();
+  });
+
+  it("녹음 화면에서는 파형을 눌러도 회의 녹음 버튼이 없다", () => {
+    renderDock(RECORDING_PATH);
+
+    fireEvent.click(screen.getByRole("button", { name: "독 열기" }));
+
+    expect(
+      screen.getByRole("button", { name: "무엇이든 요청하기" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "회의 녹음 시작" }),
+    ).not.toBeInTheDocument();
+  });
+});
