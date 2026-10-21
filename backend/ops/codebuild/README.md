@@ -54,14 +54,22 @@ Blue-Green Dev artifact는 루트 `buildspec.yml`의 `DEPLOYMENT_MODE=dev-bluegr
 빌드에는 적용되지 않는다. Blue-Green 배포를 연결할 때 Build 프로젝트가 저장소의
 `buildspec.yml`을 사용하도록 설정하고, 프로젝트 환경 변수 `DEPLOYMENT_MODE`를
 `dev-bluegreen`으로 지정한다. Pipeline의 기존 `CI_GROUP=remaining` override와 별도
-IntegrationTest action은 유지한다. Deploy action은 기존 그룹을 수정하지 않고 새
-`knot-backend-dev-bluegreen` 그룹을 대상으로 지정한다.
+IntegrationTest action은 유지한다. Deploy action은 기존
+`knot-backend-dev-deployment-group`을 계속 대상으로 사용한다.
 
-새 그룹의 첫 배포와 자동 롤백 설정은 저장소 파일에 반영되지 않는다. AWS 변경 후에는
-CodeDeploy 그룹 이름·인스턴스 태그·자동 롤백 설정과 CodePipeline Deploy action의 대상
-그룹을 콘솔에서 다시 확인한다. 실제 첫 배포 전에 artifact 루트 AppSpec이
-`appspec-dev-bluegreen.yml`에서 복사된 것인지, `scripts/systemd/`와
-`scripts/dev_bluegreen_deploy.sh`가 포함됐는지 확인한다.
+기존 그룹의 첫 Blue-Green revision에서는 직전 revision의 `ApplicationStop`이 legacy
+서비스를 정지할 수 있다. 이 일시 중단은 승인된 이행 절차다. 새 AppSpec의
+`BeforeInstall` hook은 CodeDeploy가 이전 JAR를 정리하기 전에 `/opt/knot-backend/app.jar`를
+Blue slot으로 보존한다. `ApplicationStart` hook은 legacy 서비스가 멈춰 있고 Nginx가
+8080을 가리키는 최초 이행 상황이면 보존한 JAR로 Blue를 다시 준비한 뒤 Green을 기동한다.
+후속 배포에서는 현재 활성 slot을 유지하며 비활성 slot만 교체한다.
+
+실제 AWS 설정은 아직 Blue-Green artifact로 전환하지 않았다. 최근 파이프라인 배포는 기존
+inline buildspec과 in-place AppSpec을 사용했으며 CodeDeploy 그룹의 automatic rollback도
+비활성 상태였다. AWS 변경 후에는 기존 그룹 이름·인스턴스 태그·롤백 설정과 CodePipeline
+Deploy action의 대상을 확인한다. 첫 배포 전에 artifact 루트 AppSpec이
+`appspec-dev-bluegreen.yml`에서 복사됐는지, `scripts/dev_bluegreen_preserve_legacy.sh`,
+`scripts/dev_bluegreen_deploy.sh`, `scripts/systemd/`가 모두 포함됐는지 확인한다.
 
 Hook이 `/var/lib/knot-backend-deploy/blue-green/route-uncertain`을 남기면 다음 배포는
 자동으로 거부된다. Nginx의 디스크 설정과 실행 중인 upstream을 확인하고 이전 서버의
