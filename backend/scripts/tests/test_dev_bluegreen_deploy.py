@@ -9,7 +9,12 @@ from pathlib import Path
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 DEPLOY_SCRIPT = BACKEND_ROOT / "scripts" / "dev_bluegreen_deploy.sh"
 PRESERVE_SCRIPT = BACKEND_ROOT / "scripts" / "dev_bluegreen_preserve_legacy.sh"
+CORE_DEPLOY_SCRIPT = BACKEND_ROOT / "scripts" / "bluegreen_deploy.sh"
+CORE_PRESERVE_SCRIPT = BACKEND_ROOT / "scripts" / "bluegreen_preserve_legacy.sh"
+PROD_DEPLOY_SCRIPT = BACKEND_ROOT / "scripts" / "prod_bluegreen_deploy.sh"
+PROD_PRESERVE_SCRIPT = BACKEND_ROOT / "scripts" / "prod_bluegreen_preserve_legacy.sh"
 SYSTEMD_SOURCES = BACKEND_ROOT / "ops" / "systemd"
+PROD_SYSTEMD_SOURCES = BACKEND_ROOT / "ops" / "systemd" / "prod"
 PACKAGE_SCRIPT = BACKEND_ROOT / "ops" / "codebuild" / "package-deployment-artifact.sh"
 
 
@@ -24,24 +29,40 @@ class DevBlueGreenDeployTest(unittest.TestCase):
         self.systemd_dir = self.root / "systemd"
         self.state_root = self.root / "state"
         self.nginx_config = self.root / "nginx.conf"
+        self.nginx_metrics_config = self.root / "nginx-metrics.conf"
+        self.alloy_config = self.root / "config.alloy"
         self.active_services = self.root / "active-services"
         self.enabled_services = self.root / "enabled-services"
         self.command_log = self.root / "commands.log"
 
         self.scripts.mkdir(parents=True)
         (self.scripts / "systemd").mkdir()
+        (self.scripts / "nginx").mkdir()
         self.fake_bin.mkdir()
         self.app_root.mkdir()
         self.systemd_dir.mkdir()
         self.bundle.joinpath("app.jar").write_bytes(b"candidate")
         self.scripts.joinpath("dev_bluegreen_deploy.sh").write_bytes(DEPLOY_SCRIPT.read_bytes())
         self.scripts.joinpath("dev_bluegreen_preserve_legacy.sh").write_bytes(PRESERVE_SCRIPT.read_bytes())
+        self.scripts.joinpath("prod_bluegreen_deploy.sh").write_bytes(PROD_DEPLOY_SCRIPT.read_bytes())
+        self.scripts.joinpath("prod_bluegreen_preserve_legacy.sh").write_bytes(PROD_PRESERVE_SCRIPT.read_bytes())
+        self.scripts.joinpath("bluegreen_deploy.sh").write_bytes(CORE_DEPLOY_SCRIPT.read_bytes())
+        self.scripts.joinpath("bluegreen_preserve_legacy.sh").write_bytes(CORE_PRESERVE_SCRIPT.read_bytes())
+        shutil.copy2(
+            BACKEND_ROOT / "ops" / "nginx" / "knot-backend-metrics.conf",
+            self.scripts / "nginx" / "knot-backend-metrics.conf",
+        )
         for unit_name in ("knot-backend-blue.service", "knot-backend-green.service"):
             shutil.copy2(SYSTEMD_SOURCES / unit_name, self.scripts / "systemd" / unit_name)
 
         self.legacy_jar = self.app_root / "app.jar"
         self.legacy_jar.write_bytes(b"active")
         self.nginx_config.write_text("server {\n  proxy_pass http://127.0.0.1:8080;\n}\n")
+        self.alloy_config.write_text(
+            'discovery.relabel "spring" {\n'
+            '  targets = [{ __address__ = "127.0.0.1:8080", service = "knot-backend", env = "dev" }]\n'
+            '}\n'
+        )
         self.active_services.write_text("knot-backend.service\n")
         self.enabled_services.write_text("knot-backend.service\n")
         self._install_fake_commands()
@@ -50,11 +71,16 @@ class DevBlueGreenDeployTest(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_switches_to_green_and_stops_legacy_blue_after_drain(self):
+        alloy_config_inode = self.alloy_config.stat().st_ino
+
         result = self._run_deploy()
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("succeeded", result.stdout)
         self.assertIn("proxy_pass http://127.0.0.1:8081;", self.nginx_config.read_text())
+        self.assertIn("proxy_pass http://127.0.0.1:8081;", self.nginx_metrics_config.read_text())
+        self.assertIn('__address__ = "127.0.0.1:18080"', self.alloy_config.read_text())
+        self.assertEqual(self.alloy_config.stat().st_ino, alloy_config_inode)
         self.assertNotIn("knot-backend.service", self._read_lines(self.active_services))
         self.assertIn("knot-backend-green.service", self._read_lines(self.active_services))
         self.assertNotIn("knot-backend.service", self._read_lines(self.enabled_services))
@@ -205,7 +231,7 @@ class DevBlueGreenDeployTest(unittest.TestCase):
     def test_drain_timeout_rolls_route_back_without_stopping_blue(self):
         result = self._run_deploy(
             KNOT_BLUEGREEN_DRAIN_TIMEOUT_SECONDS="0",
-            TEST_CONNECTIONS_8080="1",
+            TEST_NGINX_CONNECTIONS_8080="1",
         )
 
         self.assertNotEqual(result.returncode, 0)
@@ -213,6 +239,51 @@ class DevBlueGreenDeployTest(unittest.TestCase):
         self.assertIn("proxy_pass http://127.0.0.1:8080;", self.nginx_config.read_text())
         self.assertIn("knot-backend.service", self._read_lines(self.active_services))
         self.assertNotIn("knot-backend-green.service", self._read_lines(self.active_services))
+
+    def test_idle_alloy_connection_does_not_block_drain(self):
+        result = self._run_deploy(TEST_ALLOY_CONNECTIONS_8080="1")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("knot-backend-green.service", self._read_lines(self.active_services))
+        self.assertNotIn("knot-backend.service", self._read_lines(self.active_services))
+
+    def test_metrics_validation_failure_restores_routes_before_stopping_candidate(self):
+        result = self._run_deploy(TEST_FAIL_METRICS="1")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("proxy_pass http://127.0.0.1:8080;", self.nginx_config.read_text())
+        self.assertFalse(self.nginx_metrics_config.exists())
+        self.assertIn('__address__ = "127.0.0.1:8080"', self.alloy_config.read_text())
+        self.assertEqual(self._read_lines(self.active_services), {"knot-backend.service"})
+
+    def test_failed_alloy_reload_is_retried_on_the_next_deployment(self):
+        failed_result = self._run_deploy(TEST_FAIL_ALLOY_RELOAD="1")
+
+        self.assertNotEqual(failed_result.returncode, 0)
+        self.assertIn("proxy_pass http://127.0.0.1:8080;", self.nginx_config.read_text())
+        self.assertIn("proxy_pass http://127.0.0.1:8080;", self.nginx_metrics_config.read_text())
+        self.assertIn('__address__ = "127.0.0.1:18080"', self.alloy_config.read_text())
+        self.assertEqual(self._read_lines(self.active_services), {"knot-backend.service"})
+
+        retry_result = self._run_deploy()
+
+        self.assertEqual(retry_result.returncode, 0, retry_result.stdout + retry_result.stderr)
+        reload_attempts = [
+            line for line in self.command_log.read_text().splitlines() if line == "alloy-reload"
+        ]
+        self.assertEqual(len(reload_attempts), 2)
+
+    def test_unchanged_alloy_config_is_not_reloaded_for_every_deployment(self):
+        first_result = self._run_deploy()
+
+        self.assertEqual(first_result.returncode, 0, first_result.stdout + first_result.stderr)
+        second_result = self._run_deploy()
+
+        self.assertEqual(second_result.returncode, 0, second_result.stdout + second_result.stderr)
+        reload_attempts = [
+            line for line in self.command_log.read_text().splitlines() if line == "alloy-reload"
+        ]
+        self.assertEqual(len(reload_attempts), 1)
 
     def test_old_service_stop_failure_rolls_route_back(self):
         result = self._run_deploy(TEST_FAIL_STOP_SERVICE="knot-backend.service")
@@ -254,7 +325,111 @@ class DevBlueGreenDeployTest(unittest.TestCase):
         self.assertIn("proxy_pass http://127.0.0.1:8080;", self.nginx_config.read_text())
         self.assertEqual(self._read_lines(self.active_services), {"knot-backend.service"})
 
+    def test_prod_profile_switches_traffic_and_uses_the_prod_group_and_health_host(self):
+        for unit_name in ("knot-backend-blue.service", "knot-backend-green.service"):
+            shutil.copy2(PROD_SYSTEMD_SOURCES / unit_name, self.scripts / "systemd" / unit_name)
+        environment = self._deployment_environment()
+        environment.update(
+            {
+                "KNOT_BLUEGREEN_PROFILE": "prod",
+                "DEPLOYMENT_GROUP_NAME": "knot-backend-deployment-group",
+                "KNOT_BLUEGREEN_HEALTH_HOST": "api.knoted.kr",
+            }
+        )
+
+        result = subprocess.run(
+            ["bash", str(self.scripts / "prod_bluegreen_deploy.sh")],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("[blue-green:prod]", result.stdout)
+        self.assertIn("proxy_pass http://127.0.0.1:8081;", self.nginx_config.read_text())
+        self.assertIn("knot-backend-green.service", self._read_lines(self.active_services))
+        self.assertIn("-Xmx256m", (self.systemd_dir / "knot-backend-green.service").read_text())
+        self.assertIn('__address__ = "127.0.0.1:18080"', self.alloy_config.read_text())
+        curl_urls = [
+            line for line in self.command_log.read_text().splitlines() if line.startswith("curl ")
+        ]
+        self.assertTrue(any("https://api.knoted.kr/actuator/health" in line for line in curl_urls))
+
+    def test_prod_slot_units_keep_runtime_environment_and_set_the_requested_heap_limit(self):
+        for slot_name, port in (("blue", "8080"), ("green", "8081")):
+            unit = (PROD_SYSTEMD_SOURCES / f"knot-backend-{slot_name}.service").read_text()
+            self.assertIn("EnvironmentFile=/etc/knot-backend/knot-backend.env", unit)
+            self.assertIn("EnvironmentFile=/etc/knot-backend/recording-storage.env", unit)
+            self.assertIn("EnvironmentFile=/etc/knot-backend/recording-ai.env", unit)
+            self.assertIn("Environment=SPRING_PROFILES_INCLUDE=observability", unit)
+            self.assertIn(
+                "Environment=SPRING_CONFIG_ADDITIONAL_LOCATION=file:/etc/knot-backend/recording-streaming.properties",
+                unit,
+            )
+            self.assertIn(f"java -Xmx256m -XX:NativeMemoryTracking=summary", unit)
+            self.assertIn(f"--server.port={port}", unit)
+
+    def test_prod_deploy_rejects_a_non_prod_deployment_group(self):
+        environment = self._deployment_environment()
+        environment.update(
+            {
+                "KNOT_BLUEGREEN_PROFILE": "prod",
+                "DEPLOYMENT_GROUP_NAME": "knot-backend-dev-deployment-group",
+            }
+        )
+
+        result = subprocess.run(
+            ["bash", str(self.scripts / "prod_bluegreen_deploy.sh")],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Refusing deployment group", result.stdout)
+        self.assertEqual(self._read_lines(self.active_services), {"knot-backend.service"})
+
+    def test_prod_preserve_rejects_the_dev_deployment_group(self):
+        environment = self._preserve_environment()
+        environment.update({"KNOT_BLUEGREEN_PROFILE": "prod"})
+
+        result = subprocess.run(
+            ["bash", str(self.scripts / "prod_bluegreen_preserve_legacy.sh")],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Refusing deployment group", result.stdout)
+        self.assertTrue(self.legacy_jar.is_file())
+
     def _run_deploy(self, **extra_environment):
+        environment = self._deployment_environment()
+        environment.update(extra_environment)
+        return subprocess.run(
+            ["bash", str(self.scripts / "dev_bluegreen_deploy.sh")],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+
+    def _run_preserve(self, **extra_environment):
+        environment = self._preserve_environment()
+        environment.update(extra_environment)
+        return subprocess.run(
+            ["bash", str(self.scripts / "dev_bluegreen_preserve_legacy.sh")],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+
+    def _deployment_environment(self):
         environment = os.environ.copy()
         environment.update(
             {
@@ -263,6 +438,8 @@ class DevBlueGreenDeployTest(unittest.TestCase):
                 "DEPLOYMENT_ID": "d-test123",
                 "KNOT_BLUEGREEN_APP_ROOT": str(self.app_root),
                 "KNOT_BLUEGREEN_NGINX_CONFIG": str(self.nginx_config),
+                "KNOT_BLUEGREEN_NGINX_METRICS_CONFIG": str(self.nginx_metrics_config),
+                "KNOT_BLUEGREEN_ALLOY_CONFIG": str(self.alloy_config),
                 "KNOT_BLUEGREEN_SYSTEMD_DIR": str(self.systemd_dir),
                 "KNOT_BLUEGREEN_STATE_ROOT": str(self.state_root),
                 "KNOT_BLUEGREEN_LOCK_FILE": str(self.root / "bluegreen.lock"),
@@ -280,16 +457,9 @@ class DevBlueGreenDeployTest(unittest.TestCase):
                 "TEST_COMMAND_LOG": str(self.command_log),
             }
         )
-        environment.update(extra_environment)
-        return subprocess.run(
-            ["bash", str(self.scripts / "dev_bluegreen_deploy.sh")],
-            check=False,
-            capture_output=True,
-            text=True,
-            env=environment,
-        )
+        return environment
 
-    def _run_preserve(self, **extra_environment):
+    def _preserve_environment(self):
         environment = os.environ.copy()
         environment.update(
             {
@@ -303,14 +473,7 @@ class DevBlueGreenDeployTest(unittest.TestCase):
                 "TEST_COMMAND_LOG": str(self.command_log),
             }
         )
-        environment.update(extra_environment)
-        return subprocess.run(
-            ["bash", str(self.scripts / "dev_bluegreen_preserve_legacy.sh")],
-            check=False,
-            capture_output=True,
-            text=True,
-            env=environment,
-        )
+        return environment
 
     def _read_lines(self, path):
         return {line for line in path.read_text().splitlines() if line}
@@ -379,6 +542,20 @@ import os
 import sys
 
 url = sys.argv[-1]
+with open(os.environ["TEST_COMMAND_LOG"], "a") as output:
+    output.write("curl " + url + "\\n")
+if url.endswith("/-/ready"):
+    print("ready")
+    sys.exit(0)
+if url.endswith("/-/reload"):
+    with open(os.environ["TEST_COMMAND_LOG"], "a") as output:
+        output.write("alloy-reload\\n")
+    sys.exit(1 if os.environ.get("TEST_FAIL_ALLOY_RELOAD") == "1" else 0)
+if "127.0.0.1:18080/actuator/prometheus" in url:
+    if os.environ.get("TEST_FAIL_METRICS") == "1":
+        sys.exit(7)
+    print("jvm_memory_used_bytes 123")
+    sys.exit(0)
 if "127.0.0.1:8080" in url and os.environ.get("TEST_FAIL_PORT") == "8080":
     print('{"status":"DOWN"}')
     print(os.environ.get("TEST_HTTP_STATUS", "200"))
@@ -424,6 +601,14 @@ import sys
 
 arguments = " ".join(sys.argv[1:])
 port = "8080" if ":8080" in arguments else "8081"
+if "dport" in arguments:
+    nginx_count = int(os.environ.get("TEST_NGINX_CONNECTIONS_" + port, "0"))
+    alloy_count = int(os.environ.get("TEST_ALLOY_CONNECTIONS_" + port, "0"))
+    for index in range(nginx_count):
+        print('ESTAB 0 0 127.0.0.1:50000 127.0.0.1:' + port + ' users:(("nginx",pid=42,fd=21))')
+    for index in range(alloy_count):
+        print('ESTAB 0 0 127.0.0.1:50001 127.0.0.1:' + port + ' users:(("alloy",pid=43,fd=22))')
+    sys.exit(0)
 count = int(os.environ.get("TEST_CONNECTIONS_" + port, "0"))
 for index in range(count):
     print("ESTAB 0 0 127.0.0.1:" + port + " 127.0.0.1:50000")
@@ -477,6 +662,7 @@ if directory:
     sys.exit(0)
 source = Path(filtered[-2])
 target.parent.mkdir(parents=True, exist_ok=True)
+target.unlink(missing_ok=True)
 shutil.copyfile(source, target)
 if mode:
     target.chmod(int(mode, 8))
@@ -500,16 +686,25 @@ class DeploymentArtifactPackagingTest(unittest.TestCase):
         (self.backend / "scripts").mkdir()
         (self.backend / "scripts" / "tests").mkdir()
         (self.backend / "ops" / "systemd").mkdir(parents=True)
+        (self.backend / "ops" / "systemd" / "prod").mkdir(parents=True)
         (self.backend / "ops" / "codebuild").mkdir(parents=True)
+        (self.backend / "ops" / "nginx").mkdir(parents=True)
         (self.backend / "scripts" / "sample-hook.sh").write_text("#!/bin/sh\nexit 0\n")
         (self.backend / "scripts" / "dev_bluegreen_preserve_legacy.sh").write_text(
             "#!/bin/sh\nprintf 'preserve\\n'\n"
         )
+        (self.backend / "scripts" / "prod_bluegreen_deploy.sh").write_text(
+            "#!/bin/sh\nprintf 'prod deploy\\n'\n"
+        )
         (self.backend / "scripts" / "tests" / "fixture.py").write_text("print('test')\n")
         (self.backend / "appspec.yml").write_text("legacy-appspec\n")
         (self.backend / "appspec-dev-bluegreen.yml").write_text("bluegreen-appspec\n")
+        (self.backend / "appspec-prod-bluegreen.yml").write_text("prod-bluegreen-appspec\n")
         (self.backend / "ops" / "systemd" / "knot-backend-blue.service").write_text("blue-unit\n")
         (self.backend / "ops" / "systemd" / "knot-backend-green.service").write_text("green-unit\n")
+        (self.backend / "ops" / "systemd" / "prod" / "knot-backend-blue.service").write_text("prod-blue-unit\n")
+        (self.backend / "ops" / "systemd" / "prod" / "knot-backend-green.service").write_text("prod-green-unit\n")
+        (self.backend / "ops" / "nginx" / "knot-backend-metrics.conf").write_text("metrics-route\n")
 
     def tearDown(self):
         self.temp_dir.cleanup()
@@ -522,6 +717,7 @@ class DeploymentArtifactPackagingTest(unittest.TestCase):
         self.assertTrue((self.root / "scripts" / "sample-hook.sh").is_file())
         self.assertFalse((self.root / "scripts" / "tests").exists())
         self.assertFalse((self.root / "scripts" / "systemd").exists())
+        self.assertFalse((self.root / "scripts" / "nginx").exists())
 
     def test_unset_mode_defaults_to_legacy_artifact(self):
         result = self._package(None)
@@ -544,7 +740,44 @@ class DeploymentArtifactPackagingTest(unittest.TestCase):
             (self.root / "scripts" / "systemd" / "knot-backend-green.service").read_text(),
             "green-unit\n",
         )
+        self.assertEqual(
+            (self.root / "scripts" / "nginx" / "knot-backend-metrics.conf").read_text(),
+            "metrics-route\n",
+        )
         self.assertTrue((self.root / "scripts" / "dev_bluegreen_preserve_legacy.sh").is_file())
+
+    def test_prod_bluegreen_mode_packages_prod_hooks_units_and_metrics(self):
+        result = self._package("prod-bluegreen")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual((self.root / "appspec.yml").read_text(), "prod-bluegreen-appspec\n")
+        self.assertEqual(
+            (self.root / "scripts" / "systemd" / "knot-backend-blue.service").read_text(),
+            "prod-blue-unit\n",
+        )
+        self.assertEqual(
+            (self.root / "scripts" / "systemd" / "knot-backend-green.service").read_text(),
+            "prod-green-unit\n",
+        )
+        self.assertEqual(
+            (self.root / "scripts" / "nginx" / "knot-backend-metrics.conf").read_text(),
+            "metrics-route\n",
+        )
+        self.assertTrue((self.root / "scripts" / "prod_bluegreen_deploy.sh").is_file())
+
+    def test_legacy_mode_removes_stale_bluegreen_files(self):
+        stale_systemd = self.root / "scripts" / "systemd"
+        stale_nginx = self.root / "scripts" / "nginx"
+        stale_systemd.mkdir(parents=True)
+        stale_nginx.mkdir(parents=True)
+        (stale_systemd / "old.service").write_text("stale\n")
+        (stale_nginx / "old.conf").write_text("stale\n")
+
+        result = self._package("legacy-in-place")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(stale_systemd.exists())
+        self.assertFalse(stale_nginx.exists())
 
     def test_unknown_mode_fails_before_creating_an_appspec(self):
         result = self._package("unsupported")
