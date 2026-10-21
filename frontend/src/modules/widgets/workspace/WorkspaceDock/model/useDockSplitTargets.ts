@@ -32,17 +32,28 @@ export const useDockSplitTargets = ({
     const form = formRef.current;
     if (!form || isExpanded) return;
 
-    const center = form.offsetWidth / 2;
-    const offsetOf = (selector: string) => {
-      const element = form.querySelector<HTMLElement>(selector);
-      if (!element) return null;
-      return element.offsetLeft + element.offsetWidth / 2 - center;
-    };
-    const chatOffsetX = offsetOf("[data-dock-chat]");
-    const recordOffsetX = offsetOf("[data-dock-record]");
-    if (chatOffsetX === null) return;
+    const measure = () => {
+      const center = form.offsetWidth / 2;
+      const offsetOf = (selector: string) => {
+        const element = form.querySelector<HTMLElement>(selector);
+        if (!element) return null;
+        return element.offsetLeft + element.offsetWidth / 2 - center;
+      };
+      const chatOffsetX = offsetOf("[data-dock-chat]");
+      const recordOffsetX = offsetOf("[data-dock-record]");
+      if (chatOffsetX === null) return;
 
-    setSplitTargets({ barWidth: form.offsetWidth, barHeight: form.offsetHeight, chatOffsetX, recordOffsetX });
+      setSplitTargets({ barWidth: form.offsetWidth, barHeight: form.offsetHeight, chatOffsetX, recordOffsetX });
+    };
+    measure();
+
+    // 펼친 독이 접힐 때는 폭이 모션으로 줄어드는 중이라, 다 줄어든 뒤 한 번 더 재요
+    const handleTransitionEnd = (event: TransitionEvent) => {
+      if (event.target === form && event.propertyName === "width") measure();
+    };
+    form.addEventListener("transitionend", handleTransitionEnd);
+
+    return () => form.removeEventListener("transitionend", handleTransitionEnd);
   }, [formRef, isExpanded, isMicVisible, isOpen, isRecordingChipVisible]);
 
   return { splitTargets };

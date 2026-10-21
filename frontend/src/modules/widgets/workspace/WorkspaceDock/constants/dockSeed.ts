@@ -17,8 +17,8 @@ export const SEED_WAVE_AMPLITUDE = 38;
 /** 파형 캔버스 높이(px). 독 자리 위로 이만큼 그려요 */
 export const SEED_CANVAS_HEIGHT = 140;
 
-/** 파형 가운데가 캔버스 아래에서 떨어진 거리(px) */
-export const SEED_WAVE_BOTTOM = 60;
+/** 파형 가운데가 캔버스 아래에서 떨어진 거리(px). 접힌 독의 세로 가운데와 같아요 */
+export const SEED_WAVE_BOTTOM = 30;
 
 /** 포인터 피하기와 클릭 파동의 값은 랜딩과 같은 `@utils/particleMotion`의 기본값을 써요 */
 

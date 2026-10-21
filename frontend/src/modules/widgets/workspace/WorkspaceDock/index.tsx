@@ -4,6 +4,7 @@ import { keyframes } from "@emotion/react";
 import styled from "@emotion/styled";
 import { DOCK_HEIGHT } from "@primitives/layout/DockColumn";
 import Textarea from "@primitives/ui/Textarea";
+import { hexToRgb } from "@utils/hexToRgb";
 import { useRef } from "react";
 
 import SendIcon from "@/assets/icons/send.svg";
@@ -104,7 +105,7 @@ export default function WorkspaceDock() {
     handleStopRecording,
   } = useDockRecording();
   const stageRef = useRef<HTMLDivElement>(null);
-  const { isSeedSupported, isOpen, open, scheduleClose } =
+  const { isSeedSupported, isOpen, open, enter, leave, scheduleClose } =
     useDockOpen({
       stageRef,
       isExpanded,
@@ -127,10 +128,10 @@ export default function WorkspaceDock() {
       ref={stageRef}
       onPointerEnter={(event) => {
         // 마우스를 올리면 입자 자리에 진짜 독이 나타나요. 터치는 눌러서 열어요
-        if (event.pointerType !== "touch") open();
+        if (event.pointerType !== "touch") enter();
       }}
       onPointerLeave={(event) => {
-        if (event.pointerType !== "touch") scheduleClose();
+        if (event.pointerType !== "touch") leave();
       }}
       onBlur={(event) => {
         // 포커스가 독 밖으로 나가면 파형으로 돌아가요. 독 안의 다른 버튼으로 옮기는 건 그대로 둬요
@@ -157,6 +158,7 @@ export default function WorkspaceDock() {
       <Bar
         ref={formRef}
         $isOpen={isOpen}
+        $isSketch={isSeedSupported && !isOpen && !isRecordingChipVisible}
         $isExpanded={isExpanded}
         $isRecording={isRecordingChipVisible && !isRecordingPaused}
         onSubmit={(event) => {
@@ -234,7 +236,7 @@ export default function WorkspaceDock() {
               {hasRecordSide && <ControlDivider aria-hidden="true" />}
 
               {isMicVisible && (
-                <span data-dock-record>
+                <RecordSlot data-dock-record>
                   <DockMicButton
                     isOrbVisible={isOpen}
                     onClick={() => {
@@ -242,11 +244,11 @@ export default function WorkspaceDock() {
                       void handleMicClick();
                     }}
                   />
-                </span>
+                </RecordSlot>
               )}
 
               {isRecordingChipVisible && (
-                <span data-dock-record>
+                <RecordSlot data-dock-record>
                   <DockRecordingChip
                     elapsedTime={elapsedTime}
                     isPaused={isRecordingPaused}
@@ -254,7 +256,7 @@ export default function WorkspaceDock() {
                     onOpen={isOtherTabRecording ? undefined : handleOpenRecording}
                     onStop={isOtherTabRecording ? undefined : handleStopRecording}
                   />
-                </span>
+                </RecordSlot>
               )}
           </CollapsedControls>
         )}
@@ -284,10 +286,13 @@ const Stage = styled.div`
  */
 const Bar = styled.form<{
   $isOpen: boolean;
+  /** 입자 스케치 상태. 카드처럼 밝은 알약 바탕만 두고 그 위에 입자가 독을 그려요 */
+  $isSketch: boolean;
   $isExpanded: boolean;
   $isRecording: boolean;
 }>`
   position: relative;
+  z-index: 1; /* 입자의 누르는 자리 위에 놓여요 */
   display: flex;
   align-items: flex-end; /* 여러 줄로 자라도 보내기 버튼은 아래에 남아요 */
   gap: ${({ $isExpanded }) =>
@@ -302,20 +307,28 @@ const Bar = styled.form<{
   /* 접혔을 때만 동그란 알약이고, 펼친 뒤에는 여러 줄로 자라도 모서리가 30px로 고정돼요 */
   border-radius: ${({ $isExpanded }) =>
     $isExpanded ? "1.875rem" : "6.25rem"}; /* 30px : 100px */
-  background-color: ${({ theme }) => theme.neutral[800]};
-  /* 녹음 중엔 독 아래로 청록 빛이 살짝 비쳐요 */
-  box-shadow: ${({ theme, $isRecording }) =>
-    $isRecording
+  /* 스케치 상태는 프라이머리(Neutral 800)를 아주 옅게 깐 반투명 유리예요. 뒤가 비치고 살짝 흐려지며 가장자리에 흰 빛 한 줄만 둬요.
+     열리면 기존 독의 Neutral 800이에요 */
+  background-color: ${({ theme, $isSketch }) =>
+    $isSketch ? `rgba(${hexToRgb(theme.neutral[800])}, 0.07)` : theme.neutral[800]};
+  backdrop-filter: ${({ $isSketch }) => ($isSketch ? "blur(14px) saturate(1.2)" : "none")};
+  -webkit-backdrop-filter: ${({ $isSketch }) => ($isSketch ? "blur(14px) saturate(1.2)" : "none")};
+  box-shadow: ${({ theme, $isSketch, $isRecording }) => {
+    if ($isSketch)
+      return `inset 0 0 0 1px rgba(255, 255, 255, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.7), ${theme.shadow01}`;
+    /* 녹음 중엔 독 아래로 청록 빛이 살짝 비쳐요 */
+    return $isRecording
       ? `${theme.shadow03}, 0 10px 30px rgba(46, 133, 163, 0.16)`
-      : theme.shadow03};
+      : theme.shadow03;
+  }};
   interpolate-size: allow-keywords;
-  transition-property: width, padding, gap, border-radius, box-shadow, opacity, transform;
+  transition-property: width, padding, gap, border-radius, box-shadow, background-color, opacity, transform;
   transition-duration: ${({ $isExpanded }) =>
     $isExpanded ? DOCK_EXPAND_DURATION : "0.36s"};
   transition-timing-function: ${DOCK_EASING};
-  /* 파형으로 접혀 있을 땐 보이지 않게 작게 두었다가, 열리면 입자 뒤에서 자라나요 */
-  opacity: ${({ $isOpen }) => ($isOpen ? 1 : 0)};
-  transform: ${({ $isOpen }) => ($isOpen ? "none" : "scale(0.55)")};
+  /* 녹음 파형으로 접혀 있을 땐 보이지 않게 작게 두었다가, 열리면 입자 뒤에서 자라나요 */
+  opacity: ${({ $isOpen, $isSketch }) => ($isOpen || $isSketch ? 1 : 0)};
+  transform: ${({ $isOpen, $isSketch }) => ($isOpen || $isSketch ? "none" : "scale(0.55)")};
   pointer-events: ${({ $isOpen }) => ($isOpen ? "auto" : "none")};
 
 
@@ -361,9 +374,21 @@ const InputOrb = styled.span`
   }
 `;
 
+/** 접힌 독의 녹음 칸. 입자 스케치가 자리를 재는 기준이고, 안의 버튼·칩처럼 세로 가운데에 놓여요 */
+const RecordSlot = styled.span`
+  display: flex;
+  align-self: center;
+  align-items: center;
+`;
+
 /** 접힌 독의 말풍선·녹음 칸 묶음. 배치에는 끼어들지 않고, 숨길 때 한꺼번에 숨기려고 둬요 */
 const CollapsedControls = styled.span`
   display: contents;
+
+  /* 입자 스케치일 때는 보이지 않아요. 입자가 같은 자리에 아이콘과 구슬을 그려요 */
+  &[aria-hidden="true"] > * {
+    opacity: 0;
+  }
 `;
 
 /**

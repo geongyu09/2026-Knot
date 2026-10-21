@@ -1470,9 +1470,13 @@ describe("파형으로 접힌 독", () => {
     );
 
     expect(isDockExpanded()).toBe(true);
+    // 입자 자리는 남아 있지만 열린 동안은 낭독기에서 숨겨요
     expect(
       screen.queryByRole("button", { name: "독 열기" }),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
+    expect(
+      document.querySelector('[aria-label="독 열기"]'),
+    ).toHaveAttribute("aria-hidden", "true");
   });
 
   it("녹음 화면에서는 파형을 눌러도 회의 녹음 버튼이 없다", () => {

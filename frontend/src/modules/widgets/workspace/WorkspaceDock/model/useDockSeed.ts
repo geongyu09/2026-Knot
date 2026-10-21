@@ -209,10 +209,10 @@ export const useDockSeed = ({
 
       const radius = layout.barHeight / 2;
       const perimeter = 2 * (layout.barWidth + layout.barHeight - 4 * radius) + 2 * Math.PI * radius;
-      const frameCount = Math.round(perimeter * 1.5);
+      const frameCount = Math.round(perimeter * 0.9);
       for (let i = 0; i < frameCount; i++) {
         const point = roundedRectPoint({ width: layout.barWidth, height: layout.barHeight, radius, distance: i / frameCount });
-        const offset = gaussian() * 1.3;
+        const offset = gaussian() * 1.6;
         targets.push({ x: point.x + point.nx * offset - layout.barWidth / 2, y: point.y + point.ny * offset - layout.barHeight / 2, part: "frame" });
       }
 
@@ -308,7 +308,7 @@ export const useDockSeed = ({
         case "icon":
           return (onDock ? colors.light : colors.ink)[particle.seed < 0.7 ? 0 : 1];
         default:
-          return onDock ? colors.light[2] : colors.ink[particle.seed < 0.5 ? 1 : 2];
+          return onDock ? colors.light[2] : colors.ink[2];
       }
     };
 

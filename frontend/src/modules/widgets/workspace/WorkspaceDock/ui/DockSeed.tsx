@@ -84,7 +84,9 @@ export default function DockSeed({ isOpen, tone, analyser, isActive, elapsedTime
       <HitArea
         type="button"
         aria-label="독 열기"
-        $isOpen={isOpen}
+        // 열려 있는 동안은 독이 위를 덮어 누를 일이 없지만, 포인터가 들어오고 나가는 기준이 흔들리지 않게 자리는 그대로 둬요
+        aria-hidden={isOpen}
+        tabIndex={isOpen ? -1 : 0}
         onPointerMove={(event) => {
           const point = toCanvas(event);
           if (point) setPointer(point.x, point.y);
@@ -114,14 +116,15 @@ const Canvas = styled.canvas<{ $isOpen: boolean }>`
   width: 100%;
   height: ${SEED_CANVAS_HEIGHT / 16}rem;
   pointer-events: none;
-  z-index: ${({ $isOpen }) => ($isOpen ? 3 : 1)};
+  z-index: ${({ $isOpen }) => ($isOpen ? 3 : 2)}; /* 독(1)보다 위에서 그려요 */
 `;
 
+/** 파형 오른쪽 끝 옆에 세로 가운데로 놓여요. 파형 폭은 열 폭의 60%, 최대 360px이에요 */
 const ElapsedTime = styled.span<{ $isVisible: boolean }>`
   position: absolute;
-  bottom: 0.875rem; /* 14px */
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: ${SEED_WAVE_BOTTOM / 16}rem;
+  left: calc(50% + min(11.25rem, 30%) + 0.75rem); /* 파형 절반(최대 180px) + 12px */
+  transform: translateY(50%);
   color: ${({ theme }) => theme.neutral[800]};
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -131,18 +134,20 @@ const ElapsedTime = styled.span<{ $isVisible: boolean }>`
   ${({ theme }) => theme.text.label01};
 `;
 
-/** 파형 전체를 덮는 누르는 자리. 독이 열리면 포인터를 받지 않아요 */
-const HitArea = styled.button<{ $isOpen: boolean }>`
+/**
+ * 입자 전체를 덮는 누르는 자리. 독보다 아래 층이라 열린 독이 위를 덮고, 독 밖의 입자 자리에서는 이 버튼이 포인터를 받아요.
+ * 열리든 닫히든 모양이 같아, 포인터가 독 자리에 있는지 판단이 상태에 따라 흔들리지 않아요.
+ */
+const HitArea = styled.button`
   position: absolute;
-  bottom: 0;
+  bottom: -0.75rem; /* -12px */
   left: 50%;
   transform: translateX(-50%);
   width: min(26.25rem, 100%); /* 420px */
   height: 7.5rem; /* 120px */
   border-radius: 1.875rem; /* 30px */
   cursor: pointer;
-  pointer-events: ${({ $isOpen }) => ($isOpen ? "none" : "auto")};
-  z-index: 2;
+  z-index: 0;
 
   &:focus-visible {
     outline: 2px solid ${({ theme }) => theme.sub.accent[500]};

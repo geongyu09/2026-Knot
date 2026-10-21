@@ -3,12 +3,20 @@ import { setupWorker } from "msw/browser";
 
 import { handlers } from "./handlers";
 import { devAuthHandlers } from "./handlers/dev";
+import {
+  applyMockScenarioFromQuery,
+  CURRENT_RECORDING_SCENARIOS,
+  devScenarioHandlers,
+  readMockScenario,
+  writeMockScenario,
+  type CurrentRecordingScenario,
+} from "./handlers/dev/scenario";
 
 // 개발 서버 전용. src/index.tsx가 API_MOCKING 플래그 안에서 동적 import해요
 // 먼저 맞는 핸들러가 이기므로, 개발 전용 핸들러(쿠키 로그인 판정 me·nickname·refresh·초대 참여)를
 // 앞에 둬 기본 핸들러만 덮어요.
 // vitest(server.ts)에는 넣지 않아요
-export const mockWorker = setupWorker(...devAuthHandlers, ...handlers);
+export const mockWorker = setupWorker(...devAuthHandlers, ...devScenarioHandlers, ...handlers);
 
 /** 워커의 답을 기다리는 가장 긴 시간(ms). 멈춰 있던 워커도 실제로는 몇 ms 안에 답해요 */
 const MOCK_WORKER_REPLY_TIMEOUT_MS = 1000;
@@ -94,4 +102,47 @@ export const reactivateMockWorkerOnFocus = () => {
       window.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   });
+};
+
+declare global {
+  interface Window {
+    /** 개발 브라우저에서 mock 상황을 바꾸는 손잡이. 콘솔에서 `knotMock.help()`를 쳐 보세요 */
+    knotMock?: {
+      help: () => void;
+      currentRecording: (scenario: CurrentRecordingScenario) => void;
+    };
+  }
+}
+
+/**
+ * 개발 브라우저에서 mock 상황을 바꾸는 손잡이를 콘솔에 둬요.
+ *
+ * 주소에 `?mock.currentRecording=paused`를 붙이거나 콘솔에서 `knotMock.currentRecording("paused")`를 부르면
+ * 저장한 뒤 새로고침해 화면 전체가 그 상황으로 다시 그려져요. 고를 수 있는 값은 `knotMock.help()`가 알려 줘요.
+ */
+export const installMockScenarioSwitch = () => {
+  if (applyMockScenarioFromQuery(window.location.search)) {
+    const url = new URL(window.location.href);
+    [...url.searchParams.keys()].filter((key) => key.startsWith("mock.")).forEach((key) => url.searchParams.delete(key));
+    window.history.replaceState(null, "", url);
+  }
+
+  const help = () => {
+    console.info(
+      [
+        "knot mock 상황 바꾸기",
+        `- 지금: ${JSON.stringify(readMockScenario())}`,
+        `- knotMock.currentRecording(${CURRENT_RECORDING_SCENARIOS.map((s) => `"${s}"`).join(" | ")})`,
+        "- 주소에 ?mock.currentRecording=paused 처럼 붙여도 돼요",
+      ].join("\n"),
+    );
+  };
+  window.knotMock = {
+    help,
+    currentRecording: (scenario) => {
+      writeMockScenario({ currentRecording: scenario });
+      window.location.reload();
+    },
+  };
+  help();
 };
