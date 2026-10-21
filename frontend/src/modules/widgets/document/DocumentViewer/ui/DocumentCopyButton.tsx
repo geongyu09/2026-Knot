@@ -16,7 +16,7 @@ interface DocumentCopyButtonProps {
  * 문서를 마크다운으로 클립보드에 복사하는 버튼(STT-R10).
  *
  * 본문에는 제목이 없어서 제목을 `#` 제목으로 앞에 붙여 복사해요.
- * 복사하면 3초 동안 「복사됨」으로 바뀌고, 토스트는 띄우지 않아요.
+ * 복사하면 3초 동안 「복사됨」으로 바뀌고, 토스트는 띄우지 않아요. 실패하면 버튼은 그대로이고 `useClipboard`가 오류 토스트를 띄워요.
  * 문서는 직접 조회하지 않고, 문서 보기가 받은 제목과 본문을 받아요.
  */
 export default function DocumentCopyButton({

@@ -11,7 +11,7 @@ import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import WorkspaceSidebar from ".";
@@ -36,12 +36,14 @@ const renderSidebar = () => {
   const router = createMemoryRouter(
     [
       {
-        path: PATH_ROUTE.WORKSPACE_HOME,
         element: (
           <ToastProvider>
-            <WorkspaceSidebar />
+            <Outlet />
           </ToastProvider>
         ),
+        children: [
+          { path: PATH_ROUTE.WORKSPACE_HOME, element: <WorkspaceSidebar /> },
+        ],
       },
     ],
     { initialEntries: [HOME_PATH] },

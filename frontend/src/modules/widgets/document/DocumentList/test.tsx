@@ -4,6 +4,7 @@ import { mockServer } from "@api/mock/server";
 import { findDocuments } from "@api/mock/state/document";
 import type { DocumentsResponse } from "@api/mock/types/document";
 import { ThemeProvider } from "@emotion/react";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -18,7 +19,12 @@ import {
 import { formatDate } from "@utils/formatDate";
 import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
 import { delay, http, HttpResponse } from "msw";
-import { createMemoryRouter, RouterProvider, useParams } from "react-router";
+import {
+  createMemoryRouter,
+  Outlet,
+  RouterProvider,
+  useParams,
+} from "react-router";
 import { describe, expect, it } from "vitest";
 
 import DocumentList from ".";
@@ -49,10 +55,22 @@ const renderDocumentList = (workspaceId = WORKSPACE_ID) => {
   });
   const router = createMemoryRouter(
     [
-      { path: PATH_ROUTE.DOCUMENTS, element: <DocumentList /> },
-      { path: PATH_ROUTE.DOCUMENT, element: <DocumentViewStub /> },
-      { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
-      { path: PATH_ROUTE.WORKSPACE, element: <p>워크스페이스 선택 화면</p> },
+      {
+        element: (
+          <ToastProvider>
+            <Outlet />
+          </ToastProvider>
+        ),
+        children: [
+          { path: PATH_ROUTE.DOCUMENTS, element: <DocumentList /> },
+          { path: PATH_ROUTE.DOCUMENT, element: <DocumentViewStub /> },
+          { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
+          {
+            path: PATH_ROUTE.WORKSPACE,
+            element: <p>워크스페이스 선택 화면</p>,
+          },
+        ],
+      },
     ],
     {
       initialEntries: [

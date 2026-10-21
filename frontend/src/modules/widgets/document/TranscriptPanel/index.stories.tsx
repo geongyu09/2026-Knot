@@ -6,6 +6,7 @@ import {
 } from "@api/mock/responses/document";
 import { resetDocumentMockState } from "@api/mock/state/document";
 import type { DocumentTranscriptResponse } from "@api/mock/types/document";
+import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
 import { delay, http, HttpResponse } from "msw";
@@ -95,17 +96,19 @@ const meta = {
   decorators: [
     (Story, { parameters }) => (
       <MemoryRouter initialEntries={[DOCUMENT_PATH]}>
-        <Routes>
-          <Route
-            path={PATH_ROUTE.DOCUMENT}
-            element={
-              // 문서 화면 오른쪽 자리의 폭(400px)이에요. 높이는 자리를 줄이는 스토리만 줘요
-              <div style={{ width: "25rem", height: parameters.slotHeight }}>
-                <Story />
-              </div>
-            }
-          />
-        </Routes>
+        <ToastProvider>
+          <Routes>
+            <Route
+              path={PATH_ROUTE.DOCUMENT}
+              element={
+                // 문서 화면 오른쪽 자리의 폭(400px)이에요. 높이는 자리를 줄이는 스토리만 줘요
+                <div style={{ width: "25rem", height: parameters.slotHeight }}>
+                  <Story />
+                </div>
+              }
+            />
+          </Routes>
+        </ToastProvider>
       </MemoryRouter>
     ),
   ],

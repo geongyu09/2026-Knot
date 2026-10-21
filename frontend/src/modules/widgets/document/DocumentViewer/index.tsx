@@ -33,6 +33,7 @@ import DocumentSkeleton from "./ui/DocumentSkeleton";
  * 본문 아래 줄에는 왼쪽에 같은 녹음의 문서를 넘기는 스테퍼를, 오른쪽에 확인 버튼을 놓아요.
  * 스테퍼는 녹음 직후 정리 화면에서 넘어와 주소에 `?from=recording`이 있을 때만 그려요(DOC-R2). 문서 탭 · 홈 · 탐색에서 연 저장 문서에는 확인 버튼만 남아요.
  * 확인 버튼은 확인 대상에게만 보여요. 확인한 뒤에는 누를 수 없는 「확인했어요」로 바뀌고, 확인 대상이 아니면 그리지 않아요.
+ * 같은 녹음의 내 문서를 모두 확인하면 성공 토스트를, 확인 요청이 실패하면 오류 토스트를 띄워요(`useConfirmDocument`).
  * 결정이 없는 회의 문서는 본문의 결정 없음 문장을 흐리게 그려요(STT-R23).
  */
 export default function DocumentViewer() {
@@ -50,6 +51,7 @@ export default function DocumentViewer() {
   const { confirmDocument, isConfirming } = useConfirmDocument({
     workspaceId,
     documentId,
+    recordingSessionId: documentDetail?.recordingSessionId,
   });
 
   if (status === "loading") {

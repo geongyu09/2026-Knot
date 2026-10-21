@@ -2,6 +2,7 @@ import { DOCUMENTS_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/d
 import { documentsResponse } from "@api/mock/responses/document";
 import { resetDocumentMockState } from "@api/mock/state/document";
 import type { DocumentsResponse } from "@api/mock/types/document";
+import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
 import { delay, http, HttpResponse } from "msw";
@@ -38,7 +39,7 @@ const ISOLATED_DOCS = { story: { inline: false, iframeHeight: 360 } };
  *   - 불러오지 못함: 제목과 「전체 보기」는 그대로 두고 「목록을 불러오지 못했어요. 다시 시도해 주세요.」와 「다시 시도」를 보여 줘요.
  *     「다시 시도」를 누르면 화면을 새로고침하지 않고 이 카드의 문서만 다시 받아요. 새로고침하면 진행 중인 녹음이 사라지기 때문이에요.
  * - 문서를 한 번 받은 뒤에는 다시 불러오기가 실패해도 받은 문서를 계속 보여 줘요. 예: 다른 탭에 다녀와 문서를 다시 받다가 서버 오류가 난 경우
- * - 로그인이 풀렸으면(401) 로그인 화면으로, 워크스페이스 멤버가 아니거나(403) 없는 워크스페이스면(404) 워크스페이스 선택 화면으로 보내요.
+ * - 로그인이 풀렸으면(401) 로그인 화면으로, 워크스페이스 멤버가 아니거나(403) 없는 워크스페이스면(404) 마지막으로 본 다른 워크스페이스 홈이나 워크스페이스 선택 화면으로 보내고 오류 토스트로 알려요.
  *   보내는 동안에는 불러오지 못했다는 안내 없이 불러오는 중 모습이에요.
  */
 const meta = {
@@ -67,17 +68,19 @@ const meta = {
           }),
         ]}
       >
-        <Routes>
-          <Route path={PATH_ROUTE.WORKSPACE_HOME} element={<Story />} />
-          <Route
-            path={PATH_ROUTE.DOCUMENT}
-            element={<p>문서 보기 화면으로 이동했어요.</p>}
-          />
-          <Route
-            path={PATH_ROUTE.DOCUMENTS}
-            element={<p>문서 목록 화면으로 이동했어요.</p>}
-          />
-        </Routes>
+        <ToastProvider>
+          <Routes>
+            <Route path={PATH_ROUTE.WORKSPACE_HOME} element={<Story />} />
+            <Route
+              path={PATH_ROUTE.DOCUMENT}
+              element={<p>문서 보기 화면으로 이동했어요.</p>}
+            />
+            <Route
+              path={PATH_ROUTE.DOCUMENTS}
+              element={<p>문서 목록 화면으로 이동했어요.</p>}
+            />
+          </Routes>
+        </ToastProvider>
       </MemoryRouter>
     ),
   ],

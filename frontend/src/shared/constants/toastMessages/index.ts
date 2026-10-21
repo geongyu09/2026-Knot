@@ -47,7 +47,7 @@ export const TOAST_MESSAGES = {
     variant: "caution",
     message: "녹음 파일을 올리지 못해 문서로 정리하지 못했어요",
   },
-  /** 로그인 화면으로 이동하며 navigateWithToast로 전달해요. */
+  /** 로그인했던 탭의 토큰 재발급이 거절돼 로그인 화면에 왔을 때 로그인 화면이 띄워요(`useSessionExpiredToast`). 처음 온 비로그인 사용자에게는 띄우지 않아요. */
   SESSION_EXPIRED: {
     variant: "caution",
     message: "로그인이 만료됐어요. 다시 로그인해 주세요.",
@@ -55,7 +55,8 @@ export const TOAST_MESSAGES = {
   /** 기기 문제로 종료된 녹음의 저장·문서 처리 시작이 확인된 경우에 사용해요. */
   RECORDING_INTERRUPTED: {
     variant: "caution",
-    message: "녹음을 이어갈 수 없어 여기까지 저장했어요. 문서로 정리하고 있어요",
+    message:
+      "녹음을 이어갈 수 없어 여기까지 저장했어요. 문서로 정리하고 있어요",
   },
   /** 정리 중 화면 밖에서 결과를 알릴 때. 정리 중 화면에서는 결과 화면을 보여줘요. */
   NO_DOCUMENT_CONTENT: {
@@ -66,6 +67,26 @@ export const TOAST_MESSAGES = {
   QUESTION_SEND_FAILED: {
     variant: "error",
     message: "질문을 보내지 못했어요. 잠시 후 다시 시도해 주세요.",
+  },
+  /** 문서 확인 요청이 401·409가 아닌 이유로 실패했을 때. Figma 4826:33512 */
+  DOCUMENT_CONFIRM_FAILED: {
+    variant: "error",
+    message: "확인하지 못했어요. 다시 시도해 주세요.",
+  },
+  /** 전사·문서 생성 다시 시도가 거절(409·404)이나 401이 아닌 이유로 접수되지 않았을 때(STT-R22). Figma 4826:33517 */
+  RETRY_REQUEST_FAILED: {
+    variant: "error",
+    message: "다시 시도하지 못했어요. 잠시 후 다시 시도해 주세요.",
+  },
+  /** 나가기 확인 창의 [나가기] 요청이 실패했을 때. 창은 닫지 않아요. Figma 4826:33522 */
+  WORKSPACE_LEAVE_FAILED: {
+    variant: "error",
+    message: "워크스페이스에서 나가지 못했어요. 다시 시도해 주세요.",
+  },
+  /** owner 나가기 창의 [넘기고 나가기] 요청이 실패했을 때. 창은 닫지 않아요. Figma 4826:33527 */
+  OWNERSHIP_TRANSFER_FAILED: {
+    variant: "error",
+    message: "권한을 넘기지 못했어요. 다시 시도해 주세요.",
   },
   /** 녹음 끝내기 요청이 실패해 녹음을 이어 갈 때. 「끝내고 이동」도 같아요. Figma 3812:892 */
   RECORDING_END_FAILED: {

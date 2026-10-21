@@ -2,7 +2,9 @@ import { HTTP_ERROR_TYPE, isHttpError } from "@api/httpClient/error";
 import useRetryDocumentGenerationJobsMutation from "@api/mutations/useRetryDocumentGenerationJobsMutation";
 import useRecordingAudioSaveQuery from "@api/queries/useRecordingAudioSaveQuery";
 import useRecordingQuery from "@api/queries/useRecordingQuery";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import useRedirectToLoginOnUnauthorized from "@hooks/domain/auth/useRedirectToLoginOnUnauthorized";
+import { useToast } from "@provider/context/toastContext";
 import { getRecordingDocumentsStatus } from "@utils/getRecordingDocumentsStatus";
 import { isUnauthorizedError } from "@utils/isUnauthorizedError";
 import { useEffect, useState } from "react";
@@ -55,6 +57,7 @@ const isRetryRejectedError = (error: unknown) =>
  * 실패한 작업이 여러 개면 한 번에 모두 다시 시도해요. 하나라도 접수되면 녹음 상태를 다시 받아 정리 중으로 돌아가요.
  * 남은 실패 작업이 모두 거절된(409 · 404) 작업이면 더 시도할 수 없어 `retryGeneration`을 없애요.
  * 네트워크 · 서버 문제로 실패한 작업은 거절된 것이 아니라 다시 시도할 수 있어요.
+ * 그런 실패가 있고 접수된 작업이 하나도 없으면 오류 토스트로 알려요(STT-R22). 거절(409 · 404)만 있거나 로그인이 풀렸으면(401) 알리지 않아요.
  * 409는 화면이 아는 녹음 상태와 서버의 녹음 상태가 다를 수 있다는 응답이라, 녹음 상태를 다시 조회해요.
  * 서버에서 이미 정리 중이거나 정리가 끝났으면 그 상태의 화면으로 바뀌어요.
  * 이 조회가 끝날 때까지도 다시 시도 중(`isRetrying`)이에요.
@@ -115,6 +118,7 @@ export const useRecordingDocuments = ({
   // 문서 다시 시도의 409 뒤에 거절 기록을 지울지 정하려고 녹음 상태를 다시 조회하는 중인지.
   // 그동안 버튼이 풀리면 그사이 시작한 새 다시 시도의 결과까지 아래 `clearRetryResults`가 지울 수 있어, 조회가 끝날 때까지 다시 시도 중으로 둬요
   const [isCheckingRejection, setIsCheckingRejection] = useState(false);
+  const { show } = useToast();
   const { isUnauthorized } = useRedirectToLoginOnUnauthorized({ error });
   // 다시 시도에서 로그인이 풀려도 같은 방식으로 로그인 화면에 보내요
   const unauthorizedRetry = retryResults.find(({ error: retryError }) =>
@@ -195,6 +199,22 @@ export const useRecordingDocuments = ({
           { workspaceId, jobIds: failedJobIds },
           {
             onSuccess: async (results) => {
+              const errors = results.map(({ error: retryError }) => retryError);
+              const isNoneAccepted = results.every(
+                ({ isAccepted }) => !isAccepted,
+              );
+              const hasRetryableFailure = errors.some(
+                (retryError) =>
+                  retryError !== null && !isRetryRejectedError(retryError),
+              );
+              if (
+                isNoneAccepted &&
+                hasRetryableFailure &&
+                !errors.some(isUnauthorizedError)
+              ) {
+                show(TOAST_MESSAGES.RETRY_REQUEST_FAILED);
+              }
+
               const conflictedJobIds = results
                 .filter(({ error: retryError }) =>
                   isHttpError(retryError, HTTP_ERROR_TYPE.conflict),

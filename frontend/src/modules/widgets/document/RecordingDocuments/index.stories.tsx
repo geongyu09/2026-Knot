@@ -3,6 +3,7 @@ import {
   recordingDetailsResponse,
 } from "@api/mock/responses/recording";
 import { resetRecordingMockState } from "@api/mock/state/recording";
+import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
 import { http, HttpResponse } from "msw";
@@ -81,6 +82,7 @@ const failAudioSave = (failureCode: string) => ({
  *   서버 오류로 실패하면 콘솔에만 남기고 버튼을 그대로 둬요.
  * - 다시 시도할 작업이 남아 있지 않은 실패, 남은 작업의 다시 시도가 모두 거절된 경우는 같은 제목에 설명 없이 「홈으로」만 둬요.
  *   서버가 다시 시도할 수 없는 이유를 나눠 주지 않아 이유를 짐작해 쓰지 않아요.
+ * - 다시 시도가 서버 오류나 연결 문제로 접수되지 않으면 「다시 시도」를 그대로 두고 오류 토스트 「다시 시도하지 못했어요. 잠시 후 다시 시도해 주세요.」로 알려요. 거절(409 · 404)이나 로그인이 풀린 경우에는 띄우지 않아요.
  * - 다시 시도가 409로 거절되면 녹음 상태를 다시 확인해요. 다른 곳에서 먼저 다시 시도해 서버에서는 이미 정리 중이거나 정리가 끝났을 수 있어서예요.
  *   그런 경우에는 그 상태의 화면으로 바꾸고, 그 작업이 또 실패하면 「다시 시도」를 다시 보여 줘요.
  * - PCM 조각 녹음은 끝낸 뒤 서버가 조각을 모아 저장해요. 전사가 시작되기 전에는 녹음 상태와 함께 저장 상태도 3초마다 확인하고, 저장 중에는 정리 중이에요.
@@ -125,13 +127,15 @@ const meta = {
           }),
         ]}
       >
-        <Routes>
-          <Route path={PATH_ROUTE.RECORDING_DOCUMENTS} element={<Story />} />
-          <Route
-            path={PATH_ROUTE.WORKSPACE_HOME}
-            element={<p>워크스페이스 홈으로 이동했어요.</p>}
-          />
-        </Routes>
+        <ToastProvider>
+          <Routes>
+            <Route path={PATH_ROUTE.RECORDING_DOCUMENTS} element={<Story />} />
+            <Route
+              path={PATH_ROUTE.WORKSPACE_HOME}
+              element={<p>워크스페이스 홈으로 이동했어요.</p>}
+            />
+          </Routes>
+        </ToastProvider>
       </MemoryRouter>
     ),
   ],
@@ -203,6 +207,26 @@ export const RetryRejected: Story = {
     design: {
       type: "figma",
       url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2017-35662",
+    },
+  },
+};
+
+/** 「다시 시도」가 서버 오류로 접수되지 않았을 때예요. 「다시 시도」를 누르면 버튼은 그대로 남고 오류 토스트가 떠요. 이 스토리에서는 다시 눌러도 계속 실패해요. */
+export const RetryRequestFailed: Story = {
+  parameters: {
+    recordingId: failedRecording.recordingId,
+    msw: {
+      handlers: {
+        documentGenerationRetry: http.post(
+          "*/api/v1/workspaces/:workspaceId/document-generation-jobs/:jobId/retry",
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      },
+    },
+    docs: ISOLATED_DOCS,
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4826-33517",
     },
   },
 };

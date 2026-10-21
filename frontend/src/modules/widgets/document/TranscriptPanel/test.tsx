@@ -9,6 +9,7 @@ import {
 import { mockServer } from "@api/mock/server";
 import type { DocumentTranscriptResponse } from "@api/mock/types/document";
 import { ThemeProvider } from "@emotion/react";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -24,7 +25,7 @@ import { formatDate } from "@utils/formatDate";
 import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
 import { formatRecordingTime } from "@utils/formatRecordingTime";
 import { delay, http, HttpResponse } from "msw";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import TranscriptPanel from ".";
@@ -56,9 +57,19 @@ const renderTranscriptPanel = (documentId = DOCUMENT_ID) => {
   });
   const router = createMemoryRouter(
     [
-      { path: PATH_ROUTE.DOCUMENT, element: <TranscriptPanel /> },
-      // 이동을 확인할 수 있게 로그인 경로에 표시만 하는 화면을 둬요
-      { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
+      {
+        // 복사에 실패하면 토스트로 알려서 토스트 자리를 둬요
+        element: (
+          <ToastProvider>
+            <Outlet />
+          </ToastProvider>
+        ),
+        children: [
+          { path: PATH_ROUTE.DOCUMENT, element: <TranscriptPanel /> },
+          // 이동을 확인할 수 있게 로그인 경로에 표시만 하는 화면을 둬요
+          { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
+        ],
+      },
     ],
     {
       initialEntries: [

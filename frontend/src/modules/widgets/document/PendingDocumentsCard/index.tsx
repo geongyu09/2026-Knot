@@ -38,7 +38,7 @@ export default function PendingDocumentsCard() {
   } = usePendingDocumentsQuery({ workspaceId });
   const { navigateToDocument } = useNavigateToDocument();
 
-  // 로그인이 풀렸으면 로그인 화면으로, 워크스페이스에 들어갈 수 없으면 선택 화면으로 보내요
+  // 로그인이 풀렸으면 로그인 화면으로, 워크스페이스에 들어갈 수 없으면 마지막으로 본 다른 워크스페이스나 선택 화면으로 보내고 알려요
   const { isRedirecting } = useWorkspaceAccessGuard({ error });
 
   // 화면을 새로고침하지 않고 이 카드의 문서만 다시 조회해요. 새로고침하면 브라우저 안에만 있는 진행 중인 녹음이 사라져요

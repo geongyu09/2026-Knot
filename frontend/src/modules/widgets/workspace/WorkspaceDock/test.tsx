@@ -7,6 +7,7 @@ import {
 } from "@api/mock/responses/recording";
 import { searchAnswerStreamResponse } from "@api/mock/responses/search";
 import { mockServer } from "@api/mock/server";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
 import { ToastProvider } from "@provider/context/toastContext";
@@ -26,7 +27,7 @@ import {
   within,
 } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { useRecordingStore } from "@store/recordingStore";
 import { useSearchAnswerStore } from "@store/searchAnswerStore";
 import { formatRecordingTime } from "@utils/formatRecordingTime";
@@ -138,16 +139,21 @@ const renderDock = (initialPath = HOME_PATH) => {
       {
         element: (
           <ToastProvider>
-            <WorkspaceDock />
+            <Outlet />
           </ToastProvider>
         ),
         children: [
-          PATH_ROUTE.WORKSPACE_HOME,
-          PATH_ROUTE.CHAT,
-          PATH_ROUTE.CHAT_SESSION,
-          PATH_ROUTE.RECORDING,
-          PATH_ROUTE.RECORDING_DOCUMENTS,
-        ].map((path) => ({ path })),
+          {
+            element: <WorkspaceDock />,
+            children: [
+              PATH_ROUTE.WORKSPACE_HOME,
+              PATH_ROUTE.CHAT,
+              PATH_ROUTE.CHAT_SESSION,
+              PATH_ROUTE.RECORDING,
+              PATH_ROUTE.RECORDING_DOCUMENTS,
+            ].map((path) => ({ path })),
+          },
+        ],
       },
     ],
     { initialEntries: [initialPath] },
@@ -297,7 +303,7 @@ describe("WorkspaceDock", () => {
     expect(router.state.location.pathname).toBe(CONVERSATION_PATH);
   });
 
-  it("접수 전에 질문이 거절되면 보낸 질문을 입력창에 되돌린다 (SEARCH-R4)", async () => {
+  it("접수 전에 질문이 거절되면 보낸 질문을 입력창에 되돌리고 오류 토스트를 띄운다 (SEARCH-R4)", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     mockServer.use(
       http.post(SEARCH_CONVERSATIONS_PATH, () =>
@@ -316,6 +322,25 @@ describe("WorkspaceDock", () => {
         screen.getByRole("textbox", { name: "무엇이든 요청하세요" }),
       ).toHaveValue(QUESTION),
     );
+    expect(
+      await screen.findByText(TOAST_MESSAGES.QUESTION_SEND_FAILED.message),
+    ).toBeInTheDocument();
+  });
+
+  it("질문이 접수되면 전송 실패 토스트를 띄우지 않는다 (SEARCH-R4)", async () => {
+    renderDock(CHAT_PATH);
+
+    await sendQuestion();
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("textbox", { name: "무엇이든 요청하세요" }),
+      ).toHaveValue(""),
+    );
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(
+      screen.queryByText(TOAST_MESSAGES.QUESTION_SEND_FAILED.message),
+    ).not.toBeInTheDocument();
   });
 
   it("답변을 기다리거나 받는 중에는 다시 보내지 않는다 (SEARCH-R6)", async () => {
@@ -1137,7 +1162,9 @@ describe("WorkspaceDock", () => {
 
         expandDock();
 
-        expect(screen.getByRole("img", { name: "녹음 중" })).toBeInTheDocument();
+        expect(
+          screen.getByRole("img", { name: "녹음 중" }),
+        ).toBeInTheDocument();
         expect(screen.getByText(OTHER_TAB_ELAPSED_TIME)).toBeInTheDocument();
         expect(
           screen.queryByRole("button", { name: "회의 녹음 시작" }),

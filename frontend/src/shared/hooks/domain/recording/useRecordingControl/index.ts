@@ -11,6 +11,7 @@ import useStartRecordingMutation from "@api/mutations/useStartRecordingMutation"
 import useUploadRecordingAudioChunkMutation from "@api/mutations/useUploadRecordingAudioChunkMutation";
 import useUploadRecordingAudioMutation from "@api/mutations/useUploadRecordingAudioMutation";
 import { recordingKeys } from "@api/queryKey/recording";
+import { workspaceKeys } from "@api/queryKey/workspace";
 import { RECORDING_AUDIO_MODE } from "@constants/recording";
 import { TOAST_MESSAGES } from "@constants/toastMessages";
 import useNavigateToRecordingDocuments from "@hooks/domain/recording/useNavigateToRecordingDocuments";
@@ -290,6 +291,10 @@ const useRecordingControl = () => {
 
       if (isUnreachableRecordingError(error)) {
         closeRecording(session.workspaceId);
+        // 내보내졌거나 없어진 워크스페이스인지 레이아웃의 진입 판정이 다시 확인해, 그렇다면 다른 곳으로 보내고 알려요(ERR-11)
+        void queryClient.invalidateQueries({
+          queryKey: workspaceKeys.detail(session.workspaceId),
+        });
       } else if (
         isHttpError(error, HTTP_ERROR_TYPE.forbidden) &&
         error.code === "RECORDING_CONTROL_DENIED"
@@ -299,7 +304,13 @@ const useRecordingControl = () => {
         show(TOAST_MESSAGES.RECORDING_CONTROL_LOST);
       }
     }
-  }, [closeRecording, sendRecordingHeartbeat, show, uploadRecordedAudio]);
+  }, [
+    closeRecording,
+    queryClient,
+    sendRecordingHeartbeat,
+    show,
+    uploadRecordedAudio,
+  ]);
 
   const handleControlError = useCallback(
     ({ action, error, workspaceId }: HandleControlErrorParams) => {

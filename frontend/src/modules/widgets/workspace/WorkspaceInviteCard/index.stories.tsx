@@ -1,4 +1,5 @@
 import { workspaceInvitationResponse } from "@api/mock/responses/workspaceInvitation";
+import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
 import { delay, http, HttpResponse } from "msw";
@@ -17,18 +18,27 @@ const WORKSPACE_INVITATIONS_URL =
   "*/api/v1/workspaces/:workspaceId/invitations";
 
 /**
- * 복사 결과만 보이도록 알림창과 클립보드를 대신해요.
- * 알림창이 뜨면 화면이 멈추고, 스토리북 화면은 클립보드 쓰기 권한이 없을 수 있어서예요.
+ * 복사 결과만 보이도록 클립보드를 대신해요. 스토리북 화면은 클립보드 쓰기 권한이 없을 수 있어서예요.
  */
 const fakeCopy = () => {
-  const alertSpy = spyOn(window, "alert").mockImplementation(() => {});
   const clipboardSpy = spyOn(
     navigator.clipboard,
     "writeText",
   ).mockResolvedValue();
 
   return () => {
-    alertSpy.mockRestore();
+    clipboardSpy.mockRestore();
+  };
+};
+
+/** 클립보드 쓰기가 거절된 것처럼 만들어요. */
+const failCopy = () => {
+  const clipboardSpy = spyOn(
+    navigator.clipboard,
+    "writeText",
+  ).mockRejectedValue(new Error("클립보드 권한이 없어요"));
+
+  return () => {
     clipboardSpy.mockRestore();
   };
 };
@@ -38,8 +48,8 @@ const fakeCopy = () => {
  *
  * **동작 규칙**
  * - 참여 코드와 초대 링크를 보여 주고, 각각 눌러 클립보드로 복사해요.
- * - 복사하면 알림창으로 알리고, 코드 상자는 아이콘이 체크로, 링크 버튼은 「복사됨」으로 2초 동안 바뀌어요.
- *   클립보드에 쓰지 못하면 화면 변화 없이 조용히 넘어가요.
+ * - 복사하면 토스트 없이 코드 상자는 아이콘이 체크로, 링크 버튼은 「복사됨」으로 2초 동안 바뀌어요.
+ *   클립보드에 쓰지 못하면 버튼은 그대로 두고 오류 토스트 「복사하지 못했어요. 다시 시도해 주세요.」를 띄워요(ERR-08).
  * - 코드와 링크는 이 워크스페이스의 활성 초대에서 와요. 활성 초대가 없으면 이때 새로 발급돼요. 받기 전에는 복사할 수 없어요.
  * - 초대를 받지 못하면 로그인이 풀린 경우(401)는 로그인 화면으로, 멤버가 아니거나 없는 워크스페이스(403·404)는 워크스페이스 선택 화면으로 보내요.
  *   그 밖의 실패는 그 자리에 머물고, 참여 코드와 초대 링크 자리에 홈의 팀원 초대 카드(ERR-09)와 같은 실패 안내와 「다시 시도」를 보여 줘요. 「다시 시도」는 초대만 다시 받아요.
@@ -82,13 +92,15 @@ const meta = {
   decorators: [
     (Story) => (
       <MemoryRouter initialEntries={[INVITE_PATH]}>
-        <Routes>
-          <Route path={PATH_ROUTE.WORKSPACE_INVITE} element={<Story />} />
-          <Route
-            path={PATH_ROUTE.WORKSPACE_HOME}
-            element={<p>워크스페이스 홈으로 이동했어요.</p>}
-          />
-        </Routes>
+        <ToastProvider>
+          <Routes>
+            <Route path={PATH_ROUTE.WORKSPACE_INVITE} element={<Story />} />
+            <Route
+              path={PATH_ROUTE.WORKSPACE_HOME}
+              element={<p>워크스페이스 홈으로 이동했어요.</p>}
+            />
+          </Routes>
+        </ToastProvider>
       </MemoryRouter>
     ),
   ],
@@ -114,6 +126,23 @@ export const Loading: Story = {
         }),
       },
     },
+  },
+};
+
+/** 링크 복사가 실패했을 때예요. 버튼은 「복사」로 남고 화면 아래에 오류 토스트가 떠요(ERR-08). */
+export const CopyFailed: Story = {
+  beforeEach: failCopy,
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2113-13613",
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    await canvas.findByText(workspaceInvitationResponse.code);
+    await userEvent.click(canvas.getByRole("button", { name: "복사" }));
   },
 };
 
