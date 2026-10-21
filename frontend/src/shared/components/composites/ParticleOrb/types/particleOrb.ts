@@ -1,5 +1,5 @@
-/** 입자가 모이는 모양. `cloud`는 구름 같은 구슬, `mic`는 마이크 아이콘이에요. */
-export type ParticleOrbShape = "cloud" | "mic";
+/** 입자가 모이는 모양. `cloud`는 구름 같은 구슬, `mic`는 마이크 아이콘, `arrow`는 오른쪽 화살표예요. */
+export type ParticleOrbShape = "cloud" | "mic" | "arrow";
 
 /** 색 톤. `idle`은 녹음 전의 붉은빛, `recording`은 녹음 중의 청록빛이에요. */
 export type ParticleOrbTone = "idle" | "recording";

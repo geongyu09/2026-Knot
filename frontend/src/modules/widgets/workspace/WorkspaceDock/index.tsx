@@ -67,9 +67,8 @@ const DOCK_EXPAND_DURATION = "0.44s";
  * 접혀 있든 펼쳐 있든 회의 녹음(마이크) 슬롯을 두고, 누르면 마이크 권한을 받아 녹음을 시작해요.
  * 녹음 화면이 아닌 곳에서 녹음이 이어지고 있으면 마이크 자리에 녹음 칩을 둬요. 접힌 독에는 중지 버튼도 함께 둬요.
  *
- * 랜딩의 입자가 독에도 이어져요. 접혀 있을 때는 알약 대신 입자가 「무엇이든 요청하세요」 말풍선과 붉은 녹음 알약을 이루고(`DockSeed`),
- * 녹음 중엔 랜딩 녹음 장면과 같은 청록 파형이 돼요. 누르면 입자가 채팅과 녹음 두 묶음으로 갈라지며 그 뒤에서 독이 자라나고,
- * 포인터가 벗어나면 다시 그 모양으로 모여요.
+ * 랜딩의 입자가 독에도 이어져요. 접혀 있을 때는 입자가 독을 그대로 스케치하고(`DockSeed`), 녹음 중엔 녹음 바와 같은 청록 파형이 길게 흘러요.
+ * 올리면 그 자리에 진짜 독이 나타나고 벗어나면 다시 입자로 돌아가요. 파형도 올리면 독으로 모였다가 벗어나면 다시 파형이 돼요.
  * 채팅 칸은 고스트 대신 말풍선 아이콘이라 무엇을 하는 자리인지 바로 읽혀요. 녹음 버튼은 입자 구슬이고,
  * 아이콘은 펼치고 접을 때 입자로 모였다가 진짜 아이콘이 되고, 테두리에는 옅은 입자 실이 흘러요.
  * 캔버스를 못 쓰거나 움직임 줄이기 설정이면 파형 없이 늘 열린 독이라, 기존 동작과 접근성 이름은 어느 환경에서나 그대로예요.
@@ -103,7 +102,7 @@ export default function WorkspaceDock() {
     handleStopRecording,
   } = useDockRecording();
   const stageRef = useRef<HTMLDivElement>(null);
-  const { isSeedSupported, isOpen, open, scheduleClose, cancelClose } =
+  const { isSeedSupported, isOpen, open, scheduleClose } =
     useDockOpen({
       stageRef,
       isExpanded,
@@ -130,7 +129,10 @@ export default function WorkspaceDock() {
   return (
     <Stage
       ref={stageRef}
-      onPointerEnter={cancelClose}
+      onPointerEnter={(event) => {
+        // 마우스를 올리면 입자 자리에 진짜 독이 나타나요. 터치는 눌러서 열어요
+        if (event.pointerType !== "touch") open();
+      }}
       onPointerLeave={(event) => {
         if (event.pointerType !== "touch") scheduleClose();
       }}
@@ -230,8 +232,8 @@ export default function WorkspaceDock() {
             </SubmitButton>
           </Controls>
         ) : (
-          isOpen && (
-            <>
+          /* 입자 스케치일 때는 자리만 차지하고 키보드·낭독기에서 닿지 않아요. 입력창은 밖에 있어 어디서든 타이핑은 그대로예요 */
+          <CollapsedControls aria-hidden={!isOpen} inert={!isOpen}>
               <SlotButton
                 type="button"
                 aria-label="무엇이든 요청하기"
@@ -248,18 +250,12 @@ export default function WorkspaceDock() {
                 </ParticleIcon>
               </SlotButton>
 
-              {/* 말풍선답게 접혀 있어도 무엇을 할 수 있는지 보여 줘요. 입력창과 같은 안내라 낭독기에서는 읽지 않아요 */}
-              {!isRecordingChipVisible && (
-                <PlaceholderText aria-hidden="true" onClick={handleExpand}>
-                  무엇이든 요청하세요
-                </PlaceholderText>
-              )}
-
               {hasRecordSide && <ControlDivider aria-hidden="true" />}
 
               {isMicVisible && (
                 <span data-dock-record>
                   <DockMicButton
+                    isOrbVisible={isOpen}
                     onClick={() => {
                       traceFrom(formRef.current?.querySelector("[data-mic]"));
                       void handleMicClick();
@@ -273,14 +269,13 @@ export default function WorkspaceDock() {
                   <DockRecordingChip
                     elapsedTime={elapsedTime}
                     isPaused={isRecordingPaused}
-                    analyser={analyser}
+                    analyser={isOpen ? analyser : null}
                     onOpen={isOtherTabRecording ? undefined : handleOpenRecording}
                     onStop={isOtherTabRecording ? undefined : handleStopRecording}
                   />
                 </span>
               )}
-            </>
-          )
+          </CollapsedControls>
         )}
       </Bar>
     </Stage>
@@ -296,16 +291,6 @@ const Stage = styled.div`
   display: flex;
   justify-content: center;
   width: 100%;
-`;
-
-/** 접힌 독의 안내 글. 입력창의 안내와 같은 글이고, 누르면 입력창으로 펼쳐져요 */
-const PlaceholderText = styled.span`
-  align-self: center;
-  padding-right: 0.25rem; /* 4px */
-  color: ${({ theme }) => theme.neutral[400]};
-  white-space: nowrap;
-  cursor: text;
-  ${({ theme }) => theme.text.body01};
 `;
 
 /**
@@ -362,7 +347,9 @@ const Bar = styled.form<{
   /* 말풍선은 제 모션이 따로 있으므로 한 줄에 놓이는 것들만 뒤따라 나타나게 해요 */
   & > div,
   & > button,
-  & > span {
+  & > span,
+  & > span > button,
+  & > span > span {
     animation: ${fadeIn} 0.28s ease-out 0.06s backwards;
   }
 
@@ -375,6 +362,11 @@ const Bar = styled.form<{
       animation: none;
     }
   }
+`;
+
+/** 접힌 독의 말풍선·녹음 칸 묶음. 배치에는 끼어들지 않고, 숨길 때 한꺼번에 숨기려고 둬요 */
+const CollapsedControls = styled.span`
+  display: contents;
 `;
 
 /** 접힌 독의 탐색·마이크 버튼과 펼친 독의 마이크 버튼. 40px 칸 가운데에 24px 아이콘을 둬요. */

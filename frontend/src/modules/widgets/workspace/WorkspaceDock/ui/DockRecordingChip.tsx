@@ -1,5 +1,6 @@
 import ParticleOrb from "@composites/ParticleOrb";
 import styled from "@emotion/styled";
+import { useState } from "react";
 
 import ChevronRightIcon from "@/assets/icons/chevronRight.svg";
 
@@ -22,7 +23,7 @@ interface DockRecordingChipProps {
 /**
  * 녹음 화면이 아닌 곳에서 녹음이 이어지고 있을 때 마이크 자리에 놓이는 녹음 칩.
  *
- * 입자 구슬·녹음한 시간·`›`를 누르면 녹음 화면으로 가고, 접힌 독에서는 오른쪽 중지 버튼으로 녹음을 끝내요.
+ * 입자 구슬·녹음한 시간·`›`를 누르면 녹음 화면으로 가고(올리면 구슬이 화살표로 모여요), 접힌 독에서는 오른쪽 중지 버튼으로 녹음을 끝내요.
  * 다른 탭의 녹음이면 녹음 화면으로 갈 수도 끝낼 수도 없어 점과 시간만 보여 줘요(STT-R28).
  */
 export default function DockRecordingChip({
@@ -32,6 +33,8 @@ export default function DockRecordingChip({
   onOpen,
   onStop,
 }: DockRecordingChipProps) {
+  // 녹음 화면으로 갈 수 있는 칩에 올리면 구슬이 화살표로 모여 「가기」를 알려요
+  const [isArrow, setIsArrow] = useState(false);
   const status = (
     <>
       <OrbSlot role="img" aria-label={isPaused ? "일시정지" : "녹음 중"}>
@@ -39,6 +42,7 @@ export default function DockRecordingChip({
           radius={ORB_RADIUS}
           size={ORB_CANVAS_SIZE}
           tone="recording"
+          shape={isArrow && onOpen ? "arrow" : "cloud"}
           analyser={analyser}
           isActive={!isPaused}
         />
@@ -54,6 +58,10 @@ export default function DockRecordingChip({
           type="button"
           aria-label="녹음 화면으로 이동"
           onClick={onOpen}
+          onPointerEnter={() => setIsArrow(true)}
+          onPointerLeave={() => setIsArrow(false)}
+          onFocus={() => setIsArrow(true)}
+          onBlur={() => setIsArrow(false)}
         >
           {status}
           <ChevronRightIcon size={12} />

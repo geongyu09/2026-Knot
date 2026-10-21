@@ -4,6 +4,9 @@
  * 랜딩의 입자 엔진과 같은 규칙(스프링 복귀, 감쇠, 둥근 사각형 둘레)을 작은 캔버스에서도 쓰려고 모았어요.
  */
 
+/** 가운데에 몰린 -1~1 난수. 입자를 선 둘레에 자연스럽게 퍼뜨릴 때 써요. 랜딩과 같아요 */
+export const gaussian = () => (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
+
 export interface SpringParticle {
   x: number;
   y: number;

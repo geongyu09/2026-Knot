@@ -8,6 +8,8 @@ const ORB_CANVAS_SIZE = 56;
 
 interface DockMicButtonProps {
   onClick: () => void;
+  /** `false`면 독이 입자 스케치 상태라 구슬을 그리지 않아요. 자리는 그대로 차지해요 */
+  isOrbVisible?: boolean;
 }
 
 /**
@@ -16,7 +18,7 @@ interface DockMicButtonProps {
  * 마이크 아이콘 대신 랜딩의 입자 구슬이에요. 올리거나 포커스하면 입자가 마이크 모양으로 모이고,
  * 누르면 파동이 한 번 퍼진 뒤 녹음을 시작해요. 40px 칸을 차지하고 접근성 이름은 「회의 녹음 시작」이에요.
  */
-export default function DockMicButton({ onClick }: DockMicButtonProps) {
+export default function DockMicButton({ onClick, isOrbVisible = true }: DockMicButtonProps) {
   const orbRef = useRef<ParticleOrbHandle>(null);
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
@@ -37,14 +39,16 @@ export default function DockMicButton({ onClick }: DockMicButtonProps) {
       onFocus={() => setIsFocused(true)}
       onBlur={() => setIsFocused(false)}
     >
-      <OrbWrapper>
-        <ParticleOrb
-          ref={orbRef}
-          radius={ORB_RADIUS}
-          size={ORB_CANVAS_SIZE}
-          shape={isHovered || isFocused ? "mic" : "cloud"}
-        />
-      </OrbWrapper>
+      {isOrbVisible && (
+        <OrbWrapper>
+          <ParticleOrb
+            ref={orbRef}
+            radius={ORB_RADIUS}
+            size={ORB_CANVAS_SIZE}
+            shape={isHovered || isFocused ? "mic" : "cloud"}
+          />
+        </OrbWrapper>
+      )}
     </Button>
   );
 }

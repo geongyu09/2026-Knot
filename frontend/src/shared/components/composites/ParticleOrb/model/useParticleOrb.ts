@@ -4,6 +4,7 @@ import { sampleShapeTargets } from "@utils/sampleShapeTargets";
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 
 import {
+  ARROW_ICON_PATH,
   MIC_ICON_PATHS,
   MIC_SHAPE_SCALE,
   ORB_DAMPING,
@@ -96,10 +97,15 @@ const drawMic = (context: CanvasRenderingContext2D) => {
   MIC_ICON_PATHS.forEach((path) => context.stroke(new Path2D(path)));
 };
 
+const drawArrow = (context: CanvasRenderingContext2D) => {
+  context.lineWidth = 1.6;
+  context.stroke(new Path2D(ARROW_ICON_PATH));
+};
+
 /**
  * 입자 구슬을 캔버스에 매 프레임 그려요.
  *
- * 입자 수백 개가 구름 같은 구를 이루고, `shape`가 `mic`면 마이크 모양으로 모여요.
+ * 입자 수백 개가 구름 같은 구를 이루고, `shape`가 `mic`면 마이크, `arrow`면 오른쪽 화살표 모양으로 모여요.
  * 녹음 톤에서는 분석기의 소리 크기만큼 입자가 가운데를 가로지르는 파형으로 나가고, 조용하면 구름으로 돌아와요.
  * 매 프레임 바뀌는 값이라 React 상태로 다루지 않고, 바뀌는 props는 ref로 받아 다음 프레임부터 반영해요.
  * 움직임 줄이기 설정에서는 회전·숨쉬기·흔들림을 멈추고 소리와 모양만 반영해요.
@@ -138,7 +144,7 @@ export const useParticleOrb = ({
     let frame = Math.random() * 1000;
     let level = 0;
     let hover = 0;
-    let micShape: ParticleOrbShape | null = null;
+    let assignedShape: ParticleOrbShape | null = null;
     let animation = 0;
 
     const resize = () => {
@@ -155,9 +161,13 @@ export const useParticleOrb = ({
       });
     };
 
-    /** 입자를 x 순서로 줄 세워 마이크 자리에 배정해요. 랜딩의 morph 배정과 같아 가까운 자리로 자연스럽게 흘러요. */
-    const assignMic = () => {
-      const targets = sampleShapeTargets({ draw: drawMic, size: paramsRef.current.radius * 2 * MIC_SHAPE_SCALE, step: 1 / 3 });
+    /** 입자를 x 순서로 줄 세워 아이콘 자리에 배정해요. 랜딩의 morph 배정과 같아 가까운 자리로 자연스럽게 흘러요. */
+    const assignShape = (shape: "mic" | "arrow") => {
+      const targets = sampleShapeTargets({
+        draw: shape === "mic" ? drawMic : drawArrow,
+        size: paramsRef.current.radius * 2 * (shape === "mic" ? MIC_SHAPE_SCALE : 1.1),
+        step: 1 / 3,
+      });
       if (!targets.length) return;
       const order = particles.map((_, i) => i).sort((a, b) => particles[a].x - particles[b].x);
       const targetOrder = targets.map((_, i) => i).sort((a, b) => targets[a].x - targets[b].x);
@@ -184,10 +194,10 @@ export const useParticleOrb = ({
       const centerY = height / 2;
       const isRecording = nextTone === "recording";
 
-      if (nextShape === "mic") {
-        if (micShape !== "mic") {
-          assignMic();
-          micShape = "mic";
+      if (nextShape !== "cloud") {
+        if (assignedShape !== nextShape) {
+          assignShape(nextShape);
+          assignedShape = nextShape;
         }
         const wobble = reduced ? 0 : Math.sin(frame * 0.05) * 0.4;
         particles.forEach((particle) => {
@@ -199,7 +209,7 @@ export const useParticleOrb = ({
         });
         return;
       }
-      micShape = null;
+      assignedShape = null;
 
       const rotation = reduced ? 0.6 : frame * (0.006 + level * 0.018 + hover * 0.004);
       const orbRadius = baseRadius * (1 + hover * 0.08 + level * 0.28);
@@ -261,7 +271,7 @@ export const useParticleOrb = ({
       frame++;
       resize();
       const { analyser: node, isActive: active, tone: nextTone, shape: nextShape } = paramsRef.current;
-      hover += ((nextShape === "mic" ? 1 : 0) - hover) * 0.12;
+      hover += ((nextShape !== "cloud" ? 1 : 0) - hover) * 0.12;
       const measured = node && active && nextTone === "recording" ? measureAnalyserLevel(node) : 0;
       level = smoothLevel({ previous: level, next: measured, attack: 0.35, release: 0.06 });
       placeParticles();

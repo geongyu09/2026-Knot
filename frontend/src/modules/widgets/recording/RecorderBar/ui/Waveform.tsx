@@ -1,7 +1,7 @@
 import ParticleWaveform from "@composites/ParticleWaveform";
 
 /** 파형 높이(px). 녹음한 시간 글자 높이에 맞춰요 */
-const WAVEFORM_HEIGHT = 56;
+const WAVEFORM_HEIGHT = 64;
 
 interface WaveformProps {
   /** 마이크 소리를 읽는 분석기 */

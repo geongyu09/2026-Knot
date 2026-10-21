@@ -29,7 +29,7 @@ const DarkStage = styled.div`
  * 랜딩의 입자로 만든 작은 구슬이에요. 독의 회의 녹음 버튼과 녹음 칩의 상태 표시가 이 구슬을 써요.
  *
  * **모양과 색**
- * - `shape`가 `cloud`면 입자 수백 개가 구름 같은 구를 이루며 천천히 돌고 숨 쉬어요. `mic`으로 바꾸면 입자가 마이크 아이콘 모양으로 모여요. 독의 녹음 버튼은 올리거나 포커스했을 때 `mic`으로 바꿔요.
+ * - `shape`가 `cloud`면 입자 수백 개가 구름 같은 구를 이루며 천천히 돌고 숨 쉬어요. `mic`으로 바꾸면 마이크 아이콘, `arrow`로 바꾸면 오른쪽 화살표 모양으로 모여요. 독의 녹음 버튼은 올렸을 때 `mic`, 녹음 칩은 올렸을 때 `arrow`로 바꿔요.
  * - `tone`이 `idle`이면 녹음 전의 붉은빛(Warning), `recording`이면 녹음 중의 청록빛(Accent)이에요.
  *
  * **녹음 중 동작**
@@ -46,7 +46,7 @@ const meta = {
   component: ParticleOrb,
   args: { radius: 12, size: 56, shape: "cloud", tone: "idle", isActive: true },
   argTypes: {
-    shape: { control: "radio", options: ["cloud", "mic"] },
+    shape: { control: "radio", options: ["cloud", "mic", "arrow"] },
     tone: { control: "radio", options: ["idle", "recording"] },
   },
   decorators: [
@@ -68,6 +68,11 @@ export const Default: Story = {};
 /** 올리거나 포커스해 입자가 마이크 모양으로 모인 상태예요. 예: 독의 회의 녹음 버튼에 마우스를 올렸을 때 */
 export const Mic: Story = {
   args: { shape: "mic" },
+};
+
+/** 녹음 칩에 올려 입자가 「녹음 화면으로 가기」 화살표로 모인 상태예요. */
+export const Arrow: Story = {
+  args: { radius: 7, size: 24, tone: "recording", shape: "arrow" },
 };
 
 /** 녹음 중이라 청록으로 바뀌고 목소리가 들어올 때마다 파형으로 펼쳐져요. 예: 녹음 칩의 상태 표시 */

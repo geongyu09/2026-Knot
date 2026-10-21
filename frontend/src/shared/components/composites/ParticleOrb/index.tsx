@@ -18,7 +18,7 @@ interface ParticleOrbProps {
   radius: number;
   /** 캔버스 한 변(px). 마이크 모양은 구슬보다 크므로 반지름의 네 배쯤 둬요 */
   size: number;
-  /** 입자가 모이는 모양. 올렸을 때 `mic`으로 바꾸면 입자가 마이크로 모였다가 `cloud`로 돌리면 흩어져 돌아와요 */
+  /** 입자가 모이는 모양. 올렸을 때 `mic`이나 `arrow`로 바꾸면 그 모양으로 모였다가 `cloud`로 돌리면 흩어져 돌아와요 */
   shape?: ParticleOrbShape;
   /** `idle`은 녹음 전의 붉은빛, `recording`은 녹음 중의 청록빛이에요 */
   tone?: ParticleOrbTone;

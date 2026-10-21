@@ -20,7 +20,7 @@ import {
   WAVEFORM_PARTICLE_RANGE,
   WAVEFORM_PARTICLES_PER_AREA,
   WAVEFORM_POINTER_RADIUS,
-  WAVEFORM_SILENT_SCALE,
+  WAVEFORM_VOICE_GAIN,
 } from "../constants/particleWaveform";
 
 interface WaveParticle {
@@ -120,9 +120,9 @@ export const useParticleWaveform = ({ canvasRef, analyser, isActive, palette }: 
       const measured = node && active ? measureAnalyserLevel(node) : 0;
       level = smoothLevel({ previous: level, next: measured, attack: 0.4, release: 0.08 });
 
-      // 랜딩처럼 숨 쉬되, 목소리가 들어오면 그만큼 더 퍼져요. 일시정지면 숨도 멈춰요
+      // 랜딩 녹음 장면의 숨쉬기 그대로. 목소리가 들어오면 그만큼 더 퍼지고, 일시정지면 숨도 멈춰요
       const breath = reduced || !active ? 0.7 : waveBreath(frame);
-      const scale = breath * (WAVEFORM_SILENT_SCALE + (1 - WAVEFORM_SILENT_SCALE) * level);
+      const scale = Math.min(1.25, breath * (1 + WAVEFORM_VOICE_GAIN * level));
       const maxAmplitude = height * WAVEFORM_AMPLITUDE_RATIO;
       for (let column = 0; column < WAVEFORM_COLUMNS; column++) {
         amplitudes[column] = waveAmplitude({ column, columns: WAVEFORM_COLUMNS, frame, maxAmplitude, scale });

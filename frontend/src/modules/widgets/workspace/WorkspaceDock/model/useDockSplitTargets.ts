@@ -11,7 +11,7 @@ interface UseDockSplitTargetsParams {
 }
 
 /** 아직 재지 못했을 때의 자리. 접힌 독의 두 칸 가운데쯤이에요 */
-const FALLBACK: SeedSplitTargets = { chatOffsetX: -22, recordOffsetX: 22 };
+const FALLBACK: SeedSplitTargets = { barWidth: 0, barHeight: 60, chatOffsetX: -22, recordOffsetX: 22 };
 
 /**
  * 파형 입자가 갈라져 갈 자리를 실제 독 배치에서 재요.
@@ -30,7 +30,7 @@ export const useDockSplitTargets = ({
 
   useLayoutEffect(() => {
     const form = formRef.current;
-    if (!form || !isOpen || isExpanded) return;
+    if (!form || isExpanded) return;
 
     const center = form.offsetWidth / 2;
     const offsetOf = (selector: string) => {
@@ -42,7 +42,7 @@ export const useDockSplitTargets = ({
     const recordOffsetX = offsetOf("[data-dock-record]");
     if (chatOffsetX === null) return;
 
-    setSplitTargets({ chatOffsetX, recordOffsetX });
+    setSplitTargets({ barWidth: form.offsetWidth, barHeight: form.offsetHeight, chatOffsetX, recordOffsetX });
   }, [formRef, isExpanded, isMicVisible, isOpen, isRecordingChipVisible]);
 
   return { splitTargets };

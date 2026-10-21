@@ -1,40 +1,40 @@
 import {
   advancePulses,
   createPulse,
+  gaussian,
   nextPulseBoost,
   pointerRepulsion,
   prefersReducedMotion,
   pulseForce,
+  roundedRectPoint,
   smoothLevel,
   stepSpring,
   waveAmplitude,
   waveBreath,
   type PulseWave,
 } from "@utils/particleMotion";
-import { sampleBubbleTargets, samplePillTargets, type BubbleTarget } from "@utils/sampleBubbleTargets";
 import { measureAnalyserLevel } from "@utils/measureAudioLevel";
 import { sampleShapeTargets } from "@utils/sampleShapeTargets";
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 
 import {
-  SEED_BUBBLE_FONT_SIZE,
-  SEED_BUBBLE_TEXT,
   SEED_FADE_DELAY_MS,
-  SEED_FONT_FAMILY,
+  SEED_ICON_SIZE,
   SEED_MOBILE_BREAKPOINT,
+  SEED_ORB_RADIUS,
   SEED_PARTICLE_COUNT,
-  SEED_PILL,
   SEED_SLOW_FRAME_MS,
   SEED_WAVE_AMPLITUDE,
   SEED_WAVE_BOTTOM,
   SEED_WAVE_COLUMNS,
   SEED_WAVE_MAX_WIDTH,
+  SEED_WAVE_VOICE_GAIN,
   SEED_WAVE_WIDTH_RATIO,
 } from "../constants/dockSeed";
 import { drawSpeechBubbleIcon } from "../utils/drawDockIcons";
 
-/** 대기 상태에서 입자가 이루는 모양의 묶음. 색을 달리 그려요 */
-type IdleKind = "text" | "outline" | "pillOutline" | "pillDot";
+/** 독 스케치에서 입자가 맡는 부분. 알약 윤곽, 채팅 아이콘, 녹음 구슬이에요 */
+type SketchPart = "frame" | "icon" | "orb";
 
 interface SeedParticle {
   column: number;
@@ -49,36 +49,36 @@ interface SeedParticle {
   vy: number;
   homeX: number;
   homeY: number;
-  /** 대기 상태의 자리(캔버스 가로 가운데·독 자리 세로 가운데 기준)와 묶음 */
-  idleX: number;
-  idleY: number;
-  idleKind: IdleKind;
-  /** 갈라질 때 채팅 묶음인지. 대기 상태에서 말풍선을 이루던 입자가 채팅 쪽이에요 */
-  isChatSide: boolean;
-  /** 독의 말풍선 아이콘 모양에서의 자리 */
-  iconX: number;
-  iconY: number;
+  /** 독 스케치에서의 자리(캔버스 가로 가운데·독 자리 세로 가운데 기준)와 맡은 부분 */
+  sketchX: number;
+  sketchY: number;
+  part: SketchPart;
+  /** 녹음 구슬을 이룰 때의 구 위 각도와 농담(0~4). 열린 독의 구슬과 같은 계산이에요 */
+  u: number;
+  v: number;
+  shade: number;
 }
 
 export type DockSeedTone = "idle" | "recording";
 
-/** 갈라졌을 때 입자가 갈 자리. 캔버스 가로 가운데를 기준으로 한 거리(px)예요 */
+/** 독의 배치. 입자가 스케치할 알약 크기와 채팅·녹음 칸의 가운데(캔버스 가로 가운데 기준 px)예요 */
 export interface SeedSplitTargets {
+  barWidth: number;
+  barHeight: number;
   chatOffsetX: number;
   /** 녹음 쪽이 없는 화면(녹음 화면)이면 `null` */
   recordOffsetX: number | null;
 }
 
 export interface DockSeedPalette {
-  /** 잉크 세 단계(진한, 보통, 옅은). 대기 말풍선과 파형에 써요 */
+  /** 잉크 세 단계(진한, 보통, 옅은). 밝은 바탕 위의 독 스케치에 써요 */
   ink: [string, string, string];
   /** 청록 세 단계. 녹음 중 파형에 써요 */
   teal: [string, string, string];
-  /** 붉은 두 단계(점, 윤곽). 대기 녹음 알약에 써요 */
-  red: [string, string];
-  /** 어두운 독 위에 올라간 뒤의 밝은 세 단계와 붉은 세 단계 */
+  /** 붉은 다섯 단계(빛 받는 면부터 그늘까지). 녹음 구슬에 써요. 열린 독의 구슬과 같은 색이에요 */
+  orb: [string, string, string, string, string];
+  /** 어두운 독 위에 올라간 뒤의 밝은 세 단계 */
   light: [string, string, string];
-  orb: [string, string, string];
 }
 
 interface UseDockSeedParams {
@@ -100,11 +100,11 @@ const SLOT_CENTER_BOTTOM = 30;
 /**
  * 독이 접혀 있을 때 독 자리에 떠 있는 입자를 그려요.
  *
- * 대기 상태에서는 랜딩 문제 장면처럼 입자가 「무엇이든 요청하세요」 말풍선과 붉은 점이 든 녹음 알약을 이루어,
- * 이 자리에서 채팅과 녹음을 할 수 있다는 것을 바로 보여 줘요. 녹음 중에는 랜딩 녹음 장면과 같은 청록 파형이
- * 소리 크기를 따라요. 둘 다 올리면 입자가 포인터를 피하고(95px), 누르면 파동이 퍼져요.
- * `isOpen`이 되면 말풍선 입자는 독의 말풍선 아이콘으로, 알약 입자는 구슬 자리로 모이고, 진짜 독이 나타나면 사라져요.
- * 다시 닫히면 그 자리에서 대기 모양으로 돌아와요. 숨어 있는 동안은 그리지 않아요.
+ * 대기 상태에서는 입자가 독을 그대로 스케치해요. 알약 윤곽, 채팅(말풍선) 아이콘, 붉은 녹음 구슬이 열린 독과 같은 자리에 있어
+ * 이 자리에서 채팅과 녹음을 할 수 있다는 것이 바로 읽혀요. 녹음 중에는 녹음 바와 같은 청록 파형이 길게 흐르며 소리 크기를 따라요.
+ * 둘 다 올리면 입자가 포인터를 피하고(95px), 누르면 파동이 퍼져요.
+ * `isOpen`이 되면 입자가 독 스케치 자리로 모이고 그 뒤에서 진짜 독이 나타나면 사라져요. 닫히면 그 자리에서 다시 스케치나 파형이 돼요.
+ * 숨어 있는 동안은 그리지 않아요.
  * 프레임이 자주 느려지면 입자 절반만 그리고 흔들림을 빼서 어느 기기에서도 버벅이지 않게 해요.
  * 움직임 줄이기 설정에서는 이 입자를 쓰지 않으므로 여기서는 고려하지 않아요.
  */
@@ -160,8 +160,7 @@ export const useDockSeed = ({
     let alphaGoal = 1;
     let fadeTimer = 0;
     let animation = 0;
-    let isIconAssigned = false;
-    let idleLayoutKey = "";
+    let sketchKey = "";
     let lastFrameAt = 0;
     let slowFrames = 0;
     let isLite = false;
@@ -188,144 +187,128 @@ export const useDockSeed = ({
         vy: 0,
         homeX: 0,
         homeY: 0,
-        idleX: 0,
-        idleY: 0,
-        idleKind: "text",
-        isChatSide: index % 2 === 0,
-        iconX: 0,
-        iconY: 0,
+        sketchX: 0,
+        sketchY: 0,
+        part: "frame",
+        u: Math.random() * Math.PI * 2,
+        v: Math.acos(2 * Math.random() - 1),
+        shade: 1,
       }));
-      isIconAssigned = false;
-      idleLayoutKey = "";
+      sketchKey = "";
     };
 
-    /** 대기 모양(말풍선·녹음 알약)의 자리를 뽑아 입자에 나눠 줘요. 말풍선 입자가 채팅 쪽, 알약 입자가 녹음 쪽이에요 */
-    const assignIdle = () => {
-      const withRecord = paramsRef.current.hasRecordSide;
-      const key = `${width}:${withRecord}`;
-      if (key === idleLayoutKey) return;
-      const bubble = sampleBubbleTargets({
-        text: SEED_BUBBLE_TEXT,
-        fontSize: isMobile ? SEED_BUBBLE_FONT_SIZE.mobile : SEED_BUBBLE_FONT_SIZE.desktop,
-        fontFamily: SEED_FONT_FAMILY,
-        step: isMobile ? 2 : 1,
-      });
-      if (!bubble.targets.length) return;
-      const pill = withRecord ? samplePillTargets(SEED_PILL) : { targets: [] as BubbleTarget[], width: 0 };
-      const total = bubble.width + (withRecord ? SEED_PILL.gap + pill.width : 0);
-      const bubbleCenterX = -total / 2 + bubble.width / 2;
-      const pillCenterX = total / 2 - pill.width / 2;
-      const all = [
-        ...bubble.targets.map((t) => ({ x: bubbleCenterX + t.x, y: t.y, kind: t.kind as IdleKind, isChat: true })),
-        ...pill.targets.map((t) => ({ x: pillCenterX + t.x, y: t.y, kind: (t.kind === "text" ? "pillDot" : "pillOutline") as IdleKind, isChat: false })),
-      ];
-      // 자리가 입자보다 많으면 고르게 골라 쓰고, 적으면 둘레에 살짝 흩어 채워요(랜딩 fitTargets와 같은 생각)
-      particles.forEach((particle, index) => {
-        const target = all[Math.floor((index * all.length) / particles.length) % all.length];
-        const spread = all.length < particles.length ? 1.2 : 0;
-        particle.idleX = target.x + (Math.random() - 0.5) * spread;
-        particle.idleY = target.y + (Math.random() - 0.5) * spread;
-        particle.idleKind = target.kind;
-        particle.isChatSide = target.isChat;
-      });
-      idleLayoutKey = key;
-      isIconAssigned = false;
-    };
+    /**
+     * 독 스케치의 자리를 뽑아 입자에 나눠 줘요. 알약 윤곽은 랜딩 말풍선 윤곽과 같은 밀도(둘레 1px당 1.1개)로,
+     * 채팅 아이콘은 실제 아이콘 모양으로, 녹음 구슬은 가운데가 빽빽한 구름으로 둬요. 자리는 열린 독의 배치에서 잰 값이에요.
+     */
+    const assignSketch = () => {
+      const { splitTargets: layout, hasRecordSide: withRecord } = paramsRef.current;
+      const key = `${layout.barWidth}:${layout.barHeight}:${layout.chatOffsetX}:${layout.recordOffsetX}:${withRecord}`;
+      if (key === sketchKey || !layout.barWidth) return;
+      const targets: { x: number; y: number; part: SketchPart }[] = [];
 
-    /** 채팅 묶음을 x 순서로 줄 세워 독의 말풍선 아이콘 자리에 배정해요. 랜딩의 morph 배정과 같아요 */
-    const assignIcon = () => {
-      const targets = sampleShapeTargets({ draw: drawSpeechBubbleIcon, size: 26, step: 1 });
+      const radius = layout.barHeight / 2;
+      const perimeter = 2 * (layout.barWidth + layout.barHeight - 4 * radius) + 2 * Math.PI * radius;
+      const frameCount = Math.round(perimeter * 1.5);
+      for (let i = 0; i < frameCount; i++) {
+        const point = roundedRectPoint({ width: layout.barWidth, height: layout.barHeight, radius, distance: i / frameCount });
+        const offset = gaussian() * 1.3;
+        targets.push({ x: point.x + point.nx * offset - layout.barWidth / 2, y: point.y + point.ny * offset - layout.barHeight / 2, part: "frame" });
+      }
+
+      sampleShapeTargets({ draw: drawSpeechBubbleIcon, size: SEED_ICON_SIZE, step: 0.75 }).forEach((target) => {
+        targets.push({ x: layout.chatOffsetX + target.x, y: target.y, part: "icon" });
+      });
+
+      if (withRecord && layout.recordOffsetX !== null) {
+        // 구슬은 가운데만 정해 두고 매 프레임 구 위의 자리를 계산해요(열린 독의 구슬과 같은 방식)
+        const orbCount = Math.round(SEED_ORB_RADIUS * SEED_ORB_RADIUS * 3.2);
+        for (let i = 0; i < orbCount; i++) targets.push({ x: layout.recordOffsetX, y: 0, part: "orb" });
+      }
       if (!targets.length) return;
-      const withRecord = paramsRef.current.hasRecordSide;
-      const chat = particles.filter((p) => p.isChatSide || !withRecord).sort((a, b) => a.x - b.x);
-      const sorted = targets.sort((a, b) => a.x - b.x);
-      chat.forEach((particle, rank) => {
-        const target = sorted[Math.floor((rank * sorted.length) / chat.length)];
-        particle.iconX = target.x + (Math.random() - 0.5) * 0.4;
-        particle.iconY = target.y + (Math.random() - 0.5) * 0.4;
+
+      // 자리가 입자보다 많으면 고르게 골라 쓰고, 적으면 둘레에 살짝 흩어 채워요(랜딩 fitTargets와 같은 생각)
+      const spread = targets.length < particles.length ? 1.2 : 0;
+      particles.forEach((particle, index) => {
+        const target = targets[Math.floor((index * targets.length) / particles.length) % targets.length];
+        particle.sketchX = target.x + (Math.random() - 0.5) * spread;
+        particle.sketchY = target.y + (Math.random() - 0.5) * spread;
+        particle.part = target.part;
       });
-      isIconAssigned = true;
+      sketchKey = key;
     };
 
     /** 랜딩 `updateWaveAmplitudes`와 같아요. 녹음 중엔 숨쉬기 대신 소리 크기가 높이를 정해요 */
     const updateAmplitudes = () => {
-      const scale = paramsRef.current.tone === "idle" ? waveBreath(frame) : 0.25 + 0.75 * level;
+      const scale = Math.min(1.25, waveBreath(frame) * (1 + SEED_WAVE_VOICE_GAIN * level));
       for (let column = 0; column < SEED_WAVE_COLUMNS; column++) {
         amplitudes[column] = waveAmplitude({ column, columns: SEED_WAVE_COLUMNS, frame, maxAmplitude: SEED_WAVE_AMPLITUDE, scale });
       }
     };
 
     const placeParticles = () => {
-      const { splitTargets: targets, tone: nextTone, hasRecordSide: withRecord } = paramsRef.current;
+      const { tone: nextTone } = paramsRef.current;
       const centerX = width / 2;
       const centerY = height - SEED_WAVE_BOTTOM;
       const slotY = height - SLOT_CENTER_BOTTOM;
       const isWave = nextTone === "recording";
       if (isWave) updateAmplitudes();
-      else assignIdle();
-      if (blend > 0 && !isIconAssigned) assignIcon();
+      assignSketch();
 
       const waveWidth = Math.min(SEED_WAVE_MAX_WIDTH, width * SEED_WAVE_WIDTH_RATIO);
       const startX = centerX - waveWidth / 2;
       const columnWidth = waveWidth / SEED_WAVE_COLUMNS;
-      // 숨 쉬듯 아주 살짝 떠 있어요. 랜딩 말 조각이 떠다니는 폭보다 작게
-      const drift = isWave ? 0 : Math.sin(frame * 0.017) * 2;
+      // 스케치는 숨 쉬듯 아주 살짝 떠 있어요
+      const drift = isWave ? 0 : Math.sin(frame * 0.017) * 1.5;
 
+      // 녹음 구슬: 왼쪽 위에서 빛이 들어오는 구가 천천히 돌아요. 열린 독의 구슬과 같은 계산이에요
+      const rotation = frame * 0.006;
+      const tilt = 0.38;
       particles.forEach((particle) => {
-        let restX: number;
-        let restY: number;
-        if (isWave) {
-          restX = startX + (particle.column + 0.5 + particle.jitter) * columnWidth;
-          restY = centerY + particle.level * amplitudes[particle.column];
-        } else {
-          restX = centerX + particle.idleX;
-          restY = centerY + particle.idleY + drift;
+        let sketchX = centerX + particle.sketchX;
+        let sketchY = slotY + particle.sketchY;
+        if (particle.part === "orb") {
+          const breathe = 1 + 0.05 * Math.sin(frame * 0.028 + particle.seed * 6.28);
+          const r = SEED_ORB_RADIUS * breathe * Math.pow(particle.seed, 0.42);
+          const sinV = Math.sin(particle.v);
+          const x = sinV * Math.cos(particle.u + rotation);
+          const y0 = Math.cos(particle.v);
+          const z0 = sinV * Math.sin(particle.u + rotation);
+          const y = y0 * Math.cos(tilt) - z0 * Math.sin(tilt);
+          const z = y0 * Math.sin(tilt) + z0 * Math.cos(tilt);
+          sketchX += x * r;
+          sketchY += y * r;
+          const light = 0.5 + 0.5 * (-x * 0.45 - y * 0.78 + z * 0.3) * (0.6 + 0.4 * (r / SEED_ORB_RADIUS));
+          particle.shade = z < -0.3 ? 4 : light > 0.78 ? 0 : light > 0.62 ? 1 : light > 0.46 ? 2 : light > 0.3 ? 3 : 4;
         }
-        if (blend <= 0) {
-          particle.homeX = restX;
-          particle.homeY = restY;
+        if (!isWave) {
+          // 대기: 늘 독 스케치 자리. 열리면 진짜 독이 그 밑에서 나타나고 입자는 사라져요
+          particle.homeX = sketchX;
+          particle.homeY = sketchY + (blend > 0 ? 0 : drift);
           return;
         }
-        let splitX: number;
-        let splitY: number;
-        if (particle.isChatSide || !withRecord) {
-          splitX = centerX + targets.chatOffsetX + particle.iconX;
-          splitY = slotY + particle.iconY;
-        } else {
-          // 구슬 자리: 가운데가 빽빽한 구름
-          const r = 12 * Math.pow(particle.seed, 0.42);
-          const angle = particle.seed * 97 + frame * 0.01;
-          splitX = centerX + (targets.recordOffsetX ?? 0) + Math.cos(angle) * r;
-          splitY = slotY + Math.sin(angle) * r * 0.9;
-        }
-        particle.homeX = restX + (splitX - restX) * blend;
-        particle.homeY = restY + (splitY - restY) * blend;
+        // 녹음 중: 파형이었다가 열리면 독 스케치 자리로 모여요
+        const waveX = startX + (particle.column + 0.5 + particle.jitter) * columnWidth;
+        const waveY = centerY + particle.level * amplitudes[particle.column];
+        particle.homeX = waveX + (sketchX - waveX) * blend;
+        particle.homeY = waveY + (sketchY - waveY) * blend;
       });
     };
 
-    /** 입자 하나의 색. 대기 모양은 묶음마다, 파형은 랜딩처럼 세로 위치마다, 갈라진 뒤엔 독 위의 밝은색·붉은색이에요 */
-    const colorOf = (particle: SeedParticle, colors: DockSeedPalette, isWave: boolean, withRecord: boolean) => {
-      if (blend >= 0.55) {
-        if (!particle.isChatSide && withRecord) {
-          const shade = particle.seed < 0.5 ? 0 : particle.seed < 0.8 ? 1 : 2;
-          return (paramsRef.current.tone === "idle" ? colors.orb : colors.teal)[shade];
-        }
-        const strength = Math.abs(particle.level);
-        return colors.light[strength < 0.45 ? 0 : strength < 0.8 ? 1 : 2];
-      }
-      if (isWave) {
+    /** 입자 하나의 색. 스케치는 맡은 부분마다, 파형은 랜딩처럼 세로 위치마다, 독 위에 올라가면 밝은색이에요 */
+    const colorOf = (particle: SeedParticle, colors: DockSeedPalette, isWave: boolean) => {
+      const onDock = blend >= 0.55;
+      if (isWave && !onDock) {
         const strength = Math.abs(particle.level);
         return colors.teal[strength < 0.45 ? 0 : strength < 0.8 ? 1 : 2];
       }
-      switch (particle.idleKind) {
-        case "text":
-          return colors.ink[particle.seed < 0.7 ? 0 : 1];
-        case "outline":
-          return colors.ink[particle.seed < 0.5 ? 1 : 2];
-        case "pillDot":
-          return colors.red[0];
+      switch (particle.part) {
+        case "orb":
+          return paramsRef.current.tone === "idle" ? colors.orb[particle.shade] : colors.teal[Math.min(2, particle.shade)];
+        case "icon":
+          return (onDock ? colors.light : colors.ink)[particle.seed < 0.7 ? 0 : 1];
         default:
-          return colors.red[1];
+          return onDock ? colors.light[2] : colors.ink[particle.seed < 0.5 ? 1 : 2];
       }
     };
 
@@ -338,7 +321,7 @@ export const useDockSeed = ({
       if (!isLite && slowFrames > 12) isLite = true;
       lastFrameAt = now;
 
-      const { isOpen: open, tone: nextTone, analyser: node, isActive: active, hasRecordSide: withRecord, palette: colors } = paramsRef.current;
+      const { isOpen: open, tone: nextTone, analyser: node, isActive: active, palette: colors } = paramsRef.current;
       const isWave = nextTone === "recording";
       const measured = node && active && isWave ? measureAnalyserLevel(node) : 0;
       level = smoothLevel({ previous: level, next: measured, attack: 0.35, release: 0.08 });
@@ -379,13 +362,13 @@ export const useDockSeed = ({
             particle,
             homeX: particle.homeX,
             homeY: particle.homeY,
-            spring: isWave ? 0.09 : 0.05,
+            spring: 0.09,
             damping: 0.84,
             jitter: isLite ? 0 : 0.18,
             forceX,
             forceY,
           });
-          const color = colorOf(particle, colors, isWave, withRecord);
+          const color = colorOf(particle, colors, isWave);
           if (color !== lastColor) {
             context.fillStyle = color;
             lastColor = color;

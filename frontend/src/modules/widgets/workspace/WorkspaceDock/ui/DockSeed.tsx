@@ -19,16 +19,16 @@ interface DockSeedProps {
   /** 녹음 쪽이 없는 화면(녹음 화면)이면 `false` */
   hasRecordSide: boolean;
   splitTargets: SeedSplitTargets;
-  /** 파형을 눌렀을 때. 파동이 퍼진 뒤 독이 열려요 */
-  onOpen: () => void;
+  /** 입자를 눌렀을 때. 파동이 퍼지며 독이 열려요(터치·키보드는 열린 채로 머물러요) */
+  onOpen: (options?: { keepOpen?: boolean }) => void;
 }
 
 /**
  * 독이 접혀 있을 때 독 자리에 떠 있는 입자.
  *
- * 대기 중엔 랜딩 문제 장면처럼 입자로 그린 「무엇이든 요청하세요」 말풍선과 붉은 점이 든 녹음 알약이 나란히 떠서
- * 채팅과 녹음을 할 수 있는 자리임을 보여 줘요. 녹음 중엔 랜딩 녹음 장면 같은 청록 파형이 목소리를 따르고 아래에 녹음한 시간이 보여요.
- * 올리면 입자가 포인터를 피하고, 누르면 파동이 퍼지며 독이 열려요.
+ * 대기 중엔 입자가 독을 그대로 스케치해요(알약 윤곽, 채팅 아이콘, 붉은 녹음 구슬). 녹음 중엔 녹음 바와 같은 청록 파형이
+ * 길게 흐르며 목소리를 따르고 아래에 녹음한 시간이 보여요. 올리면 그 자리에 진짜 독이 나타나고, 벗어나면 다시 입자로 돌아가요.
+ * 입자 위에서 포인터는 밀어내기를 일으키고, 누르면 파동이 퍼져요.
  * 파형 자체는 장식이라 낭독기에서 숨기고, 누르는 자리는 「독 열기」 버튼이에요. 키보드로는 Enter나 Space로 열어요.
  */
 export default function DockSeed({ isOpen, tone, analyser, isActive, elapsedTime, hasRecordSide, splitTargets, onOpen }: DockSeedProps) {
@@ -51,13 +51,14 @@ export default function DockSeed({ isOpen, tone, analyser, isActive, elapsedTime
     palette: {
       ink: [`rgba(${strong},0.9)`, `rgba(${ink},0.6)`, `rgba(${ink},0.32)`],
       teal: [`rgba(${accent},0.95)`, `rgba(${accent},0.6)`, `rgba(${accent},0.3)`],
-      red: [`rgba(${warning},0.95)`, `rgba(${warning},0.55)`],
-      light: [`rgba(${hexToRgb(theme.neutral[0])},0.95)`, `rgba(${light},0.75)`, `rgba(${light},0.4)`],
       orb: [
         `rgba(${hexToRgb(theme.sub.warning[200])},0.95)`,
         `rgba(${warning},0.9)`,
-        `rgba(${hexToRgb(theme.sub.warning[800])},0.95)`,
+        `rgba(${warning},0.95)`,
+        `rgba(${hexToRgb(theme.sub.warning[700])},0.95)`,
+        `rgba(${hexToRgb(theme.sub.warning[800])},0.9)`,
       ],
+      light: [`rgba(${hexToRgb(theme.neutral[0])},0.95)`, `rgba(${light},0.75)`, `rgba(${light},0.4)`],
     },
   });
 
@@ -90,13 +91,15 @@ export default function DockSeed({ isOpen, tone, analyser, isActive, elapsedTime
         }}
         onPointerLeave={clearPointer}
         onPointerDown={handlePointerDown}
-        onClick={onOpen}
+        // 마우스 클릭은 벗어나면 닫히고, 터치와 키보드(Enter·Space는 아래에서 따로)는 열린 채 머물러요
+        onClick={() => onOpen()}
+        onTouchEnd={() => onOpen({ keepOpen: true })}
         onKeyDown={(event) => {
           if (event.key !== "Enter" && event.key !== " ") return;
           event.preventDefault();
           const rect = canvasRef.current?.getBoundingClientRect();
           if (rect) pulse(rect.width / 2, rect.height - SEED_WAVE_BOTTOM, rect.width, rect.height);
-          onOpen();
+          onOpen({ keepOpen: true });
         }}
       />
     </>

@@ -35,7 +35,7 @@ const Stage = styled.div`
 const meta = {
   title: "Shared/ParticleWaveform",
   component: ParticleWaveform,
-  args: { analyser: createFakeAnalyser(), isActive: true, height: 56 },
+  args: { analyser: createFakeAnalyser(), isActive: true, height: 64 },
   decorators: [
     (Story) => (
       <Stage>
