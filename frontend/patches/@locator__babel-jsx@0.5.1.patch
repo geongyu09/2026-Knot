@@ -1,0 +1,31 @@
+diff --git a/dist/index.js b/dist/index.js
+index f15d3020de288a98c49a1c65565f916b0c6972a3..f7fb5439ef36f0de3001a227ed1647ddd83e5808 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -140,11 +140,7 @@ function transformLocatorJsComponents(babel) {
+                                             loc: path.node.loc,
+                                             htmlTag: property.name,
+                                         });
+-                                        path.node.tag = t.callExpression(t.memberExpression(tag, t.identifier("attrs")), [
+-                                            t.arrowFunctionExpression([], t.objectExpression([
+-                                                t.objectProperty(t.stringLiteral("data-locatorjs-styled"), t.stringLiteral(createDataId(fileStorage, id))),
+-                                            ])),
+-                                        ]);
++                                        // Knot: emotion styled에는 styled-components의 .attrs가 없어 태그를 바꾸지 않아요
+                                     }
+                                 }
+                             }
+@@ -180,11 +176,11 @@ function transformLocatorJsComponents(babel) {
+                                     let newAttr;
+                                     if (dataAttributeMode === "path") {
+                                         // Generate data-locatorjs with full path
+-                                        newAttr = t.jSXAttribute(t.jSXIdentifier("data-locatorjs"), t.jSXExpressionContainer(t.stringLiteral(createFullPathWithLocation(fileStorage, path.node.loc))));
++                                        newAttr = t.jsxAttribute(t.jsxIdentifier("data-locatorjs"), t.jsxExpressionContainer(t.stringLiteral(createFullPathWithLocation(fileStorage, path.node.loc))));
+                                     }
+                                     else {
+                                         // Default: generate data-locatorjs-id with ID
+-                                        newAttr = t.jSXAttribute(t.jSXIdentifier("data-locatorjs-id"), t.jSXExpressionContainer(t.stringLiteral(
++                                        newAttr = t.jsxAttribute(t.jsxIdentifier("data-locatorjs-id"), t.jsxExpressionContainer(t.stringLiteral(
+                                         // this is stored by projectPath+filePath because that's the only unique identifier
+                                         createDataId(fileStorage, id))
+                                         // t.ObjectExpression([
