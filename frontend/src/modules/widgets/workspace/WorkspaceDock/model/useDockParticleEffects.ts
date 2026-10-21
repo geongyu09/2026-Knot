@@ -12,13 +12,13 @@ interface UseDockParticleEffectsParams {
   isOpen: boolean;
 }
 
-/** 펼침·접힘 모션이 어느 정도 진행된 뒤 아이콘이 모이기 시작해요(ms) */
+/** 펼침·접힘 모션이 어느 정도 진행된 뒤 실이 지나가요(ms) */
 const ASSEMBLE_DELAY = { expand: 160, collapse: 120 };
 
 /**
  * 독의 입자 반응을 언제 일으킬지 정해요.
  *
- * 처음 나타나거나 펼치고 접을 때는 고스트 아이콘이 입자로 모이고 테두리에 실이 한 번 지나가요.
+ * 펼치고 접을 때는 테두리에 실이 한 번 지나가요.
  * 보낼 수 있게 되면 화살표가 입자로 모이고, 녹음 버튼을 누르면 그 자리에서 입자가 터지며 실이 한 바퀴 돌아요.
  * 좌표는 모두 독 왼쪽 위 기준이라 요소를 받아 가운데를 계산해요.
  */
@@ -29,8 +29,6 @@ export const useDockParticleEffects = ({
   isOpen,
 }: UseDockParticleEffectsParams) => {
   const particlesRef = useRef<DockParticlesHandle>(null);
-  const collapsedGhostRef = useRef<ParticleIconHandle>(null);
-  const expandedGhostRef = useRef<ParticleIconHandle>(null);
   const sendIconRef = useRef<ParticleIconHandle>(null);
   const isFirstRender = useRef(true);
 
@@ -70,16 +68,13 @@ export const useDockParticleEffects = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    const ghostRef = isExpanded ? expandedGhostRef : collapsedGhostRef;
     if (isFirstRender.current) {
       isFirstRender.current = false;
-      ghostRef.current?.assemble();
       return;
     }
 
     const timer = setTimeout(
       () => {
-        ghostRef.current?.assemble();
         const form = formRef.current;
         if (form) {
           particlesRef.current?.trace(
@@ -101,8 +96,6 @@ export const useDockParticleEffects = ({
 
   return {
     particlesRef,
-    collapsedGhostRef,
-    expandedGhostRef,
     sendIconRef,
     burstAt,
     traceFrom,

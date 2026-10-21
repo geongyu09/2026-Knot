@@ -1,11 +1,11 @@
 import ParticleIcon from "@composites/ParticleIcon";
+import ParticleOrb from "@composites/ParticleOrb";
 import { keyframes } from "@emotion/react";
 import styled from "@emotion/styled";
 import { DOCK_HEIGHT } from "@primitives/layout/DockColumn";
 import Textarea from "@primitives/ui/Textarea";
 import { useRef } from "react";
 
-import SpeechBubbleIcon from "@/assets/icons/speechBubble.svg";
 import SendIcon from "@/assets/icons/send.svg";
 
 import { useDockOpen } from "./model/useDockOpen";
@@ -13,12 +13,14 @@ import { useDockParticleEffects } from "./model/useDockParticleEffects";
 import { useDockSplitTargets } from "./model/useDockSplitTargets";
 import { useDockRecording } from "./model/useDockRecording";
 import { useWorkspaceDock } from "./model/useWorkspaceDock";
+import { DOCK_ORB_CANVAS_SIZE, DOCK_ORB_RADIUS } from "./constants/dockOrb";
+import DockChatButton from "./ui/DockChatButton";
 import DockHintTooltip from "./ui/DockHintTooltip";
 import DockMicButton from "./ui/DockMicButton";
 import DockParticles from "./ui/DockParticles";
 import DockRecordingChip from "./ui/DockRecordingChip";
 import DockSeed from "./ui/DockSeed";
-import { drawSendIcon, drawSpeechBubbleIcon } from "./utils/drawDockIcons";
+import { drawSendIcon } from "./utils/drawDockIcons";
 
 /**
  * 폭이 벌어지는 동안 안의 내용이 살짝 흐렸다가 또렷해지며 뒤따라 나타나는 모션.
@@ -69,8 +71,8 @@ const DOCK_EXPAND_DURATION = "0.44s";
  *
  * 랜딩의 입자가 독에도 이어져요. 접혀 있을 때는 입자가 독을 그대로 스케치하고(`DockSeed`), 녹음 중엔 녹음 바와 같은 청록 파형이 길게 흘러요.
  * 올리면 그 자리에 진짜 독이 나타나고 벗어나면 다시 입자로 돌아가요. 파형도 올리면 독으로 모였다가 벗어나면 다시 파형이 돼요.
- * 채팅 칸은 고스트 대신 말풍선 아이콘이라 무엇을 하는 자리인지 바로 읽혀요. 녹음 버튼은 입자 구슬이고,
- * 아이콘은 펼치고 접을 때 입자로 모였다가 진짜 아이콘이 되고, 테두리에는 옅은 입자 실이 흘러요.
+ * 채팅 버튼과 녹음 버튼은 둘 다 입자 구슬이에요. 채팅은 점 세 개가 든 말풍선으로 모여 있다가 올리면 점이 튀고, 녹음은 구름 구슬이다가 올리면 마이크가 돼요.
+ * 보내기 화살표는 보낼 수 있게 될 때 입자로 모였다가 진짜 아이콘이 되고, 테두리에는 옅은 입자 실이 흘러요.
  * 캔버스를 못 쓰거나 움직임 줄이기 설정이면 파형 없이 늘 열린 독이라, 기존 동작과 접근성 이름은 어느 환경에서나 그대로예요.
  * 다른 탭의 녹음이면 칩은 점과 시간만 보여 주고 누를 수 없으며 중지 버튼도 두지 않아요.
  * 녹음 화면에서는 마이크를 숨겨요. Figma에서 숨겨져 있는 글 작성 슬롯은 만들지 않아요.
@@ -115,14 +117,8 @@ export default function WorkspaceDock() {
     isMicVisible,
     isRecordingChipVisible,
   });
-  const {
-    particlesRef,
-    collapsedGhostRef,
-    expandedGhostRef,
-    sendIconRef,
-    burstAt,
-    traceFrom,
-  } = useDockParticleEffects({ formRef, isExpanded, canSubmit, isOpen });
+  const { particlesRef, sendIconRef, burstAt, traceFrom } =
+    useDockParticleEffects({ formRef, isExpanded, canSubmit, isOpen });
 
   const hasRecordSide = isMicVisible || isRecordingChipVisible;
 
@@ -171,13 +167,12 @@ export default function WorkspaceDock() {
         {isOpen && <DockParticles ref={particlesRef} barRef={formRef} />}
 
         <InputContainer $isHidden={!isExpanded}>
-          <ParticleIcon
-            ref={expandedGhostRef}
-            draw={drawSpeechBubbleIcon}
-            size={24}
-          >
-            <SpeechBubbleIcon size={24} />
-          </ParticleIcon>
+          {/* 펼친 입력창 앞의 말풍선도 접힌 독의 채팅 버튼과 같은 입자예요 */}
+          <InputOrb aria-hidden="true">
+            {isExpanded && (
+              <ParticleOrb radius={DOCK_ORB_RADIUS} size={DOCK_ORB_CANVAS_SIZE} tone="neutral" shape="bubble" />
+            )}
+          </InputOrb>
 
           <MessageField
             ref={textareaRef}
@@ -234,21 +229,7 @@ export default function WorkspaceDock() {
         ) : (
           /* 입자 스케치일 때는 자리만 차지하고 키보드·낭독기에서 닿지 않아요. 입력창은 밖에 있어 어디서든 타이핑은 그대로예요 */
           <CollapsedControls aria-hidden={!isOpen} inert={!isOpen}>
-              <SlotButton
-                type="button"
-                aria-label="무엇이든 요청하기"
-                data-dock-chat
-                onClick={handleExpand}
-                onPointerEnter={() => collapsedGhostRef.current?.wake()}
-              >
-                <ParticleIcon
-                  ref={collapsedGhostRef}
-                  draw={drawSpeechBubbleIcon}
-                  size={24}
-                >
-                  <SpeechBubbleIcon size={24} />
-                </ParticleIcon>
-              </SlotButton>
+              <DockChatButton isOrbVisible={isOpen} onClick={handleExpand} />
 
               {hasRecordSide && <ControlDivider aria-hidden="true" />}
 
@@ -364,27 +345,25 @@ const Bar = styled.form<{
   }
 `;
 
+/** 펼친 입력창 앞 말풍선 자리. 24px 칸 가운데에 더 큰 캔버스를 겹쳐요 */
+const InputOrb = styled.span`
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  width: 1.5rem; /* 24px */
+  height: 1.5rem;
+
+  & > canvas {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+`;
+
 /** 접힌 독의 말풍선·녹음 칸 묶음. 배치에는 끼어들지 않고, 숨길 때 한꺼번에 숨기려고 둬요 */
 const CollapsedControls = styled.span`
   display: contents;
-`;
-
-/** 접힌 독의 탐색·마이크 버튼과 펼친 독의 마이크 버튼. 40px 칸 가운데에 24px 아이콘을 둬요. */
-const SlotButton = styled.button`
-  display: flex;
-  align-self: center;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem; /* 40px */
-  height: 2.5rem;
-  flex-shrink: 0;
-  border-radius: 1.25rem; /* 20px */
-  color: ${({ theme }) => theme.neutral[300]};
-
-  &:focus-visible {
-    outline: 2px solid ${({ theme }) => theme.sub.accent[500]};
-    outline-offset: 2px;
-  }
 `;
 
 /**

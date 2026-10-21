@@ -2,9 +2,7 @@ import ParticleOrb, { type ParticleOrbHandle } from "@composites/ParticleOrb";
 import styled from "@emotion/styled";
 import { useRef, useState } from "react";
 
-/** 입자 구슬의 반지름과 캔버스 한 변(px). 캔버스는 40px 칸보다 커서 마이크 모양이 넉넉히 들어가요 */
-const ORB_RADIUS = 12;
-const ORB_CANVAS_SIZE = 56;
+import { DOCK_ORB_CANVAS_SIZE, DOCK_ORB_RADIUS } from "../constants/dockOrb";
 
 interface DockMicButtonProps {
   onClick: () => void;
@@ -43,8 +41,8 @@ export default function DockMicButton({ onClick, isOrbVisible = true }: DockMicB
         <OrbWrapper>
           <ParticleOrb
             ref={orbRef}
-            radius={ORB_RADIUS}
-            size={ORB_CANVAS_SIZE}
+            radius={DOCK_ORB_RADIUS}
+            size={DOCK_ORB_CANVAS_SIZE}
             shape={isHovered || isFocused ? "mic" : "cloud"}
           />
         </OrbWrapper>

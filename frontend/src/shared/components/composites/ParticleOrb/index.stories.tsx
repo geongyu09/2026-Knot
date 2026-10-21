@@ -30,7 +30,7 @@ const DarkStage = styled.div`
  *
  * **모양과 색**
  * - `shape`가 `cloud`면 입자 수백 개가 구름 같은 구를 이루며 천천히 돌고 숨 쉬어요. `mic`으로 바꾸면 마이크 아이콘, `arrow`로 바꾸면 오른쪽 화살표 모양으로 모여요. 독의 녹음 버튼은 올렸을 때 `mic`, 녹음 칩은 올렸을 때 `arrow`로 바꿔요.
- * - `tone`이 `idle`이면 녹음 전의 붉은빛(Warning), `recording`이면 녹음 중의 청록빛(Accent)이에요.
+ * - `tone`이 `idle`이면 녹음 전의 붉은빛(Warning), `recording`이면 녹음 중의 청록빛(Accent), `neutral`이면 어두운 바탕 위의 밝은 회색이에요. 채팅 버튼은 `neutral`에 `bubble`(올리면 `typing`)이에요.
  *
  * **녹음 중 동작**
  * - `recording` 톤에서 `analyser`를 넘기면 목소리가 들어올 때마다 입자가 가운데를 가로지르는 파형으로 펼쳐지고, 조용하면 구름으로 돌아와요. 청록 빛무리가 맥박처럼 뛰어요.
@@ -46,8 +46,8 @@ const meta = {
   component: ParticleOrb,
   args: { radius: 12, size: 56, shape: "cloud", tone: "idle", isActive: true },
   argTypes: {
-    shape: { control: "radio", options: ["cloud", "mic", "arrow"] },
-    tone: { control: "radio", options: ["idle", "recording"] },
+    shape: { control: "radio", options: ["cloud", "mic", "arrow", "bubble", "typing"] },
+    tone: { control: "radio", options: ["idle", "recording", "neutral"] },
   },
   decorators: [
     (Story) => (
@@ -68,6 +68,16 @@ export const Default: Story = {};
 /** 올리거나 포커스해 입자가 마이크 모양으로 모인 상태예요. 예: 독의 회의 녹음 버튼에 마우스를 올렸을 때 */
 export const Mic: Story = {
   args: { shape: "mic" },
+};
+
+/** 독의 채팅 버튼이에요. 입자가 점 세 개가 든 말풍선으로 모여 있어요. */
+export const Bubble: Story = {
+  args: { radius: 13, tone: "neutral", shape: "bubble" },
+};
+
+/** 채팅 버튼에 올려 말풍선의 점들이 입력 중처럼 차례로 튀는 상태예요. */
+export const Typing: Story = {
+  args: { radius: 13, tone: "neutral", shape: "typing" },
 };
 
 /** 녹음 칩에 올려 입자가 「녹음 화면으로 가기」 화살표로 모인 상태예요. */

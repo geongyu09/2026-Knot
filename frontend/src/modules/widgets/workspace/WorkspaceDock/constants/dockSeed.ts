@@ -29,8 +29,8 @@ export const SEED_CLOSE_DELAY_MS = 380;
 export const SEED_FADE_DELAY_MS = 320;
 
 /** 독 스케치의 채팅 아이콘 한 변(px)과 녹음 구슬 반지름(px). 열린 독의 아이콘·구슬과 같은 크기예요 */
-export const SEED_ICON_SIZE = 28;
-export const SEED_ORB_RADIUS = 12;
+export const SEED_ICON_SIZE = 32;
+export const SEED_ORB_RADIUS = 13;
 
 /** 파형은 랜딩처럼 늘 숨 쉬고, 목소리가 들어오면 이 배율만큼 더 커져요. 녹음 바 파형과 같아요 */
 export const SEED_WAVE_VOICE_GAIN = 0.5;

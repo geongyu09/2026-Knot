@@ -5,6 +5,9 @@ import { useCallback, useEffect, useRef, type RefObject } from "react";
 
 import {
   ARROW_ICON_PATH,
+  BUBBLE_DOTS,
+  BUBBLE_ICON_PATH,
+  BUBBLE_OUTLINE_SHARE,
   MIC_ICON_PATHS,
   MIC_SHAPE_SCALE,
   ORB_DAMPING,
@@ -41,6 +44,10 @@ interface OrbParticle {
   micX: number;
   micY: number;
   micBucket: number;
+  /** 말풍선 모양에서 점 몇 번째를 맡는지(-1이면 윤곽)와 점 안에서의 흩어짐 */
+  dot: number;
+  dotX: number;
+  dotY: number;
 }
 
 interface Pulse {
@@ -58,6 +65,7 @@ interface UseParticleOrbParams {
   isActive: boolean;
   idlePalette: ParticleOrbPalette;
   recordingPalette: ParticleOrbPalette;
+  neutralPalette: ParticleOrbPalette;
   /** 녹음 중 빛무리 색. `r,g,b` 꼴이에요 */
   haloRgb: string;
 }
@@ -90,6 +98,13 @@ const createParticles = (count: number): OrbParticle[] =>
     micX: 0,
     micY: 0,
     micBucket: 0,
+    dot: -1,
+    // 점 안에서는 가운데가 빽빽한 동그란 구름이 되도록 극좌표로 흩어요
+    ...(() => {
+      const r = Math.sqrt(Math.random());
+      const a = Math.random() * Math.PI * 2;
+      return { dotX: Math.cos(a) * r, dotY: Math.sin(a) * r };
+    })(),
   }));
 
 const drawMic = (context: CanvasRenderingContext2D) => {
@@ -102,10 +117,16 @@ const drawArrow = (context: CanvasRenderingContext2D) => {
   context.stroke(new Path2D(ARROW_ICON_PATH));
 };
 
+const drawBubble = (context: CanvasRenderingContext2D) => {
+  context.lineWidth = 1.3;
+  context.stroke(new Path2D(BUBBLE_ICON_PATH));
+};
+
 /**
  * 입자 구슬을 캔버스에 매 프레임 그려요.
  *
- * 입자 수백 개가 구름 같은 구를 이루고, `shape`가 `mic`면 마이크, `arrow`면 오른쪽 화살표 모양으로 모여요.
+ * 입자 수백 개가 구름 같은 구를 이루고, `shape`가 `mic`면 마이크, `arrow`면 오른쪽 화살표, `bubble`이면 점 세 개가 든 말풍선으로 모여요.
+ * `typing`은 말풍선의 점들이 입력 중처럼 차례로 튀어요.
  * 녹음 톤에서는 분석기의 소리 크기만큼 입자가 가운데를 가로지르는 파형으로 나가고, 조용하면 구름으로 돌아와요.
  * 매 프레임 바뀌는 값이라 React 상태로 다루지 않고, 바뀌는 props는 ref로 받아 다음 프레임부터 반영해요.
  * 움직임 줄이기 설정에서는 회전·숨쉬기·흔들림을 멈추고 소리와 모양만 반영해요.
@@ -119,10 +140,11 @@ export const useParticleOrb = ({
   isActive,
   idlePalette,
   recordingPalette,
+  neutralPalette,
   haloRgb,
 }: UseParticleOrbParams) => {
-  const paramsRef = useRef({ radius, shape, tone, analyser, isActive, idlePalette, recordingPalette, haloRgb });
-  paramsRef.current = { radius, shape, tone, analyser, isActive, idlePalette, recordingPalette, haloRgb };
+  const paramsRef = useRef({ radius, shape, tone, analyser, isActive, idlePalette, recordingPalette, neutralPalette, haloRgb });
+  paramsRef.current = { radius, shape, tone, analyser, isActive, idlePalette, recordingPalette, neutralPalette, haloRgb };
 
   const pulsesRef = useRef<Pulse[]>([]);
   const pulse = useCallback(() => {
@@ -162,21 +184,27 @@ export const useParticleOrb = ({
     };
 
     /** 입자를 x 순서로 줄 세워 아이콘 자리에 배정해요. 랜딩의 morph 배정과 같아 가까운 자리로 자연스럽게 흘러요. */
-    const assignShape = (shape: "mic" | "arrow") => {
+    const assignShape = (shape: Exclude<ParticleOrbShape, "cloud">) => {
+      const isBubble = shape === "bubble" || shape === "typing";
       const targets = sampleShapeTargets({
-        draw: shape === "mic" ? drawMic : drawArrow,
-        size: paramsRef.current.radius * 2 * (shape === "mic" ? MIC_SHAPE_SCALE : 1.1),
+        draw: shape === "mic" ? drawMic : shape === "arrow" ? drawArrow : drawBubble,
+        size: paramsRef.current.radius * 2 * (shape === "mic" ? MIC_SHAPE_SCALE : isBubble ? 1.25 : 1.1),
         step: 1 / 3,
       });
       if (!targets.length) return;
-      const order = particles.map((_, i) => i).sort((a, b) => particles[a].x - particles[b].x);
+      // 말풍선은 윤곽을 맡는 입자와 점 세 개를 맡는 입자로 나눠요
+      const members = isBubble ? particles.filter((p) => p.seed < BUBBLE_OUTLINE_SHARE) : particles;
+      particles.forEach((p) => {
+        p.dot = isBubble && p.seed >= BUBBLE_OUTLINE_SHARE ? Math.min(2, Math.floor(((p.seed - BUBBLE_OUTLINE_SHARE) / (1 - BUBBLE_OUTLINE_SHARE)) * 3)) : -1;
+      });
+      const order = members.map((_, i) => i).sort((a, b) => members[a].x - members[b].x);
       const targetOrder = targets.map((_, i) => i).sort((a, b) => targets[a].x - targets[b].x);
-      order.forEach((particleIndex, rank) => {
-        const particle = particles[particleIndex];
+      order.forEach((memberIndex, rank) => {
+        const particle = members[memberIndex];
         const target = targets[targetOrder[Math.floor((rank * targets.length) / order.length)]];
         particle.micX = target.x + (Math.random() - 0.5) * 0.2;
         particle.micY = target.y + (Math.random() - 0.5) * 0.2;
-        particle.micBucket = particle.seed < 0.8 ? 0 : 1;
+        particle.micBucket = particle.seed < 0.8 * BUBBLE_OUTLINE_SHARE || !isBubble ? 0 : 1;
       });
     };
 
@@ -195,12 +223,27 @@ export const useParticleOrb = ({
       const isRecording = nextTone === "recording";
 
       if (nextShape !== "cloud") {
-        if (assignedShape !== nextShape) {
+        // 말풍선과 입력 중은 같은 자리라 서로 바뀔 때 다시 배정하지 않아요
+        const isBubble = nextShape === "bubble" || nextShape === "typing";
+        const assignKey = isBubble ? "bubble" : nextShape;
+        if (assignedShape !== assignKey) {
           assignShape(nextShape);
-          assignedShape = nextShape;
+          assignedShape = assignKey;
         }
         const wobble = reduced ? 0 : Math.sin(frame * 0.05) * 0.4;
+        const dotScale = (baseRadius * 2 * 1.25) / 24;
         particles.forEach((particle) => {
+          if (particle.dot >= 0) {
+            // 점 세 개: 가운데가 빽빽한 작은 구름. 입력 중이면 차례로 통통 튀어요
+            const dot = BUBBLE_DOTS[particle.dot];
+            const bounce = nextShape === "typing" && !reduced ? Math.max(0, Math.sin(frame * 0.16 - particle.dot * 0.9)) * 2.2 : 0;
+            particle.homeX = centerX + (dot.x - 12) * dotScale + particle.dotX * 1.4;
+            particle.homeY = centerY + (dot.y - 12) * dotScale + particle.dotY * 1.4 + wobble - bounce;
+            particle.depth = 1;
+            particle.edge = 0.5;
+            particle.bucket = 0;
+            return;
+          }
           particle.homeX = centerX + particle.micX;
           particle.homeY = centerY + particle.micY + wobble;
           particle.depth = 1;
@@ -314,7 +357,8 @@ export const useParticleOrb = ({
       context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
       context.clearRect(0, 0, width, height);
       drawHalo();
-      const palette = nextTone === "recording" ? paramsRef.current.recordingPalette : paramsRef.current.idlePalette;
+      const palette =
+        nextTone === "recording" ? paramsRef.current.recordingPalette : nextTone === "neutral" ? paramsRef.current.neutralPalette : paramsRef.current.idlePalette;
       buckets.forEach((bucket, index) => {
         context.fillStyle = palette[index];
         const scale = index === 5 ? 0.8 : 1;

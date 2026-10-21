@@ -20,7 +20,7 @@ interface ParticleOrbProps {
   size: number;
   /** 입자가 모이는 모양. 올렸을 때 `mic`이나 `arrow`로 바꾸면 그 모양으로 모였다가 `cloud`로 돌리면 흩어져 돌아와요 */
   shape?: ParticleOrbShape;
-  /** `idle`은 녹음 전의 붉은빛, `recording`은 녹음 중의 청록빛이에요 */
+  /** `idle`은 녹음 전의 붉은빛, `recording`은 녹음 중의 청록빛, `neutral`은 어두운 바탕 위의 밝은 회색이에요 */
   tone?: ParticleOrbTone;
   /** 마이크 소리를 읽는 분석기. 녹음 톤에서 목소리만큼 입자가 파형으로 펼쳐져요 */
   analyser?: AnalyserNode | null;
@@ -37,8 +37,8 @@ const toRgb = (hex: string) =>
 /**
  * 랜딩의 입자로 만든 작은 구슬.
  *
- * 녹음 버튼처럼 소리를 다루는 자리에 둬요. 입자 수백 개가 구름 같은 구를 이루며 천천히 돌고 숨 쉬어요.
- * 올리면 마이크 모양으로 모이고, 누르면 파동이 퍼지고, 녹음 중엔 목소리가 들어올 때마다 파형으로 펼쳐져요.
+ * 독의 녹음 버튼과 채팅 버튼이 써요. 입자 수백 개가 구름 같은 구를 이루며 천천히 돌고 숨 쉬거나, 말풍선·마이크·화살표 모양으로 모여요.
+ * 녹음 버튼은 올리면 마이크로, 채팅 버튼은 올리면 점이 튀는 말풍선으로 바뀌어요. 누르면 파동이 퍼지고, 녹음 중엔 목소리가 들어올 때마다 파형으로 펼쳐져요.
  * 장식이라 낭독기에서는 읽지 않아요. 접근성 이름은 감싸는 버튼이 가져요.
  * 색은 테마의 Warning(녹음 전)과 Accent(녹음 중) 토큰을 써요.
  */
@@ -72,6 +72,15 @@ export default function ParticleOrb({
     `rgba(${hexToRgb(theme.neutral[0])},0.14)`,
   ];
 
+  const neutralPalette: ParticleOrbPalette = [
+    `rgba(${hexToRgb(theme.neutral[0])},0.95)`,
+    `rgba(${hexToRgb(theme.neutral[200])},0.85)`,
+    `rgba(${hexToRgb(theme.neutral[300])},0.8)`,
+    `rgba(${hexToRgb(theme.neutral[400])},0.7)`,
+    `rgba(${hexToRgb(theme.neutral[500])},0.6)`,
+    `rgba(${hexToRgb(theme.neutral[0])},0.14)`,
+  ];
+
   const { pulse } = useParticleOrb({
     canvasRef,
     radius,
@@ -81,6 +90,7 @@ export default function ParticleOrb({
     isActive,
     idlePalette,
     recordingPalette,
+    neutralPalette,
     haloRgb: hexToRgb(theme.sub.accent[500]),
   });
 

@@ -1,8 +1,11 @@
-/** 입자가 모이는 모양. `cloud`는 구름 같은 구슬, `mic`는 마이크 아이콘, `arrow`는 오른쪽 화살표예요. */
-export type ParticleOrbShape = "cloud" | "mic" | "arrow";
+/**
+ * 입자가 모이는 모양. `cloud`는 구름 같은 구슬, `mic`는 마이크 아이콘, `arrow`는 오른쪽 화살표,
+ * `bubble`은 점 세 개가 든 말풍선, `typing`은 그 점들이 입력 중처럼 튀는 말풍선이에요.
+ */
+export type ParticleOrbShape = "cloud" | "mic" | "arrow" | "bubble" | "typing";
 
-/** 색 톤. `idle`은 녹음 전의 붉은빛, `recording`은 녹음 중의 청록빛이에요. */
-export type ParticleOrbTone = "idle" | "recording";
+/** 색 톤. `idle`은 녹음 전의 붉은빛, `recording`은 녹음 중의 청록빛, `neutral`은 어두운 바탕 위의 밝은 회색이에요. */
+export type ParticleOrbTone = "idle" | "recording" | "neutral";
 
 /** 밝은 면부터 그늘까지 다섯 단계와 뒤쪽 면 색. 순서대로 `rgba()` 문자열이에요. */
 export type ParticleOrbPalette = [string, string, string, string, string, string];
