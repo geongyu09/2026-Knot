@@ -40,6 +40,26 @@ const preview: Preview = {
       // 공통 컴포넌트를 맨 위에 두고, 도메인은 이름순으로 보여 줘요
       storySort: { order: ["Shared", ["*", "Layout"], "*"] },
     },
+    // 반응형 기준(RESP)의 시안 크기로 바로 바꿔 볼 수 있게 해요. 툴바의 화면 크기 메뉴에서 골라요
+    viewport: {
+      options: {
+        mobile360: {
+          name: "모바일 360 (가장 좁은 폭)",
+          styles: { width: "360px", height: "780px" },
+          type: "mobile",
+        },
+        mobile390: {
+          name: "모바일 390",
+          styles: { width: "390px", height: "844px" },
+          type: "mobile",
+        },
+        tablet834: {
+          name: "태블릿 834",
+          styles: { width: "834px", height: "1194px" },
+          type: "tablet",
+        },
+      },
+    },
   },
   // vitest(server.ts)와 같은 기본 핸들러(항상 로그인된 상태)를 초기 핸들러로 깔아요.
   // 초기 핸들러는 스토리 사이 초기화에도 남고, 스토리의 parameters.msw.handlers가 그 앞에서 덮어요
