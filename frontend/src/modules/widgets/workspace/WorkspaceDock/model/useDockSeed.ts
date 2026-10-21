@@ -12,6 +12,7 @@ import {
   type PulseWave,
 } from "@utils/particleMotion";
 import { sampleBubbleTargets, samplePillTargets, type BubbleTarget } from "@utils/sampleBubbleTargets";
+import { measureAnalyserLevel } from "@utils/measureAudioLevel";
 import { sampleShapeTargets } from "@utils/sampleShapeTargets";
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 
@@ -95,14 +96,6 @@ interface UseDockSeedParams {
 
 /** 독 자리의 세로 가운데가 캔버스 아래에서 떨어진 거리(px). 접힌 독 높이의 절반이에요 */
 const SLOT_CENTER_BOTTOM = 30;
-
-const measureRms = (analyser: AnalyserNode) => {
-  const samples = new Float32Array(analyser.fftSize);
-  analyser.getFloatTimeDomainData(samples);
-  let sum = 0;
-  for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
-  return Math.min(1, Math.sqrt(sum / samples.length) * 6);
-};
 
 /**
  * 독이 접혀 있을 때 독 자리에 떠 있는 입자를 그려요.
@@ -347,7 +340,7 @@ export const useDockSeed = ({
 
       const { isOpen: open, tone: nextTone, analyser: node, isActive: active, hasRecordSide: withRecord, palette: colors } = paramsRef.current;
       const isWave = nextTone === "recording";
-      const measured = node && active && isWave ? measureRms(node) : 0;
+      const measured = node && active && isWave ? measureAnalyserLevel(node) : 0;
       level = smoothLevel({ previous: level, next: measured, attack: 0.35, release: 0.08 });
       blend += ((open ? 1 : 0) - blend) * 0.2;
       if (blend < 0.01) blend = 0;

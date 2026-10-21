@@ -1,4 +1,5 @@
 import { prefersReducedMotion, smoothLevel, stepSpring, waveAmplitude } from "@utils/particleMotion";
+import { measureAnalyserLevel } from "@utils/measureAudioLevel";
 import { sampleShapeTargets } from "@utils/sampleShapeTargets";
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 
@@ -66,14 +67,6 @@ const TILT = 0.38;
 /** 목소리가 이만큼이면 입자 전부가 파형으로 나가요 */
 const WAVE_SHARE_PER_LEVEL = 1.7;
 const MAX_WAVE_SHARE = 0.9;
-
-const measureRms = (analyser: AnalyserNode) => {
-  const samples = new Float32Array(analyser.fftSize);
-  analyser.getFloatTimeDomainData(samples);
-  let sum = 0;
-  for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
-  return Math.min(1, Math.sqrt(sum / samples.length) * 6);
-};
 
 const createParticles = (count: number): OrbParticle[] =>
   Array.from({ length: count }, (_, index) => ({
@@ -269,7 +262,7 @@ export const useParticleOrb = ({
       resize();
       const { analyser: node, isActive: active, tone: nextTone, shape: nextShape } = paramsRef.current;
       hover += ((nextShape === "mic" ? 1 : 0) - hover) * 0.12;
-      const measured = node && active && nextTone === "recording" ? measureRms(node) : 0;
+      const measured = node && active && nextTone === "recording" ? measureAnalyserLevel(node) : 0;
       level = smoothLevel({ previous: level, next: measured, attack: 0.35, release: 0.06 });
       placeParticles();
 
