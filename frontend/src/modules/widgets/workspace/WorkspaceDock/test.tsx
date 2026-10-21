@@ -928,6 +928,81 @@ describe("WorkspaceDock", () => {
         expect(router.state.location.pathname).toBe(HOME_PATH);
       });
 
+      describe("시작 요청이 네트워크 문제로 실패하면 (ERR-18)", () => {
+        const NETWORK_ERROR = "연결이 잠시 끊겼어요";
+
+        const failByNetwork = () => HttpResponse.error();
+
+        it("마이크를 끄고 연결이 끊겼다는 모달을 띄운 뒤 제자리에 남는다", async () => {
+          respondStart(failByNetwork);
+          const { router } = renderDock();
+
+          await clickMic();
+
+          const dialog = await screen.findByRole("dialog", {
+            name: NETWORK_ERROR,
+          });
+          expect(
+            within(dialog).getByText(
+              "네트워크 상태를 확인하고 다시 시도해 주세요.",
+            ),
+          ).toBeInTheDocument();
+          expect(useRecordingStore.getState().status).toBe("idle");
+          expect(useRecordingStore.getState().analyser).toBeNull();
+          expect(router.state.location.pathname).toBe(HOME_PATH);
+        });
+
+        it("다시 시도는 같은 시작 증명으로 다시 보내, 열리면 녹음 화면으로 간다", async () => {
+          const requestIds = respondStart(
+            failByNetwork,
+            session("RECORDING", 201),
+          );
+          const { router } = renderDock();
+          await clickMic();
+          await screen.findByRole("dialog", { name: NETWORK_ERROR });
+
+          await act(async () => {
+            fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
+          });
+
+          await waitFor(() =>
+            expect(router.state.location.pathname).toBe(RECORDING_PATH),
+          );
+          expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+          expect(requestIds).toHaveLength(2);
+          expect(requestIds[1]).toBe(requestIds[0]);
+        });
+
+        it("닫기는 모달만 닫고 제자리에 남는다", async () => {
+          const requestIds = respondStart(failByNetwork);
+          const { router } = renderDock();
+          await clickMic();
+          await screen.findByRole("dialog", { name: NETWORK_ERROR });
+
+          fireEvent.click(screen.getByRole("button", { name: "닫기" }));
+
+          expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+          expect(router.state.location.pathname).toBe(HOME_PATH);
+          expect(requestIds).toHaveLength(1);
+        });
+
+        it("서버 오류(500)는 네트워크 문제가 아니라 모달을 띄우지 않는다 (근거 없음)", async () => {
+          const requestIds = respondStart(
+            () => new HttpResponse(null, { status: 500 }),
+          );
+          const { router } = renderDock();
+
+          await clickMic();
+
+          await waitFor(() => expect(requestIds).toHaveLength(1));
+          await waitFor(() =>
+            expect(useRecordingStore.getState().analyser).toBeNull(),
+          );
+          expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+          expect(router.state.location.pathname).toBe(HOME_PATH);
+        });
+      });
+
       it("시작 요청이 오가는 중에 다시 눌러도 한 번만 보내고, 응답 뒤에는 다시 누를 수 있다", async () => {
         let respondFirst = () => {};
         const requestIds = respondStart(async () => {
@@ -1087,7 +1162,9 @@ describe("WorkspaceDock", () => {
 
         expandDock();
 
-        expect(screen.getByRole("img", { name: "녹음 중" })).toBeInTheDocument();
+        expect(
+          screen.getByRole("img", { name: "녹음 중" }),
+        ).toBeInTheDocument();
         expect(screen.getByText(OTHER_TAB_ELAPSED_TIME)).toBeInTheDocument();
         expect(
           screen.queryByRole("button", { name: "회의 녹음 시작" }),

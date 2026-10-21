@@ -32,6 +32,8 @@ const WORKSPACE_HOME_PATH = getRouterPath({
 const DISPLAY_INVITE_LINK = `/invite/${expected.linkToken}`;
 const ELSEWHERE_PATH = "/elsewhere";
 const COPIED_DURATION_MS = 2000;
+// 홈의 팀원 초대 카드(ERR-09)와 같은 문구예요
+const LOAD_FAILED_TEXT = "초대 링크를 불러오지 못했어요. 다시 시도해 주세요.";
 
 const writeText = vi.fn<(text: string) => Promise<void>>();
 
@@ -270,6 +272,82 @@ describe("WorkspaceInviteCard", () => {
       await goBack(router);
 
       expect(router.state.location.pathname).toBe(ELSEWHERE_PATH);
+    },
+  );
+
+  it.each([
+    ["서버 오류(500)", () => new HttpResponse(null, { status: 500 })],
+    ["요청 제한(429)", () => new HttpResponse(null, { status: 429 })],
+    ["네트워크 오류", () => HttpResponse.error()],
+  ])(
+    "%s로 초대를 불러오지 못하면 제목과 다음은 두고, 코드와 링크 대신 실패 안내와 다시 시도를 보여준다",
+    async (_, respond) => {
+      mockServer.use(
+        http.post(`*${WORKSPACE_INVITATIONS_API_PATH(WORKSPACE_ID)}`, respond),
+      );
+      renderCard();
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        LOAD_FAILED_TEXT,
+      );
+      expect(
+        screen.getByRole("heading", { name: "팀원을 초대하세요" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /^참여 코드/ }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("textbox", { name: "초대 링크" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "다시 시도" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "다음" })).toBeEnabled();
+    },
+  );
+
+  it("다시 시도를 누르면 초대만 다시 받아 코드와 링크를 보여준다", async () => {
+    let attempts = 0;
+    mockServer.use(
+      http.post(`*${WORKSPACE_INVITATIONS_API_PATH(WORKSPACE_ID)}`, () => {
+        attempts += 1;
+        if (attempts === 1) return new HttpResponse(null, { status: 500 });
+
+        return HttpResponse.json(workspaceInvitationResponse);
+      }),
+    );
+    renderCard();
+
+    await click(await screen.findByRole("button", { name: "다시 시도" }));
+
+    expect(await waitForInvitation()).toBeInTheDocument();
+    expect(getLinkInput()).toHaveValue(DISPLAY_INVITE_LINK);
+    expect(screen.queryByText(LOAD_FAILED_TEXT)).not.toBeInTheDocument();
+    expect(attempts).toBe(2);
+  });
+
+  it.each([401, 403, 404])(
+    "초대 조회가 %i면 이동하는 동안 실패 안내를 그리지 않는다",
+    async (status) => {
+      overrideInvitationStatus(status);
+      // 이동하면 카드가 사라져, 간 뒤에는 안내가 있었는지 알 수 없어요. 가기 전까지 그려진 화면을 모두 지켜봐요
+      let isAlertShown = false;
+      const observer = new MutationObserver(() => {
+        if (screen.queryByRole("alert") !== null) isAlertShown = true;
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      const { router } = renderCard();
+
+      try {
+        await waitFor(() => {
+          expect(router.state.location.pathname).not.toMatch(/invite/);
+        });
+      } finally {
+        observer.disconnect();
+      }
+
+      expect(isAlertShown).toBe(false);
     },
   );
 });

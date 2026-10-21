@@ -21,6 +21,8 @@ interface MemberSelectDialogProps extends Omit<
   description: ReactNode;
   /** 고를 수 있는 멤버 목록. 5명이 넘으면 목록 안에서 스크롤해요 */
   members: MemberSelectDialogMember[];
+  /** 멤버 목록 자리에 대신 둘 안내. 있으면 목록을 그리지 않아요. 예: 목록을 불러오지 못했을 때의 `InlineError` */
+  memberListNotice?: ReactNode;
   /** 고른 멤버의 ID. 아직 고르지 않았으면 `null`이고, 그동안 주 버튼은 누를 수 없어요 */
   selectedMemberId: number | null;
   /** 멤버를 골랐을 때 할 일 */
@@ -48,6 +50,7 @@ export default function MemberSelectDialog({
   title,
   description,
   members,
+  memberListNotice,
   selectedMemberId,
   onSelectMember,
   cancelLabel,
@@ -67,28 +70,32 @@ export default function MemberSelectDialog({
         <Title id={titleId}>{title}</Title>
         <Description>{description}</Description>
       </Head>
-      <MemberList role="radiogroup" aria-labelledby={titleId}>
-        {members.map(({ id: memberId, name }) => {
-          const isSelected = memberId === selectedMemberId;
+      {memberListNotice ? (
+        <MemberListNoticeWrapper>{memberListNotice}</MemberListNoticeWrapper>
+      ) : (
+        <MemberList role="radiogroup" aria-labelledby={titleId}>
+          {members.map(({ id: memberId, name }) => {
+            const isSelected = memberId === selectedMemberId;
 
-          return (
-            <MemberItem key={memberId} $isSelected={isSelected}>
-              {/* 이름이 바로 옆에 있어 아바타는 읽지 않아요 */}
-              <AvatarWrapper aria-hidden>
-                <Avatar label={name} name={name} size={32} />
-              </AvatarWrapper>
-              <MemberName>{name}</MemberName>
-              <HiddenRadio
-                type="radio"
-                name={id}
-                checked={isSelected}
-                onChange={() => onSelectMember(memberId)}
-              />
-              {isSelected ? <SelectedRadio size={20} /> : <EmptyRadio />}
-            </MemberItem>
-          );
-        })}
-      </MemberList>
+            return (
+              <MemberItem key={memberId} $isSelected={isSelected}>
+                {/* 이름이 바로 옆에 있어 아바타는 읽지 않아요 */}
+                <AvatarWrapper aria-hidden>
+                  <Avatar label={name} name={name} size={32} />
+                </AvatarWrapper>
+                <MemberName>{name}</MemberName>
+                <HiddenRadio
+                  type="radio"
+                  name={id}
+                  checked={isSelected}
+                  onChange={() => onSelectMember(memberId)}
+                />
+                {isSelected ? <SelectedRadio size={20} /> : <EmptyRadio />}
+              </MemberItem>
+            );
+          })}
+        </MemberList>
+      )}
       <Footer>
         <Actions>
           <Button size="md" variant="outline" isFullWidth onClick={onCancel}>
@@ -150,6 +157,12 @@ const MemberList = styled.div`
   gap: 0.25rem; /* 4px */
   max-height: 17.25rem; /* 276px — 5명(행 52px, 간격 4px)까지 보이고 넘치면 스크롤해요 */
   overflow-y: auto;
+`;
+
+/** 목록이 있던 자리의 가운데에 안내를 놓아요 */
+const MemberListNoticeWrapper = styled.div`
+  display: flex;
+  justify-content: center;
 `;
 
 const MemberItem = styled.label<{ $isSelected: boolean }>`

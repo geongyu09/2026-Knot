@@ -12,6 +12,7 @@ import { ThemeProvider } from "@emotion/react";
 import WorkspaceLayout from "@pages/_layout/WorkspaceLayout";
 import AppProviders from "@provider/AppProviders";
 import { DialogProvider } from "@provider/context/dialogContext";
+import { ToastProvider } from "@provider/context/toastContext";
 import { setupSentryEvents } from "@provider/sentry/mock";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
@@ -51,9 +52,11 @@ const renderRecordingHeartbeat = () => {
     [
       {
         element: (
-          <RecordingHeartbeat>
-            <Outlet />
-          </RecordingHeartbeat>
+          <ToastProvider>
+            <RecordingHeartbeat>
+              <Outlet />
+            </RecordingHeartbeat>
+          </ToastProvider>
         ),
         children: [
           { path: PATH_ROUTE.WORKSPACE_HOME, element: <p>홈 화면</p> },
@@ -69,11 +72,13 @@ const renderRecordingHeartbeat = () => {
   });
 
   render(
-    <QueryClientProvider client={queryClient}>
-      <DialogProvider>
-        <RouterProvider router={router} />
-      </DialogProvider>
-    </QueryClientProvider>,
+    <ThemeProvider theme={theme}>
+      <QueryClientProvider client={queryClient}>
+        <DialogProvider>
+          <RouterProvider router={router} />
+        </DialogProvider>
+      </QueryClientProvider>
+    </ThemeProvider>,
   );
 
   return { router };
@@ -215,35 +220,52 @@ describe("RecordingHeartbeat", () => {
     expect(requests).toEqual([]);
   });
 
-  // 업무 403은 CSRF 토큰과 관계없어 httpClient가 토큰을 새로 받아 다시 보내지 않아요
-  it.each([
-    [500, "INTERNAL_SERVER_ERROR", ["heartbeat"]],
-    [403, "RECORDING_CONTROL_DENIED", ["heartbeat"]],
-  ])(
-    "신호가 실패(%i %s)하면 곧바로 다시 보내지 않고 녹음을 이어 가다 다음 주기에 보낸다",
-    async (status, code, sent) => {
-      respondHeartbeatWithError(status, code);
-      const requests = collectRequests();
-      await startRecording();
-      const { router } = renderRecordingHeartbeat();
+  it("신호가 실패(500)하면 곧바로 다시 보내지 않고 녹음을 이어 가다 다음 주기에 보낸다", async () => {
+    respondHeartbeatWithError(500, "INTERNAL_SERVER_ERROR");
+    const requests = collectRequests();
+    await startRecording();
+    const { router } = renderRecordingHeartbeat();
 
-      passHeartbeatInterval();
+    passHeartbeatInterval();
 
-      await waitFor(() =>
-        expect(console.error).toHaveBeenCalledWith(
-          "녹음 생존 신호 요청에 실패했어요",
-          expect.anything(),
-        ),
-      );
-      expect(requests).toEqual(sent);
-      expect(useRecordingStore.getState().status).toBe("recording");
-      expect(router.state.location.pathname).toBe(RECORDING_PATH);
+    await waitFor(() =>
+      expect(console.error).toHaveBeenCalledWith(
+        "녹음 생존 신호 요청에 실패했어요",
+        expect.anything(),
+      ),
+    );
+    expect(requests).toEqual(["heartbeat"]);
+    expect(useRecordingStore.getState().status).toBe("recording");
+    expect(router.state.location.pathname).toBe(RECORDING_PATH);
 
-      passHeartbeatInterval();
+    passHeartbeatInterval();
 
-      await waitFor(() => expect(requests).toEqual([...sent, ...sent]));
-    },
-  );
+    await waitFor(() => expect(requests).toEqual(["heartbeat", "heartbeat"]));
+  });
+
+  it("이 탭의 녹음 제어가 거절(403 RECORDING_CONTROL_DENIED)되면 녹음을 닫고 홈으로 가며 주의 토스트를 띄우고, 다음 주기부터 신호를 보내지 않는다", async () => {
+    respondHeartbeatWithError(403, "RECORDING_CONTROL_DENIED");
+    const requests = collectRequests();
+    await startRecording();
+    const { router } = renderRecordingHeartbeat();
+
+    passHeartbeatInterval();
+
+    await waitFor(() => expect(router.state.location.pathname).toBe(HOME_PATH));
+    expect(
+      await screen.findByText(TOAST_MESSAGES.RECORDING_CONTROL_LOST.message),
+    ).toBeInTheDocument();
+    expect(useRecordingStore.getState().status).toBe("idle");
+    expect(getRecordingControlProof()).toBeNull();
+    // 오디오를 올리지 않아요. 올릴 권한도 이 탭에 없어요. 업무 403이라 CSRF 토큰을 새로 받아 다시 보내지도 않아요
+    expect(requests).toEqual(["heartbeat"]);
+
+    passHeartbeatInterval();
+    passHeartbeatInterval();
+
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(requests).toEqual(["heartbeat"]);
+  });
 
   it("서버가 끝낸 녹음(ENDED)이면 종료 요청 없이 오디오를 올리고 증명을 지운 뒤 홈으로 간다", async () => {
     respondHeartbeat(() =>
@@ -259,6 +281,56 @@ describe("RecordingHeartbeat", () => {
     expect(requests).toEqual(["heartbeat", ...UPLOAD_REQUESTS]);
     expect(useRecordingStore.getState().status).toBe("idle");
     expect(getRecordingControlProof()).toBeNull();
+  });
+
+  it("탭이 열려 있는 동안 서버가 연결 끊김으로 끝낸 녹음(ENDED, CONNECTION_EXPIRED)이면 오디오를 올린 뒤 홈으로 가며 주의 토스트로 알린다 (STT-R26)", async () => {
+    respondHeartbeat(() =>
+      HttpResponse.json({
+        ...recordingHeartbeatResponse,
+        status: "ENDED",
+        endReason: "CONNECTION_EXPIRED",
+      }),
+    );
+    const requests = collectRequests();
+    await startRecording();
+    const { router } = renderRecordingHeartbeat();
+
+    passHeartbeatInterval();
+
+    await waitFor(() => expect(router.state.location.pathname).toBe(HOME_PATH));
+    expect(requests).toEqual(["heartbeat", ...UPLOAD_REQUESTS]);
+    expect(
+      await screen.findByText(TOAST_MESSAGES.RECORDING_CONNECTION_LOST.message),
+    ).toBeInTheDocument();
+  });
+
+  it("연결 끊김으로 끝난 녹음의 오디오를 끝내 올리지 못하면 연결 끊김 대신 업로드 실패로 알린다", async () => {
+    respondHeartbeat(() =>
+      HttpResponse.json({
+        ...recordingHeartbeatResponse,
+        status: "ENDED",
+        endReason: "CONNECTION_EXPIRED",
+      }),
+    );
+    mockServer.use(
+      http.post(
+        "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/audio-upload-url",
+        () => HttpResponse.json({ code: "INVALID_REQUEST" }, { status: 400 }),
+      ),
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await startRecording();
+    const { router } = renderRecordingHeartbeat();
+
+    passHeartbeatInterval();
+
+    await waitFor(() => expect(router.state.location.pathname).toBe(HOME_PATH));
+    expect(
+      await screen.findByText(TOAST_MESSAGES.RECORDING_UPLOAD_FAILED.message),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(TOAST_MESSAGES.RECORDING_CONNECTION_LOST.message),
+    ).not.toBeInTheDocument();
   });
 
   it.each([
@@ -439,6 +511,10 @@ describe("RecordingHeartbeat", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe(HOME_PATH));
     expect(requests).toEqual(["heartbeat", ...UPLOAD_REQUESTS]);
     expect(useRecordingStore.getState().status).toBe("idle");
+    // 연결이 끊긴 게 아니라 연결 끊김 안내를 띄우지 않아요
+    expect(
+      screen.queryByText(TOAST_MESSAGES.RECORDING_CONNECTION_LOST.message),
+    ).not.toBeInTheDocument();
   });
 
   it("일시정지 중에는 2시간 신호를 보내지 않고, 이어서 녹음하면 남은 시간 뒤에 보낸다", async () => {
@@ -523,6 +599,92 @@ describe("RecordingHeartbeat", () => {
     await waitPastMaxDuration();
     expect(requests).toEqual(["heartbeat"]);
     expect(useRecordingStore.getState().status).toBe("recording");
+  });
+
+  describe("최대 녹음 시간 15분 전 안내 (STT-R15)", () => {
+    const WARNING_BEFORE_MS = 15 * 60 * 1000;
+    const WARNING = TOAST_MESSAGES.RECORDING_TIME_LIMIT_APPROACHING.message;
+    /** 주의 토스트가 떠 있는 시간과 사라지는 시간 */
+    const CAUTION_TOAST_MS = 8000;
+    const TOAST_LEAVE_MS = 250;
+
+    beforeEach(() => {
+      // 토스트가 떠 있는 시간까지 세야 해서 시계를 모두 가짜로 돌려요. 10초 주기 신호가 나가기 전에 확인을 마쳐요
+      vi.useFakeTimers({
+        toFake: [
+          "setTimeout",
+          "clearTimeout",
+          "setInterval",
+          "clearInterval",
+          "Date",
+        ],
+      });
+    });
+
+    const advance = (ms: number) => {
+      act(() => {
+        vi.advanceTimersByTime(ms);
+      });
+    };
+
+    it("남은 시간이 15분에 닿으면 생존 신호를 보내지 않고 주의 토스트를 띄운다", async () => {
+      const requests = collectRequests();
+      await startRecording();
+      renderRecordingHeartbeat();
+      leaveUntilMaxDuration(WARNING_BEFORE_MS + 1000);
+
+      advance(999);
+      expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
+
+      advance(1);
+      expect(screen.getByText(WARNING)).toBeInTheDocument();
+      expect(requests).toEqual([]);
+    });
+
+    it("일시정지 중에는 띄우지 않는다", async () => {
+      await startRecording();
+      renderRecordingHeartbeat();
+      await act(() => useRecordingStore.getState().pauseRecording());
+      leaveUntilMaxDuration(WARNING_BEFORE_MS + 1000);
+
+      advance(2000);
+
+      expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
+    });
+
+    it("녹음한 시간이 다시 맞춰져 15분 전을 또 지나도 한 녹음에 한 번만 띄운다", async () => {
+      await startRecording();
+      renderRecordingHeartbeat();
+      leaveUntilMaxDuration(WARNING_BEFORE_MS + 1000);
+      advance(1000);
+      expect(screen.getByText(WARNING)).toBeInTheDocument();
+
+      // 서버 시간이 조금 늦어 15분 전보다 앞선 시간으로 다시 맞춰진 상황이에요
+      leaveUntilMaxDuration(WARNING_BEFORE_MS + 1000);
+      advance(1000);
+
+      // 다시 띄웠다면 떠 있는 시간을 처음부터 다시 세서 아직 남아 있어요
+      advance(CAUTION_TOAST_MS - 1000);
+      advance(TOAST_LEAVE_MS);
+      expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
+    });
+
+    it("새로 시작한 녹음에서는 다시 띄운다", async () => {
+      await startRecording();
+      renderRecordingHeartbeat();
+      leaveUntilMaxDuration(WARNING_BEFORE_MS + 1000);
+      advance(1000);
+      advance(CAUTION_TOAST_MS);
+      advance(TOAST_LEAVE_MS);
+      expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
+
+      act(() => useRecordingStore.getState().discardRecording());
+      await startRecording(expected.recordingId + 1);
+      leaveUntilMaxDuration(WARNING_BEFORE_MS + 1000);
+      advance(1000);
+
+      expect(screen.getByText(WARNING)).toBeInTheDocument();
+    });
   });
 
   // 10초마다 실패할 때마다 보내면 장애 한 번이 이벤트 수십 건이 돼 심각도를 가늠할 수 없어요

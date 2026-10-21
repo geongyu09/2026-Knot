@@ -4,13 +4,13 @@ import {
   GetWorkspacesResponseDto,
 } from "@api/dto/workspace";
 import { mockServer } from "@api/mock/server";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import {
   ownershipTransferCandidatesResponse,
   workspaceDetailResponse,
   workspacesResponse,
 } from "@api/mock/responses/workspace";
 import type { WorkspaceDetailResponse } from "@api/mock/types/workspace";
-import { TOAST_MESSAGES } from "@constants/toastMessages";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
 import { ToastProvider } from "@provider/context/toastContext";
@@ -54,6 +54,10 @@ const TRANSFER_DIALOG = "누구에게 owner를 넘길까요?";
 const DELETE_DIALOG = "워크스페이스를 삭제할까요?";
 const LEAVE_API = "*/api/v1/workspaces/:workspaceId/members/me";
 const TRANSFER_API = "*/api/v1/workspaces/:workspaceId/ownership-transfers";
+const CANDIDATES_API =
+  "*/api/v1/workspaces/:workspaceId/ownership-transfer-candidates";
+const CANDIDATES_LOAD_FAILED_TEXT =
+  "멤버 목록을 불러오지 못했어요. 다시 시도해 주세요.";
 const expectedWorkspace = new GetWorkspaceResponseDto(workspaceDetailResponse);
 const { candidates } = new GetOwnershipTransferCandidatesResponseDto(
   ownershipTransferCandidatesResponse,
@@ -284,7 +288,30 @@ describe("WorkspaceSwitcher", () => {
       ).toBeInTheDocument();
     });
 
-    it("종료 요청이 실패하면 이동하지 않고 녹음을 이어 간다", async () => {
+    it("끝내고 이동에서 오디오를 끝내 올리지 못하면 그대로 이동하며 주의 토스트로 알린다", async () => {
+      mockServer.use(
+        http.post(
+          "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/audio-upload-url",
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      );
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      await startRecording();
+      const { router } = renderSwitcher();
+      await openMenu();
+      fireEvent.click(await findWorkspaceItem(otherWorkspace.name));
+
+      fireEvent.click(screen.getByRole("button", { name: "끝내고 이동" }));
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(OTHER_HOME_PATH),
+      );
+      expect(
+        await screen.findByText(TOAST_MESSAGES.RECORDING_UPLOAD_FAILED.message),
+      ).toBeInTheDocument();
+    });
+
+    it("종료 요청이 실패하면 이동하지 않고 녹음을 이어 가며 오류 토스트로 알린다 (ERR-21)", async () => {
       mockServer.use(
         http.post(
           "*/api/v1/workspaces/:workspaceId/recordings/:recordingId/end",
@@ -304,6 +331,9 @@ describe("WorkspaceSwitcher", () => {
       );
       expect(useRecordingStore.getState().status).toBe("recording");
       expect(router.state.location.pathname).toBe(HOME_PATH);
+      expect(
+        await screen.findByText(TOAST_MESSAGES.RECORDING_END_FAILED.message),
+      ).toBeInTheDocument();
     });
 
     it("취소를 누르면 녹음과 화면을 그대로 둔다", async () => {
@@ -426,6 +456,61 @@ describe("WorkspaceSwitcher", () => {
       expect(
         within(dialog).getByRole("button", { name: "넘기고 나가기" }),
       ).toBeDisabled();
+    });
+
+    it.each([
+      ["서버 오류(500)", () => new HttpResponse(null, { status: 500 })],
+      ["네트워크 오류", () => HttpResponse.error()],
+    ])(
+      "%s로 넘길 멤버를 불러오지 못하면 창 안의 목록 자리에 실패 안내와 다시 시도를 보여준다",
+      async (_, respond) => {
+        mockServer.use(http.get(CANDIDATES_API, respond));
+        renderSwitcher();
+        await clickLeave();
+
+        const dialog = screen.getByRole("dialog", { name: TRANSFER_DIALOG });
+        expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+          CANDIDATES_LOAD_FAILED_TEXT,
+        );
+        expect(
+          within(dialog).getByRole("button", { name: "다시 시도" }),
+        ).toBeInTheDocument();
+        expect(within(dialog).queryByRole("radio")).not.toBeInTheDocument();
+        expect(
+          within(dialog).getByRole("button", { name: "넘기고 나가기" }),
+        ).toBeDisabled();
+        // 넘길 멤버를 못 받아도 삭제하기와 취소는 그대로 쓸 수 있어요
+        expect(
+          within(dialog).getByRole("button", { name: "워크스페이스 삭제하기" }),
+        ).toBeInTheDocument();
+      },
+    );
+
+    it("넘길 멤버의 다시 시도를 누르면 멤버만 다시 받아 목록을 보여준다", async () => {
+      let attempts = 0;
+      mockServer.use(
+        http.get(CANDIDATES_API, () => {
+          attempts += 1;
+          if (attempts === 1) return new HttpResponse(null, { status: 500 });
+
+          return HttpResponse.json(ownershipTransferCandidatesResponse);
+        }),
+      );
+      renderSwitcher();
+      await clickLeave();
+      const dialog = screen.getByRole("dialog", { name: TRANSFER_DIALOG });
+
+      fireEvent.click(
+        await within(dialog).findByRole("button", { name: "다시 시도" }),
+      );
+
+      expect(
+        await within(dialog).findByRole("radio", {
+          name: firstMember.nickname,
+        }),
+      ).toBeInTheDocument();
+      expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
+      expect(attempts).toBe(2);
     });
 
     it("멤버를 고르면 넘기고 나가기를 누를 수 있다", async () => {

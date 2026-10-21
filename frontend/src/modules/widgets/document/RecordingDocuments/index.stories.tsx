@@ -88,6 +88,8 @@ const failAudioSave = (failureCode: string) => ({
  * - PCM 조각 녹음은 끝낸 뒤 서버가 조각을 모아 저장해요. 전사가 시작되기 전에는 녹음 상태와 함께 저장 상태도 3초마다 확인하고, 저장 중에는 정리 중이에요.
  *   저장된 음성이 없어 실패했으면 문서로 만들 내용이 없을 때와 같은 화면이에요. 그 밖의 이유로 실패했거나 폐기됐으면 안내 없이 워크스페이스 홈으로 보내요.
  *   WebM 녹음은 저장 상태가 없다고(409) 답해 와서 한 번만 확인하고 더 확인하지 않아요.
+ *   저장 상태를 확인하지 못하면(서버 · 네트워크 문제) 정리 중 대신 그 자리에 「녹음 저장 상태를 확인하지 못했어요」와 「다시 시도」를 둬요.
+ *   이때도 3초마다 계속 확인하고, 저장 상태를 다시 받으면 정리 중으로 돌아가요. 「다시 시도」는 저장 상태만 바로 다시 확인해요.
  * - 녹음 상태를 불러오지 못하면 「문서를 불러오지 못했어요」와 「다시 시도」를 보여 줘요.
  *   이때는 저절로 다시 확인하지 않고, 「다시 시도」를 누르면 다시 확인해요.
  * - 정리 중에 녹음이 없어지거나 볼 수 없게 되어도 「문서를 불러오지 못했어요」로 바꾸고 더 확인하지 않아요.
@@ -269,6 +271,27 @@ export const AudioSaveNoContent: Story = {
 export const AudioSaveFailed: Story = {
   parameters: {
     msw: { handlers: failAudioSave("AUDIO_STORAGE_UNAVAILABLE") },
+  },
+};
+
+/**
+ * PCM 조각 녹음을 끝낸 뒤 저장 상태를 확인하지 못할 때예요. 서버 오류와 네트워크 문제가 모두 이 모습이에요.
+ * 정리 중 화면이 끝없이 이어지지 않게, 그 자리에 확인하지 못했다는 안내와 「다시 시도」를 둬요. 이 스토리에서는 「다시 시도」를 눌러도 계속 실패해요.
+ */
+export const AudioSaveCheckFailed: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    msw: {
+      handlers: {
+        recording: http.get(RECORDING_REQUEST, () =>
+          HttpResponse.json(awaitingAudioSaveDetail),
+        ),
+        audioSave: http.get(
+          AUDIO_SAVE_REQUEST,
+          () => new HttpResponse(null, { status: 503 }),
+        ),
+      },
+    },
   },
 };
 

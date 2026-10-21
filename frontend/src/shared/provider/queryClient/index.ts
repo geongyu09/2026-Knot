@@ -27,6 +27,8 @@ export const queryClient = new QueryClient({
     },
   }),
   defaultOptions: {
+    // Query 오류는 Boundary로 넘기지 않아요(`throwOnError`를 켜지 않아요). Boundary가 앱 루트에만 있어 넘기면 앱 전체가 ERR-03으로 바뀌기 때문이에요.
+    // 한 영역만 실패하면 그 자리 안내(`InlineError` · `RetryNotice`)로, 화면 전체를 대신해야 하면 그 화면이 직접 에러 화면을 그려요(예: `useWorkspaceEntry`).
     queries: {
       // 4xx 오류에 대해서는 재시도 하지 않음
       retry: (failureCount, error) => {

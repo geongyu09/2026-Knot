@@ -52,7 +52,7 @@ const failCopy = () => {
  *   클립보드에 쓰지 못하면 버튼은 그대로 두고 오류 토스트 「복사하지 못했어요. 다시 시도해 주세요.」를 띄워요(ERR-08).
  * - 코드와 링크는 이 워크스페이스의 활성 초대에서 와요. 활성 초대가 없으면 이때 새로 발급돼요. 받기 전에는 복사할 수 없어요.
  * - 초대를 받지 못하면 로그인이 풀린 경우(401)는 로그인 화면으로, 멤버가 아니거나 없는 워크스페이스(403·404)는 워크스페이스 선택 화면으로 보내요.
- *   그 밖의 실패는 그 자리에 머물고 코드 상자가 빈 채로 남아요.
+ *   그 밖의 실패는 그 자리에 머물고, 참여 코드와 초대 링크 자리에 홈의 팀원 초대 카드(ERR-09)와 같은 실패 안내와 「다시 시도」를 보여 줘요. 「다시 시도」는 초대만 다시 받아요.
  * - 「다음」은 이 워크스페이스의 홈(`/workspace/:workspaceId`)으로 이어져요. 초대 조회 결과와 상관없이 누를 수 있어요.
  * - 로고와 화면 가운데 배치는 화면 레이아웃이 맡아요. 이 카드는 카드 모양만 그려요.
  */
@@ -155,5 +155,24 @@ export const LinkCopied: Story = {
     // 초대를 받기 전에는 복사 버튼이 잠겨 있어 코드가 보일 때까지 기다려요
     await canvas.findByText(workspaceInvitationResponse.code);
     await userEvent.click(canvas.getByRole("button", { name: "복사" }));
+  },
+};
+
+/**
+ * 초대를 불러오지 못했을 때예요. 서버 오류, 네트워크 문제, 요청 제한(429)이 모두 이 모습이에요.
+ * 제목과 「다음」은 그대로 두고, 참여 코드와 초대 링크 자리에 안내와 「다시 시도」를 보여 줘요.
+ * 이 스토리에서는 「다시 시도」를 눌러도 계속 실패해요.
+ */
+export const LoadFailed: Story = {
+  parameters: {
+    docs: { story: { inline: false, iframeHeight: 520 } },
+    msw: {
+      handlers: {
+        workspaceInvitations: http.post(
+          WORKSPACE_INVITATIONS_URL,
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      },
+    },
   },
 };
