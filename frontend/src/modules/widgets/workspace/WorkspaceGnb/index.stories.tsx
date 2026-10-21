@@ -1,5 +1,6 @@
 import DockablePanel from "@composites/DockablePanel";
 import SearchEvidenceToggle from "@features/search/SearchEvidenceToggle";
+import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
 import WorkspaceSidebar from "@widgets/workspace/WorkspaceSidebar";
@@ -44,6 +45,16 @@ const DOCK_RAIL_ID = "story-dock-rail";
  * - 지금 있는 화면의 버튼은 눌러도 이동하지 않아 뒤로 가기 기록이 같은 화면으로 쌓이지 않아요. 탐색 화면은 대화를 연 상태여도 탐색으로 표시돼요.
  * - 문서 하나를 보는 화면도 문서로 표시되고, 거기서 「문서」를 누르면 문서 목록으로 가요. 문서 탭은 언제나 폴더별 목록을 보여 주기 때문이에요.
  * - 프로필은 정보를 받기 전에는 기본 모양으로, 이미지가 없거나 불러오지 못하면 닉네임 첫 글자로 대신해요.
+ *
+ * - 탭 전환 모션은 `Workspace/WorkspaceLayout` 스토리에서 본문 전환과 함께 직접 눌러 볼 수 있어요.
+ * **탭 전환 모션**
+ * - 탭 칸을 누르는 동안 칸이 살짝 작아지고, 떼면 통 튀어 원래 크기로 돌아와요. 지금 탭을 누르면 이 눌림과 맺힘만 보이고 화면은 그대로예요.
+ * - 진한 표시 하나가 이전 탭에서 새 탭으로 미끄러지고, 글자색도 같은 시간에 바뀌어요. 칸마다 따로 칠하면 바뀌는 동안 두 칸이 함께 반쯤 어두워 보여서예요.
+ * - 표시는 미끄러지는 동안 진행 방향으로 살짝 늘어났다가, 새 탭에 도착하며 물방울이 맺히듯 한 번 부풀고 자리잡아요. 지금 탭을 누르면 표시도 함께 눌렸다가 제자리에서 톡 맺혀요.
+ * - 처음 들어올 때와 창 크기가 바뀔 때는 표시가 움직이거나 맺히지 않고 제자리에 놓여요. 빠르게 연달아 누르면 지금 있는 자리와 모양에서 이어서 미끄러져요.
+ * - 본문은 탭 방향(홈, 탐색, 문서 순)에서 8px 안쪽으로 살짝 밀려 들어오며 또렷해져요. 반쯤 보이는 데서 시작해 빈 화면이 보이는 순간이 없어요.
+ * - 같은 탭 안에서 옮길 때(대화나 문서를 바꿀 때), 처음 들어올 때, 새로고침할 때는 본문이 움직이지 않아요.
+ * - 운영체제에서 움직임 줄이기를 켜 두면 눌림, 표시 이동과 물방울, 본문 이동 없이 바로 바뀌어요.
  */
 const meta = {
   title: "Workspace/WorkspaceGnb",
@@ -77,35 +88,39 @@ const meta = {
   },
   argTypes: { left: { control: false }, right: { control: false } },
   decorators: [
-    (Story, { parameters }) => (
-      <MemoryRouter initialEntries={[parameters.initialPath]}>
-        <Routes>
-          {/* 찾은 기록 버튼이 대화 ID를 읽도록 대화 경로를 따로 둬요 */}
-          {[`${PATH_ROUTE.WORKSPACE_HOME}/*`, PATH_ROUTE.CHAT_SESSION].map(
-            (path) => (
-              <Route
-                key={path}
-                path={path}
-                element={
-                  // 화면 레이아웃처럼 GNB 위에 여백을, 아래에 사이드바를 고정할 자리를 둬요
-                  <div style={{ paddingTop: "1.5rem" }}>
-                    <Story />
-                    <div
-                      id={DOCK_RAIL_ID}
-                      style={{
-                        display: "flex",
-                        height: "30rem",
-                        padding: "1.25rem 0 0 2.5rem",
-                      }}
-                    />
-                  </div>
-                }
-              />
-            ),
-          )}
-        </Routes>
-      </MemoryRouter>
-    ),
+    (Story, { parameters }) => {
+      return (
+        <MemoryRouter initialEntries={[parameters.initialPath]}>
+          <ToastProvider>
+            <Routes>
+              {/* 찾은 기록 버튼이 대화 ID를 읽도록 대화 경로를 따로 둬요 */}
+              {[`${PATH_ROUTE.WORKSPACE_HOME}/*`, PATH_ROUTE.CHAT_SESSION].map(
+                (path) => (
+                  <Route
+                    key={path}
+                    path={path}
+                    element={
+                      // 화면 레이아웃처럼 GNB 위에 여백을, 아래에 사이드바를 고정할 자리를 둬요
+                      <div style={{ paddingTop: "1.5rem" }}>
+                        <Story />
+                        <div
+                          id={DOCK_RAIL_ID}
+                          style={{
+                            display: "flex",
+                            height: "30rem",
+                            padding: "1.25rem 0 0 2.5rem",
+                          }}
+                        />
+                      </div>
+                    }
+                  />
+                ),
+              )}
+            </Routes>
+          </ToastProvider>
+        </MemoryRouter>
+      );
+    },
   ],
 } satisfies Meta<typeof WorkspaceGnb>;
 

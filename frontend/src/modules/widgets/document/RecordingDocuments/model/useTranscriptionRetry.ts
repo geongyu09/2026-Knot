@@ -1,7 +1,10 @@
 import { HTTP_ERROR_TYPE, isHttpError } from "@api/httpClient/error";
 import useRetryRecordingTranscriptionMutation from "@api/mutations/useRetryRecordingTranscriptionMutation";
 import type useRecordingQuery from "@api/queries/useRecordingQuery";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import useRedirectToLoginOnUnauthorized from "@hooks/domain/auth/useRedirectToLoginOnUnauthorized";
+import { useToast } from "@provider/context/toastContext";
+import { isUnauthorizedError } from "@utils/isUnauthorizedError";
 import { useState } from "react";
 
 interface UseTranscriptionRetryParams {
@@ -28,7 +31,7 @@ const isRetryRejectedError = (error: unknown) =>
  * 같은 전사 시도로 여전히 실패면 그 시도를 거절 기록에 남겨 `retryTranscription`을 없애요. 조회에 실패해도 남겨요.
  * 이 조회가 끝날 때까지도 다시 시도 중이에요. 서버에서 이미 전사 중이면 정리 중으로 바뀌고 거절 기록을 남기지 않아요.
  * 그래서 그 전사가 또 실패하면, 새 시도든 서버가 이어서 돌린 같은 시도든 다시 시도할 수 있어요.
- * 서버 오류 · 네트워크 문제는 잠깐의 문제일 수 있어 버튼을 유지해요. 로그인이 풀렸으면(401) 로그인 화면으로 보내요.
+ * 서버 오류 · 네트워크 문제는 잠깐의 문제일 수 있어 버튼을 유지하고, 오류 토스트로 알려요. 로그인이 풀렸으면(401) 로그인 화면으로 보내요.
  */
 export const useTranscriptionRetry = ({
   workspaceId,
@@ -47,6 +50,7 @@ export const useTranscriptionRetry = ({
   // 녹음이 아니라 시도로 기록해, 다른 곳에서 다시 시도한 새 시도가 또 실패하면 그 시도는 가리지 않아요
   const [rejectedAttemptId, setRejectedAttemptId] = useState<string | null>();
   useRedirectToLoginOnUnauthorized({ error: transcriptionRetryError });
+  const { show } = useToast();
 
   // 지금 실패한 전사 시도의 다시 시도가 거절됐어요. 더 시도할 수 없어 「다시 시도」를 없애요
   const isRejected =
@@ -64,7 +68,12 @@ export const useTranscriptionRetry = ({
             code: isHttpError(retryError) ? retryError.code : undefined,
           });
 
-          if (!isRetryRejectedError(retryError)) return;
+          if (!isRetryRejectedError(retryError)) {
+            if (!isUnauthorizedError(retryError)) {
+              show(TOAST_MESSAGES.RETRY_REQUEST_FAILED);
+            }
+            return;
+          }
 
           // 다른 곳에서 먼저 다시 시도해 서버에서는 이미 전사 중일 수 있어요. 실패 상태에서는 3초 조회가 멈춰 있어 직접 다시 조회해요.
           // 거절 기록은 조회가 끝난 뒤에 남겨요. 먼저 남기면 조회하는 동안 「홈으로」가 보였다가 정리 중으로 바뀔 수 있어요

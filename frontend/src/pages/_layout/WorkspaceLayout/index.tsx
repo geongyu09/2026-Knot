@@ -29,6 +29,7 @@ import ChatListIcon from "@/assets/icons/chatList.svg";
 import SidebarIcon from "@/assets/icons/sidebar.svg";
 
 import { WORKSPACE_DOCK_RAIL_ID } from "./constants/dockRail";
+import { useTabScreenMotion } from "./model/useTabScreenMotion";
 import type { DockedPanelName } from "./types/dockedPanel";
 
 /**
@@ -36,6 +37,7 @@ import type { DockedPanelName } from "./types/dockedPanel";
  *
  * 워크스페이스 입장 후의 내부 페이지(홈, 탐색)가 공유한다.
  * 위에 GNB를 두고, 그 아래를 왼쪽 레일과 본문이 나눠 쓴다.
+ * GNB 탭을 옮기면 본문의 화면만 탭 방향에서 살짝 밀려 들어오고, GNB, 독, 양옆 패널은 움직이지 않는다(`useTabScreenMotion`).
  *
  * GNB 좌측 버튼이 여는 패널(사이드바·대화 목록)은 스쳐 지나가면 본문 위에 겹쳐 뜨고,
  * 누르면 왼쪽 레일로 옮겨 가 폭을 차지한다. 레일은 한 번에 한 패널만 담는다.
@@ -51,7 +53,7 @@ import type { DockedPanelName } from "./types/dockedPanel";
  *
  * 들어갈 수 있는 워크스페이스인지도 이 레이아웃 범위에서 한 번만 판정한다(`useWorkspaceEntry`).
  * 조회에 성공하기 전에는 본문 대신 스피너를 두고, 401은 로그인으로, 403·404는 선택 화면으로 보낸다.
- * 처음 조회가 네트워크 끊김·timeout이나 5xx로 실패하면 GNB와 독까지 레이아웃 전체 대신 ERR-02·ERR-03을 그린다.
+ * 처음 조회가 네트워크 끊김·timeout으로 실패하면 ERR-02를, 5xx나 400·409·429 같은 나머지 4xx로 실패하면 ERR-03을 GNB와 독까지 레이아웃 전체 대신 그린다.
  * 두 화면의 `다시 시도`는 페이지를 새로고침한다. 새로고침 경고는 녹음 중이면 그대로 뜬다.
  *
  * 녹음은 레이아웃 안의 어느 화면에서나 이어지므로, 녹음 중 새로고침·탭 닫기 경고도 이 범위에서 건다.
@@ -70,7 +72,7 @@ export default function WorkspaceLayout() {
   const { isReady, entryError } = useWorkspaceEntry({
     workspaceId: Number(workspaceId),
   });
-  const { isChatActive } = useWorkspaceNav();
+  const { isChatActive, activeTabIndex } = useWorkspaceNav();
   const { isTranscriptPanelOpen } = useTranscriptPanel();
   const [pickedPanel, setPickedPanel] = useState<DockedPanelName>(null);
 
@@ -79,6 +81,8 @@ export default function WorkspaceLayout() {
   useOpenEvidenceOnAnswerComplete();
   // 화면은 창이 아니라 본문 안에서 스크롤돼서, 화면을 옮길 때 본문의 스크롤 위치를 맞춰요
   const { scrollRef: mainRef } = useScrollRestoration();
+  // 탭을 옮기면 본문만 탭 방향에서 살짝 들어와요. GNB, 독, 양옆 패널은 그대로예요
+  useTabScreenMotion({ screenRootRef: mainRef, activeTabIndex });
 
   // 대화 목록 버튼은 탐색 화면에만 있으므로, 홈으로 나가면 고른 적 없던 것으로 봐요
   const dockedPanel =

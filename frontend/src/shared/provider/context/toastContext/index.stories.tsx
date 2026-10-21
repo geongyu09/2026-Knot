@@ -8,9 +8,9 @@ import DockColumn, {
   DOCK_TOAST_GAP,
 } from "@primitives/layout/DockColumn";
 import Button from "@primitives/ui/Button";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 
 import { ToastProvider, ToastViewport, useToast } from ".";
-import { TOAST_MESSAGES } from "./constants/toastMessages";
 
 const FOUR_IN_A_ROW_INTERVAL_MS = 400;
 const THREE_QUICKLY_INTERVAL_MS = 100;

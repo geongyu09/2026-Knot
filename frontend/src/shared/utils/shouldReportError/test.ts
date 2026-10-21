@@ -7,11 +7,11 @@ import {
 import { mockServer } from "@api/mock/server";
 import { SseRequestError } from "@api/sse/requestSseStream";
 import { CancelledError } from "@tanstack/react-query";
-import axios from "axios";
+import axios, { AxiosError } from "axios";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { shouldReportError } from ".";
+import { getErrorReportLevel, shouldReportError } from ".";
 
 const httpError = (type: HttpErrorType, code?: string) =>
   createHttpError({ type, code });
@@ -87,6 +87,25 @@ describe("shouldReportError", () => {
         ),
       ).toBe(false);
     });
+
+    // 대화 화면은 새 대화로 옮기고, 답변 칸은 실패 안내를 보여 줘요
+    it("볼 수 없는 탐색 대화의 403은 탐색 화면이 처리하는 예상 오류라 보고하지 않는다", () => {
+      expect(
+        isReported(
+          httpError(HTTP_ERROR_TYPE.forbidden, "SEARCH_ACCESS_DENIED"),
+        ),
+      ).toBe(false);
+      expect(isReported(sseError(403, "SEARCH_ACCESS_DENIED"))).toBe(false);
+    });
+
+    // 녹음 화면이 아직 안내하지 않아 사용자는 녹음이 이어지는 줄 알아요
+    it("녹음 제어권을 잃은 403은 화면이 처리하지 않아 보고한다", () => {
+      expect(
+        isReported(
+          httpError(HTTP_ERROR_TYPE.forbidden, "RECORDING_CONTROL_DENIED"),
+        ),
+      ).toBe(true);
+    });
   });
 
   describe("404 · 409 · 429", () => {
@@ -134,6 +153,28 @@ describe("shouldReportError", () => {
     ])("%s는 보고하지 않는다", (_, error) => {
       expect(isReported(error)).toBe(false);
     });
+
+    // 새로고침, 탭 닫기, 다른 주소로 이동할 때 브라우저가 진행 중이던 요청을 끊어요
+    it("페이지를 떠나며 끊긴 요청(Request aborted)은 보고하지 않는다", () => {
+      const error = createHttpError({
+        type: HTTP_ERROR_TYPE.network,
+        cause: new AxiosError("Request aborted", AxiosError.ECONNABORTED),
+      });
+
+      expect(isReported(error)).toBe(false);
+    });
+
+    it("시간 초과는 취소가 아니라 보고한다", () => {
+      const error = createHttpError({
+        type: HTTP_ERROR_TYPE.network,
+        cause: new AxiosError(
+          "timeout of 10000ms exceeded",
+          AxiosError.ECONNABORTED,
+        ),
+      });
+
+      expect(isReported(error)).toBe(true);
+    });
   });
 
   describe("네트워크 오류", () => {
@@ -145,6 +186,36 @@ describe("shouldReportError", () => {
     it("온라인인데 응답을 받지 못한 오류는 보고한다", () => {
       expect(isReported(httpError(HTTP_ERROR_TYPE.network), true)).toBe(true);
       expect(isReported(new TypeError("Failed to fetch"), true)).toBe(true);
+    });
+
+    it.each([
+      ["페이지를 떠나는 중", { isPageHiding: true }],
+      ["숨긴 탭", { isHidden: true }],
+    ])("%s에 응답을 받지 못한 오류는 보고하지 않는다", (_, state) => {
+      expect(
+        shouldReportError({
+          error: httpError(HTTP_ERROR_TYPE.network),
+          isOnline: true,
+          ...state,
+        }),
+      ).toBe(false);
+      expect(
+        shouldReportError({
+          error: new TypeError("Failed to fetch"),
+          isOnline: true,
+          ...state,
+        }),
+      ).toBe(false);
+    });
+
+    it("숨긴 탭이어도 응답을 받은 5xx는 보고한다", () => {
+      expect(
+        shouldReportError({
+          error: httpError(HTTP_ERROR_TYPE.serverError),
+          isOnline: true,
+          isHidden: true,
+        }),
+      ).toBe(true);
     });
 
     it("오프라인이어도 네트워크와 관계없는 TypeError는 보고한다", () => {
@@ -192,5 +263,33 @@ describe("shouldReportError", () => {
 
   it("요청과 관계없는 렌더링 오류는 보고한다", () => {
     expect(isReported(new Error("렌더링 실패"))).toBe(true);
+  });
+});
+
+describe("getErrorReportLevel", () => {
+  it.each([
+    ["응답을 받지 못한 요청 실패", httpError(HTTP_ERROR_TYPE.network)],
+    [
+      "시간 초과 실패",
+      createHttpError({
+        type: HTTP_ERROR_TYPE.network,
+        cause: new AxiosError(
+          "timeout of 10000ms exceeded",
+          AxiosError.ECONNABORTED,
+        ),
+      }),
+    ],
+    ["응답을 받지 못한 SSE 요청 실패", new TypeError("Failed to fetch")],
+  ])("%s는 warning이다", (_, error) => {
+    expect(getErrorReportLevel(error)).toBe("warning");
+  });
+
+  it.each([
+    ["5xx", httpError(HTTP_ERROR_TYPE.serverError)],
+    ["요청 계약 위반 400", httpError(HTTP_ERROR_TYPE.badRequest)],
+    ["SSE 5xx", sseError(503)],
+    ["렌더링", new Error("렌더링 실패")],
+  ])("%s 오류는 error다", (_, error) => {
+    expect(getErrorReportLevel(error)).toBe("error");
   });
 });

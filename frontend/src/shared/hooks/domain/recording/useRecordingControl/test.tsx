@@ -1,10 +1,13 @@
 import { createHttpError, HTTP_ERROR_TYPE } from "@api/httpClient/error";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import { ThemeProvider } from "@emotion/react";
 import { DialogProvider } from "@provider/context/dialogContext";
+import { ToastProvider } from "@provider/context/toastContext";
+import { setupSentryEvents } from "@provider/sentry/mock";
 import { theme } from "@provider/themeProvider";
 import { useRecordingStore } from "@store/recordingStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, screen, waitFor } from "@testing-library/react";
 import {
   clearRecordingStartProof,
   getRecordingControlProof,
@@ -173,7 +176,9 @@ const renderRecordingControl = () => {
     <ThemeProvider theme={theme}>
       <QueryClientProvider client={queryClient}>
         <DialogProvider>
-          <MemoryRouter>{children}</MemoryRouter>
+          <MemoryRouter>
+            <ToastProvider>{children}</ToastProvider>
+          </MemoryRouter>
         </DialogProvider>
       </QueryClientProvider>
     </ThemeProvider>
@@ -501,6 +506,61 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
     ]);
   });
 
+  describe("이어서 녹음이 실패하면", () => {
+    const respondResume = (resolver: () => Response) =>
+      mockServer.use(http.post(`${RECORDING_PATH}/resume`, resolver));
+
+    const resumeAfterPause = async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const result = renderRecordingControl();
+      const collector = await startRecording(result);
+      await pauseRecording(result);
+
+      let isResumed: boolean | undefined;
+      await act(async () => {
+        isResumed = await result.current.resumeRecording();
+      });
+
+      return { collector, isResumed };
+    };
+
+    it.each([
+      ["서버 오류(500)", () => new HttpResponse(null, { status: 500 })],
+      ["네트워크 문제", () => HttpResponse.error()],
+    ])(
+      "%s면 일시정지로 남고 오류 토스트로 알린다",
+      async (_, resolver) => {
+        respondResume(resolver);
+
+        const { collector, isResumed } = await resumeAfterPause();
+
+        // 마이크는 받았으므로 마이크 알림을 띄우지 않게 true로 답해요
+        expect(isResumed).toBe(true);
+        expect(getStatus()).toBe("paused");
+        expect(collector.isCollecting).toBe(false);
+        expect(
+          await screen.findByText(
+            TOAST_MESSAGES.RECORDING_RESUME_FAILED.message,
+          ),
+        ).toBeInTheDocument();
+      },
+    );
+
+    it("서버가 이미 끝낸 녹음이라 거절되면 생존 신호로 마저 처리하고 오류 토스트는 띄우지 않는다", async () => {
+      respondResume(() =>
+        HttpResponse.json({ code: "RECORDING_ALREADY_ENDED" }, { status: 409 }),
+      );
+      collectRequests();
+
+      await resumeAfterPause();
+
+      await waitFor(() => expect(events).toContain("heartbeat"));
+      expect(
+        screen.queryByText(TOAST_MESSAGES.RECORDING_RESUME_FAILED.message),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("일시정지와 이어서 녹음을 연타해도 앞 요청의 응답을 받은 뒤 다음을 처리한다", async () => {
     collectRequests();
     const { respond } = holdResponses("pause");
@@ -741,7 +801,7 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
       expect(count("complete")).toBe(1);
     });
 
-    it("생존 신호가 서버가 끝낸 녹음이라 답하면 남은 소리를 봉인하지 않고 버리고, 예약한 조각만 마저 올린다", async () => {
+    it("생존 신호가 연결 끊김으로 서버가 끝낸 녹음이라 답하면 남은 소리를 봉인하지 않고 버리고, 예약한 조각만 마저 올리며 주의 토스트로 알린다", async () => {
       collectRequests();
       const { respond } = holdResponses("complete");
       mockServer.use(
@@ -770,6 +830,11 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
       expect(collector.isClosed).toBe(true);
       expect(events).not.toContain("flush");
       expect(endRecordingApi).not.toHaveBeenCalled();
+      expect(
+        await screen.findByText(
+          TOAST_MESSAGES.RECORDING_CONNECTION_LOST.message,
+        ),
+      ).toBeInTheDocument();
       respond();
       await waitFor(() => expect(isUploadingChunks()).toBe(false));
       expect(count("audio-chunks")).toBe(1);
@@ -833,6 +898,46 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
         { ...proof, audioSeal: EMPTY_SEAL },
         { ...proof, audioSeal: undefined },
       ]);
+    });
+
+    // 다시 보낼 때마다 보내면 끝내는 동안의 장애 한 번이 이벤트 여러 건이 돼요
+    describe("실패 보고", () => {
+      const { flushEvents } = setupSentryEvents();
+
+      it("종료 요청을 다시 보내는 동안에는 첫 실패와 포기한 실패만 보고한다", async () => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        const result = renderRecordingControl();
+        await startRecording(result);
+        vi.useFakeTimers();
+        let attempts = 0;
+        endRecordingApi.mockImplementation(async () => {
+          attempts += 1;
+          throw attempts < 4
+            ? createHttpError({ type: HTTP_ERROR_TYPE.network })
+            : createHttpError({
+                type: HTTP_ERROR_TYPE.forbidden,
+                code: "RECORDING_CONTROL_DENIED",
+              });
+        });
+
+        let ending!: ReturnType<
+          typeof result.current.endRecordingWithoutConfirm
+        >;
+        act(() => {
+          ending = result.current.endRecordingWithoutConfirm();
+        });
+        await vi.advanceTimersByTimeAsync(7_000);
+        expect(await ending).toBe("notUploaded");
+        // Sentry는 타이머로 보내므로 진짜 타이머로 돌린 뒤 모은 이벤트를 봐요
+        vi.useRealTimers();
+
+        const events = await flushEvents();
+        expect(attempts).toBe(4);
+        expect(events.map(({ extra }) => extra)).toEqual([
+          { consecutiveFailures: 1 },
+          { consecutiveFailures: 4, isGivingUp: true },
+        ]);
+      });
     });
   });
 });

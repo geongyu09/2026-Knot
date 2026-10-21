@@ -22,6 +22,8 @@
   },
   "devDependencies": {
     "@emotion/babel-plugin": "^11.13.5",
+    "@locator/babel-jsx": "^0.5.1",
+    "@locator/runtime": "^0.5.1",
     "@playwright/test": "^1.62.1",
     "@sentry/webpack-plugin": "^11.8.0",
     "@storybook/addon-designs": "^11.1.4",

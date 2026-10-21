@@ -2,7 +2,9 @@ import { PostWorkspaceInvitationResponseDto } from "@api/dto/workspaceInvitation
 import { WORKSPACE_INVITATIONS_API_PATH } from "@api/fetch/api/v1/workspaces/[workspaceId]/invitations";
 import { workspaceInvitationResponse } from "@api/mock/responses/workspaceInvitation";
 import { mockServer } from "@api/mock/server";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import { ThemeProvider } from "@emotion/react";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -14,7 +16,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import WorkspaceInviteCard from ".";
@@ -30,6 +32,8 @@ const WORKSPACE_HOME_PATH = getRouterPath({
 const DISPLAY_INVITE_LINK = `/invite/${expected.linkToken}`;
 const ELSEWHERE_PATH = "/elsewhere";
 const COPIED_DURATION_MS = 2000;
+// 홈의 팀원 초대 카드(ERR-09)와 같은 문구예요
+const LOAD_FAILED_TEXT = "초대 링크를 불러오지 못했어요. 다시 시도해 주세요.";
 
 const writeText = vi.fn<(text: string) => Promise<void>>();
 
@@ -43,11 +47,23 @@ const renderCard = (workspaceId = String(WORKSPACE_ID)) => {
   });
   const router = createMemoryRouter(
     [
-      { path: ELSEWHERE_PATH, element: <p>다른 화면</p> },
-      { path: PATH_ROUTE.WORKSPACE_INVITE, element: <WorkspaceInviteCard /> },
-      { path: PATH_ROUTE.WORKSPACE_HOME, element: <p>워크스페이스 홈</p> },
-      { path: PATH_ROUTE.WORKSPACE, element: <p>워크스페이스 선택</p> },
-      { path: PATH_ROUTE.LOGIN, element: <p>로그인</p> },
+      {
+        element: (
+          <ToastProvider>
+            <Outlet />
+          </ToastProvider>
+        ),
+        children: [
+          { path: ELSEWHERE_PATH, element: <p>다른 화면</p> },
+          {
+            path: PATH_ROUTE.WORKSPACE_INVITE,
+            element: <WorkspaceInviteCard />,
+          },
+          { path: PATH_ROUTE.WORKSPACE_HOME, element: <p>워크스페이스 홈</p> },
+          { path: PATH_ROUTE.WORKSPACE, element: <p>워크스페이스 선택</p> },
+          { path: PATH_ROUTE.LOGIN, element: <p>로그인</p> },
+        ],
+      },
     ],
     { initialEntries: [ELSEWHERE_PATH, invitePath] },
   );
@@ -112,7 +128,6 @@ describe("WorkspaceInviteCard", () => {
       value: { writeText },
       configurable: true,
     });
-    vi.spyOn(window, "alert").mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -196,6 +211,32 @@ describe("WorkspaceInviteCard", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("복사에 성공하면 알림 창 없이 버튼 표시로만 알린다", async () => {
+    const alert = vi.spyOn(window, "alert");
+    renderCard();
+    await waitForInvitation();
+
+    await click(getCodeButton());
+    await click(getCopyLinkButton());
+
+    expect(alert).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "복사됨" })).toBeInTheDocument();
+  });
+
+  it("참여 코드나 링크 복사에 실패하면 오류 토스트를 띄우고 버튼은 「복사」로 남는다", async () => {
+    writeText.mockRejectedValue(new Error("클립보드 권한이 없어요"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    renderCard();
+    await waitForInvitation();
+
+    await click(getCopyLinkButton());
+
+    expect(
+      await screen.findByText(TOAST_MESSAGES.COPY_FAILED.message),
+    ).toBeInTheDocument();
+    expect(getCopyLinkButton()).toBeInTheDocument();
+  });
+
   it("다음을 누르면 워크스페이스 홈으로 이동한다", async () => {
     const { router } = renderCard();
     await waitForInvitation();
@@ -231,6 +272,82 @@ describe("WorkspaceInviteCard", () => {
       await goBack(router);
 
       expect(router.state.location.pathname).toBe(ELSEWHERE_PATH);
+    },
+  );
+
+  it.each([
+    ["서버 오류(500)", () => new HttpResponse(null, { status: 500 })],
+    ["요청 제한(429)", () => new HttpResponse(null, { status: 429 })],
+    ["네트워크 오류", () => HttpResponse.error()],
+  ])(
+    "%s로 초대를 불러오지 못하면 제목과 다음은 두고, 코드와 링크 대신 실패 안내와 다시 시도를 보여준다",
+    async (_, respond) => {
+      mockServer.use(
+        http.post(`*${WORKSPACE_INVITATIONS_API_PATH(WORKSPACE_ID)}`, respond),
+      );
+      renderCard();
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        LOAD_FAILED_TEXT,
+      );
+      expect(
+        screen.getByRole("heading", { name: "팀원을 초대하세요" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /^참여 코드/ }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("textbox", { name: "초대 링크" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "다시 시도" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "다음" })).toBeEnabled();
+    },
+  );
+
+  it("다시 시도를 누르면 초대만 다시 받아 코드와 링크를 보여준다", async () => {
+    let attempts = 0;
+    mockServer.use(
+      http.post(`*${WORKSPACE_INVITATIONS_API_PATH(WORKSPACE_ID)}`, () => {
+        attempts += 1;
+        if (attempts === 1) return new HttpResponse(null, { status: 500 });
+
+        return HttpResponse.json(workspaceInvitationResponse);
+      }),
+    );
+    renderCard();
+
+    await click(await screen.findByRole("button", { name: "다시 시도" }));
+
+    expect(await waitForInvitation()).toBeInTheDocument();
+    expect(getLinkInput()).toHaveValue(DISPLAY_INVITE_LINK);
+    expect(screen.queryByText(LOAD_FAILED_TEXT)).not.toBeInTheDocument();
+    expect(attempts).toBe(2);
+  });
+
+  it.each([401, 403, 404])(
+    "초대 조회가 %i면 이동하는 동안 실패 안내를 그리지 않는다",
+    async (status) => {
+      overrideInvitationStatus(status);
+      // 이동하면 카드가 사라져, 간 뒤에는 안내가 있었는지 알 수 없어요. 가기 전까지 그려진 화면을 모두 지켜봐요
+      let isAlertShown = false;
+      const observer = new MutationObserver(() => {
+        if (screen.queryByRole("alert") !== null) isAlertShown = true;
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      const { router } = renderCard();
+
+      try {
+        await waitFor(() => {
+          expect(router.state.location.pathname).not.toMatch(/invite/);
+        });
+      } finally {
+        observer.disconnect();
+      }
+
+      expect(isAlertShown).toBe(false);
     },
   );
 });

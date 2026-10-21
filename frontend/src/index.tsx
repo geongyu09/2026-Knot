@@ -42,6 +42,14 @@ initSentry({
   release: process.env.SENTRY_RELEASE,
 });
 
+// 개발 서버에서만 Option(Alt)+클릭한 요소의 JSX 위치를 에디터에서 열어요.
+// React 19에서는 DevTools 방식이 안 돼서 babel 플러그인이 붙인 속성을 읽는 jsx 방식을 써요
+if (process.env.NODE_ENV === "development") {
+  import("@locator/runtime").then(({ default: setupLocator }) =>
+    setupLocator({ adapter: "jsx" }),
+  );
+}
+
 // 정적 import하면 msw가 프로덕션 번들에 들어가므로 플래그 안에서 동적 import해요
 const enableApiMocking = async () => {
   if (process.env.API_MOCKING !== "true") return;

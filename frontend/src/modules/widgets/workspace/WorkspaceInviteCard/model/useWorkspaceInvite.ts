@@ -11,6 +11,8 @@ const TIMEOUT_DURATION = 2000;
  *
  * 현재 `:workspaceId`의 활성 초대를 조회해 코드·링크를 얻고, 응답 전에는 `isLoading`으로 복사를 막아요.
  * 조회가 401·403·404로 실패하면 `useWorkspaceAccessGuard`가 로그인·워크스페이스 선택 화면으로 보내요.
+ * 그 밖의 실패로 받은 초대가 없으면 `isLoadFailed`가 `true`이고, `handleRetry`는 초대만 다시 받아요.
+ * 복사하면 토스트 없이 버튼 표시(`isCodeCopied`·`isLinkCopied`)로만 알리고, 실패 토스트는 `useClipboard`가 띄워요.
  */
 export const useWorkspaceInvite = () => {
   const { workspaceId } = useParams();
@@ -19,11 +21,12 @@ export const useWorkspaceInvite = () => {
     displayInviteLink,
     isLoading,
     error,
+    retryInvitation,
     copyInviteCode,
     copyInviteLink,
   } = useCopyWorkspaceInvite({ workspaceId: Number(workspaceId) });
 
-  useWorkspaceAccessGuard({ error });
+  const { isRedirecting } = useWorkspaceAccessGuard({ error });
 
   const { navigateToWorkspaceHome } = useNavigateToWorkspaceHome();
   const { start: startCodeTimeout, isTimedOut: isCodeCopied } = useTimeout({
@@ -34,21 +37,11 @@ export const useWorkspaceInvite = () => {
   });
 
   const handleCopyCode = () => {
-    copyInviteCode({
-      onCopySuccess: () => {
-        alert("참여 코드가 클립보드에 복사되었습니다.");
-        startCodeTimeout();
-      },
-    });
+    copyInviteCode({ onCopySuccess: startCodeTimeout });
   };
 
   const handleCopyLink = () => {
-    copyInviteLink({
-      onCopySuccess: () => {
-        alert("초대 링크가 클립보드에 복사되었습니다.");
-        startLinkTimeout();
-      },
-    });
+    copyInviteLink({ onCopySuccess: startLinkTimeout });
   };
 
   const handleNext = () => {
@@ -61,6 +54,9 @@ export const useWorkspaceInvite = () => {
     inviteCode,
     displayInviteLink,
     isLoading,
+    // 다른 화면으로 보내는 중이면 가는 동안 안내가 잠깐 보이지 않게 빼요
+    isLoadFailed: inviteCode === undefined && error !== null && !isRedirecting,
+    handleRetry: retryInvitation,
     isCodeCopied,
     isLinkCopied,
     handleCopyLink,

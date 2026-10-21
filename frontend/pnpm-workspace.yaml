@@ -3,3 +3,5 @@ allowBuilds:
   esbuild: true
   msw: false
   workerd: true
+patchedDependencies:
+  '@locator/babel-jsx@0.5.1': patches/@locator__babel-jsx@0.5.1.patch

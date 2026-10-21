@@ -15,13 +15,14 @@ interface UseWorkspaceEntryParams {
  *
  * 워크스페이스 조회로 판정해요.
  * - 성공: `isReady`가 `true`가 되고, 마지막으로 본 워크스페이스를 한 번 갱신해요(ADR 265). 갱신 실패는 진입을 막지 않아요.
- * - 401: 로그인 화면으로, 403·404: 선택 화면(`/workspace`)으로 `replace` 이동해요(`useWorkspaceAccessGuard`).
+ * - 401: 로그인 화면으로, 403·404: 마지막으로 본 다른 워크스페이스 홈이나 선택 화면(`/workspace`)으로 `replace` 이동하고 알려요(`useWorkspaceAccessGuard`).
  * - 정수가 아닌 workspaceId: 조회할 수 없으니 404처럼 선택 화면으로 보내요.
  *
- * 처음 조회가 응답 없음(네트워크 끊김·timeout)이나 5xx로 실패하면 이동하지 않고 `entryError`로 알려요.
+ * 처음 조회가 그 밖의 이유로 실패하면 이동하지 않고 `entryError`로 알려요.
+ * 응답 없음(네트워크 끊김·timeout)은 `network`, 5xx와 400·409·429 같은 나머지 4xx는 `server`예요.
  * 쓰는 쪽은 화면 전체 대신 `network`면 ERR-02, `server`면 ERR-03을 그려요. Query 재시도가 끝난 뒤의 값이에요.
+ * 나머지 4xx를 ERR-03으로 보내는 것은 스피너가 끝없이 돌지 않게 하기 위해서예요. 다시 시도(새로고침)로 풀릴 수 있는 실패라 ERR-01(없는 화면)로 보내지 않아요.
  * 이미 받은 워크스페이스가 있으면 다시 조회만 실패한 것이라 `entryError`는 `null`이에요.
- * 그 밖의 실패는 이동하지 않고 `isReady`만 `false`로 남아요.
  * 홈뿐 아니라 하위 라우트(탐색 등)도 같은 레이아웃 아래라 진입마다 같은 판정을 거쳐요.
  *
  * 갱신은 워크스페이스마다 한 번이에요. 같은 워크스페이스 안에서 재조회되거나 StrictMode가 effect를
@@ -35,7 +36,7 @@ const useWorkspaceEntry = ({ workspaceId }: UseWorkspaceEntryParams) => {
   const { navigateToWorkspace } = useNavigateToWorkspace();
   const recordedWorkspaceIdRef = useRef<number>(null);
 
-  useWorkspaceAccessGuard({ error });
+  const { isRedirecting } = useWorkspaceAccessGuard({ error });
 
   useEffect(() => {
     if (isValidWorkspaceId) return;
@@ -50,15 +51,13 @@ const useWorkspaceEntry = ({ workspaceId }: UseWorkspaceEntryParams) => {
     updateLastViewedWorkspace({ workspaceId });
   }, [isSuccess, workspaceId, updateLastViewedWorkspace]);
 
-  // 보던 화면을 에러 화면으로 덮지 않도록, 아직 받은 워크스페이스가 없을 때만 알려요
+  // 보던 화면을 에러 화면으로 덮지 않도록, 아직 받은 워크스페이스가 없을 때만 알려요. 다른 화면으로 보내는 중이면 알리지 않아요
   const entryError: "network" | "server" | null =
-    data !== undefined
+    data !== undefined || error === null || isRedirecting
       ? null
       : isHttpError(error, HTTP_ERROR_TYPE.network)
         ? "network"
-        : isHttpError(error, HTTP_ERROR_TYPE.serverError)
-          ? "server"
-          : null;
+        : "server";
 
   return { isReady: isSuccess, entryError };
 };

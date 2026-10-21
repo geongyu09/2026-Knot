@@ -1,15 +1,34 @@
+import { AUTH_ME_API_PATH } from "@api/fetch/api/v1/auth/me";
+import { AUTH_REFRESH_API_PATH } from "@api/fetch/api/v1/auth/refresh";
+import { mockServer } from "@api/mock/server";
+import { authKeys } from "@api/queryKey/auth";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import { ThemeProvider } from "@emotion/react";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
+import AuthGuard from "@routes/AuthGuard";
+import GuestGuard from "@routes/GuestGuard";
 import { PATH_ROUTE } from "@routes/PATH_ROUTE";
-import { render, screen } from "@testing-library/react";
-import { createMemoryRouter, RouterProvider } from "react-router";
-import { describe, expect, it } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
+import { afterEach, describe, expect, it } from "vitest";
 
 import LoginPage from ".";
 
 const renderLoginPage = () => {
   const router = createMemoryRouter(
-    [{ path: PATH_ROUTE.LOGIN, element: <LoginPage /> }],
+    [
+      {
+        element: (
+          <ToastProvider>
+            <Outlet />
+          </ToastProvider>
+        ),
+        children: [{ path: PATH_ROUTE.LOGIN, element: <LoginPage /> }],
+      },
+    ],
     { initialEntries: [PATH_ROUTE.LOGIN] },
   );
 
@@ -17,6 +36,63 @@ const renderLoginPage = () => {
     <ThemeProvider theme={theme}>
       <RouterProvider router={router} />
     </ThemeProvider>,
+  );
+};
+
+const PROTECTED_TEXT = "로그인해야 보이는 화면";
+
+/** 앱처럼 로그인해야 보이는 화면과 로그인 화면을 가드로 감싸고, 토스트는 라우터 안의 Provider가 그려요 */
+const renderApp = () => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const router = createMemoryRouter(
+    [
+      {
+        element: (
+          <ToastProvider>
+            <Outlet />
+          </ToastProvider>
+        ),
+        children: [
+          {
+            element: <AuthGuard />,
+            children: [
+              { path: PATH_ROUTE.WORKSPACE, element: <p>{PROTECTED_TEXT}</p> },
+            ],
+          },
+          {
+            element: <GuestGuard />,
+            children: [{ path: PATH_ROUTE.LOGIN, element: <LoginPage /> }],
+          },
+        ],
+      },
+    ],
+    { initialEntries: [PATH_ROUTE.WORKSPACE] },
+  );
+
+  render(
+    <ThemeProvider theme={theme}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ThemeProvider>,
+  );
+
+  return { router, queryClient };
+};
+
+/** 로그인 확인이 401이고, 재발급도 `refreshStatus`로 실패하게 해요 */
+const failMeAndRefresh = (refreshStatus = 401) => {
+  mockServer.use(
+    http.get(
+      `*${AUTH_ME_API_PATH}`,
+      () => new HttpResponse(null, { status: 401 }),
+    ),
+    http.post(
+      `*${AUTH_REFRESH_API_PATH}`,
+      () => new HttpResponse(null, { status: refreshStatus }),
+    ),
   );
 };
 
@@ -38,5 +114,62 @@ describe("LoginPage", () => {
         "로그인하면 서비스 이용약관과 개인정보 처리방침에 동의하게 됩니다.",
       ),
     ).toBeInTheDocument();
+  });
+
+  describe("로그인 만료 안내 (ERR-07)", () => {
+    afterEach(() => {
+      sessionStorage.clear();
+    });
+
+    it("처음 온 비로그인 사용자는 재발급도 실패해 로그인 화면으로 와도 만료 토스트를 띄우지 않는다", async () => {
+      failMeAndRefresh();
+      const { router } = renderApp();
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(PATH_ROUTE.LOGIN),
+      );
+      // 로그인 화면이 그려진 뒤 확인 요청까지 끝날 틈을 줘요
+      await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+      expect(
+        screen.queryByText(TOAST_MESSAGES.SESSION_EXPIRED.message),
+      ).not.toBeInTheDocument();
+    });
+
+    it("로그인했던 탭에서 토큰 재발급이 거절돼(401) 로그인 화면으로 보내면 만료 토스트를 띄운다", async () => {
+      const { router, queryClient } = renderApp();
+      await screen.findByText(PROTECTED_TEXT);
+
+      failMeAndRefresh();
+      await act(() =>
+        queryClient.invalidateQueries({ queryKey: authKeys.me() }),
+      );
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(PATH_ROUTE.LOGIN),
+      );
+      expect(
+        await screen.findByText(TOAST_MESSAGES.SESSION_EXPIRED.message),
+      ).toBeInTheDocument();
+    });
+
+    it("재발급이 서버 오류로 실패해 로그인 화면으로 보낸 것은 만료로 보지 않아 토스트를 띄우지 않는다", async () => {
+      const { router, queryClient } = renderApp();
+      await screen.findByText(PROTECTED_TEXT);
+
+      failMeAndRefresh(500);
+      await act(() =>
+        queryClient.invalidateQueries({ queryKey: authKeys.me() }),
+      );
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(PATH_ROUTE.LOGIN),
+      );
+      await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+      expect(
+        screen.queryByText(TOAST_MESSAGES.SESSION_EXPIRED.message),
+      ).not.toBeInTheDocument();
+    });
   });
 });

@@ -1,8 +1,10 @@
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import useOutsideClick from "@hooks/common/useOutsideClick";
 import useConversationId from "@hooks/domain/search/useConversationId";
 import useSearchAnswerControl from "@hooks/domain/search/useSearchAnswerControl";
 import useSearchAnswerStatus from "@hooks/domain/search/useSearchAnswerStatus";
 import useWorkspaceNav from "@hooks/domain/workspace/useWorkspaceNav";
+import { useToast } from "@provider/context/toastContext";
 import {
   useCallback,
   useEffect,
@@ -30,7 +32,7 @@ import { useTypeToStartChat } from "./useTypeToStartChat";
  *
  * 질문은 홈·탐색 어디서든 이 자리에서 바로 보냅니다. 탐색 대화 화면이면 그 대화에 이어 묻고, 아니면 새 대화를 시작해요.
  * 새 대화는 서버가 접수하면 그 대화 주소로 옮겨 가요(`useSearchAnswerControl`).
- * 보내면 입력창을 바로 비우고, 접수 전에 거절되면 보낸 질문을 되돌려 다시 보낼 수 있게 해요(SEARCH-R4).
+ * 보내면 입력창을 바로 비우고, 접수 전에 거절되면 보낸 질문을 되돌려 다시 보낼 수 있게 하고 오류 토스트로 알려요(SEARCH-R4).
  * 답변을 기다리거나 받는 중에는 보내지 않아요(SEARCH-R6).
  */
 export const useWorkspaceDock = () => {
@@ -39,6 +41,7 @@ export const useWorkspaceDock = () => {
   const { isChatActive } = useWorkspaceNav();
   const { sendQuestion } = useSearchAnswerControl();
   const { isAnswerPending } = useSearchAnswerStatus();
+  const { show } = useToast();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isExpandedByUser, setIsExpandedByUser] = useState(false);
@@ -124,8 +127,10 @@ export const useWorkspaceDock = () => {
       content: question,
     });
 
-    // TODO: 접수 전 실패 안내 토스트(SEARCH-R4)
-    if (isAcceptFailed) setMessage(question);
+    if (!isAcceptFailed) return;
+
+    setMessage(question);
+    show(TOAST_MESSAGES.QUESTION_SEND_FAILED);
   };
 
   return {

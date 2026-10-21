@@ -2,7 +2,9 @@ import { HTTP_ERROR_TYPE, isHttpError } from "@api/httpClient/error";
 import useRetryDocumentGenerationJobsMutation from "@api/mutations/useRetryDocumentGenerationJobsMutation";
 import useRecordingAudioSaveQuery from "@api/queries/useRecordingAudioSaveQuery";
 import useRecordingQuery from "@api/queries/useRecordingQuery";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 import useRedirectToLoginOnUnauthorized from "@hooks/domain/auth/useRedirectToLoginOnUnauthorized";
+import { useToast } from "@provider/context/toastContext";
 import { getRecordingDocumentsStatus } from "@utils/getRecordingDocumentsStatus";
 import { isUnauthorizedError } from "@utils/isUnauthorizedError";
 import { useEffect, useState } from "react";
@@ -39,7 +41,10 @@ const isRetryRejectedError = (error: unknown) =>
  *   끝낸 녹음의 전사가 시작되기 전(전사 상태와 문서 생성 결과가 모두 null)에는 녹음 상태와 함께 저장 상태도 3초마다 조회해요.
  *   녹음 상태 응답에는 어떤 방식의 녹음인지(audioMode)가 없어 PCM인지 미리 알 수 없어서, 모든 녹음에 조회하고 WebM 녹음은 409로 알아요.
  *   저장된 음성이 없는 실패(`AUDIO_NO_CONTENT`)는 문서로 만들 내용이 없는 것과 같은 결과라 `noContent`예요.
- *   저장 상태 조회가 실패해도 화면은 바꾸지 않고 `organizing`을 유지해요. 저장 중(`DRAINING` · `FINALIZING`)도 `organizing`이에요.
+ *   저장 중(`DRAINING` · `FINALIZING`)도 `organizing`이에요. 저장 상태 조회가 실패해도 `organizing`이지만,
+ *   정리 중이 끝없이 이어지지 않도록 `isAudioSaveCheckFailed`로 알려요. `retryAudioSaveCheck`는 저장 상태만 다시 조회해요.
+ *   WebM 녹음이라는 409와 로그인이 풀린 401은 알리지 않아요. 409는 실패가 아니고, 401은 녹음 상태 조회가 로그인 화면으로 보내요.
+ *   조회는 실패해도 같은 간격으로 계속하므로, 저장 상태를 다시 받으면 알림이 저절로 풀려요.
  *   서버가 버린 녹음처럼 정리 상태를 정할 수 없는 응답은 보여 줄 화면이 없어 `loadFailed`예요.
  *   `failed`에서 다시 시도할 수 있으면 `retryGeneration`이 있어요.
  *
@@ -52,6 +57,7 @@ const isRetryRejectedError = (error: unknown) =>
  * 실패한 작업이 여러 개면 한 번에 모두 다시 시도해요. 하나라도 접수되면 녹음 상태를 다시 받아 정리 중으로 돌아가요.
  * 남은 실패 작업이 모두 거절된(409 · 404) 작업이면 더 시도할 수 없어 `retryGeneration`을 없애요.
  * 네트워크 · 서버 문제로 실패한 작업은 거절된 것이 아니라 다시 시도할 수 있어요.
+ * 그런 실패가 있고 접수된 작업이 하나도 없으면 오류 토스트로 알려요(STT-R22). 거절(409 · 404)만 있거나 로그인이 풀렸으면(401) 알리지 않아요.
  * 409는 화면이 아는 녹음 상태와 서버의 녹음 상태가 다를 수 있다는 응답이라, 녹음 상태를 다시 조회해요.
  * 서버에서 이미 정리 중이거나 정리가 끝났으면 그 상태의 화면으로 바뀌어요.
  * 이 조회가 끝날 때까지도 다시 시도 중(`isRetrying`)이에요.
@@ -73,7 +79,11 @@ export const useRecordingDocuments = ({
     recording?.sessionStatus === "ENDED" &&
     recording.transcriptionStatus === null &&
     recording.documentGeneration === null;
-  const { data: audioSave } = useRecordingAudioSaveQuery({
+  const {
+    data: audioSave,
+    error: audioSaveError,
+    refetch: refetchAudioSave,
+  } = useRecordingAudioSaveQuery({
     workspaceId,
     recordingId,
     isEnabled: isAwaitingAudioSave,
@@ -85,6 +95,12 @@ export const useRecordingDocuments = ({
       audioSave?.audioSaveStatus === "DISCARDED")
       ? audioSave
       : undefined;
+  // 전사 전에 저장 상태를 확인하지 못하고 있어요. WebM 녹음이라는 409는 실패가 아니고, 401은 녹음 상태 조회가 로그인 화면으로 보내요
+  const isAudioSaveCheckFailed =
+    isAwaitingAudioSave &&
+    audioSaveError !== null &&
+    !isHttpError(audioSaveError, HTTP_ERROR_TYPE.conflict) &&
+    !isUnauthorizedError(audioSaveError);
   const {
     mutate: requestRetry,
     isPending: isRetryPending,
@@ -102,6 +118,7 @@ export const useRecordingDocuments = ({
   // 문서 다시 시도의 409 뒤에 거절 기록을 지울지 정하려고 녹음 상태를 다시 조회하는 중인지.
   // 그동안 버튼이 풀리면 그사이 시작한 새 다시 시도의 결과까지 아래 `clearRetryResults`가 지울 수 있어, 조회가 끝날 때까지 다시 시도 중으로 둬요
   const [isCheckingRejection, setIsCheckingRejection] = useState(false);
+  const { show } = useToast();
   const { isUnauthorized } = useRedirectToLoginOnUnauthorized({ error });
   // 다시 시도에서 로그인이 풀려도 같은 방식으로 로그인 화면에 보내요
   const unauthorizedRetry = retryResults.find(({ error: retryError }) =>
@@ -167,6 +184,11 @@ export const useRecordingDocuments = ({
     refetch();
   };
 
+  // 녹음 상태는 정리 중으로 받았으니 저장 상태만 다시 조회해요
+  const retryAudioSaveCheck = () => {
+    refetchAudioSave();
+  };
+
   // 전사가 실패한 녹음이에요. 문서 만들기가 접수되지 않아 실패 작업이 없고, 실패 코드와 관계없이 전사부터 다시 시도할 수 있어요
   const isTranscriptionFailed =
     viewStatus === "failed" && recording?.transcriptionStatus === "FAILED";
@@ -177,6 +199,22 @@ export const useRecordingDocuments = ({
           { workspaceId, jobIds: failedJobIds },
           {
             onSuccess: async (results) => {
+              const errors = results.map(({ error: retryError }) => retryError);
+              const isNoneAccepted = results.every(
+                ({ isAccepted }) => !isAccepted,
+              );
+              const hasRetryableFailure = errors.some(
+                (retryError) =>
+                  retryError !== null && !isRetryRejectedError(retryError),
+              );
+              if (
+                isNoneAccepted &&
+                hasRetryableFailure &&
+                !errors.some(isUnauthorizedError)
+              ) {
+                show(TOAST_MESSAGES.RETRY_REQUEST_FAILED);
+              }
+
               const conflictedJobIds = results
                 .filter(({ error: retryError }) =>
                   isHttpError(retryError, HTTP_ERROR_TYPE.conflict),
@@ -209,7 +247,9 @@ export const useRecordingDocuments = ({
   return {
     viewStatus,
     isTranscriptionFailed,
+    isAudioSaveCheckFailed,
     retryLoad,
+    retryAudioSaveCheck,
     retryGeneration: isTranscriptionFailed
       ? retryTranscription
       : retryDocumentGeneration,

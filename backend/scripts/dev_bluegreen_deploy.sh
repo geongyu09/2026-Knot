@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly EXPECTED_DEPLOYMENT_GROUP="knot-backend-dev-bluegreen"
+readonly EXPECTED_DEPLOYMENT_GROUP="knot-backend-dev-deployment-group"
 readonly APP_ROOT="${KNOT_BLUEGREEN_APP_ROOT:-/opt/knot-backend}"
 readonly NGINX_CONFIG="${KNOT_BLUEGREEN_NGINX_CONFIG:-/etc/nginx/conf.d/knot-backend-dev.conf}"
 readonly SYSTEMD_DIR="${KNOT_BLUEGREEN_SYSTEMD_DIR:-/etc/systemd/system}"
@@ -296,6 +296,98 @@ select_active_service() {
   esac
 }
 
+restore_legacy_service_from_blue() {
+  local temporary_jar
+
+  install -d -o ubuntu -g ubuntu -m 0755 "$APP_ROOT"
+  temporary_jar="$(mktemp "${APP_ROOT}/app.jar.bluegreen.XXXXXX")" || return 1
+  if ! cp -p "$ACTIVE_JAR" "$temporary_jar"; then
+    rm -f "$temporary_jar"
+    return 1
+  fi
+  if ! chown ubuntu:ubuntu "$temporary_jar" \
+    || ! chmod 0500 "$temporary_jar" \
+    || ! mv -f "$temporary_jar" "$APP_ROOT/app.jar"; then
+    rm -f "$temporary_jar"
+    return 1
+  fi
+
+  if service_is_active knot-backend-blue.service; then
+    if ! systemctl stop knot-backend-blue.service >/dev/null 2>&1; then
+      if service_is_active knot-backend-blue.service \
+        && wait_for_health "http://127.0.0.1:8080/actuator/health"; then
+        log "Preserved Blue remains healthy; leaving it active"
+        return 0
+      fi
+      return 1
+    fi
+  fi
+  systemctl disable knot-backend-blue.service >/dev/null 2>&1 || true
+  if systemctl enable knot-backend.service \
+    && systemctl start knot-backend.service \
+    && service_is_active knot-backend.service \
+    && wait_for_health "http://127.0.0.1:8080/actuator/health"; then
+    log "Restored the legacy service from the preserved Blue JAR"
+    return 0
+  fi
+
+  log "Legacy service recovery failed; trying the preserved Blue slot"
+  systemctl stop knot-backend.service >/dev/null 2>&1 || true
+  systemctl disable knot-backend.service >/dev/null 2>&1 || true
+  systemctl daemon-reload || return 1
+  systemctl enable knot-backend-blue.service || return 1
+  systemctl start knot-backend-blue.service || return 1
+  service_is_active knot-backend-blue.service || return 1
+  wait_for_health "http://127.0.0.1:8080/actuator/health"
+}
+
+bootstrap_initial_blue() {
+  [[ "$ACTIVE_PORT" == "8080" ]] || return 0
+  service_is_active knot-backend-blue.service && return 0
+  service_is_active knot-backend.service && return 0
+  service_is_active knot-backend-green.service && die "Green is active while Nginx points to port 8080"
+
+  ACTIVE_SERVICE="knot-backend-blue.service"
+  ACTIVE_JAR="${APP_ROOT}/slots/blue/app.jar"
+  [[ -f "$ACTIVE_JAR" ]] || die "Preserved legacy Blue JAR is missing: ${ACTIVE_JAR}"
+
+  if ! install -m 0644 \
+    "${SCRIPT_DIR}/systemd/knot-backend-blue.service" \
+    "${SYSTEMD_DIR}/knot-backend-blue.service"; then
+    restore_legacy_service_from_blue \
+      && die "Could not install Blue unit; restored a service on port 8080" \
+      || die "Could not install Blue unit or restore a service on port 8080"
+  fi
+  if ! systemctl daemon-reload; then
+    restore_legacy_service_from_blue \
+      && die "Could not reload systemd; restored a service on port 8080" \
+      || die "Could not reload systemd or restore a service on port 8080"
+  fi
+  if ! systemctl enable "$ACTIVE_SERVICE"; then
+    restore_legacy_service_from_blue \
+      && die "Could not enable Blue; restored a service on port 8080" \
+      || die "Could not enable Blue or restore a service on port 8080"
+  fi
+  if ! systemctl start "$ACTIVE_SERVICE"; then
+    restore_legacy_service_from_blue \
+      && die "Could not start Blue; restored a service on port 8080" \
+      || die "Could not start Blue or restore a service on port 8080"
+  fi
+  if ! service_is_active "$ACTIVE_SERVICE"; then
+    restore_legacy_service_from_blue \
+      && die "Blue did not stay active; restored a service on port 8080" \
+      || die "Blue did not stay active or restore a service on port 8080"
+  fi
+
+  active_url="http://127.0.0.1:${ACTIVE_PORT}/actuator/health"
+  if ! wait_for_health "$active_url"; then
+    restore_legacy_service_from_blue \
+      && die "Blue did not become healthy; restored a service on port 8080" \
+      || die "Blue did not become healthy or restore a service on port 8080"
+  fi
+  log "Started preserved Blue before preparing the new slot"
+}
+
 select_candidate_slot() {
   case "$ACTIVE_PORT" in
     8080)
@@ -345,6 +437,7 @@ flock -n 9 || die "Another Blue-Green deployment is already running"
   || die "A previous route rollback is uncertain; inspect Nginx and clear ${ROUTE_UNCERTAIN_MARKER} after recovery"
 
 ACTIVE_PORT="$(read_upstream_port)"
+bootstrap_initial_blue
 select_active_service
 select_candidate_slot
 [[ -f "$ACTIVE_JAR" ]] || die "Active JAR is missing: ${ACTIVE_JAR}"

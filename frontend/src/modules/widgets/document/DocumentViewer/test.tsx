@@ -22,6 +22,8 @@ import {
   DOCUMENT_FROM_RECORDING,
 } from "@constants/document";
 import { ThemeProvider } from "@emotion/react";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
+import { ToastProvider } from "@provider/context/toastContext";
 import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -37,7 +39,7 @@ import {
 import { formatDate } from "@utils/formatDate";
 import { formatDurationFromSeconds } from "@utils/formatDurationFromSeconds";
 import { delay, http, HttpResponse } from "msw";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import DocumentViewer from ".";
@@ -116,15 +118,24 @@ const writeText = vi.fn<(text: string) => Promise<void>>();
 /** 녹음 직후 정리 화면에서 문서 보기로 넘어왔다는 주소 쿼리. 이 쿼리가 있을 때만 스테퍼가 보여요 */
 const FROM_RECORDING_SEARCH = `?${DOCUMENT_FROM_PARAM}=${DOCUMENT_FROM_RECORDING}`;
 
-// 이동을 확인할 수 있게 로그인 경로에 표시만 하는 화면을 둬요
+// 이동을 확인할 수 있게 로그인 경로에 표시만 하는 화면을 둬요. 토스트는 앱처럼 라우터 안의 Provider가 그려요
 const renderViewerAt = (initialEntry: string) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const router = createMemoryRouter(
     [
-      { path: PATH_ROUTE.DOCUMENT, element: <DocumentViewer /> },
-      { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
+      {
+        element: (
+          <ToastProvider>
+            <Outlet />
+          </ToastProvider>
+        ),
+        children: [
+          { path: PATH_ROUTE.DOCUMENT, element: <DocumentViewer /> },
+          { path: PATH_ROUTE.LOGIN, element: <p>로그인 화면</p> },
+        ],
+      },
     ],
     { initialEntries: [initialEntry] },
   );
@@ -488,6 +499,33 @@ describe("DocumentViewer", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("복사에 실패하면 오류 토스트를 띄우고 버튼은 「복사」로 남는다", async () => {
+    writeText.mockRejectedValue(new Error("클립보드 권한이 없어요"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    renderViewer(String(expected.id));
+    await screen.findByRole("heading", { level: 2, name: expected.title });
+
+    await click(screen.getByRole("button", { name: "복사" }));
+
+    expect(
+      await screen.findByText(TOAST_MESSAGES.COPY_FAILED.message),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "복사" })).toBeInTheDocument();
+  });
+
+  it("클립보드를 쓸 수 없는 브라우저에서도 복사 실패 토스트를 띄운다", async () => {
+    Reflect.deleteProperty(navigator, "clipboard");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    renderViewer(String(expected.id));
+    await screen.findByRole("heading", { level: 2, name: expected.title });
+
+    await click(screen.getByRole("button", { name: "복사" }));
+
+    expect(
+      await screen.findByText(TOAST_MESSAGES.COPY_FAILED.message),
+    ).toBeInTheDocument();
+  });
+
   it("아직 확인하지 않았으면 확인 버튼을 보여주고, 누르면 누를 수 없는 「확인했어요」로 바뀌고 확인 수가 늘어난다", async () => {
     renderViewer(String(expected.id));
 
@@ -576,9 +614,12 @@ describe("DocumentViewer", () => {
     );
 
     await waitForElementToBeRemoved(queryConfirmButton);
+    expect(
+      screen.queryByText(TOAST_MESSAGES.DOCUMENT_CONFIRM_FAILED.message),
+    ).not.toBeInTheDocument();
   });
 
-  it("확인 요청이 서버 오류로 실패하면 버튼을 남겨 다시 누를 수 있게 한다", async () => {
+  it("확인 요청이 서버 오류로 실패하면 버튼을 남겨 다시 누를 수 있게 하고 오류 토스트를 띄운다", async () => {
     let requestCount = 0;
     mockServer.use(
       http.put(MY_CONFIRMATION_REQUEST, async () => {
@@ -598,6 +639,9 @@ describe("DocumentViewer", () => {
     // 응답을 기다리는 동안에는 누를 수 없고, 실패하면 다시 누를 수 있어요
     await waitFor(() => expect(confirmButton).toBeDisabled());
     await waitFor(() => expect(confirmButton).toBeEnabled());
+    expect(
+      screen.getByText(TOAST_MESSAGES.DOCUMENT_CONFIRM_FAILED.message),
+    ).toBeInTheDocument();
 
     fireEvent.click(confirmButton);
 
@@ -618,6 +662,88 @@ describe("DocumentViewer", () => {
     );
 
     expect(await screen.findByText("로그인 화면")).toBeInTheDocument();
+    expect(
+      screen.queryByText(TOAST_MESSAGES.DOCUMENT_CONFIRM_FAILED.message),
+    ).not.toBeInTheDocument();
+  });
+
+  describe("같은 녹음의 문서를 모두 확인했을 때 (CONF-R4)", () => {
+    /** 확인 요청 뒤 내 미확인 문서 목록이 `items`가 되게 해요. 다른 조건의 목록 요청은 기본 응답에 넘겨요 */
+    const respondPendingDocuments = (items: DocumentsResponse["items"]) => {
+      mockServer.use(
+        http.get(DOCUMENTS_REQUEST, ({ request }) => {
+          if (
+            new URL(request.url).searchParams.get("myConfirmation") !==
+            "PENDING"
+          ) {
+            return undefined;
+          }
+
+          return HttpResponse.json({
+            topics: [],
+            items,
+            nextCursor: null,
+          } satisfies DocumentsResponse);
+        }),
+      );
+    };
+
+    it("확인으로 같은 녹음의 내 미확인 문서가 남지 않으면 「문서를 모두 확인했어요」 토스트를 띄운다", async () => {
+      renderViewer(String(expected.id));
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: CONFIRM_BUTTON_NAME }),
+      );
+
+      expect(
+        await screen.findByText(TOAST_MESSAGES.ALL_DOCUMENTS_CONFIRMED.message),
+      ).toBeInTheDocument();
+    });
+
+    it("같은 녹음에 아직 확인하지 않은 문서가 남아 있으면 하나를 확인해도 토스트를 띄우지 않는다", async () => {
+      const [otherDocument] = documentsResponse.items.filter(
+        ({ id }) => id !== expected.id,
+      );
+      respondPendingDocuments([
+        {
+          ...otherDocument,
+          recordingSessionId: expected.recordingSessionId,
+          myConfirmationState: "PENDING",
+        },
+      ]);
+      renderViewer(String(expected.id));
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: CONFIRM_BUTTON_NAME }),
+      );
+      await screen.findByRole("button", { name: CONFIRMED_BUTTON_NAME });
+      await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+      expect(
+        screen.queryByText(TOAST_MESSAGES.ALL_DOCUMENTS_CONFIRMED.message),
+      ).not.toBeInTheDocument();
+    });
+
+    it("남은 문서를 확인하지 못하면(미확인 목록 조회 실패) 모두 확인했다고 알리지 않는다", async () => {
+      mockServer.use(
+        http.get(DOCUMENTS_REQUEST, ({ request }) =>
+          new URL(request.url).searchParams.get("myConfirmation") === "PENDING"
+            ? new HttpResponse(null, { status: 500 })
+            : undefined,
+        ),
+      );
+      renderViewer(String(expected.id));
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: CONFIRM_BUTTON_NAME }),
+      );
+      await screen.findByRole("button", { name: CONFIRMED_BUTTON_NAME });
+      await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+      expect(
+        screen.queryByText(TOAST_MESSAGES.ALL_DOCUMENTS_CONFIRMED.message),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("없는 문서면 문서를 불러오지 못했다고 알리고, 다시 시도를 누르면 다시 조회한다", async () => {

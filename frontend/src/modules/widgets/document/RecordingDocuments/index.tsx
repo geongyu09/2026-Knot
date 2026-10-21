@@ -5,6 +5,7 @@ import { useParams } from "react-router";
 import { useRecordingDocuments } from "./model/useRecordingDocuments";
 import { useRecordingDocumentsAnalytics } from "./model/useRecordingDocumentsAnalytics";
 import { useRecordingDocumentsRedirect } from "./model/useRecordingDocumentsRedirect";
+import AudioSaveCheckFailedState from "./ui/AudioSaveCheckFailedState";
 import DocumentFailedState from "./ui/DocumentFailedState";
 import DraftingState from "./ui/DraftingState";
 import LoadFailedState from "./ui/LoadFailedState";
@@ -17,6 +18,7 @@ import NothingToOrganizeState from "./ui/NothingToOrganizeState";
  * 문서 만들기나 전사에 실패했으면 그 자리에서 다시 시도할 수 있고, 접수되면 정리 중으로 돌아가요.
  * 정리가 끝나면 그 녹음에서 나온 첫 문서로 보내고, 아직 끝내지 않은 녹음은 녹음 화면으로 보내요.
  * PCM 조각 녹음의 서버 저장이 끝내 실패하거나 폐기됐으면 안내 없이 워크스페이스 홈으로 보내요. 저장된 음성이 없는 실패는 정리할 내용 없음으로 보여요.
+ * 저장 상태를 확인하지 못하는 동안에는 정리 중 대신 확인하지 못했다는 안내와 「다시 시도」를 그 자리에 둬요.
  *
  * 주소의 두 id는 숫자인지 확인하지 않고 그대로 요청해요. 잘못된 주소인지는 서버가 판단하고, 여기서는 그 응답에 따라 문서를 불러오지 못했다고 알려요.
  * 같은 판단을 프론트에도 두면 기준이 두 곳에 생기기 때문이에요.
@@ -29,7 +31,9 @@ export default function RecordingDocuments() {
   const {
     viewStatus,
     isTranscriptionFailed,
+    isAudioSaveCheckFailed,
     retryLoad,
+    retryAudioSaveCheck,
     retryGeneration,
     isRetrying,
   } = useRecordingDocuments({ workspaceId, recordingId });
@@ -47,6 +51,10 @@ export default function RecordingDocuments() {
 
   if (viewStatus === "loading") {
     return <LoadingIndicator label="문서 정리 상태를 확인하고 있어요" />;
+  }
+
+  if (viewStatus === "organizing" && isAudioSaveCheckFailed) {
+    return <AudioSaveCheckFailedState onRetry={retryAudioSaveCheck} />;
   }
 
   // 정리가 끝난 녹음은 보낼 문서를 찾는 동안 정리 중 화면을 그대로 둬요

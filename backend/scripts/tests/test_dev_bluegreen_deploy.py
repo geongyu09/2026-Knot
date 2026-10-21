@@ -8,6 +8,7 @@ from pathlib import Path
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 DEPLOY_SCRIPT = BACKEND_ROOT / "scripts" / "dev_bluegreen_deploy.sh"
+PRESERVE_SCRIPT = BACKEND_ROOT / "scripts" / "dev_bluegreen_preserve_legacy.sh"
 SYSTEMD_SOURCES = BACKEND_ROOT / "ops" / "systemd"
 PACKAGE_SCRIPT = BACKEND_ROOT / "ops" / "codebuild" / "package-deployment-artifact.sh"
 
@@ -34,6 +35,7 @@ class DevBlueGreenDeployTest(unittest.TestCase):
         self.systemd_dir.mkdir()
         self.bundle.joinpath("app.jar").write_bytes(b"candidate")
         self.scripts.joinpath("dev_bluegreen_deploy.sh").write_bytes(DEPLOY_SCRIPT.read_bytes())
+        self.scripts.joinpath("dev_bluegreen_preserve_legacy.sh").write_bytes(PRESERVE_SCRIPT.read_bytes())
         for unit_name in ("knot-backend-blue.service", "knot-backend-green.service"):
             shutil.copy2(SYSTEMD_SOURCES / unit_name, self.scripts / "systemd" / unit_name)
 
@@ -58,6 +60,85 @@ class DevBlueGreenDeployTest(unittest.TestCase):
         self.assertNotIn("knot-backend.service", self._read_lines(self.enabled_services))
         self.assertIn("knot-backend-green.service", self._read_lines(self.enabled_services))
         self.assertTrue((self.app_root / "slots" / "green" / "app.jar").is_file())
+
+    def test_before_install_preserves_legacy_jar_before_code_deploy_cleanup(self):
+        result = self._run_preserve()
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual((self.app_root / "slots" / "blue" / "app.jar").read_bytes(), b"active")
+        self.assertEqual(
+            (self.app_root / "slots" / "blue" / "app.jar").stat().st_mode & 0o777,
+            0o500,
+        )
+
+    def test_before_install_refreshes_an_old_blue_backup_from_legacy_jar(self):
+        blue_jar = self.app_root / "slots" / "blue" / "app.jar"
+        blue_jar.parent.mkdir(parents=True)
+        blue_jar.write_bytes(b"stale-backup")
+
+        result = self._run_preserve()
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(blue_jar.read_bytes(), b"active")
+
+    def test_first_transition_bootstraps_preserved_blue_after_legacy_stop(self):
+        preserve_result = self._run_preserve()
+        self.assertEqual(preserve_result.returncode, 0, preserve_result.stdout + preserve_result.stderr)
+        blue_jar = self.app_root / "slots" / "blue" / "app.jar"
+        self.legacy_jar.unlink()
+        self.active_services.write_text("")
+        self.enabled_services.write_text("")
+        self.command_log.write_text("")
+
+        result = self._run_deploy(TEST_ACTIVE_JAR=str(blue_jar))
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("proxy_pass http://127.0.0.1:8081;", self.nginx_config.read_text())
+        self.assertEqual(self._read_lines(self.active_services), {"knot-backend-green.service"})
+        commands = self.command_log.read_text().splitlines()
+        self.assertLess(
+            commands.index("systemctl start knot-backend-blue.service"),
+            commands.index("systemctl start knot-backend-green.service"),
+        )
+
+    def test_first_transition_restores_legacy_service_if_blue_bootstrap_fails(self):
+        preserve_result = self._run_preserve()
+        self.assertEqual(preserve_result.returncode, 0, preserve_result.stdout + preserve_result.stderr)
+        self.legacy_jar.unlink()
+        self.active_services.write_text("")
+        self.enabled_services.write_text("")
+        blue_jar = self.app_root / "slots" / "blue" / "app.jar"
+
+        result = self._run_deploy(
+            DEPLOYMENT_GROUP_NAME="knot-backend-dev-deployment-group",
+            TEST_ACTIVE_JAR=str(blue_jar),
+            TEST_FAIL_START_SERVICE="knot-backend-blue.service",
+            TEST_FAIL_STOP_INACTIVE_SERVICE="knot-backend-blue.service",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Could not start Blue; restored a service on port 8080", result.stdout)
+        self.assertEqual(self._read_lines(self.active_services), {"knot-backend.service"})
+        self.assertEqual(self.legacy_jar.read_bytes(), b"active")
+
+    def test_first_transition_restores_legacy_service_if_systemd_reload_fails(self):
+        preserve_result = self._run_preserve()
+        self.assertEqual(preserve_result.returncode, 0, preserve_result.stdout + preserve_result.stderr)
+        self.legacy_jar.unlink()
+        self.active_services.write_text("")
+        self.enabled_services.write_text("")
+        blue_jar = self.app_root / "slots" / "blue" / "app.jar"
+
+        result = self._run_deploy(
+            DEPLOYMENT_GROUP_NAME="knot-backend-dev-deployment-group",
+            TEST_ACTIVE_JAR=str(blue_jar),
+            TEST_FAIL_DAEMON_RELOAD="1",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Could not reload systemd; restored a service", result.stdout)
+        self.assertEqual(self._read_lines(self.active_services), {"knot-backend.service"})
+        self.assertEqual(self.legacy_jar.read_bytes(), b"active")
 
     def test_candidate_health_failure_keeps_legacy_route_and_service(self):
         result = self._run_deploy(TEST_FAIL_PORT="8081")
@@ -166,7 +247,7 @@ class DevBlueGreenDeployTest(unittest.TestCase):
         self.assertTrue((self.app_root / "slots" / "blue" / "app.jar").is_file())
 
     def test_unexpected_deployment_group_is_rejected_without_touching_blue(self):
-        result = self._run_deploy(DEPLOYMENT_GROUP_NAME="knot-backend-dev-deployment-group")
+        result = self._run_deploy(DEPLOYMENT_GROUP_NAME="knot-backend-dev-bluegreen")
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Refusing deployment group", result.stdout)
@@ -178,7 +259,7 @@ class DevBlueGreenDeployTest(unittest.TestCase):
         environment.update(
             {
                 "PATH": f"{self.fake_bin}{os.pathsep}{environment['PATH']}",
-                "DEPLOYMENT_GROUP_NAME": "knot-backend-dev-bluegreen",
+                "DEPLOYMENT_GROUP_NAME": "knot-backend-dev-deployment-group",
                 "DEPLOYMENT_ID": "d-test123",
                 "KNOT_BLUEGREEN_APP_ROOT": str(self.app_root),
                 "KNOT_BLUEGREEN_NGINX_CONFIG": str(self.nginx_config),
@@ -202,6 +283,29 @@ class DevBlueGreenDeployTest(unittest.TestCase):
         environment.update(extra_environment)
         return subprocess.run(
             ["bash", str(self.scripts / "dev_bluegreen_deploy.sh")],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+
+    def _run_preserve(self, **extra_environment):
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "PATH": f"{self.fake_bin}{os.pathsep}{environment['PATH']}",
+                "DEPLOYMENT_GROUP_NAME": "knot-backend-dev-deployment-group",
+                "DEPLOYMENT_ID": "d-test123",
+                "KNOT_BLUEGREEN_APP_ROOT": str(self.app_root),
+                "KNOT_BLUEGREEN_NGINX_CONFIG": str(self.nginx_config),
+                "TEST_ACTIVE_SERVICES_FILE": str(self.active_services),
+                "TEST_ENABLED_SERVICES_FILE": str(self.enabled_services),
+                "TEST_COMMAND_LOG": str(self.command_log),
+            }
+        )
+        environment.update(extra_environment)
+        return subprocess.run(
+            ["bash", str(self.scripts / "dev_bluegreen_preserve_legacy.sh")],
             check=False,
             capture_output=True,
             text=True,
@@ -242,6 +346,9 @@ if command in {"is-active", "is-enabled"}:
     sys.exit(0 if present else 3)
 if command in {"start", "enable"}:
     service = arguments[-1]
+    failure_setting = "TEST_FAIL_" + command.upper() + "_SERVICE"
+    if os.environ.get(failure_setting) == service:
+        sys.exit(1)
     source = active_file if command == "start" else enabled_file
     services = read_services(source)
     services.add(service)
@@ -253,9 +360,13 @@ if command in {"stop", "disable"}:
         sys.exit(1)
     source = active_file if command == "stop" else enabled_file
     services = read_services(source)
+    if command == "stop" and os.environ.get("TEST_FAIL_STOP_INACTIVE_SERVICE") == service and service not in services:
+        sys.exit(1)
     services.discard(service)
     write_services(source, services)
     sys.exit(0)
+if command == "daemon-reload" and os.environ.get("TEST_FAIL_DAEMON_RELOAD") == "1":
+    sys.exit(1)
 if command in {"daemon-reload", "reload"}:
     sys.exit(0)
 sys.exit(0)
@@ -391,6 +502,9 @@ class DeploymentArtifactPackagingTest(unittest.TestCase):
         (self.backend / "ops" / "systemd").mkdir(parents=True)
         (self.backend / "ops" / "codebuild").mkdir(parents=True)
         (self.backend / "scripts" / "sample-hook.sh").write_text("#!/bin/sh\nexit 0\n")
+        (self.backend / "scripts" / "dev_bluegreen_preserve_legacy.sh").write_text(
+            "#!/bin/sh\nprintf 'preserve\\n'\n"
+        )
         (self.backend / "scripts" / "tests" / "fixture.py").write_text("print('test')\n")
         (self.backend / "appspec.yml").write_text("legacy-appspec\n")
         (self.backend / "appspec-dev-bluegreen.yml").write_text("bluegreen-appspec\n")
@@ -430,6 +544,7 @@ class DeploymentArtifactPackagingTest(unittest.TestCase):
             (self.root / "scripts" / "systemd" / "knot-backend-green.service").read_text(),
             "green-unit\n",
         )
+        self.assertTrue((self.root / "scripts" / "dev_bluegreen_preserve_legacy.sh").is_file())
 
     def test_unknown_mode_fails_before_creating_an_appspec(self):
         result = self._package("unsupported")

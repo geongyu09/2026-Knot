@@ -31,7 +31,8 @@ const toErrorBody = (data: unknown) => {
   }
 };
 
-const toErrorCode = (data: unknown) => {
+/** 응답 본문의 서버 오류 코드. 본문이 없거나 코드가 없으면 `undefined`예요 */
+export const toErrorCode = (data: unknown) => {
   const body = toErrorBody(data);
 
   return typeof body === "object" &&

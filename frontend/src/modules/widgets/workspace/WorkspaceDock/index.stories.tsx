@@ -2,6 +2,7 @@ import { CURRENT_RECORDING_API_PATH } from "@api/fetch/api/v1/workspaces/[worksp
 import { currentRecordingResponse } from "@api/mock/responses/recording";
 import DockColumn from "@primitives/layout/DockColumn";
 import { DialogProvider } from "@provider/context/dialogContext";
+import { ToastProvider } from "@provider/context/toastContext";
 import { PATH_ROUTE, getRouterPath } from "@routes/PATH_ROUTE";
 import { useRecordingStore } from "@store/recordingStore";
 import { useSearchAnswerStore } from "@store/searchAnswerStore";
@@ -90,12 +91,13 @@ const grantSilentMicrophone = () => {
  * - `Enter`로 보내고 `Shift+Enter`로 줄을 바꿔요. 입력이 비어 있거나 앞 질문의 답변을 기다리거나 받는 중이면 보내기 버튼을 누를 수 없어요. 입력창은 다섯 줄까지 자라고 그보다 길면 안에서 스크롤해요.
  * - 질문은 어느 화면에서든 독이 바로 보내요. 보내면 입력창을 곧바로 비워요.
  * - 탐색 대화 화면에서 보내면 그 대화에 이어 묻고, 홈이나 새 대화 화면에서 보내면 새 대화를 시작해요. 서버가 질문을 받으면 그 대화 화면으로 옮겨 가요. 홈에서 보냈다면 뒤로 가기로 홈에 돌아올 수 있어요.
- * - 서버가 질문을 받기 전에 거절하면 보낸 질문을 입력창에 되돌려 다시 보낼 수 있게 해요.
+ * - 서버가 질문을 받기 전에 거절하면 보낸 질문을 입력창에 되돌려 다시 보낼 수 있게 하고, 오류 토스트 「질문을 보내지 못했어요. 잠시 후 다시 시도해 주세요.」로 알려요.
  * - 펼친 폭은 탐색 대화 열과 같아요. 고정 패널을 뺀 남은 영역의 가운데에서 양옆 40px을 두고 최대 760px까지 늘어나요. 왼쪽 패널을 고정하면 대화 열과 함께 밀려요.
  * - 탐색 화면은 채팅이 곧 화면이라 독을 늘 펼쳐 둬요.
  * - 접혀 있든 펼쳐 있든 회의 녹음(마이크) 버튼을 둬요. 누르면 녹음 화면에 들어가기 전에 마이크 권한을 받아 녹음을 시작하고 녹음 화면으로 옮겨 가요.
  * - 마이크 권한을 받지 못하면 모달로 알리고 지금 화면에 남아요. 「다시 시도」는 권한을 다시 묻고, 「닫기」나 `Esc`는 모달만 닫아요.
  * - 서버가 녹음 시작을 거절하면(409, 새로고침 전 녹음이 아직 열려 있음) 마이크를 끄고 「녹음을 시작할 수 없어요」 모달로 알린 뒤 지금 화면에 남아요. 「새로고침」은 페이지를 새로고침하고, 「닫기」·바깥·`Esc`는 모달만 닫아요.
+ * - 녹음 시작 요청이 네트워크 문제로 응답을 받지 못하면 마이크를 끄고 「연결이 잠시 끊겼어요」 모달로 알린 뒤 지금 화면에 남아요. 「다시 시도」는 같은 시작 요청을 다시 보내고, 「닫기」·바깥·`Esc`는 모달만 닫아요.
  * - 새로고침 전 녹음이 이미 끝났거나 버려졌으면 새 녹음으로 한 번만 다시 시작해요. 시작 요청이 오가는 동안 마이크를 다시 눌러도 겹쳐 보내지 않아요.
  * - 녹음 화면이 아닌 곳에서 녹음 중이면 마이크 자리에 녹음한 시간 칩을 둬요. 칩을 누르면 권한을 다시 묻지 않고 녹음 화면으로 가요.
  * - 다른 탭에서 녹음 중이면 접힌 독과 펼친 독 모두 마이크 자리에 점과 녹음한 시간만 보여 줘요. 녹음 중이면 빨간 점, 일시정지면 회색 점이에요. 녹음 화면은 녹음을 시작한 탭에서만 열 수 있어 칩을 누를 수 없고 중지 버튼도 두지 않아요.
@@ -142,23 +144,25 @@ const meta = {
     (Story, { parameters }) => (
       <DialogProvider>
         <MemoryRouter initialEntries={[parameters.initialPath]}>
-          <Routes>
-            <Route
-              path={`${PATH_ROUTE.WORKSPACE_HOME}/*`}
-              element={
-                // 레이아웃과 같은 열에 두고, 위로 뜨는 안내 말풍선이 잘리지 않게 위쪽에 자리를 둬요
-                <DockColumn
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    paddingTop: "5rem",
-                  }}
-                >
-                  <Story />
-                </DockColumn>
-              }
-            />
-          </Routes>
+          <ToastProvider>
+            <Routes>
+              <Route
+                path={`${PATH_ROUTE.WORKSPACE_HOME}/*`}
+                element={
+                  // 레이아웃과 같은 열에 두고, 위로 뜨는 안내 말풍선이 잘리지 않게 위쪽에 자리를 둬요
+                  <DockColumn
+                    style={{
+                      display: "flex",
+                      justifyContent: "center",
+                      paddingTop: "5rem",
+                    }}
+                  >
+                    <Story />
+                  </DockColumn>
+                }
+              />
+            </Routes>
+          </ToastProvider>
         </MemoryRouter>
       </DialogProvider>
     ),
@@ -204,6 +208,42 @@ export const WithQuestion: Story = {
       canvas.getByRole("textbox", { name: "무엇이든 요청하세요" }),
       "지난주 회의에서 정해진 것만 뽑아 줘",
     );
+  },
+};
+
+/**
+ * 질문을 보냈지만 서버가 받기 전에 거절한 상태예요. 보낸 질문을 입력창에 되돌리고 오류 토스트로 알려요.
+ * 예: 연결이 끊겼거나 서버가 질문을 받지 못했을 때
+ */
+export const QuestionSendFailed: Story = {
+  parameters: {
+    initialPath: CHAT_PATH,
+    docs: { story: { inline: false, iframeHeight: 320 } },
+    msw: {
+      handlers: {
+        searchConversations: http.post(
+          "*/api/v1/workspaces/:workspaceId/search/conversations",
+          () =>
+            HttpResponse.json(
+              { code: "FORBIDDEN", message: "요청을 처리하지 못했어요" },
+              { status: 403 },
+            ),
+        ),
+      },
+    },
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=2098-28618",
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    await userEvent.type(
+      canvas.getByRole("textbox", { name: "무엇이든 요청하세요" }),
+      "지난주 회의에서 정해진 것만 뽑아 줘",
+    );
+    await userEvent.click(canvas.getByRole("button", { name: "보내기" }));
   },
 };
 
@@ -318,6 +358,36 @@ export const RecordingStartRefused: Story = {
               { code: "ACTIVE_RECORDING_ALREADY_EXISTS" },
               { status: 409 },
             ),
+        ),
+      },
+    },
+  },
+  beforeEach: grantSilentMicrophone,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    await userEvent.click(
+      canvas.getByRole("button", { name: "회의 녹음 시작" }),
+    );
+  },
+};
+
+/**
+ * 회의 녹음을 눌렀지만 시작 요청이 네트워크 문제로 응답을 받지 못한 상태예요. 마이크를 끄고 모달로 알린 뒤 지금 화면에 남아요.
+ * 「다시 시도」는 같은 시작 요청을 다시 보내요.
+ * 예: 회의실 와이파이가 잠깐 끊긴 사용자
+ */
+export const RecordingStartNetworkError: Story = {
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=3804-8372",
+    },
+    msw: {
+      handlers: {
+        startRecording: http.post(
+          "*/api/v1/workspaces/:workspaceId/recordings",
+          () => HttpResponse.error(),
         ),
       },
     },

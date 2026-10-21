@@ -1,6 +1,6 @@
 import styled from "@emotion/styled";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
-import { TOAST_MESSAGES } from "@provider/context/toastContext/constants/toastMessages";
+import { TOAST_MESSAGES } from "@constants/toastMessages";
 
 import Toast from ".";
 

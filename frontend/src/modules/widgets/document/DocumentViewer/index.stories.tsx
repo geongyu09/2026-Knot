@@ -12,6 +12,7 @@ import {
   DOCUMENT_FROM_PARAM,
   DOCUMENT_FROM_RECORDING,
 } from "@constants/document";
+import { ToastProvider } from "@provider/context/toastContext";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import type { Meta, StoryObj } from "@storybook/react-webpack5";
 import { delay, http, HttpResponse } from "msw";
@@ -81,6 +82,7 @@ const ISOLATED_DOCS = { story: { inline: false, iframeHeight: 760 } };
  * - 다른 탭에 다녀오면 문서를 다시 받아요. 이때 서버 오류나 네트워크 문제로 못 받으면 보던 문서를 그대로 둬요.
  * - 문서를 불러올 때나 「문서를 확인했어요」를 누를 때 로그인이 풀렸으면 로그인 화면으로 보내요.
  * - 결정이 없는 회의 문서는 「이번 회의에서 정해진 내용은 없어요.」 문장을 흐리게 보여 줘요.
+ * - 「복사」는 제목과 같은 줄의 오른쪽 끝에 있어요. 제목이 길면 버튼 자리를 남기고 줄을 바꿔요.
  * - 「복사」를 누르면 제목을 `#` 제목으로 본문 앞에 붙여 마크다운으로 복사하고, 3초 동안 「복사됨」으로 바뀌어요. 다른 문서로 넘어가면 「복사됨」은 남지 않아요.
  * - 확인 수에 포인터를 올리면 확인한 사람이 위에, 아직 확인하지 않은 사람이 아래에 흐리게 보여요. 확인하지 않고 나간 사람은 빼요.
  *   내 이름 옆에는 「(나)」를 붙여요. 이름이 길어 줄어들어도 「(나)」는 남아요.
@@ -93,7 +95,8 @@ const ISOLATED_DOCS = { story: { inline: false, iframeHeight: 760 } };
  *   같은 녹음의 문서 목록을 받기 전이거나 받지 못하면 스테퍼만 그리지 않고, 문서는 그대로 보여 줘요.
  * - 본문 아래 줄 오른쪽의 확인 버튼은 확인 대상에게만 보여요. 문서가 만들어질 때의 워크스페이스 멤버가 확인 대상이고, 그 뒤에 들어온 사람은 읽기만 해요.
  *   아직 확인하지 않았으면 「문서를 확인했어요」가 보여요. 누르면 응답을 기다리는 동안 누를 수 없고, 응답이 오면 누를 수 없는 「확인했어요」로 바뀌며 확인 수가 1 늘어요. 확인은 되돌릴 수 없어요.
- *   확인 대상이 아니라는 응답을 받으면 문서를 다시 불러와 버튼을 없애요. 그 밖의 실패에서는 버튼이 그대로 남아 다시 누를 수 있어요.
+ *   확인 대상이 아니라는 응답을 받으면 문서를 다시 불러와 버튼을 없애요. 그 밖의 실패에서는 버튼이 그대로 남아 다시 누를 수 있고, 오류 토스트 「확인하지 못했어요. 다시 시도해 주세요.」로 알려요.
+ *   확인으로 같은 녹음에서 내가 확인할 문서가 남지 않으면 「문서를 모두 확인했어요」 토스트를 띄워요. 하나씩 확인하는 동안에는 띄우지 않아요.
  */
 const meta = {
   title: "Document/DocumentViewer",
@@ -135,9 +138,11 @@ const meta = {
           }),
         ]}
       >
-        <Routes>
-          <Route path={PATH_ROUTE.DOCUMENT} element={<Story />} />
-        </Routes>
+        <ToastProvider>
+          <Routes>
+            <Route path={PATH_ROUTE.DOCUMENT} element={<Story />} />
+          </Routes>
+        </ToastProvider>
       </MemoryRouter>
     ),
   ],
@@ -238,6 +243,55 @@ export const Confirming: Story = {
     });
 
     await userEvent.click(confirmButton);
+  },
+};
+
+/**
+ * 「문서를 확인했어요」를 눌러 같은 녹음에서 내가 확인할 문서가 더 남지 않은 때예요.
+ * 버튼이 「확인했어요」로 바뀌고 「문서를 모두 확인했어요」 토스트가 떠요.
+ */
+export const AllConfirmed: Story = {
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1785-3439",
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    await userEvent.click(
+      await canvas.findByRole("button", { name: "문서를 확인했어요" }),
+    );
+  },
+};
+
+/**
+ * 「문서를 확인했어요」를 눌렀지만 서버 오류로 확인하지 못했을 때예요.
+ * 버튼은 그대로 남아 다시 누를 수 있고, 오류 토스트로 알려요. 이 스토리에서는 다시 눌러도 계속 실패해요.
+ */
+export const ConfirmFailed: Story = {
+  parameters: {
+    docs: ISOLATED_DOCS,
+    msw: {
+      handlers: {
+        myConfirmation: http.put(
+          MY_CONFIRMATION_REQUEST,
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      },
+    },
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4826-33512",
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    await userEvent.click(
+      await canvas.findByRole("button", { name: "문서를 확인했어요" }),
+    );
   },
 };
 
