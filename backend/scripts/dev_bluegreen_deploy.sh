@@ -4,8 +4,13 @@ set -Eeuo pipefail
 readonly EXPECTED_DEPLOYMENT_GROUP="knot-backend-dev-deployment-group"
 readonly APP_ROOT="${KNOT_BLUEGREEN_APP_ROOT:-/opt/knot-backend}"
 readonly NGINX_CONFIG="${KNOT_BLUEGREEN_NGINX_CONFIG:-/etc/nginx/conf.d/knot-backend-dev.conf}"
+readonly NGINX_METRICS_CONFIG="${KNOT_BLUEGREEN_NGINX_METRICS_CONFIG:-/etc/nginx/conf.d/knot-backend-dev-metrics.conf}"
+readonly ALLOY_CONFIG="${KNOT_BLUEGREEN_ALLOY_CONFIG:-/opt/knot-observability-agent/config.alloy}"
+readonly ALLOY_RELOAD_URL="${KNOT_BLUEGREEN_ALLOY_RELOAD_URL:-http://127.0.0.1:12345/-/reload}"
+readonly ALLOY_READY_URL="${KNOT_BLUEGREEN_ALLOY_READY_URL:-http://127.0.0.1:12345/-/ready}"
 readonly SYSTEMD_DIR="${KNOT_BLUEGREEN_SYSTEMD_DIR:-/etc/systemd/system}"
 readonly STATE_ROOT="${KNOT_BLUEGREEN_STATE_ROOT:-/var/lib/knot-backend-deploy/blue-green}"
+readonly ALLOY_CONFIG_APPLIED_MARKER="${STATE_ROOT}/alloy-config-applied.sha256"
 readonly ROUTE_UNCERTAIN_MARKER="${STATE_ROOT}/route-uncertain"
 readonly LOCK_FILE="${KNOT_BLUEGREEN_LOCK_FILE:-/run/lock/knot-backend-bluegreen.lock}"
 readonly HEALTH_ATTEMPTS="${KNOT_BLUEGREEN_HEALTH_ATTEMPTS:-60}"
@@ -17,11 +22,13 @@ readonly HEALTH_HOST="${KNOT_BLUEGREEN_HEALTH_HOST:-dev-api.knoted.kr}"
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly BUNDLE_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 readonly INCOMING_JAR="${BUNDLE_ROOT}/app.jar"
+readonly METRICS_NGINX_SOURCE="${SCRIPT_DIR}/nginx/knot-backend-dev-metrics.conf"
 
 DEPLOYMENT_GROUP_NAME="${DEPLOYMENT_GROUP_NAME:-}"
 DEPLOYMENT_ID="${DEPLOYMENT_ID:-}"
 CANDIDATE_STARTED=false
 ROUTE_CHANGE_ATTEMPTED=false
+MONITORING_ROUTE_READY=false
 SYSTEMD_STATE_CAPTURED=false
 COMMITTED=false
 ACTIVE_PORT=""
@@ -34,6 +41,9 @@ ACTIVE_WAS_ENABLED=false
 CANDIDATE_WAS_ENABLED=false
 TRANSACTION_DIR=""
 PREVIOUS_NGINX_CONFIG=""
+PREVIOUS_NGINX_METRICS_CONFIG=""
+NGINX_METRICS_CONFIG_WAS_PRESENT=false
+NGINX_METRICS_ROUTE_CHANGED=false
 
 log() {
   printf '[blue-green] %s\n' "$*"
@@ -64,6 +74,30 @@ read_upstream_port() {
   [[ "$match_count" == "1" ]] || die "Expected exactly one Dev upstream on port 8080 or 8081; found ${match_count}"
   port="$(sed -nE 's#^[[:space:]]*proxy_pass http://127\.0\.0\.1:(8080|8081);[[:space:]]*$#\1#p' "$NGINX_CONFIG")"
   [[ "$port" == "8080" || "$port" == "8081" ]] || die "Unsupported Nginx upstream port: ${port}"
+  printf '%s\n' "$port"
+}
+
+read_metrics_upstream_port() {
+  local match_count
+  local port
+
+  [[ -r "$NGINX_METRICS_CONFIG" ]] || return 1
+  match_count="$(grep -Ec '^[[:space:]]*proxy_pass http://127\.0\.0\.1:(8080|8081);[[:space:]]*$' "$NGINX_METRICS_CONFIG" || true)"
+  [[ "$match_count" == "1" ]] || return 1
+  port="$(sed -nE 's#^[[:space:]]*proxy_pass http://127\.0\.0\.1:(8080|8081);[[:space:]]*$#\1#p' "$NGINX_METRICS_CONFIG")"
+  [[ "$port" == "8080" || "$port" == "8081" ]] || return 1
+  printf '%s\n' "$port"
+}
+
+read_alloy_metrics_target_port() {
+  local match_count
+  local port
+
+  [[ -r "$ALLOY_CONFIG" ]] || return 1
+  match_count="$(grep -Ec '^[[:space:]]*targets = \[\{ __address__ = "127\.0\.0\.1:(8080|18080)", service = "knot-backend",' "$ALLOY_CONFIG" || true)"
+  [[ "$match_count" == "1" ]] || return 1
+  port="$(sed -nE 's#^[[:space:]]*targets = \[\{ __address__ = "127\.0\.0\.1:(8080|18080)", service = "knot-backend",.*#\1#p' "$ALLOY_CONFIG")"
+  [[ "$port" == "8080" || "$port" == "18080" ]] || return 1
   printf '%s\n' "$port"
 }
 
@@ -143,6 +177,130 @@ wait_for_nginx_health() {
   return 1
 }
 
+metrics_is_available() {
+  local url="http://127.0.0.1:18080/actuator/prometheus"
+
+  curl --noproxy '*' --fail --silent --show-error --max-time "$CURL_TIMEOUT_SECONDS" "$url" 2>/dev/null \
+    | grep -q '^jvm_memory_used_bytes'
+}
+
+wait_for_metrics_endpoint() {
+  local attempt
+
+  for ((attempt = 1; attempt <= HEALTH_ATTEMPTS; attempt++)); do
+    if metrics_is_available; then
+      return 0
+    fi
+    sleep "$HEALTH_INTERVAL_SECONDS"
+  done
+
+  return 1
+}
+
+alloy_is_ready() {
+  curl --noproxy '*' --fail --silent --show-error --max-time "$CURL_TIMEOUT_SECONDS" \
+    "$ALLOY_READY_URL" >/dev/null 2>&1
+}
+
+wait_for_alloy_ready() {
+  local attempt
+
+  for ((attempt = 1; attempt <= HEALTH_ATTEMPTS; attempt++)); do
+    if alloy_is_ready; then
+      return 0
+    fi
+    sleep "$HEALTH_INTERVAL_SECONDS"
+  done
+
+  return 1
+}
+
+reload_alloy_config() {
+  curl --noproxy '*' --fail --silent --show-error --max-time "$CURL_TIMEOUT_SECONDS" \
+    --request POST "$ALLOY_RELOAD_URL" >/dev/null || return 1
+  wait_for_alloy_ready
+}
+
+reload_alloy_config_if_needed() {
+  local config_hash
+  local applied_hash
+  local marker_temp
+
+  alloy_is_ready || return 0
+  config_hash="$(sha256sum "$ALLOY_CONFIG" | awk '{print $1}')" || return 1
+  applied_hash="$(cat "$ALLOY_CONFIG_APPLIED_MARKER" 2>/dev/null || true)"
+  [[ "$config_hash" != "$applied_hash" ]] || return 0
+  reload_alloy_config || return 1
+  marker_temp="$(mktemp "${ALLOY_CONFIG_APPLIED_MARKER}.XXXXXX")" || return 1
+  if ! printf '%s\n' "$config_hash" > "$marker_temp"; then
+    rm -f "$marker_temp"
+    return 1
+  fi
+  if ! mv -f "$marker_temp" "$ALLOY_CONFIG_APPLIED_MARKER"; then
+    rm -f "$marker_temp"
+    return 1
+  fi
+}
+
+write_metrics_route() {
+  local port="$1"
+  local temporary_file
+  local match_count
+
+  [[ "$port" == "8080" || "$port" == "8081" ]] || return 1
+  match_count="$(grep -Ec '^[[:space:]]*proxy_pass http://127\.0\.0\.1:8080;[[:space:]]*$' "$METRICS_NGINX_SOURCE" || true)"
+  [[ "$match_count" == "1" ]] || return 1
+  temporary_file="$(mktemp "${NGINX_METRICS_CONFIG}.bluegreen.XXXXXX")" || return 1
+  if ! sed "s#proxy_pass http://127.0.0.1:8080;#proxy_pass http://127.0.0.1:${port};#" \
+    "$METRICS_NGINX_SOURCE" > "$temporary_file"; then
+    rm -f "$temporary_file"
+    return 1
+  fi
+  if [[ -f "$NGINX_METRICS_CONFIG" ]] && cmp -s "$temporary_file" "$NGINX_METRICS_CONFIG"; then
+    rm -f "$temporary_file"
+    NGINX_METRICS_ROUTE_CHANGED=false
+    return 0
+  fi
+  chmod 0644 "$temporary_file" || return 1
+  mv -f "$temporary_file" "$NGINX_METRICS_CONFIG" || return 1
+  NGINX_METRICS_ROUTE_CHANGED=true
+  [[ "$(read_metrics_upstream_port)" == "$port" ]]
+}
+
+update_alloy_metrics_target() {
+  local current_port
+  local temporary_file
+
+  current_port="$(read_alloy_metrics_target_port)" || return 1
+  [[ "$current_port" == "18080" ]] && return 0
+  temporary_file="$(mktemp "${ALLOY_CONFIG}.bluegreen.XXXXXX")" || return 1
+  if ! sed 's#__address__ = "127.0.0.1:8080"#__address__ = "127.0.0.1:18080"#' \
+    "$ALLOY_CONFIG" > "$temporary_file"; then
+    rm -f "$temporary_file"
+    return 1
+  fi
+  # Alloy bind-mounts this file; keep its inode so the container sees the update.
+  if ! cat "$temporary_file" > "$ALLOY_CONFIG"; then
+    rm -f "$temporary_file"
+    return 1
+  fi
+  rm -f "$temporary_file"
+  [[ "$(read_alloy_metrics_target_port)" == "18080" ]]
+}
+
+prepare_monitoring_route() {
+  ROUTE_CHANGE_ATTEMPTED=true
+  write_metrics_route "$ACTIVE_PORT" || return 1
+  if [[ "$NGINX_METRICS_ROUTE_CHANGED" == true ]]; then
+    nginx -t || return 1
+    nginx -s reload || return 1
+  fi
+  wait_for_metrics_endpoint || return 1
+  MONITORING_ROUTE_READY=true
+  update_alloy_metrics_target || return 1
+  reload_alloy_config_if_needed || return 1
+}
+
 established_connection_count() {
   local port="$1"
   local connections
@@ -155,6 +313,18 @@ established_connection_count() {
   awk 'END { print NR + 0 }' <<< "$connections"
 }
 
+nginx_upstream_connection_count() {
+  local port="$1"
+  local connections
+
+  connections="$(ss -Htnp state established "( dport = :${port} )")" || return 1
+  if [[ -z "$connections" ]]; then
+    printf '0\n'
+    return 0
+  fi
+  awk '/users:\(\("nginx",/ { count++ } END { print count + 0 }' <<< "$connections"
+}
+
 wait_for_connections_to_drain() {
   local port="$1"
   local label="$2"
@@ -163,7 +333,7 @@ wait_for_connections_to_drain() {
   local last_log_time=0
 
   while true; do
-    count="$(established_connection_count "$port")" || return 1
+    count="$(nginx_upstream_connection_count "$port")" || return 1
     [[ "$count" =~ ^[0-9]+$ ]] || return 1
     if [[ "$count" == "0" ]]; then
       log "${label} has no established upstream connections"
@@ -194,9 +364,25 @@ restore_nginx_config() {
   fi
   chmod 0644 "$restore_file" || return 1
   mv -f "$restore_file" "$NGINX_CONFIG" || return 1
+  if [[ "$MONITORING_ROUTE_READY" == true ]]; then
+    write_metrics_route "$ACTIVE_PORT" || return 1
+  elif [[ "$NGINX_METRICS_CONFIG_WAS_PRESENT" == true ]]; then
+    restore_file="$(mktemp "${NGINX_METRICS_CONFIG}.bluegreen.XXXXXX")" || return 1
+    if ! cp "$PREVIOUS_NGINX_METRICS_CONFIG" "$restore_file"; then
+      rm -f "$restore_file"
+      return 1
+    fi
+    chmod 0644 "$restore_file" || return 1
+    mv -f "$restore_file" "$NGINX_METRICS_CONFIG" || return 1
+  else
+    rm -f "$NGINX_METRICS_CONFIG" || return 1
+  fi
   nginx -t || return 1
   nginx -s reload || return 1
-  [[ "$(read_upstream_port)" == "$ACTIVE_PORT" ]]
+  [[ "$(read_upstream_port)" == "$ACTIVE_PORT" ]] || return 1
+  if [[ "$MONITORING_ROUTE_READY" == true || "$NGINX_METRICS_CONFIG_WAS_PRESENT" == true ]]; then
+    [[ "$(read_metrics_upstream_port)" == "$ACTIVE_PORT" ]] || return 1
+  fi
 }
 
 restore_systemd_enablement() {
@@ -231,7 +417,7 @@ rollback_transaction() {
     if wait_for_health "$active_url"; then
       if restore_nginx_config; then
         route_restored=true
-        log "Previous Nginx route restored to port ${ACTIVE_PORT}"
+        log "Previous application route restored to port ${ACTIVE_PORT}"
       else
         printf '%s\n' "$DEPLOYMENT_ID" > "$ROUTE_UNCERTAIN_MARKER" \
           || log "Could not write the route-uncertain marker"
@@ -429,6 +615,8 @@ assert_numeric_settings
 [[ -f "$INCOMING_JAR" ]] || die "Revision app.jar is missing"
 [[ -f "${SCRIPT_DIR}/systemd/knot-backend-blue.service" ]] || die "Blue systemd unit is missing from the revision"
 [[ -f "${SCRIPT_DIR}/systemd/knot-backend-green.service" ]] || die "Green systemd unit is missing from the revision"
+[[ -f "$METRICS_NGINX_SOURCE" ]] || die "Loopback metrics Nginx config is missing from the revision"
+[[ -r "$ALLOY_CONFIG" ]] || die "Alloy config is unreadable: ${ALLOY_CONFIG}"
 
 mkdir -p "$STATE_ROOT" "$(dirname "$LOCK_FILE")"
 exec 9>"$LOCK_FILE"
@@ -476,7 +664,12 @@ systemctl daemon-reload
 
 TRANSACTION_DIR="$(mktemp -d "${STATE_ROOT}/deployment-${DEPLOYMENT_ID}.XXXXXX")"
 PREVIOUS_NGINX_CONFIG="${TRANSACTION_DIR}/nginx.conf"
+PREVIOUS_NGINX_METRICS_CONFIG="${TRANSACTION_DIR}/nginx-metrics.conf"
 cp -p "$NGINX_CONFIG" "$PREVIOUS_NGINX_CONFIG"
+if [[ -f "$NGINX_METRICS_CONFIG" ]]; then
+  cp -p "$NGINX_METRICS_CONFIG" "$PREVIOUS_NGINX_METRICS_CONFIG"
+  NGINX_METRICS_CONFIG_WAS_PRESENT=true
+fi
 
 CANDIDATE_STARTED=true
 systemctl start "$CANDIDATE_SERVICE" || die "Could not start ${CANDIDATE_SERVICE}"
@@ -484,17 +677,22 @@ candidate_url="http://127.0.0.1:${CANDIDATE_PORT}/actuator/health"
 wait_for_health "$candidate_url" || die "Candidate health check did not return 200 UP"
 log "Candidate ${CANDIDATE_SLOT} returned 200 UP on port ${CANDIDATE_PORT}"
 
-ROUTE_CHANGE_ATTEMPTED=true
+prepare_monitoring_route || die "Could not prepare the stable Alloy metrics route"
+
 route_temp="$(mktemp "${NGINX_CONFIG}.bluegreen.XXXXXX")"
 sed "s#proxy_pass http://127.0.0.1:${ACTIVE_PORT};#proxy_pass http://127.0.0.1:${CANDIDATE_PORT};#" \
   "$NGINX_CONFIG" > "$route_temp"
 chmod 0644 "$route_temp"
 mv -f "$route_temp" "$NGINX_CONFIG"
+write_metrics_route "$CANDIDATE_PORT" || die "Could not switch the Alloy metrics route to the candidate"
 nginx -t || die "Nginx validation failed after candidate route was written"
 nginx -s reload || die "Nginx reload failed after candidate route was written"
 [[ "$(read_upstream_port)" == "$CANDIDATE_PORT" ]] || die "Nginx route did not change to the candidate port"
+[[ "$(read_metrics_upstream_port)" == "$CANDIDATE_PORT" ]] || die "Alloy metrics route did not change to the candidate port"
 wait_for_nginx_health || die "Dev Nginx health check did not return 200 UP after switching"
 log "Dev Nginx returned 200 UP through port ${CANDIDATE_PORT}"
+wait_for_metrics_endpoint || die "Alloy metrics proxy did not return JVM metrics through port ${CANDIDATE_PORT}"
+log "Alloy metrics proxy returned JVM metrics through port ${CANDIDATE_PORT}"
 
 wait_for_connections_to_drain "$ACTIVE_PORT" "$ACTIVE_SERVICE" \
   || die "Previous Blue connections did not drain; route will be restored"

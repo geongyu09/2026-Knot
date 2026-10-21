@@ -13,7 +13,7 @@ prometheus.scrape "host" {
 }
 
 discovery.relabel "spring" {
-  targets = [{ __address__ = "127.0.0.1:8080", service = "knot-backend", __meta_knot_env = sys.env("KNOT_ENV") }]
+  targets = [{ __address__ = "127.0.0.1:18080", service = "knot-backend", __meta_knot_env = sys.env("KNOT_ENV") }]
   rule {
     source_labels = ["__meta_knot_env"]
     regex = "dev"
