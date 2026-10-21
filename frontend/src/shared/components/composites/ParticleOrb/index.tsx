@@ -54,13 +54,14 @@ export default function ParticleOrb({
   const theme = useTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  // 녹음 전엔 한눈에 「녹음」으로 읽히도록 붉은 톤을 넓게 써요. 빛 받는 면만 옅은 분홍이에요
   const idlePalette: ParticleOrbPalette = [
-    `rgba(${hexToRgb(theme.neutral[0])},0.95)`,
-    `rgba(${hexToRgb(theme.sub.warning[50])},0.85)`,
-    `rgba(${hexToRgb(theme.sub.warning[200])},0.9)`,
+    `rgba(${hexToRgb(theme.sub.warning[200])},0.95)`,
+    `rgba(${hexToRgb(theme.sub.warning[600])},0.9)`,
     `rgba(${hexToRgb(theme.sub.warning[600])},0.95)`,
+    `rgba(${hexToRgb(theme.sub.warning[700])},0.95)`,
     `rgba(${hexToRgb(theme.sub.warning[800])},0.9)`,
-    `rgba(${hexToRgb(theme.neutral[0])},0.14)`,
+    `rgba(${hexToRgb(theme.sub.warning[600])},0.16)`,
   ];
   const recordingPalette: ParticleOrbPalette = [
     `rgba(${hexToRgb(theme.neutral[0])},0.95)`,

@@ -67,8 +67,9 @@ const DOCK_EXPAND_DURATION = "0.44s";
  * 접혀 있든 펼쳐 있든 회의 녹음(마이크) 슬롯을 두고, 누르면 마이크 권한을 받아 녹음을 시작해요.
  * 녹음 화면이 아닌 곳에서 녹음이 이어지고 있으면 마이크 자리에 녹음 칩을 둬요. 접힌 독에는 중지 버튼도 함께 둬요.
  *
- * 랜딩의 입자가 독에도 이어져요. 접혀 있을 때는 알약 대신 랜딩 녹음 장면과 같은 입자 파형만 떠 있고(`DockSeed`),
- * 파형을 누르면 입자가 채팅과 녹음 두 묶음으로 갈라지며 그 뒤에서 말풍선 모양의 독이 자라나요. 포인터가 벗어나면 다시 파형으로 모여요.
+ * 랜딩의 입자가 독에도 이어져요. 접혀 있을 때는 알약 대신 입자가 「무엇이든 요청하세요」 말풍선과 붉은 녹음 알약을 이루고(`DockSeed`),
+ * 녹음 중엔 랜딩 녹음 장면과 같은 청록 파형이 돼요. 누르면 입자가 채팅과 녹음 두 묶음으로 갈라지며 그 뒤에서 독이 자라나고,
+ * 포인터가 벗어나면 다시 그 모양으로 모여요.
  * 채팅 칸은 고스트 대신 말풍선 아이콘이라 무엇을 하는 자리인지 바로 읽혀요. 녹음 버튼은 입자 구슬이고,
  * 아이콘은 펼치고 접을 때 입자로 모였다가 진짜 아이콘이 되고, 테두리에는 옅은 입자 실이 흘러요.
  * 캔버스를 못 쓰거나 움직임 줄이기 설정이면 파형 없이 늘 열린 독이라, 기존 동작과 접근성 이름은 어느 환경에서나 그대로예요.
@@ -147,6 +148,7 @@ export default function WorkspaceDock() {
           analyser={analyser}
           isActive={!isRecordingPaused}
           elapsedTime={isRecordingChipVisible ? elapsedTime : null}
+          hasRecordSide={hasRecordSide}
           splitTargets={splitTargets}
           onOpen={open}
         />
@@ -350,18 +352,6 @@ const Bar = styled.form<{
   transform: ${({ $isOpen }) => ($isOpen ? "none" : "scale(0.55)")};
   pointer-events: ${({ $isOpen }) => ($isOpen ? "auto" : "none")};
 
-  /* 말풍선 꼬리. 왼쪽 아래에서 아래를 가리켜요 */
-  &::before {
-    content: "";
-    position: absolute;
-    bottom: -0.3125rem; /* -5px */
-    left: ${({ $isExpanded }) => ($isExpanded ? "1.625rem" : "1.125rem")}; /* 26px : 18px */
-    width: 0.75rem; /* 12px */
-    height: 0.75rem;
-    border-radius: 0.125rem; /* 2px */
-    background-color: ${({ theme }) => theme.neutral[800]};
-    transform: rotate(45deg);
-  }
 
   /* 입자 캔버스가 맨 아래에 깔리고 나머지는 그 위에 놓여요 */
   & > :not(canvas) {

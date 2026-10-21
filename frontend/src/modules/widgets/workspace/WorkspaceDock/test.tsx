@@ -1385,6 +1385,8 @@ const createFakeCanvasContext = () =>
     stroke: () => {},
     scale: () => {},
     createRadialGradient: () => ({ addColorStop: () => {} }),
+    measureText: () => ({ width: 100 }),
+    fillText: () => {},
     getImageData: () => ({ data: new Uint8ClampedArray(0) }),
   }) as unknown as CanvasRenderingContext2D;
 

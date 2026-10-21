@@ -16,25 +16,29 @@ interface DockSeedProps {
   isActive: boolean;
   /** 녹음 중이면 파형 아래에 보여 줄 녹음한 시간 */
   elapsedTime: string | null;
+  /** 녹음 쪽이 없는 화면(녹음 화면)이면 `false` */
+  hasRecordSide: boolean;
   splitTargets: SeedSplitTargets;
   /** 파형을 눌렀을 때. 파동이 퍼진 뒤 독이 열려요 */
   onOpen: () => void;
 }
 
 /**
- * 독이 접혀 있을 때 독 자리에 떠 있는 입자 파형.
+ * 독이 접혀 있을 때 독 자리에 떠 있는 입자.
  *
- * 랜딩 녹음 장면과 같은 파형이에요. 올리면 입자가 포인터를 피하고, 누르면 파동이 퍼지며 독이 열려요.
- * 녹음 중이면 청록으로 바뀌어 목소리를 따르고 아래에 녹음한 시간이 보여요.
+ * 대기 중엔 랜딩 문제 장면처럼 입자로 그린 「무엇이든 요청하세요」 말풍선과 붉은 점이 든 녹음 알약이 나란히 떠서
+ * 채팅과 녹음을 할 수 있는 자리임을 보여 줘요. 녹음 중엔 랜딩 녹음 장면 같은 청록 파형이 목소리를 따르고 아래에 녹음한 시간이 보여요.
+ * 올리면 입자가 포인터를 피하고, 누르면 파동이 퍼지며 독이 열려요.
  * 파형 자체는 장식이라 낭독기에서 숨기고, 누르는 자리는 「독 열기」 버튼이에요. 키보드로는 Enter나 Space로 열어요.
  */
-export default function DockSeed({ isOpen, tone, analyser, isActive, elapsedTime, splitTargets, onOpen }: DockSeedProps) {
+export default function DockSeed({ isOpen, tone, analyser, isActive, elapsedTime, hasRecordSide, splitTargets, onOpen }: DockSeedProps) {
   const theme = useTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ink = hexToRgb(theme.neutral[800]);
   const strong = hexToRgb(theme.neutral[900]);
   const accent = hexToRgb(theme.sub.accent[500]);
   const light = hexToRgb(theme.neutral[300]);
+  const warning = hexToRgb(theme.sub.warning[600]);
 
   const { setPointer, clearPointer, pulse } = useDockSeed({
     canvasRef,
@@ -42,15 +46,17 @@ export default function DockSeed({ isOpen, tone, analyser, isActive, elapsedTime
     tone,
     analyser,
     isActive,
+    hasRecordSide,
     splitTargets,
     palette: {
       ink: [`rgba(${strong},0.9)`, `rgba(${ink},0.6)`, `rgba(${ink},0.32)`],
       teal: [`rgba(${accent},0.95)`, `rgba(${accent},0.6)`, `rgba(${accent},0.3)`],
+      red: [`rgba(${warning},0.95)`, `rgba(${warning},0.55)`],
       light: [`rgba(${hexToRgb(theme.neutral[0])},0.95)`, `rgba(${light},0.75)`, `rgba(${light},0.4)`],
-      red: [
-        `rgba(${hexToRgb(theme.neutral[0])},0.95)`,
-        `rgba(${hexToRgb(theme.sub.warning[200])},0.85)`,
-        `rgba(${hexToRgb(theme.sub.warning[600])},0.95)`,
+      orb: [
+        `rgba(${hexToRgb(theme.sub.warning[200])},0.95)`,
+        `rgba(${warning},0.9)`,
+        `rgba(${hexToRgb(theme.sub.warning[800])},0.95)`,
       ],
     },
   });
