@@ -16,6 +16,8 @@ case "$DEPLOYMENT_MODE" in
     mkdir -p scripts/systemd
     cp backend/ops/systemd/knot-backend-blue.service scripts/systemd/
     cp backend/ops/systemd/knot-backend-green.service scripts/systemd/
+    mkdir -p scripts/nginx
+    cp backend/ops/nginx/knot-backend-dev-metrics.conf scripts/nginx/
     ;;
   *)
     printf 'Unknown DEPLOYMENT_MODE: %s\n' "$DEPLOYMENT_MODE" >&2
