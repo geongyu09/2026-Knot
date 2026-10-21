@@ -1,10 +1,10 @@
 # Prod 단일 EC2 Blue-Green 도입 계획
 
-상태: 로컬 구현·집중 검증 및 Prod 사전 설정 완료; Issue #899 게시, PR #900 리뷰 대기; 서비스 슬롯 전환·신규 배포 대기
+상태: 로컬 구현·집중 검증 및 Prod 사전 설정 완료; Issue #899 게시, PR #900 `main` 대상 리뷰 대기; 서비스 슬롯 전환·신규 배포 대기
 확인일: 2026-10-21
 대상: AWS Prod knot-backend-pipeline → knot-backend-build → knot-backend-deployment-group
 작업 위치: 격리 worktree, origin/develop의 8deebdc44에서 시작
-Issue/PR: [Issue #899](https://github.com/woowacourse-teams/2026-knot/issues/899), [PR #900](https://github.com/woowacourse-teams/2026-knot/pull/900) 생성 완료. PR은 `develop` 대상으로 리뷰 대기 중이며, 이번 변경은 merge·운영 배포하지 않음.
+Issue/PR: [Issue #899](https://github.com/woowacourse-teams/2026-knot/issues/899), [PR #900](https://github.com/woowacourse-teams/2026-knot/pull/900) 생성 완료. Prod hotfix로 `main`을 대상으로 하며, 머지 시 이슈 #899가 닫히도록 `Closes #899`를 사용함. PR은 리뷰 대기 중이고 아직 머지·운영 배포하지 않음.
 
 ## 1. 범위와 근거
 
@@ -12,7 +12,7 @@ Dev에서 검증한 Green 기동 → Health 확인 → Nginx 전환 → 이전 �
 
 | 근거 | 관측 내용 | 적용 |
 | --- | --- | --- |
-| PR #895 / GitHub, 2026-10-21 | Dev Blue-Green drain 수정이 develop에 merge됨. main에는 아직 포함되지 않음. | Prod 기능은 develop에서 준비하고 운영 파이프라인은 main 반영 뒤 갱신 |
+| PR #895 / GitHub, 2026-10-21 | Dev Blue-Green drain 수정이 develop에 merge됨. main에는 아직 포함되지 않음. | `main` 대상 PR #900 diff에 공통 drain 경로의 선행 수정으로 포함 |
 | Prod CodePipeline / AWS 콘솔, 2026-10-21 | knot-backend-pipeline 소스는 main; Build는 knot-backend-build. | CodeBuild inline buildspec도 별도로 맞춤 |
 | Prod CodeBuild / AWS 콘솔, 2026-10-21 | 소스는 CodePipeline 입력, buildspec은 프로젝트 인라인 빌드 명령. Prod Blue-Green 파일 유무를 기준으로 기존 패키징과 Blue-Green 패키징을 선택하도록 인라인 설정 저장 완료. | 새 Prod 파일이 소스에 없으면 기존 패키징을 유지하고, Blue-Green marker가 있으면 prod-bluegreen 산출물을 생성. 저장만 했으며 빌드는 시작하지 않음 |
 | Prod CodeDeploy / AWS 콘솔, 2026-10-21 | 기존 그룹은 in-place, AllAtOnce, Automatic Rollback 비활성. | 기존 그룹 유지, hook route 복구 사용. AWS 자동 롤백은 별도 검증 전 변경하지 않음 |
@@ -79,4 +79,4 @@ Java 애플리케이션 코드와 DB schema는 변경하지 않는다.
 - EC2에 1 GiB Swap 추가, Blue/Green unit 설치 및 daemon-reload, Blue 슬롯 JAR 복사를 수행함. Blue/Green은 모두 inactive·disabled이며 기존 Spring 서비스, Nginx route, Alloy 설정은 바꾸지 않음.
 - CodeDeploy 설정과 Nginx 설정은 변경하지 않음. 따라서 실제 Prod 배포 및 첫 전환은 미검증.
 
-Prod 전용 [Issue #899](https://github.com/woowacourse-teams/2026-knot/issues/899)를 생성했고 `docs/adr/899-prod-single-ec2-bluegreen-deployment.md`를 Proposed 상태로 추가했다. [PR #900](https://github.com/woowacourse-teams/2026-knot/pull/900)은 `develop`을 대상으로 리뷰 대기 중이다. CodeBuild·CodePipeline·CodeDeploy 실행과 Prod 서비스 전환은 하지 않는다. 첫 Prod 적용은 이전 revision의 `ApplicationStop`이 legacy 서비스를 중지할 수 있으므로, 무녹음 시간에 사전 Blue-Green handoff를 할지 첫 배포의 짧은 중단을 허용할지는 운영 배포 전 별도 확인한다.
+Prod 전용 [Issue #899](https://github.com/woowacourse-teams/2026-knot/issues/899)를 생성했고 `docs/adr/899-prod-single-ec2-bluegreen-deployment.md`를 Proposed 상태로 추가했다. [PR #900](https://github.com/woowacourse-teams/2026-knot/pull/900)은 Prod hotfix로 `main`을 대상으로 하며, 아직 리뷰 대기 중이다. PR diff에는 main에 아직 반영되지 않은 PR #895 drain 수정도 공통 hook의 기반으로 포함된다. PR 본문은 `Closes #899`로 머지 시 Issue #899를 닫는다. main 머지는 Prod 파이프라인을 실행할 수 있으므로 실제 머지는 별도 승인과 무녹음 배포 창 이후 진행한다. CodeBuild·CodePipeline·CodeDeploy 실행과 Prod 서비스 전환은 아직 하지 않는다. 첫 Prod 적용은 이전 revision의 `ApplicationStop`이 legacy 서비스를 중지할 수 있으므로, 무녹음 시간에 사전 Blue-Green handoff를 할지 첫 배포의 짧은 중단을 허용할지는 운영 배포 전 별도 확인한다.
