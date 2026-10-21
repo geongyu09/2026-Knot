@@ -1,3 +1,4 @@
+import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
 import RecordingDocuments from "@widgets/document/RecordingDocuments";
 
@@ -25,4 +26,9 @@ const Root = styled.div`
   justify-content: center;
   min-height: 100%;
   padding: 1.25rem 1.5rem 7rem; /* 20px 24px 112px — 아래는 하단 독 자리 */
+
+  ${MEDIA_QUERY.mobile} {
+    padding-right: 1rem; /* 16px */
+    padding-left: 1rem;
+  }
 `;

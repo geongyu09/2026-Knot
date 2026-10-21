@@ -1,3 +1,4 @@
+import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
 import useServerRecording from "@hooks/domain/recording/useServerRecording";
 
@@ -92,6 +93,13 @@ const Container = styled.section`
   height: 13.375rem; /* 214px */
   overflow: hidden;
   padding: 1.25rem; /* 20px */
+
+  /* 모바일은 버튼이 아래 줄로 내려가 높이를 내용에 맞춰요(RESP-R5) */
+  ${MEDIA_QUERY.mobile} {
+    height: auto;
+    min-height: 13.375rem; /* 214px */
+  }
+
   border-radius: 1.5rem; /* 24px */
   background-color: ${({ theme }) => theme.neutral[0]};
   box-shadow: ${({ theme }) => theme.shadow02};

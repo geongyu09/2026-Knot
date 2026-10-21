@@ -1,3 +1,4 @@
+import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
 import Button from "@primitives/ui/Button";
 
@@ -75,6 +76,13 @@ const Container = styled.section`
   border: 1px solid ${({ theme }) => theme.neutral[200]};
   border-radius: 1rem; /* 16px */
   background-color: ${({ theme }) => theme.neutral[50]};
+
+  /* 모바일은 두 줄로 나눠요. 위는 상태, 시간, 파형, 아래는 두 버튼이에요(RESP-R10) */
+  ${MEDIA_QUERY.mobile} {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 1rem; /* 16px */
+  }
 `;
 
 const Info = styled.div`
@@ -114,12 +122,24 @@ const ElapsedTime = styled.p`
   font-variant-numeric: tabular-nums; /* 숫자가 바뀌어도 폭이 흔들리지 않아요 */
   white-space: nowrap;
   ${({ theme }) => theme.text.title02};
+
+  ${MEDIA_QUERY.mobile} {
+    ${({ theme }) => theme.text.heading02};
+  }
 `;
 
 const Controls = styled.div`
   display: flex;
   flex-shrink: 0;
   gap: 0.5rem; /* 8px */
+
+  /* 모바일은 두 버튼이 폭을 반씩 나눠 채우고 높이 48px이에요 */
+  ${MEDIA_QUERY.mobile} {
+    && > button {
+      flex: 1;
+      height: 3rem; /* 48px */
+    }
+  }
 `;
 
 /** Figma의 버튼 글자는 Neutral/800이라 outline 기본색(700)보다 한 단계 짙게 둬요. */

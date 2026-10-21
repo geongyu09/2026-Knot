@@ -1,4 +1,5 @@
 import useMeQuery from "@api/queries/useMeQuery";
+import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
 
 /**
@@ -15,4 +16,10 @@ const Greeting = styled.h1`
   text-align: center;
   overflow-wrap: break-word;
   ${({ theme }) => theme.text.title01};
+
+  /* 모바일은 카드가 한 열로 쌓여 인사말도 왼쪽에 맞추고 26px로 줄여요(RESP-R5) */
+  ${MEDIA_QUERY.mobile} {
+    text-align: left;
+    ${({ theme }) => theme.text.heading02};
+  }
 `;
