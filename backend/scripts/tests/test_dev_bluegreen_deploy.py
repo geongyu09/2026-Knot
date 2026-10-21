@@ -38,6 +38,7 @@ class DevBlueGreenDeployTest(unittest.TestCase):
         self.scripts.mkdir(parents=True)
         (self.scripts / "systemd").mkdir()
         (self.scripts / "nginx").mkdir()
+        (self.scripts / "certs").mkdir()
         self.fake_bin.mkdir()
         self.app_root.mkdir()
         self.systemd_dir.mkdir()
@@ -86,6 +87,11 @@ class DevBlueGreenDeployTest(unittest.TestCase):
         self.assertNotIn("knot-backend.service", self._read_lines(self.enabled_services))
         self.assertIn("knot-backend-green.service", self._read_lines(self.enabled_services))
         self.assertTrue((self.app_root / "slots" / "green" / "app.jar").is_file())
+        curl_calls = [
+            line for line in self.command_log.read_text().splitlines() if line.startswith("curl ")
+        ]
+        self.assertTrue(any("--resolve dev-api.knoted.kr:443:127.0.0.1" in line for line in curl_calls))
+        self.assertFalse(any("--cacert" in line for line in curl_calls))
 
     def test_before_install_preserves_legacy_jar_before_code_deploy_cleanup(self):
         result = self._run_preserve()
@@ -328,6 +334,10 @@ class DevBlueGreenDeployTest(unittest.TestCase):
     def test_prod_profile_switches_traffic_and_uses_the_prod_group_and_health_host(self):
         for unit_name in ("knot-backend-blue.service", "knot-backend-green.service"):
             shutil.copy2(PROD_SYSTEMD_SOURCES / unit_name, self.scripts / "systemd" / unit_name)
+        shutil.copy2(
+            BACKEND_ROOT / "ops" / "certificates" / "cloudflare-origin-rsa-root.pem",
+            self.scripts / "certs" / "cloudflare-origin-rsa-root.pem",
+        )
         environment = self._deployment_environment()
         environment.update(
             {
@@ -355,6 +365,74 @@ class DevBlueGreenDeployTest(unittest.TestCase):
             line for line in self.command_log.read_text().splitlines() if line.startswith("curl ")
         ]
         self.assertTrue(any("https://api.knoted.kr/actuator/health" in line for line in curl_urls))
+        self.assertTrue(
+            any(
+                "--cacert "
+                + str(self.scripts / "certs" / "cloudflare-origin-rsa-root.pem")
+                in line
+                and "https://api.knoted.kr/actuator/health" in line
+                for line in curl_urls
+            )
+        )
+
+    def test_prod_deploy_fails_before_starting_green_when_origin_ca_is_missing(self):
+        for unit_name in ("knot-backend-blue.service", "knot-backend-green.service"):
+            shutil.copy2(PROD_SYSTEMD_SOURCES / unit_name, self.scripts / "systemd" / unit_name)
+        environment = self._deployment_environment()
+        environment.update(
+            {
+                "KNOT_BLUEGREEN_PROFILE": "prod",
+                "DEPLOYMENT_GROUP_NAME": "knot-backend-deployment-group",
+                "KNOT_BLUEGREEN_HEALTH_HOST": "api.knoted.kr",
+            }
+        )
+
+        result = subprocess.run(
+            ["bash", str(self.scripts / "prod_bluegreen_deploy.sh")],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Prod Cloudflare Origin RSA CA root is missing", result.stdout)
+        self.assertIn("proxy_pass http://127.0.0.1:8080;", self.nginx_config.read_text())
+        self.assertEqual(self._read_lines(self.active_services), {"knot-backend.service"})
+        commands = self.command_log.read_text().splitlines() if self.command_log.exists() else []
+        self.assertNotIn("systemctl start knot-backend-green.service", commands)
+
+    def test_prod_deploy_keeps_blue_route_when_current_nginx_health_fails(self):
+        for unit_name in ("knot-backend-blue.service", "knot-backend-green.service"):
+            shutil.copy2(PROD_SYSTEMD_SOURCES / unit_name, self.scripts / "systemd" / unit_name)
+        shutil.copy2(
+            BACKEND_ROOT / "ops" / "certificates" / "cloudflare-origin-rsa-root.pem",
+            self.scripts / "certs" / "cloudflare-origin-rsa-root.pem",
+        )
+        environment = self._deployment_environment()
+        environment.update(
+            {
+                "KNOT_BLUEGREEN_PROFILE": "prod",
+                "DEPLOYMENT_GROUP_NAME": "knot-backend-deployment-group",
+                "KNOT_BLUEGREEN_HEALTH_HOST": "api.knoted.kr",
+                "TEST_FAIL_PROXY": "1",
+            }
+        )
+
+        result = subprocess.run(
+            ["bash", str(self.scripts / "prod_bluegreen_deploy.sh")],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Current Prod Nginx health check failed before deployment", result.stdout)
+        self.assertIn("proxy_pass http://127.0.0.1:8080;", self.nginx_config.read_text())
+        self.assertEqual(self._read_lines(self.active_services), {"knot-backend.service"})
+        commands = self.command_log.read_text().splitlines()
+        self.assertNotIn("systemctl start knot-backend-green.service", commands)
 
     def test_prod_slot_units_keep_runtime_environment_and_set_the_requested_heap_limit(self):
         for slot_name, port in (("blue", "8080"), ("green", "8081")):
@@ -543,7 +621,7 @@ import sys
 
 url = sys.argv[-1]
 with open(os.environ["TEST_COMMAND_LOG"], "a") as output:
-    output.write("curl " + url + "\\n")
+    output.write("curl " + " ".join(sys.argv[1:]).replace("\\n", "\\\\n") + "\\n")
 if url.endswith("/-/ready"):
     print("ready")
     sys.exit(0)
@@ -689,6 +767,7 @@ class DeploymentArtifactPackagingTest(unittest.TestCase):
         (self.backend / "ops" / "systemd" / "prod").mkdir(parents=True)
         (self.backend / "ops" / "codebuild").mkdir(parents=True)
         (self.backend / "ops" / "nginx").mkdir(parents=True)
+        (self.backend / "ops" / "certificates").mkdir(parents=True)
         (self.backend / "scripts" / "sample-hook.sh").write_text("#!/bin/sh\nexit 0\n")
         (self.backend / "scripts" / "dev_bluegreen_preserve_legacy.sh").write_text(
             "#!/bin/sh\nprintf 'preserve\\n'\n"
@@ -705,6 +784,9 @@ class DeploymentArtifactPackagingTest(unittest.TestCase):
         (self.backend / "ops" / "systemd" / "prod" / "knot-backend-blue.service").write_text("prod-blue-unit\n")
         (self.backend / "ops" / "systemd" / "prod" / "knot-backend-green.service").write_text("prod-green-unit\n")
         (self.backend / "ops" / "nginx" / "knot-backend-metrics.conf").write_text("metrics-route\n")
+        (self.backend / "ops" / "certificates" / "cloudflare-origin-rsa-root.pem").write_text(
+            "cloudflare-origin-root\n"
+        )
 
     def tearDown(self):
         self.temp_dir.cleanup()
@@ -718,6 +800,7 @@ class DeploymentArtifactPackagingTest(unittest.TestCase):
         self.assertFalse((self.root / "scripts" / "tests").exists())
         self.assertFalse((self.root / "scripts" / "systemd").exists())
         self.assertFalse((self.root / "scripts" / "nginx").exists())
+        self.assertFalse((self.root / "scripts" / "certs").exists())
 
     def test_unset_mode_defaults_to_legacy_artifact(self):
         result = self._package(None)
@@ -744,6 +827,7 @@ class DeploymentArtifactPackagingTest(unittest.TestCase):
             (self.root / "scripts" / "nginx" / "knot-backend-metrics.conf").read_text(),
             "metrics-route\n",
         )
+        self.assertFalse((self.root / "scripts" / "certs").exists())
         self.assertTrue((self.root / "scripts" / "dev_bluegreen_preserve_legacy.sh").is_file())
 
     def test_prod_bluegreen_mode_packages_prod_hooks_units_and_metrics(self):
@@ -763,21 +847,34 @@ class DeploymentArtifactPackagingTest(unittest.TestCase):
             (self.root / "scripts" / "nginx" / "knot-backend-metrics.conf").read_text(),
             "metrics-route\n",
         )
+        self.assertEqual(
+            (
+                self.root
+                / "scripts"
+                / "certs"
+                / "cloudflare-origin-rsa-root.pem"
+            ).read_text(),
+            "cloudflare-origin-root\n",
+        )
         self.assertTrue((self.root / "scripts" / "prod_bluegreen_deploy.sh").is_file())
 
     def test_legacy_mode_removes_stale_bluegreen_files(self):
         stale_systemd = self.root / "scripts" / "systemd"
         stale_nginx = self.root / "scripts" / "nginx"
+        stale_certs = self.root / "scripts" / "certs"
         stale_systemd.mkdir(parents=True)
         stale_nginx.mkdir(parents=True)
+        stale_certs.mkdir(parents=True)
         (stale_systemd / "old.service").write_text("stale\n")
         (stale_nginx / "old.conf").write_text("stale\n")
+        (stale_certs / "old.pem").write_text("stale\n")
 
         result = self._package("legacy-in-place")
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertFalse(stale_systemd.exists())
         self.assertFalse(stale_nginx.exists())
+        self.assertFalse(stale_certs.exists())
 
     def test_unknown_mode_fails_before_creating_an_appspec(self):
         result = self._package("unsupported")

@@ -1,10 +1,10 @@
 # Prod 단일 EC2 Blue-Green 도입 계획
 
-상태: 로컬 구현·집중 검증 및 Prod 사전 설정 완료; Issue #899 게시, PR #900 `main` 대상 리뷰 대기; 서비스 슬롯 전환·신규 배포 대기
+상태: PR #900 `main` 병합 후 첫 Prod Blue-Green 배포 실패 및 Blue 복구 완료; Origin CA 신뢰 hotfix 구현·fixture 검증 완료, CodeBuild 산출물 및 Prod 재배포 대기
 확인일: 2026-10-21
 대상: AWS Prod knot-backend-pipeline → knot-backend-build → knot-backend-deployment-group
 작업 위치: 격리 worktree, origin/develop의 8deebdc44에서 시작
-Issue/PR: [Issue #899](https://github.com/woowacourse-teams/2026-knot/issues/899), [PR #900](https://github.com/woowacourse-teams/2026-knot/pull/900) 생성 완료. Prod hotfix로 `main`을 대상으로 하며, 머지 시 이슈 #899가 닫히도록 `Closes #899`를 사용함. PR은 리뷰 대기 중이고 아직 머지·운영 배포하지 않음.
+Issue/PR: [Issue #899](https://github.com/woowacourse-teams/2026-knot/issues/899), [PR #900](https://github.com/woowacourse-teams/2026-knot/pull/900)은 `main`에 병합됨. 최초 Prod CodeDeploy `d-XI054P9HL`은 전환 뒤 로컬 HTTPS Health Check에서 실패했고 기존 Blue route 복구 및 이전 revision rollback이 확인됨. Origin CA 신뢰 수정은 별도 PR/배포 전 로컬 상태임.
 
 ## 1. 범위와 근거
 
@@ -56,17 +56,17 @@ Java 애플리케이션 코드와 DB schema는 변경하지 않는다.
 
 ## 5. 운영 적용 및 완료 기준
 
-- Prod CodeBuild inline buildspec은 marker 기반으로 사전 설정했다. 새 Prod Blue-Green 파일이 아직 소스에 없으면 기존 `app.jar`·AppSpec 패키징을 유지하고, 파일이 소스에 포함되면 `prod-bluegreen` 패키징을 선택한다. 설정 저장만 했고 CodeBuild/CodePipeline을 시작하지 않았다.
+- Prod CodeBuild inline buildspec은 marker 기반으로 사전 설정했다. PR #900 병합 후 main 파이프라인에서 Prod Blue-Green 산출물이 빌드됐고 CodeDeploy `d-XI054P9HL`이 실행됐다. 배포는 후보 Green readiness 뒤 HTTPS Health Check에서 실패해 기존 route로 복구됐다.
 - 기존 knot-backend-deployment-group을 계속 사용한다.
-- 현재 운영 `knot-backend.service`와 Nginx 8080 upstream은 유지한다. Blue/Green unit은 설치만 했고 비활성·비활성화 상태이며, Green을 기동하거나 Nginx upstream을 미리 바꾸지 않았다. Nginx metrics route 18080은 아직 활성화하지 않았다.
+- 배포 전 기준선에서는 legacy `knot-backend.service`와 Nginx 8080 upstream을 유지하고 Blue/Green unit만 비활성 상태로 준비했다. 배포 실패 뒤에는 Blue slot이 8080에서 active이고 Green은 정지된 것을 확인했다. 이어 legacy `knot-backend.service`가 기존 8080 점유 때문에 재시작을 반복하는 별도 상태도 관측됐다. 이 legacy unit 상태 복구는 Origin CA 수정에 포함하지 않았다.
 - 1 GiB `/swapfile-bluegreen`을 추가하고 `/etc/fstab`에 등록해 총 Swap을 2 GiB로 구성했다. 적용 직후 전체 Swap 사용량은 약 242 MiB였고, 기존 서비스 health는 HTTP 200이었다.
 - 현재 `/opt/knot-backend/app.jar`를 `/opt/knot-backend/slots/blue/app.jar`에 복사했다. 두 파일 SHA-256은 `38886f60f819a1d3ec772393d3bb213833fba0dbb3b43034f7ab9d53138ac366`로 일치한다. Green 슬롯 디렉터리도 만들었으나 JAR는 아직 없다.
 - 기존 Nginx route는 8080이고 8081·18080 listener는 없다. 후보가 건강해지기 전에는 프록시를 미리 Green으로 돌리지 않는다.
-- 첫 CodeDeploy에서 이전 revision의 `ApplicationStop`이 legacy 서비스에 영향을 줄 가능성은 사라지지 않는다. 현재처럼 legacy 서비스가 계속 운영 중인 상태에서 unit/JAR만 미리 준비하는 것으로 첫 hook 중단 구간을 제거할 수 없다. 완전한 사전 이행은 별도 무녹음 시간에 현재 서비스를 Blue-Green service로 옮기고 Nginx drain을 확인해야 한다.
+- 첫 Blue-Green CodeDeploy는 이미 실행됐다. 배포 실패 후 CodeDeploy rollback으로 Blue route가 복구됐지만, legacy `knot-backend.service`가 Blue slot이 소유한 8080에 바인드하려 재시작을 반복하는 상태가 관측됐다. 다음 운영 시도 전 이 legacy unit 상태와 route를 함께 확인한다.
 - 첫 실제 배포 전 기존 JAR와 Nginx 설정을 보존하고 Health 200, JVM flags, Nginx route, Alloy metrics, CPU/memory/Swap을 확인한다.
 - 첫 운영 배포는 활성 녹음이 없는 시간에 수행한다. 이전 legacy 서비스 종료로 짧은 중단이 가능하다.
 - Green 200 UP, public route Health 200, metrics 수신, Blue drain 뒤 종료, 실제 녹음 종료 및 오디오 저장을 확인한다.
-- route rollback과 AWS Automatic Rollback은 별도 검증이다. 현재 AWS 자동 롤백은 비활성이므로 이번 변경에서 켜지 않는다.
+- `d-XI054P9HL`에서 hook의 route 복구와 CodeDeploy 이전 revision rollback이 한 번 확인됐다. 이는 이 실패 경로의 근거이며, 다른 장애 조건의 AWS Automatic Rollback 동작과 설정을 모두 검증한 것은 아니다.
 - Dev의 제한 측정에서는 두 256 MiB JVM 실행 중 available memory 최저 223 MiB와 Swap 증가가 있었다. Prod의 전체 Worker 지속 부하는 미검증이다. 자원 압박이 크면 전환을 중단하고 Swap/인스턴스 구성 재검토를 후속 처리한다.
 
 ## 6. 로컬 구현 검증 결과
@@ -77,6 +77,15 @@ Java 애플리케이션 코드와 DB schema는 변경하지 않는다.
 - `git diff --check` 통과.
 - AWS CodeBuild 인라인 buildspec을 marker 기반 하위 호환 방식으로 저장함. AWS 콘솔에서 성공 알림 확인; CodeBuild/CodePipeline 실행은 하지 않음.
 - EC2에 1 GiB Swap 추가, Blue/Green unit 설치 및 daemon-reload, Blue 슬롯 JAR 복사를 수행함. Blue/Green은 모두 inactive·disabled이며 기존 Spring 서비스, Nginx route, Alloy 설정은 바꾸지 않음.
-- CodeDeploy 설정과 Nginx 설정은 변경하지 않음. 따라서 실제 Prod 배포 및 첫 전환은 미검증.
+- 이 절의 검증 결과는 최초 Prod 배포 전 기준선이다. 실제 첫 배포 실패와 route 복구, 후속 TLS Health Check 수정은 아래 7절에 기록한다.
 
-Prod 전용 [Issue #899](https://github.com/woowacourse-teams/2026-knot/issues/899)를 생성했고 `docs/adr/899-prod-single-ec2-bluegreen-deployment.md`를 Proposed 상태로 추가했다. [PR #900](https://github.com/woowacourse-teams/2026-knot/pull/900)은 Prod hotfix로 `main`을 대상으로 하며, 아직 리뷰 대기 중이다. PR diff에는 main에 아직 반영되지 않은 PR #895 drain 수정도 공통 hook의 기반으로 포함된다. PR 본문은 `Closes #899`로 머지 시 Issue #899를 닫는다. main 머지는 Prod 파이프라인을 실행할 수 있으므로 실제 머지는 별도 승인과 무녹음 배포 창 이후 진행한다. CodeBuild·CodePipeline·CodeDeploy 실행과 Prod 서비스 전환은 아직 하지 않는다. 첫 Prod 적용은 이전 revision의 `ApplicationStop`이 legacy 서비스를 중지할 수 있으므로, 무녹음 시간에 사전 Blue-Green handoff를 할지 첫 배포의 짧은 중단을 허용할지는 운영 배포 전 별도 확인한다.
+Prod 전용 [Issue #899](https://github.com/woowacourse-teams/2026-knot/issues/899)와 Proposed ADR을 추가했고, [PR #900](https://github.com/woowacourse-teams/2026-knot/pull/900)은 `main`에 병합됐다. main 파이프라인이 Prod Blue-Green artifact를 빌드해 CodeDeploy `d-XI054P9HL`을 실행했으나, Green 자체 Health는 성공하고 Nginx 전환 뒤 hook의 HTTPS Health Check가 TLS 검증 단계에서 실패했다. Hook은 기존 Blue route `8080`으로 복구했고 CodeDeploy는 이전 revision으로 되돌렸다. 현재 TLS 신뢰 수정은 로컬에만 있으며 이 수정이 들어간 새 build·배포는 아직 하지 않았다.
+
+## 7. 첫 Prod Blue-Green 배포 실패 원인 및 보완
+
+- 2026-10-21 CodeDeploy `d-XI054P9HL`에서 후보 Green은 `8081` Health Check `200 UP`을 통과했다. Nginx route 전환 후 hook의 HTTPS Health Check가 실패해 기존 Blue route `8080`으로 복구했고, CodeDeploy는 이전 revision으로 자동 복구했다.
+- Prod Nginx는 Cloudflare Origin RSA 인증서를 사용한다. EC2의 기본 CA 저장소는 이 origin CA를 신뢰하지 않아, 기존 `curl --resolve api.knoted.kr:443:127.0.0.1 https://api.knoted.kr/actuator/health`도 TLS 검증 오류로 HTTP 응답 전에 실패했다. 이는 공개 API 장애나 Green 기동 실패가 아니라 배포 hook의 로컬 TLS 검증 실패였다.
+- Cloudflare 공식 Origin RSA root PEM의 subject/issuer는 관측한 Prod 인증서 issuer인 `CloudFlare Origin SSL Certificate Authority`와 일치한다. 이 공개 루트를 Prod 패키징 산출물에 포함하고, Prod hook의 로컬 Nginx HTTPS Health Check에만 `curl --cacert`로 지정한다. 인증서 체인과 `api.knoted.kr` hostname 검증은 계속 수행하며 `--insecure`는 사용하지 않는다. Dev 경로는 기존 system trust store를 계속 사용한다.
+- Prod 전용 PEM이 산출물에서 빠졌으면 hook은 route 변경 전에 중단한다. 기존 Prod Nginx HTTPS Health Check를 Green 기동 전에 확인하고, 실패 원인을 CodeDeploy 로그에 남긴다.
+- hotfix는 `be/hotfix/#899`에 구현했다. 배포 fixture에서 Prod CA 전달, CA 누락 시 Green 기동 전 중단, 기존 HTTPS Health 실패 시 Blue route 유지, Prod artifact의 PEM 포함과 비-Prod artifact의 PEM 제외를 검증한다. Bash 문법, PEM 자체 검증, fixture 전체 결과는 모두 통과했다.
+- CodeBuild artifact 생성, AWS CodeDeploy 재실행, Prod 트래픽 전환은 아직 수행하지 않았다. 실제 적용 전 현재 운영의 녹음 상태와 legacy `knot-backend.service` 재시작 상태를 다시 확인하고, CodeDeploy 성공 후 Nginx Health 및 기존 Blue 종료 여부를 관측해야 한다.
