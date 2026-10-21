@@ -1,4 +1,6 @@
 import useMeQuery from "@api/queries/useMeQuery";
+import { SCREEN_CONDITION } from "@constants/breakpoint";
+import useMediaQuery from "@hooks/common/useMediaQuery";
 import {
   readIsOpenLastTime,
   useTranscriptPanelStore,
@@ -14,6 +16,9 @@ import {
  *
  * 회원 정보를 받기 전에는 누가 둔 상태인지 알 수 없어 닫힘으로 봐요.
  * 열림으로 보면, 닫아 둔 회원에게 패널이 잠깐 열렸다 닫히고 원문 요청도 한 번 나가요.
+ *
+ * 1024 미만에서는 원문이 본문을 덮으므로(RESP-R3) 버튼으로 열기 전에는 닫혀 있고,
+ * 좁은 화면에서 여닫은 값은 데스크톱에서 쓸 다음번 상태로 남기지 않아요.
  */
 const useTranscriptPanel = () => {
   const { data: me } = useMeQuery();
@@ -22,13 +27,20 @@ const useTranscriptPanel = () => {
     (state) => state.isOpenThisVisit,
   );
   const changeIsOpen = useTranscriptPanelStore((state) => state.changeIsOpen);
+  const { isMatched: isBelowDesktop } = useMediaQuery(
+    SCREEN_CONDITION.belowDesktop,
+  );
 
-  const isOpenLastTime = memberId !== undefined && readIsOpenLastTime(memberId);
+  const isOpenLastTime =
+    !isBelowDesktop && memberId !== undefined && readIsOpenLastTime(memberId);
   // 이번 방문에서 버튼으로 정한 값이 있으면 그 값을, 아직 누르지 않았으면 지난번에 둔 값을 따라요
   const isTranscriptPanelOpen = isOpenThisVisit ?? isOpenLastTime;
 
   const toggleTranscriptPanel = () => {
-    changeIsOpen({ memberId, isOpen: !isTranscriptPanelOpen });
+    changeIsOpen({
+      memberId: isBelowDesktop ? undefined : memberId,
+      isOpen: !isTranscriptPanelOpen,
+    });
   };
 
   return { isTranscriptPanelOpen, toggleTranscriptPanel };

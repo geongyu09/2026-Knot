@@ -1,3 +1,4 @@
+import { MEDIA_QUERY } from "@constants/breakpoint";
 import { css, keyframes } from "@emotion/react";
 import styled from "@emotion/styled";
 import useExitAnimation from "@hooks/common/useExitAnimation";
@@ -22,6 +23,8 @@ interface DockablePanelProps {
   isDocked?: boolean;
   /** 트리거를 눌러 고정 여부가 바뀌었을 때 알려줘요 */
   onDockedChange?: (isDocked: boolean) => void;
+  /** 이 값이 바뀌면 띄운 패널을 닫아요. 예: 화면 주소 */
+  peekResetKey?: unknown;
   /** 패널에 그릴 내용. 패널의 껍데기(너비·배경·라운드)는 이 내용이 스스로 가져요 */
   children: ReactNode;
 }
@@ -31,6 +34,8 @@ interface DockablePanelProps {
  *
  * 닫힌 패널은 `useExitAnimation`이 물러나는 애니메이션이 끝날 때까지 조금 더 그려 둬요.
  * 겹쳐 뜬 패널이 고정되며 닫힐 때는 같은 자리에 고정 패널이 들어오므로 기다리지 않고 바로 지워요.
+ *
+ * 1024 미만에서는 고정하지 않고 누르면 덮개로 띄워요. GNB 아래를 흐리게 덮어 바깥을 누르면 닫히는 걸 보여 줘요(RESP-R2).
  */
 export default function DockablePanel({
   label,
@@ -38,11 +43,24 @@ export default function DockablePanel({
   dockTargetId,
   isDocked: dockedProp,
   onDockedChange,
+  peekResetKey,
   children,
 }: DockablePanelProps) {
   const panelId = useId();
-  const { isDocked, isPeeking, dockTarget, rootProps, triggerProps } =
-    useDockablePanel({ dockTargetId, dockedProp, onDockedChange });
+  const {
+    isDocked,
+    isPeeking,
+    isOverlay,
+    closePeek,
+    dockTarget,
+    rootProps,
+    triggerProps,
+  } = useDockablePanel({
+    dockTargetId,
+    dockedProp,
+    onDockedChange,
+    peekResetKey,
+  });
   const floatingPanelRef = useRef<HTMLDivElement>(null);
   const dockedPanelRef = useRef<HTMLDivElement>(null);
   const { renderedValue: isFloatingRendered, isExiting: isFloatingClosing } =
@@ -63,6 +81,14 @@ export default function DockablePanel({
       >
         {icon}
       </Trigger>
+
+      {isFloatingRendered && !isDocked && isOverlay && (
+        <Backdrop
+          aria-hidden
+          data-overlay-state={isFloatingClosing ? "closing" : "open"}
+          onClick={closePeek}
+        />
+      )}
 
       {isFloatingRendered && !isDocked && (
         <FloatingPanel
@@ -118,6 +144,17 @@ const Trigger = styled.button<{ $isDocked: boolean }>`
     outline: 2px solid ${({ theme }) => theme.sub.accent[500]};
     outline-offset: 2px;
   }
+
+  /* 손가락으로 누를 때는 보이는 크기(38px)는 그대로 두고 누르는 영역만 44px로 넓혀요(RESP-R9) */
+  @media (pointer: coarse) {
+    position: relative;
+
+    &::after {
+      position: absolute;
+      inset: -0.1875rem; /* 3px */
+      content: "";
+    }
+  }
 `;
 
 /** 왼쪽에서 살며시 밀려 들어오는 등장 모션. 자리를 차지할 때도 겹쳐 뜰 때도 같은 방향으로 나와요 */
@@ -167,6 +204,56 @@ const FloatingPanel = styled.div`
   left: 2.5rem; /* 40px */
   z-index: 20;
   ${panelMotionStyle}
+
+  ${MEDIA_QUERY.belowDesktop} {
+    left: 1.5rem; /* 24px */
+  }
+
+  ${MEDIA_QUERY.mobile} {
+    top: 4.25rem; /* 68px, GNB 아래 8px */
+    left: 1rem; /* 16px */
+  }
+`;
+
+const backdropShow = keyframes`
+  from {
+    opacity: 0;
+  }
+`;
+
+const backdropHide = keyframes`
+  to {
+    opacity: 0;
+  }
+`;
+
+/**
+ * 좁은 화면에서 띄운 패널 뒤를 흐리게 덮는 막. 누르면 패널을 닫아요.
+ *
+ * GNB 아래부터 덮어서, 흐림 위로도 GNB 탭과 패널 버튼을 바로 누를 수 있어요.
+ */
+const Backdrop = styled.div`
+  position: fixed;
+  inset: 4.25rem 0 0; /* 68px, GNB 아래 */
+  z-index: 19; /* 띄운 패널(20) 바로 아래 */
+
+  ${MEDIA_QUERY.mobile} {
+    top: 3.75rem; /* 60px, 모바일 GNB 아래 */
+  }
+
+  background-color: ${({ theme }) => `${theme.neutral[900]}66`}; /* 40% */
+  animation: ${backdropShow} 0.3s ease;
+
+  &[data-overlay-state="closing"] {
+    animation: ${backdropHide} 0.2s ease-in-out forwards;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &,
+    &[data-overlay-state="closing"] {
+      animation: none;
+    }
+  }
 `;
 
 /**
