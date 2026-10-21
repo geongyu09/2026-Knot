@@ -1,10 +1,10 @@
 # Prod 단일 EC2 Blue-Green 도입 계획
 
-상태: 로컬 구현·집중 검증 및 Prod 사전 설정 완료; Issue #899 게시, PR 작성 중; 서비스 슬롯 전환·신규 배포 대기
+상태: 로컬 구현·집중 검증 및 Prod 사전 설정 완료; Issue #899 게시, PR #900 리뷰 대기; 서비스 슬롯 전환·신규 배포 대기
 확인일: 2026-10-21
 대상: AWS Prod knot-backend-pipeline → knot-backend-build → knot-backend-deployment-group
 작업 위치: 격리 worktree, origin/develop의 8deebdc44에서 시작
-Issue/PR: [Issue #899](https://github.com/woowacourse-teams/2026-knot/issues/899) 생성 완료. 브랜치 `be/feature/#899`에서 PR을 준비 중이며, 이번 변경은 리뷰 대기까지만 진행하고 merge·운영 배포는 하지 않음.
+Issue/PR: [Issue #899](https://github.com/woowacourse-teams/2026-knot/issues/899), [PR #900](https://github.com/woowacourse-teams/2026-knot/pull/900) 생성 완료. PR은 `develop` 대상으로 리뷰 대기 중이며, 이번 변경은 merge·운영 배포하지 않음.
 
 ## 1. 범위와 근거
 
@@ -79,4 +79,4 @@ Java 애플리케이션 코드와 DB schema는 변경하지 않는다.
 - EC2에 1 GiB Swap 추가, Blue/Green unit 설치 및 daemon-reload, Blue 슬롯 JAR 복사를 수행함. Blue/Green은 모두 inactive·disabled이며 기존 Spring 서비스, Nginx route, Alloy 설정은 바꾸지 않음.
 - CodeDeploy 설정과 Nginx 설정은 변경하지 않음. 따라서 실제 Prod 배포 및 첫 전환은 미검증.
 
-Prod 전용 [Issue #899](https://github.com/woowacourse-teams/2026-knot/issues/899)를 생성했고 `docs/adr/899-prod-single-ec2-bluegreen-deployment.md`를 Proposed 상태로 추가했다. 이번 PR은 `develop`을 대상으로 리뷰 대기까지만 진행한다. CodeBuild·CodePipeline·CodeDeploy 실행과 Prod 서비스 전환은 하지 않는다. 첫 Prod 적용은 이전 revision의 `ApplicationStop`이 legacy 서비스를 중지할 수 있으므로, 무녹음 시간에 사전 Blue-Green handoff를 할지 첫 배포의 짧은 중단을 허용할지는 운영 배포 전 별도 확인한다.
+Prod 전용 [Issue #899](https://github.com/woowacourse-teams/2026-knot/issues/899)를 생성했고 `docs/adr/899-prod-single-ec2-bluegreen-deployment.md`를 Proposed 상태로 추가했다. [PR #900](https://github.com/woowacourse-teams/2026-knot/pull/900)은 `develop`을 대상으로 리뷰 대기 중이다. CodeBuild·CodePipeline·CodeDeploy 실행과 Prod 서비스 전환은 하지 않는다. 첫 Prod 적용은 이전 revision의 `ApplicationStop`이 legacy 서비스를 중지할 수 있으므로, 무녹음 시간에 사전 Blue-Green handoff를 할지 첫 배포의 짧은 중단을 허용할지는 운영 배포 전 별도 확인한다.
