@@ -1,4 +1,5 @@
 import ParticleOrb, { type ParticleOrbHandle } from "@composites/ParticleOrb";
+import { keyframes } from "@emotion/react";
 import styled from "@emotion/styled";
 import { useRef, useState } from "react";
 
@@ -17,8 +18,8 @@ interface DockMicButtonProps {
  *
  * 평소엔 고리 안에 붉은 원이 든 녹음 버튼이에요. 올리거나 포커스하면 원이 입자로 살짝 분해됐다가 마이크 모양으로 모이고,
  * 벗어나면 다시 원으로 돌아와요. 누르면 파동이 한 번 퍼진 뒤 녹음을 시작해요.
- * 녹음이 열리기를 기다리는 동안은 구슬이 바로 밝은 구름으로 바뀌어 빠르게 돌아,
- * 마이크 권한과 서버를 기다리는 1~2초에도 누른 것이 받아들여졌다는 것이 보여요.
+ * 녹음이 열리기를 기다리는 동안은 구슬이 바로 밝은 구름으로 바뀌어 빠르게 돌고, 그 둘레를 입자 점 고리와 밝은 호가 돌아요.
+ * 고리는 CSS 회전이라 마이크 권한이나 서버를 기다리며 메인 스레드가 잠시 막혀도 멈추지 않아, 렉이 아니라 기다리는 중으로 보여요.
  * 40px 칸을 차지하고 접근성 이름은 「회의 녹음 시작」이에요. 기다리는 동안은 `aria-busy`로 알려요.
  */
 export default function DockMicButton({ onClick, isOrbVisible = true, isWaiting = false }: DockMicButtonProps) {
@@ -55,6 +56,13 @@ export default function DockMicButton({ onClick, isOrbVisible = true, isWaiting 
       }}
       onBlur={() => setIsFocused(false)}
     >
+      {isOrbVisible && isWaiting && (
+        <WaitingRing viewBox="0 0 40 40" aria-hidden="true">
+          {/* 입자처럼 끊어진 점 고리. 그 위를 밝은 호 하나가 한 바퀴씩 돌아요 */}
+          <circle className="dots" cx="20" cy="20" r="17" />
+          <circle className="arc" cx="20" cy="20" r="17" />
+        </WaitingRing>
+      )}
       {isOrbVisible && (
         <OrbWrapper>
           <ParticleOrb
@@ -89,6 +97,48 @@ const Button = styled.button`
   &:focus-visible {
     outline: 2px solid ${({ theme }) => theme.sub.accent[500]};
     outline-offset: 2px;
+  }
+`;
+
+const spin = keyframes`
+  to {
+    transform: rotate(360deg);
+  }
+`;
+
+/**
+ * 기다리는 동안 버튼 둘레를 도는 점 고리와 밝은 호. 입자와 같은 밝은 회색이에요.
+ * `transform` 애니메이션이라 메인 스레드가 막혀도 합성기에서 계속 돌아요. 움직임 줄이기 설정이면 돌지 않고 고리만 보여요
+ */
+const WaitingRing = styled.svg`
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  animation: ${spin} 1.1s linear infinite;
+  will-change: transform;
+
+  & > .dots {
+    fill: none;
+    stroke: ${({ theme }) => theme.neutral[300]};
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-dasharray: 0.1 4.4; /* 끊어진 점으로 그려 입자 느낌이에요 */
+    opacity: 0.55;
+  }
+
+  & > .arc {
+    fill: none;
+    stroke: ${({ theme }) => theme.neutral[0]};
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-dasharray: 26 81; /* 둘레(약 107) 중 26만큼만 밝은 호 */
+    opacity: 0.95;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
   }
 `;
 
