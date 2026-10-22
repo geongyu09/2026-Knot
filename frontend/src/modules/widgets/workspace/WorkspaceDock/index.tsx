@@ -373,9 +373,10 @@ const InputOrb = styled.span`
 `;
 
 /** 접힌 독의 녹음 칸. 파형이 모일 자리를 재는 기준이고, 안의 버튼·칩처럼 세로 가운데에 놓여요 */
-/** 올렸을 때 안내를 띄우려고 버튼을 감싸요. 모양에는 관여하지 않아요 */
+/** 올렸을 때 안내를 띄우려고 버튼을 감싸요. 독은 아래 정렬(여러 줄 입력)이라 버튼처럼 세로 가운데에 둬요 */
 const GuideTarget = styled.span`
   display: flex;
+  align-self: center;
 `;
 
 const RecordSlot = styled.span`
