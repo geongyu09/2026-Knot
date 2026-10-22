@@ -21,10 +21,6 @@ interface ParticleIconProps {
   ref?: Ref<ParticleIconHandle>;
 }
 
-/** `#3C3B39` 같은 색상 토큰을 `rgba()`에 넣을 `60,59,57` 꼴로 바꿔요. */
-const toRgb = (hex: string) =>
-  [1, 3, 5].map((start) => parseInt(hex.slice(start, start + 2), 16)).join(",");
-
 /**
  * 입자로 모였다가 진짜 아이콘이 되는 아이콘.
  *

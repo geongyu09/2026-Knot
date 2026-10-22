@@ -85,7 +85,7 @@ interface UseParticleOrbParams {
 const TILT = 0.38;
 
 const createParticles = (count: number): OrbParticle[] =>
-  Array.from({ length: count }, (_, index) => ({
+  Array.from({ length: count }, () => ({
     u: Math.random() * Math.PI * 2,
     v: Math.acos(2 * Math.random() - 1),
     seed: Math.random(),

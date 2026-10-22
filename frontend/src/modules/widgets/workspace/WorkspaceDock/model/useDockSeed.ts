@@ -166,7 +166,7 @@ export const useDockSeed = ({
       canvas.width = Math.round(width * pixelRatio);
       canvas.height = Math.round(height * pixelRatio);
       const count = isMobile ? SEED_PARTICLE_COUNT.mobile : SEED_PARTICLE_COUNT.desktop;
-      particles = Array.from({ length: count }, (_, index) => ({
+      particles = Array.from({ length: count }, () => ({
         level: Math.random() * 2 - 1,
         jitter: (Math.random() - 0.5) * 0.42,
         seed: Math.random(),
