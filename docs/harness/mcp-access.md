@@ -56,15 +56,19 @@ Figma에 직접 읽고 쓴다. 팀원 누구의 에이전트든 같은 정본에
 
 ## 3. Claude Code 설정 (팀원 각자)
 
-1. 저장소 루트에서 `claude`를 연다. 프로젝트 `.mcp.json`의 `notion`, `figma` 서버를 쓸지 묻는
+1. 저장소 루트에서 `claude`를 연다. 프로젝트 `.mcp.json`의 `knot-notion`, `figma` 서버를 쓸지 묻는
    화면에서 승인한다.
 2. `/mcp`를 열어 `figma`에 로그인한다. 브라우저에서 자기 Figma 계정으로 승인한다. Figma 쪽
    권한은 그 계정이 knot 파일에 가진 권한과 같다. 구현 단계에서 디자인을 읽으려면 「볼 수 있음」,
    디자인 단계에서 Figma를 고치려면 「편집 가능」이 있어야 한다.
-3. `notion`은 환경 변수 `NOTION_TOKEN`이 있으면 바로 연결된다. `claude mcp list`로 두 서버가
+3. `knot-notion`은 환경 변수 `NOTION_TOKEN`이 있으면 바로 연결된다. `claude mcp list`로 두 서버가
    연결됐는지 본다.
 4. 노션에 쓰는 흐름은 Claude Code 안에서 서브 에이전트가 수행하므로 따로 할 일이 없다. 연결이
    없는 세션에서는 해당 서브 에이전트가 `blocked`로 돌아온다.
+
+서버 이름이 `notion`이 아니라 `knot-notion`인 이유: 자기 노션 계정으로 이미 연결한 `notion`(mcp.notion.com)
+서버와 이름이 같으면 저장소 안에서 프로젝트 설정이 개인 설정을 덮어 자기 연결이 사라진다. 유월처럼
+워크스페이스 멤버 로그인으로 연결된 사람은 토큰 없이 `knot-notion` 승인을 거절하고 자기 연결을 그대로 쓴다.
 
 headless `claude -p` 실행도 같은 `.mcp.json`을 읽는다. Figma 로그인은 그 기기에서 한 번 해 두면
 된다.
@@ -75,7 +79,7 @@ Codex는 프로젝트 설정보다 개인 설정 파일을 쓴다. `~/.codex/con
 `600`으로 둔다. 이 파일은 저장소 밖 개인 파일이다.
 
 ```toml
-[mcp_servers.notion]
+[mcp_servers.knot-notion]
 command = "npx"
 args = ["-y", "@notionhq/notion-mcp-server"]
 env = { NOTION_TOKEN = "ntn_..." }
@@ -111,7 +115,7 @@ claude mcp list
 
 ## 다음 단계 (지금 하지 않음)
 
-- 팀원이 멤버인 워크스페이스로 knot 문서를 옮기거나 멤버로 초대하면 `.mcp.json`의 `notion`을
+- 팀원이 멤버인 워크스페이스로 knot 문서를 옮기거나 멤버로 초대하면 `.mcp.json`의 `knot-notion`을
   `{"type": "http", "url": "https://mcp.notion.com/mcp"}`로 바꾸고 각자 `/mcp`로 로그인한다. 그러면
   노션 쓰기가 사람 이름으로 남고 공유 토큰이 사라진다.
 - `@notionhq/notion-mcp-server`가 멈추면 같은 토큰을 쓰는 다른 노션 MCP 서버로 바꾼다. 토큰과

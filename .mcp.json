@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "notion": {
+    "knot-notion": {
       "command": "npx",
       "args": ["-y", "@notionhq/notion-mcp-server"],
       "env": {
