@@ -15,8 +15,9 @@ interface DockMicButtonProps {
 /**
  * 독의 회의 녹음 버튼.
  *
- * 마이크 아이콘 대신 랜딩의 입자 구슬이에요. 올리거나 포커스하면 입자가 마이크 모양으로 모이고,
- * 누르면 파동이 한 번 퍼진 뒤 녹음을 시작해요. 녹음이 열리기를 기다리는 동안은 구슬이 바로 청록으로 바뀌어 빠르게 돌아,
+ * 평소엔 고리 안에 붉은 원이 든 녹음 버튼이에요. 올리거나 포커스하면 원이 입자로 살짝 분해됐다가 마이크 모양으로 모이고,
+ * 벗어나면 다시 원으로 돌아와요. 누르면 파동이 한 번 퍼진 뒤 녹음을 시작해요.
+ * 녹음이 열리기를 기다리는 동안은 구슬이 바로 청록으로 바뀌어 빠르게 돌아,
  * 마이크 권한과 서버를 기다리는 1~2초에도 누른 것이 받아들여졌다는 것이 보여요.
  * 40px 칸을 차지하고 접근성 이름은 「회의 녹음 시작」이에요. 기다리는 동안은 `aria-busy`로 알려요.
  */
@@ -31,6 +32,11 @@ export default function DockMicButton({ onClick, isOrbVisible = true, isWaiting 
     onClick();
   };
 
+  // 올리는 순간 원을 입자로 흩뜨려야 마이크로 모이는 것이 「분해됐다 모인다」로 보여요
+  const handleEnter = () => {
+    if (!isWaiting) orbRef.current?.scatter();
+  };
+
   return (
     <Button
       type="button"
@@ -38,9 +44,15 @@ export default function DockMicButton({ onClick, isOrbVisible = true, isWaiting 
       data-mic
       aria-busy={isWaiting}
       onClick={handleClick}
-      onPointerEnter={() => setIsHovered(true)}
+      onPointerEnter={() => {
+        handleEnter();
+        setIsHovered(true);
+      }}
       onPointerLeave={() => setIsHovered(false)}
-      onFocus={() => setIsFocused(true)}
+      onFocus={() => {
+        handleEnter();
+        setIsFocused(true);
+      }}
       onBlur={() => setIsFocused(false)}
     >
       {isOrbVisible && (
@@ -50,7 +62,7 @@ export default function DockMicButton({ onClick, isOrbVisible = true, isWaiting 
             radius={DOCK_ORB_RADIUS}
             size={DOCK_ORB_CANVAS_SIZE}
             tone={isWaiting ? "recording" : "idle"}
-            shape={!isWaiting && (isHovered || isFocused) ? "mic" : "cloud"}
+            shape={isWaiting ? "cloud" : isHovered || isFocused ? "mic" : "disc"}
             isWaiting={isWaiting}
           />
         </OrbWrapper>

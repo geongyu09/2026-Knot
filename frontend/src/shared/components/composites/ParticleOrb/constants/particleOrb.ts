@@ -5,8 +5,26 @@ export const ORB_PARTICLE_COUNT = 900;
 export const ORB_DOT_MIN = 0.75;
 export const ORB_DOT_RANGE = 0.7;
 
-/** 파형으로 펼쳐질 때의 세로 막대 수 */
+/** 구름이 목소리에 파형으로 펼쳐질 때의 세로 막대 수 */
 export const ORB_WAVE_COLUMNS = 24;
+
+/** `wave` 모양의 세로 막대 수. 막대 사이가 보여야 파형으로 읽혀서 구름 파형보다 성기게 둬요 */
+export const WAVE_SHAPE_COLUMNS = 12;
+/** `wave` 모양의 가로 폭은 구슬 반지름의 이 배율이에요. 캔버스보다 넓으면 캔버스에 맞춰요 */
+export const WAVE_SHAPE_SPAN_SCALE = 4.5;
+/** `wave` 모양에서 일시정지면 막대가 이 높이(px)의 평평한 선으로 쉬어요 */
+export const WAVE_SHAPE_FLAT_AMPLITUDE = 1.2;
+/** `wave` 모양의 입자는 칩이 작아 이만큼 키워 그려요 */
+export const WAVE_DOT_SCALE = 1.5;
+/** 랜딩 파형 공식은 평균 진폭이 최대의 절반쯤이라 작은 칩에서는 이만큼 곱해 채워요 */
+export const WAVE_SHAPE_GAIN = 1.6;
+
+/** `disc` 모양의 안쪽 원은 구슬 반지름의 이 배율이고, 테두리 고리는 구슬 반지름 그대로예요 */
+export const DISC_RADIUS_SCALE = 0.72;
+/** `disc` 모양의 입자는 이만큼 키워 그려 원이 입자로 분해될 때도 빈틈이 적어요 */
+export const DISC_DOT_SCALE = 1.5;
+/** 입자가 이보다 조용히 모여 있어야 `disc`의 단색 원과 고리가 다시 차올라요 */
+export const DISC_SETTLED_MOTION = 0.6;
 
 /** 랜딩 입자처럼 자리로 당기는 힘과 속도가 남는 비율 */
 export const ORB_SPRING = 0.12;
