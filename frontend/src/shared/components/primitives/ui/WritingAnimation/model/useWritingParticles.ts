@@ -38,7 +38,7 @@ interface WritingParticle {
   teal: number;
 }
 
-export interface WritingPalette {
+interface WritingPalette {
   /** 청록 세 단계(진한 것부터). 파형과 펜 끝에 써요 */
   teal: [string, string, string];
   /** 잉크 두 단계. 글줄과 문서 윤곽에 써요 */

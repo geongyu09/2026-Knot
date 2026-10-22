@@ -9,7 +9,7 @@ const isEnabled = process.env.NODE_ENV === "development" && typeof performance !
 
 const PREFIX = "knot:recording-start:";
 
-export type RecordingStartStep =
+type RecordingStartStep =
   | "click"
   | "mic-granted"
   | "audio-ready"

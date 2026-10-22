@@ -1,4 +1,4 @@
-export interface ShapeTarget {
+interface ShapeTarget {
   /** 모양 가운데를 원점으로 한 위치(px) */
   x: number;
   y: number;

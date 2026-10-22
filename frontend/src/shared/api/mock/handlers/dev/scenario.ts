@@ -7,7 +7,7 @@ import type { CurrentRecordingStatus } from "@api/mock/types/recording";
 export const CURRENT_RECORDING_SCENARIOS = ["none", "recording", "paused", "processing"] as const;
 export type CurrentRecordingScenario = (typeof CURRENT_RECORDING_SCENARIOS)[number];
 
-export interface MockScenario {
+interface MockScenario {
   /** 현재 녹음 조회가 답할 상황. `none`이면 녹음이 없어요(204) */
   currentRecording: CurrentRecordingScenario;
 }

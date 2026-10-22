@@ -6,7 +6,7 @@ import {
 } from "../constants/dockHint";
 
 /** 이번 방문에서 첫 사용 안내를 띄우기로 했는지. 아직 정하지 않았으면 `null` */
-export type VisitDecision = "shown" | "hidden" | null;
+type VisitDecision = "shown" | "hidden" | null;
 
 /**
  * 독 안내를 몇 번 보여줬는지 브라우저에 남기고 읽어요.

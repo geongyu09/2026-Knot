@@ -139,10 +139,8 @@ export const useDockOpen = ({
     isOpen,
     isClosedByScreen: isClosedByScreen && !isOpen,
     open,
-    close,
     enter,
     leave,
     scheduleClose,
-    cancelClose,
   };
 };

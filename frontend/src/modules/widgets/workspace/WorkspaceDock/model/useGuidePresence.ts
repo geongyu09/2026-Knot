@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { DOCK_GUIDE_LEAVE_MS } from "../constants/dockHint";
 import type { DockGuideKind } from "../ui/DockGuide";
 
-export interface DockGuideRequest {
+interface DockGuideRequest {
   kind: DockGuideKind;
   tailOffset: number;
 }

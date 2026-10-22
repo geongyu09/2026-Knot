@@ -5,9 +5,9 @@ import { DOCK_HOVER_GUIDE_DELAY_MS, DOCK_HOVER_GUIDE_MAX_PER_VISIT } from "../co
 import { bumpHoverGuideCount, isWithinGuideVisits, readHoverGuideCount } from "../utils/dockHintStorage";
 
 /** 올렸을 때 안내가 붙는 버튼 */
-export type DockHoverGuideKind = "chat" | "record";
+type DockHoverGuideKind = "chat" | "record";
 
-export interface DockHoverGuide {
+interface DockHoverGuide {
   kind: DockHoverGuideKind;
   /** 안내 꼬리가 가리킬 자리. 독이 놓인 자리의 가로 가운데에서 버튼 가운데까지의 거리(px) */
   tailOffset: number;

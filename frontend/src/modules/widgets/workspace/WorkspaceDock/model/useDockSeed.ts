@@ -69,7 +69,7 @@ export interface SeedSplitTargets {
   recordOffsetX: number | null;
 }
 
-export interface DockSeedPalette {
+interface DockSeedPalette {
   /** 먹색 세 단계. 녹음 화면 파형과 같은 색으로 파형과 녹음 칩 자리의 구슬에 써요 */
   wave: [string, string, string];
   /** 어두운 알약 위의 밝은 세 단계(아이콘 진한, 아이콘 옅은, 윤곽) */
