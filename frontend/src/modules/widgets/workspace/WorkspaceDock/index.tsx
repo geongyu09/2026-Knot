@@ -11,6 +11,7 @@ import SendIcon from "@/assets/icons/send.svg";
 import { useDockHint } from "./model/useDockHint";
 import { useDockHoverGuide } from "./model/useDockHoverGuide";
 import { useDockOpen } from "./model/useDockOpen";
+import { useGuidePresence } from "./model/useGuidePresence";
 import { useDockParticleEffects } from "./model/useDockParticleEffects";
 import { useDockSplitTargets } from "./model/useDockSplitTargets";
 import { useDockRecording } from "./model/useDockRecording";
@@ -110,10 +111,13 @@ export default function WorkspaceDock() {
   // 첫 사용 안내는 홈에서 독이 접혀 쉬고 있을 때만, 버튼 안내는 첫 사용 안내가 없을 때 올리면 떠요
   const isRecordingBusy = isRecordingChipVisible || isRecordingStarting;
   const { isHintVisible } = useDockHint({ isDockExpanded: isExpanded, isRecordingBusy });
+  const stageRef = useRef<HTMLDivElement>(null);
   const { hoverGuide, bind: bindHoverGuide } = useDockHoverGuide({
+    stageRef,
     isEnabled: !isExpanded && !isRecordingBusy && !isHintVisible,
   });
-  const stageRef = useRef<HTMLDivElement>(null);
+  // 사라질 때 모션을 보여 주려고 잠깐 더 그려요
+  const guide = useGuidePresence(isHintVisible ? { kind: "first", tailOffset: 0 } : hoverGuide);
   const { isSeedSupported, isOpen, open, enter, leave, scheduleClose } =
     useDockOpen({
       stageRef,
@@ -159,8 +163,9 @@ export default function WorkspaceDock() {
         />
       )}
 
-      {isHintVisible && <DockGuide kind="first" />}
-      {hoverGuide && <DockGuide kind={hoverGuide} />}
+      {guide.shown && (
+        <DockGuide kind={guide.shown.kind} tailOffset={guide.shown.tailOffset} isLeaving={guide.isLeaving} />
+      )}
 
       <Bar
         ref={formRef}

@@ -239,7 +239,8 @@ export const useParticleOrb = ({
         const target = targets[targetOrder[Math.floor((rank * targets.length) / order.length)]];
         particle.micX = target.x + (Math.random() - 0.5) * 0.2;
         particle.micY = target.y + (Math.random() - 0.5) * 0.2;
-        particle.micBucket = particle.seed < 0.8 * BUBBLE_OUTLINE_SHARE || !isBubble ? 0 : 1;
+        // 마이크는 녹음 전 원과 같은 붉은색으로 모여요. 옅은 분홍은 말풍선 윤곽에만 써요
+        particle.micBucket = !isBubble ? 2 : particle.seed < 0.8 * BUBBLE_OUTLINE_SHARE ? 0 : 1;
       });
     };
 
@@ -315,7 +316,7 @@ export const useParticleOrb = ({
           assignShape(nextShape);
           assignedShape = assignKey;
         }
-        const wobble = reduced ? 0 : Math.sin(frame * 0.05) * 0.4;
+        const wobble = reduced ? 0 : Math.sin(frame * 0.05) * 0.25;
         const dotScale = (baseRadius * 2 * 1.25) / 24;
         particles.forEach((particle) => {
           if (particle.dot >= 0) {
@@ -470,9 +471,9 @@ export const useParticleOrb = ({
           const dx = particle.x - centerX;
           const dy = particle.y - centerY;
           const distance = Math.hypot(dx, dy) || 1;
-          const speed = 1.5 + Math.random() * 2.5;
-          particle.vx += (dx / distance) * speed + (Math.random() - 0.5) * 2;
-          particle.vy += (dy / distance) * speed + (Math.random() - 0.5) * 2;
+          const speed = 1.1 + Math.random() * 1.8;
+          particle.vx += (dx / distance) * speed + (Math.random() - 0.5) * 1.4;
+          particle.vy += (dy / distance) * speed + (Math.random() - 0.5) * 1.4;
         }
         let forceX = 0;
         let forceY = 0;

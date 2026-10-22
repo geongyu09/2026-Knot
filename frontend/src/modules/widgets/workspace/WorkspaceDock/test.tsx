@@ -500,7 +500,7 @@ describe("WorkspaceDock", () => {
 
     expandDock();
 
-    expect(screen.queryByText(DOCK_HINT_TEXT)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(DOCK_HINT_TEXT)).not.toBeInTheDocument());
 
     unmount();
     renderDock();
@@ -528,7 +528,8 @@ describe("WorkspaceDock", () => {
 
     fireEvent.pointerLeave(chatButton.parentElement as HTMLElement);
 
-    expect(screen.queryByText(DOCK_GUIDE_COPY.chat)).not.toBeInTheDocument();
+    // 사라지는 모션만큼 잠깐 더 그려 두었다가 떼요
+    await waitFor(() => expect(screen.queryByText(DOCK_GUIDE_COPY.chat)).not.toBeInTheDocument());
   });
 
   describe("독을 연 방법 기록", () => {

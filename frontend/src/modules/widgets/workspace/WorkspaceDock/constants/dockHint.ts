@@ -17,10 +17,13 @@ export const DOCK_GUIDE_COPY = {
 export const DOCK_HINT_MAX_SEEN_COUNT = 3;
 
 /** 홈이 그려진 뒤 첫 사용 안내가 뜨기까지 기다리는 시간(ms). 탭 전환 모션이 끝난 뒤에 떠야 화면이 바뀌는 중에 깜빡이지 않아요 */
-export const DOCK_HINT_DELAY_MS = 600;
+export const DOCK_HINT_DELAY_MS = 320;
 
 /** 버튼에 올리거나 포커스한 뒤 채팅·녹음 안내가 뜨기까지 기다리는 시간(ms). 스쳐 지나갈 때는 뜨지 않아요 */
-export const DOCK_HOVER_GUIDE_DELAY_MS = 350;
+export const DOCK_HOVER_GUIDE_DELAY_MS = 160;
+
+/** 안내가 사라지는 모션 시간(ms). 이 동안은 그려 둔 채 옅어져요 */
+export const DOCK_GUIDE_LEAVE_MS = 160;
 
 /** 첫 사용 안내를 몇 번 보여줬는지 브라우저에 남겨 두는 키. */
 export const DOCK_HINT_SEEN_COUNT_KEY = "knot.workspaceDockHintSeenCount";
