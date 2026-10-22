@@ -174,6 +174,8 @@ export const useParticleOrb = ({
     let hover = 0;
     let wait = 0;
     let spin = 0;
+    /** 지난 프레임 입자들의 평균 속도. 말풍선이 자리를 잡았는지 볼 때 써요 */
+    let motion = Infinity;
     let assignedShape: ParticleOrbShape | null = null;
     let animation = 0;
 
@@ -326,10 +328,11 @@ export const useParticleOrb = ({
     const tick = () => {
       resize();
       const { analyser: node, isActive: active, tone: nextTone, shape: nextShape } = paramsRef.current;
-      // 가만히 떠 있는 구름은 30fps면 충분해요. 모양이 바뀌거나 소리·파동이 있을 땐 60fps예요
+      // 가만히 떠 있는 구름과 자리를 잡은 말풍선은 30fps면 충분해요. 모양이 바뀌는 중이거나 소리·파동이 있을 땐 60fps예요.
+      // 말풍선은 채팅 버튼이 늘 보여 주는 모양이라, 여기서 빼면 독이 있는 모든 화면에서 매 프레임 그리게 돼요
+      const isResting = (nextShape === "cloud" && hover < 0.01) || (nextShape === "bubble" && motion < 0.15);
       const isCalm =
-        nextShape === "cloud" &&
-        hover < 0.01 &&
+        isResting &&
         level < 0.01 &&
         wait < 0.01 &&
         !paramsRef.current.isWaiting &&
@@ -356,6 +359,7 @@ export const useParticleOrb = ({
       const buckets: OrbParticle[][] = [[], [], [], [], [], []];
       const centerX = width / 2;
       const centerY = height / 2;
+      let moved = 0;
       particles.forEach((particle) => {
         let forceX = 0;
         let forceY = 0;
@@ -379,8 +383,10 @@ export const useParticleOrb = ({
           forceX,
           forceY,
         });
+        moved += Math.abs(particle.vx) + Math.abs(particle.vy);
         buckets[particle.bucket].push(particle);
       });
+      motion = moved / particles.length;
 
       context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
       context.clearRect(0, 0, width, height);

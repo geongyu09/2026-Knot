@@ -45,6 +45,11 @@ export const useDockParticles = ({ canvasRef, barRef, palette }: UseDockParticle
   const sizeRef = useRef({ width: 0, height: 0, radius: 30 });
   /** 멈춰 있던 그리기를 다시 돌려요. 반응이 생길 때 불러요 */
   const wakeRef = useRef<() => void>(() => {});
+  /**
+   * 독 크기를 지금 다시 재요. 평소엔 그리기가 멈춰 있어 크기가 마지막 반응 때 그대로라,
+   * 독이 펼쳐진 뒤 반응을 일으키면 접혀 있던 크기로 테두리 자리를 계산해 실이 엉뚱한 곳에서 출발해요
+   */
+  const measureRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -112,6 +117,7 @@ export const useDockParticles = ({ canvasRef, barRef, palette }: UseDockParticle
     };
 
     resize();
+    measureRef.current = resize;
     wakeRef.current = () => {
       if (!animation) animation = requestAnimationFrame(tick);
     };
@@ -119,12 +125,14 @@ export const useDockParticles = ({ canvasRef, barRef, palette }: UseDockParticle
     return () => {
       cancelAnimationFrame(animation);
       wakeRef.current = () => {};
+      measureRef.current = () => {};
     };
   }, [barRef, canvasRef]);
 
   /** 독 안의 한 점에서 입자가 터져 나와요. 좌표는 독의 왼쪽 위 기준(px)이에요 */
   const burst = useCallback((x: number, y: number, count = 42) => {
     if (prefersReducedMotion()) return;
+    measureRef.current();
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 1.2 + Math.random() * 3;
@@ -150,6 +158,7 @@ export const useDockParticles = ({ canvasRef, barRef, palette }: UseDockParticle
   /** 독 안의 한 점에서 가장 가까운 테두리에서 출발해 양쪽으로 갈라져 한 바퀴 도는 실 */
   const trace = useCallback((fromX: number, fromY: number, strength = 1) => {
     if (prefersReducedMotion()) return;
+    measureRef.current();
     const { width, height, radius } = sizeRef.current;
     let nearest = 0;
     let nearestDistance = Infinity;
