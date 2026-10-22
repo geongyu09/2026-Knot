@@ -20,6 +20,12 @@ import type { RootOptions } from "react-dom/client";
 import { useLayoutEffect } from "react";
 import { matchPath, useLocation, useRoutes } from "react-router";
 
+import type {
+  RecordingAudioMode,
+  RecordingEndCause,
+  RecordingStartResult,
+} from "@/shared/types/recording";
+
 import type { createReplayIntegration } from "./replay";
 
 type ReplayIntegration = ReturnType<typeof createReplayIntegration>;
@@ -299,4 +305,51 @@ export const captureCaughtError = ({
     },
     mechanism: { handled: true, type: "manual.caught" },
   });
+};
+
+/**
+ * Sentry 지표로 세는 결과와 그 속성. 오류가 아니라 Issue로는 셀 수 없는 기능의 결과를 둬요(ADR 915).
+ *
+ * Issue는 고칠 수 있는 결함만 남기고, 사용자 네트워크 탓처럼 고칠 코드가 없는 결과는 여기서 세어 비율로 봐요.
+ * 이름은 `기능.결과`로 쓰고 한 번 정하면 바꾸지 않아요. 바꾸면 이전 기록과 다른 지표로 갈라져요.
+ * 속성 값은 몇 가지로 정해진 것만 넣어요. 녹음 ID나 주소처럼 값이 계속 늘어나는 것은 묶어 셀 수 없고 개인정보가 될 수 있어요.
+ */
+interface MetricMap {
+  /** 녹음 시작을 시도했어요. `started` 비율이 시작 성공률이에요 */
+  "recording.start": { result: RecordingStartResult };
+  /** 녹음이 끝났어요. `userEnded`이면서 `uploaded`인 비율이 녹음 완주율이에요 */
+  "recording.end": {
+    reason: RecordingEndCause;
+    /** 오디오를 서버로 넘겼는지. PCM은 종료가 받아들여져 남은 조각을 올리기 시작했으면 `true`예요 */
+    uploaded: boolean;
+    audio_mode: RecordingAudioMode;
+  };
+  /** 종료 뒤 접수 시한이 지나 올리지 못한 PCM 조각 수예요. 값이 조각 수라 속성은 없어요 */
+  "recording.chunks_lost": Record<string, never>;
+}
+
+type MetricName = keyof MetricMap;
+
+interface CountMetricParams<Name extends MetricName> {
+  name: Name;
+  attributes: MetricMap[Name];
+  /** 더할 값. 기본값은 1이에요 */
+  value?: number;
+}
+
+/**
+ * 기능의 결과를 Sentry 지표(count)로 세요. Sentry의 Explore > Metrics에서 속성별로 나눠 봐요.
+ *
+ * 지표는 표본을 덜어 내지 않아요. 모아 두었다가 몇 초마다, 또는 탭을 숨길 때 한 번에 보내요.
+ * Sentry가 꺼져 있으면(로컬, 테스트) 아무것도 하지 않아요.
+ *
+ * @example
+ * countMetric({ name: "recording.start", attributes: { result: "started" } });
+ */
+export const countMetric = <Name extends MetricName>({
+  name,
+  attributes,
+  value = 1,
+}: CountMetricParams<Name>) => {
+  Sentry.metrics.count(name, value, { attributes });
 };

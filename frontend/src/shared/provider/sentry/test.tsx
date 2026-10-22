@@ -31,6 +31,7 @@ import {
 import {
   captureCaughtError,
   captureRequestError,
+  countMetric,
   getRootErrorHandlers,
   initSentry,
   useSentryRoutes,
@@ -648,6 +649,91 @@ describe("성능 측정 비율", () => {
       expect(Sentry.getClient()?.getOptions().tracesSampleRate).toBe(1);
     },
   );
+});
+
+describe("기능 결과 지표", () => {
+  /** 보낸 지표 하나. 속성은 `{ type, value }` 모양으로 바뀌어 나가요 */
+  interface SentMetric {
+    name: string;
+    type: string;
+    value: number;
+    attributes: Record<string, { value: unknown }>;
+  }
+
+  const flushMetrics = async () => {
+    sendEnvelope.mockClear();
+    await Sentry.flush();
+
+    return sendEnvelope.mock.calls.flatMap(([{ body }]) =>
+      (
+        toEnvelopeItems(body, "trace_metric") as unknown as {
+          items: SentMetric[];
+        }[]
+      ).flatMap(({ items }) => items),
+    );
+  };
+
+  afterEach(async () => {
+    await Sentry.close();
+  });
+
+  it("이름과 속성, 더할 값을 count 지표로 보낸다", async () => {
+    initSentry({
+      dsn: SENTRY_DSN,
+      environment: "production",
+      transport: testTransport,
+    });
+
+    countMetric({
+      name: "recording.end",
+      attributes: {
+        reason: "connectionExpired",
+        uploaded: true,
+        audio_mode: "PCM16_CHUNKS_V1",
+      },
+    });
+    countMetric({ name: "recording.chunks_lost", attributes: {}, value: 3 });
+
+    const [ended, lost] = await flushMetrics();
+    expect(ended).toMatchObject({
+      name: "recording.end",
+      type: "counter",
+      value: 1,
+      attributes: {
+        reason: { value: "connectionExpired" },
+        uploaded: { value: true },
+        audio_mode: { value: "PCM16_CHUNKS_V1" },
+        "sentry.environment": { value: "production" },
+      },
+    });
+    expect(lost).toMatchObject({ name: "recording.chunks_lost", value: 3 });
+  });
+
+  // 지표는 SDK가 사용자와 IP를 붙이지 않게 사용자 정보 모으기를 꺼 둔 설정을 따라요
+  it("사용자 정보와 주소를 붙이지 않는다", async () => {
+    initSentry({
+      dsn: SENTRY_DSN,
+      environment: "test",
+      transport: testTransport,
+    });
+
+    countMetric({ name: "recording.start", attributes: { result: "started" } });
+
+    const [metric] = await flushMetrics();
+    expect(
+      Object.keys(metric.attributes).filter(
+        (key) => key.startsWith("user.") || key.includes("url"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("DSN이 없으면 보내지 않는다", async () => {
+    initSentry({ dsn: "" });
+
+    countMetric({ name: "recording.start", attributes: { result: "started" } });
+
+    expect(await flushMetrics()).toEqual([]);
+  });
 });
 
 describe("중계 경로로 보내기", () => {
