@@ -527,24 +527,19 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
     it.each([
       ["서버 오류(500)", () => new HttpResponse(null, { status: 500 })],
       ["네트워크 문제", () => HttpResponse.error()],
-    ])(
-      "%s면 일시정지로 남고 오류 토스트로 알린다",
-      async (_, resolver) => {
-        respondResume(resolver);
+    ])("%s면 일시정지로 남고 오류 토스트로 알린다", async (_, resolver) => {
+      respondResume(resolver);
 
-        const { collector, isResumed } = await resumeAfterPause();
+      const { collector, isResumed } = await resumeAfterPause();
 
-        // 마이크는 받았으므로 마이크 알림을 띄우지 않게 true로 답해요
-        expect(isResumed).toBe(true);
-        expect(getStatus()).toBe("paused");
-        expect(collector.isCollecting).toBe(false);
-        expect(
-          await screen.findByText(
-            TOAST_MESSAGES.RECORDING_RESUME_FAILED.message,
-          ),
-        ).toBeInTheDocument();
-      },
-    );
+      // 마이크는 받았으므로 마이크 알림을 띄우지 않게 true로 답해요
+      expect(isResumed).toBe(true);
+      expect(getStatus()).toBe("paused");
+      expect(collector.isCollecting).toBe(false);
+      expect(
+        await screen.findByText(TOAST_MESSAGES.RECORDING_RESUME_FAILED.message),
+      ).toBeInTheDocument();
+    });
 
     it("서버가 이미 끝낸 녹음이라 거절되면 생존 신호로 마저 처리하고 오류 토스트는 띄우지 않는다", async () => {
       respondResume(() =>
@@ -938,6 +933,199 @@ describe("useRecordingControl의 PCM 조각 녹음", () => {
           { consecutiveFailures: 4, isGivingUp: true },
         ]);
       });
+    });
+  });
+
+  // 오류가 아닌 결과(연결 끊김으로 서버가 끝냄 등)는 Issue로 셀 수 없어 지표로 세요
+  describe("Sentry 지표", () => {
+    const { flushMetrics } = setupSentryEvents();
+
+    const metricsNamed = async (name: string) =>
+      (await flushMetrics())
+        .filter((metric) => metric.name === name)
+        .map(({ value, attributes }) => ({ value, attributes }));
+
+    const respondHeartbeat = (response: () => Response) =>
+      mockServer.use(http.post(`${RECORDING_PATH}/heartbeat`, response));
+
+    it.each([
+      { name: "시작하면", responses: [], result: "started" },
+      {
+        name: "남은 녹음이 있어 거절되면",
+        responses: [conflict("ACTIVE_RECORDING_ALREADY_EXISTS")],
+        result: "refused",
+      },
+    ])(
+      "녹음을 $name 시작 결과($result)를 recording.start로 센다",
+      async ({ responses, result: expected }) => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        respondStart(...responses);
+        const result = renderRecordingControl();
+
+        expect(await startRecordingOutcome(result)).toBe(expected);
+
+        expect(await metricsNamed("recording.start")).toEqual([
+          { value: 1, attributes: { result: expected } },
+        ]);
+      },
+    );
+
+    it.each([
+      {
+        name: "끝내면",
+        end: () =>
+          endRecordingApi.mockResolvedValue(
+            new PostRecordingEndResponseDto(recordingEndResponse),
+          ),
+        isUploaded: true,
+      },
+      {
+        name: "끝냈지만 서버가 이미 버린 녹음이면",
+        end: () =>
+          endRecordingApi.mockRejectedValue(
+            endedRecordingError("RECORDING_ALREADY_DISCARDED"),
+          ),
+        isUploaded: false,
+      },
+    ])(
+      "사용자가 $name 오디오를 넘겼는지와 함께 userEnded로 센다",
+      async ({ end, isUploaded }) => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        end();
+        const result = renderRecordingControl();
+        await startRecording(result);
+
+        await endRecording(result);
+
+        expect(await metricsNamed("recording.end")).toEqual([
+          {
+            value: 1,
+            attributes: {
+              reason: "userEnded",
+              uploaded: isUploaded,
+              audio_mode: "PCM16_CHUNKS_V1",
+            },
+          },
+        ]);
+      },
+    );
+
+    const endedHeartbeat = (endReason: string | null) => () =>
+      HttpResponse.json({
+        ...recordingHeartbeatResponse,
+        status: "ENDED",
+        endedAt: new Date().toISOString(),
+        endReason,
+      });
+
+    it.each([
+      {
+        name: "연결 끊김으로 끝낸",
+        response: endedHeartbeat("CONNECTION_EXPIRED"),
+        reason: "connectionExpired",
+        isUploaded: true,
+      },
+      {
+        name: "최대 길이에 닿아 끝낸",
+        response: endedHeartbeat("MAX_DURATION"),
+        reason: "maxDuration",
+        isUploaded: true,
+      },
+      {
+        name: "다른 탭에서 끝낸",
+        response: endedHeartbeat("USER_ENDED"),
+        reason: "endedByServer",
+        isUploaded: true,
+      },
+      {
+        name: "버린",
+        response: () =>
+          HttpResponse.json({
+            ...recordingHeartbeatResponse,
+            status: "DISCARDED",
+          }),
+        reason: "discarded",
+        isUploaded: false,
+      },
+      {
+        name: "더는 볼 수 없는(404)",
+        response: () =>
+          HttpResponse.json({ code: "RECORDING_NOT_FOUND" }, { status: 404 }),
+        reason: "unreachable",
+        isUploaded: false,
+      },
+      {
+        name: "이 탭의 제어를 거절한(403 RECORDING_CONTROL_DENIED)",
+        response: () =>
+          HttpResponse.json(
+            { code: "RECORDING_CONTROL_DENIED" },
+            { status: 403 },
+          ),
+        reason: "controlLost",
+        isUploaded: false,
+      },
+    ])(
+      "생존 신호가 서버가 $name 녹음이라 알리면 $reason으로 한 번만 센다",
+      async ({ response, reason, isUploaded }) => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        respondHeartbeat(response);
+        const result = renderRecordingControl();
+        await startRecording(result);
+
+        await act(() => result.current.sendHeartbeat());
+        // 녹음을 닫았으니 다음 주기의 생존 신호는 보내지 않아 다시 세지 않아요
+        await act(() => result.current.sendHeartbeat());
+
+        expect(await metricsNamed("recording.end")).toEqual([
+          {
+            value: 1,
+            attributes: {
+              reason,
+              uploaded: isUploaded,
+              audio_mode: "PCM16_CHUNKS_V1",
+            },
+          },
+        ]);
+      },
+    );
+
+    it("이어서 녹음이 서버가 버린 녹음이라 거절되면 discarded로 센다", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      mockServer.use(
+        http.post(`${RECORDING_PATH}/resume`, () =>
+          HttpResponse.json(
+            { code: "RECORDING_ALREADY_DISCARDED" },
+            { status: 409 },
+          ),
+        ),
+      );
+      const result = renderRecordingControl();
+      await startRecording(result);
+      await pauseRecording(result);
+
+      await act(async () => {
+        await result.current.resumeRecording();
+      });
+
+      expect(await metricsNamed("recording.end")).toEqual([
+        {
+          value: 1,
+          attributes: {
+            reason: "discarded",
+            uploaded: false,
+            audio_mode: "PCM16_CHUNKS_V1",
+          },
+        },
+      ]);
+    });
+
+    it("생존 신호가 녹음 중이라 답하면 세지 않는다", async () => {
+      const result = renderRecordingControl();
+      await startRecording(result);
+
+      await act(() => result.current.sendHeartbeat());
+
+      expect(await metricsNamed("recording.end")).toEqual([]);
     });
   });
 });

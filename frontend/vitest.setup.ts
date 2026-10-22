@@ -12,6 +12,10 @@ import { installFakeMedia } from "./vitest.media";
 beforeAll(() => mockServer.listen({ onUnhandledRequest: "error" }));
 // jsdom에는 마이크·녹음 API가 없어 가짜를 깔아 둬요
 beforeAll(() => installFakeMedia());
+// jsdom은 캔버스를 그리지 못해요. 입자 캔버스는 문맥이 없으면 그리지 않으므로 「구현되지 않음」 경고 대신 조용히 null을 돌려줘요
+beforeAll(() => {
+  HTMLCanvasElement.prototype.getContext = () => null;
+});
 afterEach(() => {
   mockServer.resetHandlers();
   // 요청으로 바뀐 mock 상태가 다음 테스트의 응답을 바꾸지 않게 지워요

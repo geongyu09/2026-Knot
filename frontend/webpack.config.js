@@ -85,6 +85,28 @@ export default (env, argv) => {
           });
         }
 
+        // 녹음 시작 구간 시간을 파일로 남겨요(src/shared/utils/recordingStartTrace). 개발 서버에서만 있어요
+        middlewares.unshift({
+          name: "dev-recording-trace",
+          path: "/__dev/recording-trace",
+          middleware: (req, res) => {
+            if (req.method !== "POST") {
+              res.statusCode = 405;
+              res.end();
+              return;
+            }
+            let body = "";
+            req.on("data", (chunk) => {
+              body += chunk;
+            });
+            req.on("end", () => {
+              fs.appendFileSync(path.join(__dirname, ".dev-recording-trace.log"), `${body}\n`);
+              res.statusCode = 204;
+              res.end();
+            });
+          },
+        });
+
         return middlewares;
       },
       client: {

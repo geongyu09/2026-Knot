@@ -5,6 +5,7 @@ import useSearchAnswerControl from "@hooks/domain/search/useSearchAnswerControl"
 import useSearchAnswerStatus from "@hooks/domain/search/useSearchAnswerStatus";
 import useWorkspaceNav from "@hooks/domain/workspace/useWorkspaceNav";
 import { useToast } from "@provider/context/toastContext";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import {
   useCallback,
   useEffect,
@@ -16,7 +17,6 @@ import {
 } from "react";
 import { useParams } from "react-router";
 
-import { useDockHint } from "./useDockHint";
 import { useKeepFieldFocused } from "./useKeepFieldFocused";
 import { useTypeToStartChat } from "./useTypeToStartChat";
 
@@ -34,6 +34,8 @@ import { useTypeToStartChat } from "./useTypeToStartChat";
  * 새 대화는 서버가 접수하면 그 대화 주소로 옮겨 가요(`useSearchAnswerControl`).
  * 보내면 입력창을 바로 비우고, 접수 전에 거절되면 보낸 질문을 되돌려 다시 보낼 수 있게 하고 오류 토스트로 알려요(SEARCH-R4).
  * 답변을 기다리거나 받는 중에는 보내지 않아요(SEARCH-R6).
+ *
+ * 접힌 독이 펼쳐지면 버튼으로 열었는지, 글자를 쳐서 열었는지를 사용 기록(`dock_chat_opened`)으로 남겨요.
  */
 export const useWorkspaceDock = () => {
   const { workspaceId } = useParams();
@@ -52,8 +54,6 @@ export const useWorkspaceDock = () => {
   const isExpanded = isChatActive || isExpandedByUser;
   const canSubmit = message.trim().length > 0 && !isAnswerPending;
 
-  const { isHintVisible } = useDockHint({ isDockExpanded: isExpanded });
-
   useEffect(() => {
     if (focusRequestCount === 0) return;
 
@@ -71,6 +71,9 @@ export const useWorkspaceDock = () => {
   });
 
   const handleExpand = () => {
+    if (!isExpanded) {
+      captureAnalyticsEvent({ event: "dock_chat_opened", properties: { trigger: "button" } });
+    }
     setIsExpandedByUser(true);
     requestFocus();
   };
@@ -88,6 +91,10 @@ export const useWorkspaceDock = () => {
   useKeepFieldFocused({ onFocus: focusField });
 
   const handleChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    // 접힌 독에 글자가 들어왔다면 화면 아무 데서나 쳐서 연 거예요
+    if (!isExpanded) {
+      captureAnalyticsEvent({ event: "dock_chat_opened", properties: { trigger: "typing" } });
+    }
     setMessage(e.target.value);
     setIsExpandedByUser(true);
   };
@@ -137,7 +144,8 @@ export const useWorkspaceDock = () => {
     formRef,
     textareaRef,
     isExpanded,
-    isHintVisible,
+    /** 화면(탐색) 때문에 펼쳐 둔 것인지. 사용자가 접은 게 아니라 화면이 바뀌어 접히면 접힘 모션이 없어요 */
+    isExpandedByScreen: isChatActive,
     message,
     canSubmit,
     handleExpand,

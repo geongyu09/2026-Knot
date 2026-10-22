@@ -36,7 +36,24 @@ import { getRecordingStartProof } from "@utils/recordingControlProof";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import WorkspaceDock from ".";
-import { DOCK_HINT_MAX_SEEN_COUNT, DOCK_HINT_TEXT } from "./constants/dockHint";
+import {
+  DOCK_GUIDE_COPY,
+  DOCK_HINT_DELAY_MS,
+  DOCK_HINT_MAX_SEEN_COUNT,
+  DOCK_HINT_SEEN_COUNT_KEY,
+  DOCK_HOVER_GUIDE_DELAY_MS,
+  DOCK_HOVER_GUIDE_MAX_PER_VISIT,
+} from "./constants/dockHint";
+
+const DOCK_HINT_TEXT = DOCK_GUIDE_COPY.first.title;
+
+/** 첫 사용 안내가 뜨기까지 기다리는 시간만큼 기다려요. 안 떠야 하는 경우를 볼 때 써요 */
+const waitForHintDelay = () =>
+  act(() => new Promise((resolve) => setTimeout(resolve, DOCK_HINT_DELAY_MS + 50)));
+
+/** 첫 사용 안내를 이미 다 본 사용자로 만들어요 */
+const markHintAsSeen = () =>
+  localStorage.setItem(DOCK_HINT_SEEN_COUNT_KEY, String(DOCK_HINT_MAX_SEEN_COUNT));
 
 // 이 파일은 WebM 녹음만 보므로, PCM 켜기(#799) 뒤에도 WebM으로 고정해요. PCM 시작은 useRecordingControl 테스트가 봐요
 vi.mock("@constants/recording", async (importOriginal) => ({
@@ -447,27 +464,28 @@ describe("WorkspaceDock", () => {
     expect(field).toHaveValue(QUESTION);
   });
 
-  it("독 안내는 처음 세 번 방문할 때까지만 보여준다", () => {
+  it("독 안내는 홈에서 처음 세 번 방문할 때까지만 보여준다", async () => {
     for (let visit = 1; visit <= DOCK_HINT_MAX_SEEN_COUNT; visit += 1) {
       const { unmount } = renderDock();
 
-      expect(screen.getByText(DOCK_HINT_TEXT)).toBeInTheDocument();
+      expect(await screen.findByText(DOCK_HINT_TEXT)).toBeInTheDocument();
 
       unmount();
       sessionStorage.clear(); // 탭을 닫고 다시 들어온 셈이에요
     }
 
     renderDock();
+    await waitForHintDelay();
 
     expect(screen.queryByText(DOCK_HINT_TEXT)).not.toBeInTheDocument();
   });
 
-  it("같은 방문 안에서 다시 그려도 방문 횟수를 더 쓰지 않는다", () => {
+  it("같은 방문 안에서 다시 그려도 방문 횟수를 더 쓰지 않는다", async () => {
     // 새로고침이나 홈·탐색 오가기로 독이 다시 그려져도 같은 방문이에요
     for (let render = 1; render <= DOCK_HINT_MAX_SEEN_COUNT + 2; render += 1) {
       const { unmount } = renderDock();
 
-      expect(screen.getByText(DOCK_HINT_TEXT)).toBeInTheDocument();
+      expect(await screen.findByText(DOCK_HINT_TEXT)).toBeInTheDocument();
 
       unmount();
     }
@@ -475,17 +493,117 @@ describe("WorkspaceDock", () => {
     sessionStorage.clear();
     renderDock();
 
-    expect(screen.getByText(DOCK_HINT_TEXT)).toBeInTheDocument();
+    expect(await screen.findByText(DOCK_HINT_TEXT)).toBeInTheDocument();
   });
 
-  it("독을 열면 안내는 사라진다", () => {
-    renderDock();
+  it("독을 열면 안내는 사라지고 이번 방문에는 다시 뜨지 않는다", async () => {
+    const { unmount } = renderDock();
 
-    expect(screen.getByText(DOCK_HINT_TEXT)).toBeInTheDocument();
+    expect(await screen.findByText(DOCK_HINT_TEXT)).toBeInTheDocument();
 
     expandDock();
 
+    await waitFor(() => expect(screen.queryByText(DOCK_HINT_TEXT)).not.toBeInTheDocument());
+
+    unmount();
+    renderDock();
+    await waitForHintDelay();
+
     expect(screen.queryByText(DOCK_HINT_TEXT)).not.toBeInTheDocument();
+  });
+
+  it("다른 탭에서 녹음 중이면 안내를 띄우지 않는다", async () => {
+    respondCurrentRecordingStatus("RECORDING");
+    renderDock();
+    await waitForHintDelay();
+
+    expect(screen.queryByText(DOCK_HINT_TEXT)).not.toBeInTheDocument();
+  });
+
+  it("안내가 없을 때 채팅 버튼에 올리면 한 줄 안내가 떴다가 벗어나면 사라진다", async () => {
+    markHintAsSeen();
+    renderDock();
+
+    const chatTarget = screen.getByRole("button", { name: "무엇이든 요청하기" }).parentElement as HTMLElement;
+    fireEvent.pointerEnter(chatTarget, { pointerType: "mouse" });
+
+    expect(await screen.findByText(DOCK_GUIDE_COPY.chat)).toBeInTheDocument();
+
+    fireEvent.pointerLeave(chatTarget);
+
+    // 사라지는 모션만큼 잠깐 더 그려 두었다가 떼요
+    await waitFor(() => expect(screen.queryByText(DOCK_GUIDE_COPY.chat)).not.toBeInTheDocument());
+  });
+
+  it("버튼 안내는 한 방문에서 버튼마다 두 번까지만 뜬다", async () => {
+    markHintAsSeen();
+    renderDock();
+
+    const chatTarget = screen.getByRole("button", { name: "무엇이든 요청하기" }).parentElement as HTMLElement;
+    for (let shown = 1; shown <= DOCK_HOVER_GUIDE_MAX_PER_VISIT; shown += 1) {
+      fireEvent.pointerEnter(chatTarget, { pointerType: "mouse" });
+      expect(await screen.findByText(DOCK_GUIDE_COPY.chat)).toBeInTheDocument();
+      fireEvent.pointerLeave(chatTarget);
+      await waitFor(() => expect(screen.queryByText(DOCK_GUIDE_COPY.chat)).not.toBeInTheDocument());
+    }
+
+    fireEvent.pointerEnter(chatTarget, { pointerType: "mouse" });
+    await act(() => new Promise((resolve) => setTimeout(resolve, DOCK_HOVER_GUIDE_DELAY_MS + 50)));
+
+    expect(screen.queryByText(DOCK_GUIDE_COPY.chat)).not.toBeInTheDocument();
+  });
+
+  it("안내를 띄우는 세 번의 방문이 지나면 버튼 안내도 뜨지 않는다", async () => {
+    localStorage.setItem(DOCK_HINT_SEEN_COUNT_KEY, String(DOCK_HINT_MAX_SEEN_COUNT + 1));
+    renderDock();
+
+    const chatTarget = screen.getByRole("button", { name: "무엇이든 요청하기" }).parentElement as HTMLElement;
+    fireEvent.pointerEnter(chatTarget, { pointerType: "mouse" });
+    await act(() => new Promise((resolve) => setTimeout(resolve, DOCK_HOVER_GUIDE_DELAY_MS + 50)));
+
+    expect(screen.queryByText(DOCK_GUIDE_COPY.chat)).not.toBeInTheDocument();
+  });
+
+  describe("독을 연 방법 기록", () => {
+    beforeEach(() => {
+      vi.mocked(captureAnalyticsEvent).mockClear();
+    });
+
+    it("요청하기 버튼으로 펼치면 버튼으로 열었다고 남긴다", () => {
+      renderDock();
+
+      expandDock();
+
+      expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+        event: "dock_chat_opened",
+        properties: { trigger: "button" },
+      });
+    });
+
+    it("접힌 독에 글자가 들어와 펼치면 글자를 쳐서 열었다고 한 번만 남긴다", () => {
+      renderDock();
+      const field = screen.getByRole("textbox", { name: "무엇이든 요청하세요" });
+
+      fireEvent.change(field, { target: { value: "ㅇ" } });
+      fireEvent.change(field, { target: { value: "아" } });
+
+      expect(captureAnalyticsEvent).toHaveBeenCalledTimes(1);
+      expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+        event: "dock_chat_opened",
+        properties: { trigger: "typing" },
+      });
+    });
+
+    it("늘 펼쳐 둔 탐색 화면에서 적는 것은 남기지 않는다", () => {
+      renderDock(CHAT_PATH);
+
+      fireEvent.change(
+        screen.getByRole("textbox", { name: "무엇이든 요청하세요" }),
+        { target: { value: QUESTION } },
+      );
+
+      expect(captureAnalyticsEvent).not.toHaveBeenCalled();
+    });
   });
 
   describe("접힌 독에서 바로 치기", () => {
@@ -562,8 +680,9 @@ describe("WorkspaceDock", () => {
     });
   });
 
-  it("이미 열려 있는 탐색 화면에서는 안내를 보여주지 않는다", () => {
+  it("이미 열려 있는 탐색 화면에서는 안내를 보여주지 않는다", async () => {
     renderDock(CHAT_PATH);
+    await waitForHintDelay();
 
     expect(screen.queryByText(DOCK_HINT_TEXT)).not.toBeInTheDocument();
   });
@@ -704,6 +823,72 @@ describe("WorkspaceDock", () => {
       expect(
         screen.queryByRole("button", { name: "녹음 화면으로 이동" }),
       ).not.toBeInTheDocument();
+    });
+
+    it("녹음이 열리기를 기다리는 동안 마이크를 기다리는 중으로 두고, 녹음 칩으로 바꾸지 않는다", async () => {
+      let respond = () => {};
+      const isResponded = new Promise<void>((resolve) => {
+        respond = resolve;
+      });
+      mockServer.use(
+        http.post("*/api/v1/workspaces/:workspaceId/recordings", async () => {
+          await isResponded;
+          return HttpResponse.json(recordingStartResponse, { status: 201 });
+        }),
+      );
+      const { router } = renderDock();
+
+      await clickMic();
+
+      expect(
+        screen.getByRole("button", { name: "회의 녹음 시작" }),
+      ).toHaveAttribute("aria-busy", "true");
+      expect(
+        screen.queryByRole("button", { name: "녹음 화면으로 이동" }),
+      ).not.toBeInTheDocument();
+
+      await act(async () => respond());
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(RECORDING_PATH),
+      );
+    });
+
+    it("녹음이 열리면 결과와 기다린 시간을 남긴다", async () => {
+      vi.mocked(captureAnalyticsEvent).mockClear();
+      renderDock();
+
+      await clickMic();
+
+      expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+        event: "recording_start_result",
+        properties: {
+          result: "started",
+          wait_seconds: expect.any(Number),
+          workspace_id: Number(WORKSPACE_ID),
+        },
+      });
+    });
+
+    it("권한을 받지 못하면 기다림을 풀고 그 결과를 남긴다", async () => {
+      vi.mocked(captureAnalyticsEvent).mockClear();
+      denyMicrophoneOnce();
+      renderDock();
+
+      await clickMic();
+      confirmMicAlert();
+
+      expect(
+        screen.getByRole("button", { name: "회의 녹음 시작" }),
+      ).toHaveAttribute("aria-busy", "false");
+      expect(captureAnalyticsEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "recording_start_result",
+          properties: expect.objectContaining({
+            result: "microphone_unavailable",
+          }),
+        }),
+      );
     });
 
     it("권한을 받지 못하면 권한을 허용하는 방법을 알리고 제자리에 남는다", async () => {
@@ -890,8 +1075,10 @@ describe("WorkspaceDock", () => {
       });
 
       it("사용 기록을 보내지 못해도 안내 창은 그대로 띄운다", async () => {
-        vi.mocked(captureAnalyticsEvent).mockImplementationOnce(() => {
-          throw new Error("PostHog를 불러오지 못했어요");
+        vi.mocked(captureAnalyticsEvent).mockImplementation(({ event }) => {
+          if (event === "recording_start_failed") {
+            throw new Error("PostHog를 불러오지 못했어요");
+          }
         });
         denyMicrophoneOnce();
         renderDock();
@@ -901,7 +1088,11 @@ describe("WorkspaceDock", () => {
         expect(
           screen.getByRole("alertdialog", { name: MIC_UNAVAILABLE }),
         ).toBeInTheDocument();
-        await waitFor(() => expect(captureAnalyticsEvent).toHaveBeenCalled());
+        await waitFor(() =>
+          expect(captureAnalyticsEvent).toHaveBeenCalledWith(
+            expect.objectContaining({ event: "recording_start_failed" }),
+          ),
+        );
       });
     });
 
@@ -1537,5 +1728,143 @@ describe("WorkspaceDock", () => {
         },
       );
     });
+  });
+});
+
+/**
+ * 캔버스를 그릴 수 있는 브라우저처럼 답하는 가짜 문맥.
+ * jsdom은 캔버스를 못 그려 독이 늘 열려 있으므로, 파형으로 접히는 동작은 이 문맥을 깔고 봐요.
+ */
+const createFakeCanvasContext = () =>
+  ({
+    setTransform: () => {},
+    clearRect: () => {},
+    fillRect: () => {},
+    beginPath: () => {},
+    moveTo: () => {},
+    arc: () => {},
+    fill: () => {},
+    stroke: () => {},
+    scale: () => {},
+    createRadialGradient: () => ({ addColorStop: () => {} }),
+    measureText: () => ({ width: 100 }),
+    fillText: () => {},
+    getImageData: () => ({ data: new Uint8ClampedArray(0) }),
+  }) as unknown as CanvasRenderingContext2D;
+
+describe("파형으로 접힌 독", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    respondNoCurrentRecording();
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
+      createFakeCanvasContext(),
+    );
+    // jsdom에는 Path2D가 없어 아이콘 모양을 그릴 때 쓰는 생성자만 흉내 내요
+    vi.stubGlobal("Path2D", class {});
+  });
+
+  afterEach(() => {
+    useSearchAnswerStore.getState().abort();
+    vi.unstubAllGlobals();
+  });
+
+  /** 다른 탭에서 녹음이 이어지는 홈을 그리고, 독이 파형으로 접히기를 기다려요 */
+  const renderRecordingDock = async () => {
+    respondCurrentRecordingStatus("RECORDING");
+    renderDock();
+
+    return screen.findByRole("button", { name: "독 열기" });
+  };
+
+  it("녹음이 없으면 캔버스를 쓸 수 있어도 파형 없이 처음부터 독 버튼이 보인다 (Figma Dock/Bar 기본)", () => {
+    renderDock();
+
+    expect(
+      screen.queryByRole("button", { name: "독 열기" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "무엇이든 요청하기" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "회의 녹음 시작" }),
+    ).toBeInTheDocument();
+  });
+
+  it("다른 화면에서 녹음이 이어지면 처음엔 파형만 있고 독 버튼은 없다", async () => {
+    await renderRecordingDock();
+
+    expect(
+      screen.queryByRole("button", { name: "무엇이든 요청하기" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("파형을 누르면 독이 열려 요청하기 버튼이 나타난다", async () => {
+    const seed = await renderRecordingDock();
+
+    fireEvent.click(seed);
+
+    expect(
+      screen.getByRole("button", { name: "무엇이든 요청하기" }),
+    ).toBeInTheDocument();
+    expect(isDockExpanded()).toBe(false);
+  });
+
+  it("열린 독에서 요청하기를 누르면 그대로 펼쳐진다", async () => {
+    fireEvent.click(await renderRecordingDock());
+
+    expandDock();
+
+    expect(isDockExpanded()).toBe(true);
+  });
+
+  it("포인터가 독을 벗어나면 잠시 뒤 파형으로 돌아간다", async () => {
+    const seed = await renderRecordingDock();
+    fireEvent.click(seed);
+    expect(
+      screen.getByRole("button", { name: "무엇이든 요청하기" }),
+    ).toBeInTheDocument();
+
+    fireEvent.pointerLeave(seed.parentElement!, { pointerType: "mouse" });
+
+    await waitFor(
+      () =>
+        expect(
+          screen.queryByRole("button", { name: "무엇이든 요청하기" }),
+        ).not.toBeInTheDocument(),
+      { timeout: 1500 },
+    );
+  });
+
+  it("파형 상태에서 글자를 치면 독이 바로 펼쳐진다", async () => {
+    await renderRecordingDock();
+
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "무엇이든 요청하세요" }),
+      { target: { value: "ㅇ" } },
+    );
+
+    expect(isDockExpanded()).toBe(true);
+    // 입자 자리는 남아 있지만 열린 동안은 낭독기에서 숨겨요
+    expect(
+      screen.queryByRole("button", { name: "독 열기" }),
+    ).not.toBeInTheDocument();
+    expect(
+      document.querySelector('[aria-label="독 열기"]'),
+    ).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("녹음 화면에서는 파형 없이 독이 보이고 회의 녹음 버튼이 없다", () => {
+    renderDock(RECORDING_PATH);
+
+    expect(
+      screen.queryByRole("button", { name: "독 열기" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "무엇이든 요청하기" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "회의 녹음 시작" }),
+    ).not.toBeInTheDocument();
   });
 });

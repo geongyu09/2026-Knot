@@ -7,6 +7,17 @@ import {
   SCENE_TWEEN_MS,
 } from "../constants/landing";
 import type { Graph, GraphLabel, Particle, ParticleTarget, StageSize } from "../types/particle";
+import {
+  advancePulses,
+  createPulse,
+  nextPulseBoost,
+  pointerRepulsion,
+  pulseForce,
+  waveAmplitude,
+  waveBreath,
+  type PulseWave,
+} from "@utils/particleMotion";
+
 import { clamp, gaussian, seededRandom } from "../utils/particleMath";
 import {
   buildCardTargets,
@@ -72,7 +83,7 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
 
   const size: StageSize = { width: 0, height: 0, isMobile: false, count: PARTICLE_COUNT.desktop };
   const particles: Particle[] = [];
-  const pulses: { x: number; y: number; radius: number; max: number; strength: number }[] = [];
+  const pulses: PulseWave[] = [];
   const amplitudes = new Float32Array(WAVE_COLUMNS);
   const buckets: Particle[][] = [[], [], [], [], [], []];
   const timers = new Set<number>();
@@ -381,23 +392,19 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
     );
   };
 
+  // 파동과 파형 계산은 독의 입자와 같은 함수를 써요(`@utils/particleMotion`)
   const addPulse = (x: number, y: number) => {
     const now = Date.now();
-    pulseBoost = now - lastPulseAt < 1500 ? Math.min(3.2, pulseBoost * 1.6) : 1;
+    pulseBoost = nextPulseBoost({ lastPulseAt, boost: pulseBoost, now });
     lastPulseAt = now;
-    pulses.push({ x, y, radius: 0, max: Math.max(size.width, size.height) * 0.55, strength: 5 * pulseBoost });
+    pulses.push(createPulse({ x, y, width: size.width, height: size.height, boost: pulseBoost }));
   };
 
   const updateWaveAmplitudes = () => {
-    const level = 0.62 + 0.38 * Math.sin(frameCount * 0.019) * Math.sin(frameCount * 0.0073 + 1.3);
+    const scale = prefersReducedMotion ? 0.7 : waveBreath(frameCount);
     const maxAmplitude = size.height * (size.isMobile ? 0.12 : 0.2);
     for (let c = 0; c < WAVE_COLUMNS; c++) {
-      const energy = Math.abs(
-        Math.sin(c * 0.23 + frameCount * 0.05) * Math.sin(c * 0.071 - frameCount * 0.023) +
-          0.35 * Math.sin(c * 0.87 + frameCount * 0.13),
-      );
-      const taper = Math.pow(Math.sin((Math.PI * (c + 0.5)) / WAVE_COLUMNS), 0.7);
-      amplitudes[c] = Math.max(2.5, maxAmplitude * Math.min(1, 0.1 + energy) * taper * (prefersReducedMotion ? 0.7 : level));
+      amplitudes[c] = waveAmplitude({ column: c, columns: WAVE_COLUMNS, frame: frameCount, maxAmplitude, scale });
     }
   };
 
@@ -472,13 +479,7 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
     updateWaveAmplitudes();
 
     buckets.forEach((bucket) => (bucket.length = 0));
-    for (let i = pulses.length - 1; i >= 0; i--) {
-      pulses[i].radius += 12;
-      if (pulses[i].radius > pulses[i].max) pulses.splice(i, 1);
-    }
-
-    const pointerRadius = 95;
-    const pointerRadiusSquared = pointerRadius * pointerRadius;
+    advancePulses(pulses);
     particles.forEach((particle) => {
       if (particle.isWaiting && frameCount >= particle.delay) {
         particle.isWaiting = false;
@@ -535,25 +536,13 @@ export const createLandingEngine = ({ elements, listeners, palette }: CreateLand
         let ax = (particle.homeX - particle.x) * spring + (Math.random() - 0.5) * 0.18;
         let ay = (particle.homeY - particle.y) * spring + (Math.random() - 0.5) * 0.18;
 
-        const dx = particle.x - pointerX;
-        const dy = particle.y - pointerY;
-        const distanceSquared = dx * dx + dy * dy;
-        if (distanceSquared < pointerRadiusSquared) {
-          const distance = Math.sqrt(distanceSquared) || 1;
-          const closeness = 1 - distance / pointerRadius;
-          const force = closeness * closeness * 6;
-          ax += (dx / distance) * force;
-          ay += (dy / distance) * force;
-        }
+        const repulsion = pointerRepulsion({ x: particle.x, y: particle.y, pointerX, pointerY });
+        ax += repulsion.fx;
+        ay += repulsion.fy;
         pulses.forEach((pulse) => {
-          const ex = particle.x - pulse.x;
-          const ey = particle.y - pulse.y;
-          const distance = Math.sqrt(ex * ex + ey * ey) || 1;
-          const ring = Math.abs(distance - pulse.radius);
-          if (ring >= 46) return;
-          const force = (1 - ring / 46) * pulse.strength * (1 - pulse.radius / pulse.max);
-          ax += (ex / distance) * force;
-          ay += (ey / distance) * force;
+          const force = pulseForce({ x: particle.x, y: particle.y, pulse });
+          ax += force.fx;
+          ay += force.fy;
         });
 
         particle.vx = (particle.vx + ax) * 0.84;

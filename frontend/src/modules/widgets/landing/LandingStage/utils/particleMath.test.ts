@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fitTargets, hexToRgb, roundedRectPoint } from "./particleMath";
+import { fitTargets, roundedRectPoint } from "./particleMath";
 
 const size = { width: 800, height: 600, isMobile: false, count: 10 };
 
@@ -53,8 +53,3 @@ describe("roundedRectPoint", () => {
   });
 });
 
-describe("hexToRgb", () => {
-  it("색상 토큰을 rgba에 넣을 세 숫자로 바꾼다", () => {
-    expect(hexToRgb("#3C3B39")).toBe("60,59,57");
-  });
-});

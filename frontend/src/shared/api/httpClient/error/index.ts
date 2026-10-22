@@ -32,6 +32,31 @@ const CLIENT_ERROR_TYPES: HttpErrorType[] = [
   HTTP_ERROR_TYPE.clientError,
 ];
 
+const STATUS_ERROR_TYPE: Record<number, HttpErrorType> = {
+  400: HTTP_ERROR_TYPE.badRequest,
+  401: HTTP_ERROR_TYPE.unauthorized,
+  403: HTTP_ERROR_TYPE.forbidden,
+  404: HTTP_ERROR_TYPE.notFound,
+  409: HTTP_ERROR_TYPE.conflict,
+  429: HTTP_ERROR_TYPE.tooManyRequests,
+};
+
+/**
+ * 응답 상태 코드를 실패 이유로 바꿔요. 응답을 받지 못했으면(`undefined`) `network`예요.
+ * httpClient를 거치지 않는 요청(SSE, 저장소 PUT)의 실패도 같은 이유로 맞출 때 써요.
+ *
+ * @example
+ * toHttpErrorType(503); // "serverError"
+ */
+export const toHttpErrorType = (status?: number) => {
+  if (status === undefined) return HTTP_ERROR_TYPE.network;
+  if (status in STATUS_ERROR_TYPE) return STATUS_ERROR_TYPE[status];
+
+  return status < 500
+    ? HTTP_ERROR_TYPE.clientError
+    : HTTP_ERROR_TYPE.serverError;
+};
+
 /** httpClient가 던지는 실패. `httpErrorInterceptor`가 axios 오류를 이 모양으로 바꿔요. */
 export interface HttpError extends Error {
   /** 실패한 이유 */

@@ -12,3 +12,35 @@ export type RecordingAudioMode = "FINAL_WEBM_V1" | "PCM16_CHUNKS_V1";
 
 /** 브라우저가 알려 주는 마이크 권한 상태. 마이크 권한을 조회할 수 없는 브라우저면 `unsupported`예요 */
 export type MicrophonePermission = PermissionState | "unsupported";
+
+/**
+ * 녹음 시작을 시도한 결과. `useRecordingControl`의 시작 결과 중 서버에 녹음을 열려고 한 경우예요.
+ *
+ * - `started`: 녹음을 시작했어요
+ * - `microphoneUnavailable`: 마이크를 받지 못했어요(권한 거절, 장치 없음)
+ * - `refused`: 서버가 거절했거나 남아 있던 녹음이 있어요
+ * - `networkFailed`: 시작 요청이 응답을 받지 못했어요
+ * - `failed`: 그 밖의 실패예요
+ */
+export type RecordingStartResult =
+  "started" | "microphoneUnavailable" | "refused" | "networkFailed" | "failed";
+
+/**
+ * 녹음이 끝난 이유.
+ *
+ * - `userEnded`: 이 탭에서 사용자가 끝냈어요
+ * - `connectionExpired`: 생존 신호가 끊겨 서버가 끝냈어요
+ * - `maxDuration`: 누적 녹음 시간이 최대 길이에 닿아 서버가 끝냈어요
+ * - `endedByServer`: 다른 탭에서 끝냈거나 서버가 사유 없이 끝냈어요
+ * - `discarded`: 서버가 녹음을 버렸어요
+ * - `unreachable`: 워크스페이스에서 나갔거나 서버에 녹음이 없어요
+ * - `controlLost`: 이 탭이 녹음 제어권을 잃었어요
+ */
+export type RecordingEndCause =
+  | "userEnded"
+  | "connectionExpired"
+  | "maxDuration"
+  | "endedByServer"
+  | "discarded"
+  | "unreachable"
+  | "controlLost";

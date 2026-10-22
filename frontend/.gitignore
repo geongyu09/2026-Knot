@@ -29,3 +29,6 @@ dist/
 test-results/
 playwright-report/
 playwright/.cache/
+
+# 개발 서버의 녹음 시작 구간 기록
+.dev-recording-trace.log

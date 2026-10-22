@@ -226,6 +226,16 @@ export const useToast = () => {
   return { show, navigateWithToast };
 };
 
+/**
+ * 지금 떠 있는 토스트가 있는지. 독 위 안내처럼 토스트와 같은 자리에 뜨는 것이 토스트에 자리를 양보할 때 써요.
+ * Provider 밖에서는 늘 `false`예요.
+ */
+export const useHasToast = () => {
+  const stack = useContext(ToastStackContext);
+
+  return (stack?.toasts.length ?? 0) > 0;
+};
+
 interface ToastViewportProps {
   placement?: ToastPlacement;
 }

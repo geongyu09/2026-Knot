@@ -19,12 +19,6 @@ export const shuffle = <T,>(items: T[]) => {
   return items;
 };
 
-/** `#3C3B39` 같은 색상 토큰을 `rgba()`에 넣을 `60,59,57` 꼴로 바꿔요. */
-export const hexToRgb = (hex: string) => {
-  const value = hex.replace("#", "");
-  return [0, 2, 4].map((start) => parseInt(value.slice(start, start + 2), 16)).join(",");
-};
-
 interface FitTargetsParams {
   targets: ParticleTarget[];
   size: StageSize;

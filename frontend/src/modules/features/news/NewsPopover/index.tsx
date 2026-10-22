@@ -1,19 +1,32 @@
+import { RELEASE_NOTES } from "@constants/releaseNote";
 import Popover from "@composites/Popover";
 import styled from "@emotion/styled";
 
 import LetterIcon from "@/assets/icons/letter.svg";
+import type { ReleaseNote } from "@/shared/types/releaseNote";
 
 import NewsPanel from "./ui/NewsPanel";
 
+interface NewsPopoverProps {
+  /** 패널에 보여 줄 노트. 기본은 `shared/constants/releaseNote`의 노트이고, 빈 상태를 보려면 빈 배열을 넘겨요 */
+  notes?: ReleaseNote[];
+}
+
 /**
- * Knot 서비스의 새 소식(업데이트 공지)을 여는 버튼. GNB 오른쪽 프로필 바로 왼쪽에 두는 버튼이에요(NEWS-R1).
+ * Knot 서비스의 새 소식(릴리즈 노트)을 여는 버튼. GNB 오른쪽 프로필 바로 왼쪽에 두는 버튼이에요(NEWS-R1).
  *
  * 누르면 버튼 아래에 새 소식 패널을 오른쪽 끝을 맞춰 열고, 다시 누르거나 바깥을 누르거나 ESC를 누르면 닫아요.
  * 열려 있는 동안 버튼은 채워진 모양이에요.
  */
-export default function NewsPopover() {
+export default function NewsPopover({
+  notes = RELEASE_NOTES,
+}: NewsPopoverProps) {
   return (
-    <Popover openOn="click" placement="bottom-end" content={<NewsPanel />}>
+    <Popover
+      openOn="click"
+      placement="bottom-end"
+      content={<NewsPanel notes={notes} />}
+    >
       {(triggerProps) => (
         <Trigger type="button" aria-label="새 소식과 피드백" {...triggerProps}>
           <LetterIcon size={18} />
