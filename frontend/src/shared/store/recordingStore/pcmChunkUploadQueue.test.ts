@@ -470,7 +470,7 @@ describe("PcmChunkUploadQueue", () => {
 
     // 버린 조각은 녹음 일부가 서버에 남지 않아 문서에서 빠져요. Sentry는 타이머를 쓰므로 진짜 타이머로 돌린 뒤 모은 이벤트를 봐요
     describe("조각 유실 보고", () => {
-      const { flushEvents } = setupSentryEvents();
+      const { flushEvents, flushMetrics } = setupSentryEvents();
 
       const flushRealEvents = () => {
         vi.useRealTimers();
@@ -499,6 +499,14 @@ describe("PcmChunkUploadQueue", () => {
         expect(lostEvents).toHaveLength(1);
         expect(lostEvents[0].tags).toMatchObject({ feature: "recording" });
         expect(lostEvents[0].extra).toEqual({ lostChunkCount: 2 });
+        // Issue는 손실이 난 녹음 수를, 지표는 잃은 조각 수를 세요
+        expect(
+          (await flushMetrics()).filter(
+            ({ name }) => name === "recording.chunks_lost",
+          ),
+        ).toEqual([
+          { name: "recording.chunks_lost", value: 2, attributes: {} },
+        ]);
       });
 
       it("시한 전에 모든 조각을 올렸으면 시한이 지나도 보고하지 않는다", async () => {
