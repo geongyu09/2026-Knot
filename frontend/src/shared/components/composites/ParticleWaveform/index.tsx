@@ -18,21 +18,21 @@ interface ParticleWaveformProps {
  * 랜딩 녹음 장면 그대로의 입자 파형.
  *
  * 96칸 막대가 저마다 다른 박자로 출렁이며 숨 쉬고, 마이크 소리가 들어오면 그만큼 더 크게 퍼져요.
- * 입자는 가운데가 빽빽하고 밝은 세 단계로 그려요. 독과 같은 Neutral 800 알약 위에 놓여요. 올리면 입자가 포인터를 피하고, 누르면 파동이 퍼져요.
+ * 입자는 가운데가 빽빽하고 잉크 세 단계로 그려요. 올리면 입자가 포인터를 피하고, 누르면 파동이 퍼져요.
  * 녹음 중임을 보여 주는 장식이라 낭독기에서는 숨겨요. 색은 테마의 Neutral 토큰이에요.
  */
 export default function ParticleWaveform({ analyser, isActive, height }: ParticleWaveformProps) {
   const theme = useTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  // 독과 같은 Neutral 800 알약 위에 놓이는 밝은 입자예요. 독 안의 녹음 칩, 접힌 독의 파형과 같은 색이에요
-  const palette: [string, string, string, string] = [
-    `rgba(${hexToRgb(theme.neutral[0])},0.95)`,
-    `rgba(${hexToRgb(theme.neutral[200])},0.7)`,
-    `rgba(${hexToRgb(theme.neutral[300])},0.4)`,
-    `rgba(${hexToRgb(theme.neutral[400])},0.5)`,
-  ];
+  const ink = hexToRgb(theme.neutral[800]);
+  const strong = hexToRgb(theme.neutral[900]);
 
-  const { setPointer, clearPointer, pulse } = useParticleWaveform({ canvasRef, analyser, isActive, palette });
+  const { setPointer, clearPointer, pulse } = useParticleWaveform({
+    canvasRef,
+    analyser,
+    isActive,
+    palette: [`rgba(${strong},0.9)`, `rgba(${ink},0.6)`, `rgba(${ink},0.32)`, `rgba(${hexToRgb(theme.neutral[400])},0.55)`],
+  });
 
   const toCanvas = (event: PointerEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();

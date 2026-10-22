@@ -94,7 +94,7 @@ export default function DockSeed({ isOpen, analyser, isActive, elapsedTime, spli
 
 /**
  * 파형과 시간을 담는 알약. 독과 같은 Neutral 800 바탕과 그림자라, 올리면 그 자리에서 독으로 이어져요.
- * 녹음 화면의 파형 알약과도 같은 색이에요. 독이 나타나면 독에 자리를 내줘요
+ * 홈 위에 떠 있는 동안 뒤를 살짝 비추는 유리 질감이라 스크롤로 지나가는 카드와 글자가 흐릿하게 어려요. 독이 나타나면 독에 자리를 내줘요
  */
 const DockPill = styled.span<{ $isVisible: boolean }>`
   position: absolute;
@@ -102,9 +102,15 @@ const DockPill = styled.span<{ $isVisible: boolean }>`
   left: calc(50% - min(11.25rem, 30%) - 1.5rem); /* 파형 왼쪽 끝에서 24px 바깥 */
   width: calc(min(22.5rem, 60%) + 6.75rem); /* 파형 + 시간(44px) + 양옆 여백 */
   height: ${SEED_PILL_HEIGHT / 16}rem;
+  border: 1px solid ${({ theme }) => `rgba(${hexToRgb(theme.neutral[0])}, 0.08)`};
   border-radius: 6.25rem; /* 100px */
-  background-color: ${({ theme }) => theme.neutral[800]};
-  box-shadow: ${({ theme }) => theme.shadow03};
+  /* 독과 같은 색이지만 살짝 비쳐서, 스크롤로 뒤를 지나가는 카드와 글자가 흐릿하게 어려요 */
+  background-color: ${({ theme }) => `rgba(${hexToRgb(theme.neutral[800])}, 0.86)`};
+  box-shadow:
+    inset 0 1px 0 ${({ theme }) => `rgba(${hexToRgb(theme.neutral[0])}, 0.1)`},
+    ${({ theme }) => theme.shadow03};
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
   opacity: ${({ $isVisible }) => ($isVisible ? 1 : 0)};
   transition: opacity 0.2s;
   pointer-events: none;
