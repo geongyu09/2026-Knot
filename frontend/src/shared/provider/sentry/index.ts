@@ -30,14 +30,13 @@ type ReplayIntegration = ReturnType<typeof createReplayIntegration>;
  */
 const SENTRY_RELAY_PATH = "/relay/s";
 
-/** production에서 성능을 측정할 페이지 로딩 · 화면 이동의 비율. 그 밖의 환경은 모두 측정해요 */
-const PRODUCTION_TRACES_SAMPLE_RATE = 0.2;
-
-/** environment를 비우면 SDK가 `production`으로 보내므로 production과 같게 다뤄요 */
-const getTracesSampleRate = (environment?: string) =>
-  !environment || environment === "production"
-    ? PRODUCTION_TRACES_SAMPLE_RATE
-    : 1;
+/**
+ * 성능을 측정할 페이지 로딩 · 화면 이동의 비율. 모든 환경에서 모두 측정해요(ADR 915).
+ *
+ * 사용자가 적을 때 일부만 측정하면 화면별 p75를 낼 만큼 표본이 모이지 않아요.
+ * Sentry Stats에서 운영 span이 할당량(무료 요금제 월 500만 개)에 가까워지면 운영만 낮춰요.
+ */
+const TRACES_SAMPLE_RATE = 1;
 
 /**
  * 초대 화면(`/invite/:token` 아래 전부)인지 봐요. 주소에 워크스페이스에 들어올 수 있는 토큰이 있어 리플레이에 남기지 않아요.
@@ -179,7 +178,7 @@ export const initSentry = ({
       urlQueryParams: false,
     },
     integrations: [reactRouterBrowserTracingIntegration()],
-    tracesSampleRate: getTracesSampleRate(environment),
+    tracesSampleRate: TRACES_SAMPLE_RATE,
     // 백엔드 CORS가 `sentry-trace` · `baggage` 헤더를 허용하지 않아, 붙이면 API 요청이 모두 막혀요. 어느 요청에도 붙이지 않아요
     tracePropagationTargets: [],
     replaysSessionSampleRate: 0,

@@ -639,16 +639,15 @@ describe("성능 측정 비율", () => {
     await Sentry.close();
   });
 
-  // environment를 비우면 SDK가 production으로 보내므로 production과 같은 비율을 써요
-  it.each([
-    ["production", 0.2],
-    [undefined, 0.2],
-    ["development", 1],
-  ])("environment가 %s면 %s만큼 측정한다", (environment, sampleRate) => {
-    initSentry({ dsn: SENTRY_DSN, environment, transport: testTransport });
+  // 사용자가 적을 때 일부만 측정하면 화면별 p75를 낼 표본이 모이지 않아요
+  it.each(["production", undefined, "development"])(
+    "environment가 %s여도 페이지 로딩과 화면 이동을 모두 측정한다",
+    (environment) => {
+      initSentry({ dsn: SENTRY_DSN, environment, transport: testTransport });
 
-    expect(Sentry.getClient()?.getOptions().tracesSampleRate).toBe(sampleRate);
-  });
+      expect(Sentry.getClient()?.getOptions().tracesSampleRate).toBe(1);
+    },
+  );
 });
 
 describe("중계 경로로 보내기", () => {
