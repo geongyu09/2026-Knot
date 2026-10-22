@@ -6,7 +6,7 @@ import { DOCK_ORB_CANVAS_SIZE, DOCK_ORB_RADIUS } from "../constants/dockOrb";
 
 interface DockChatButtonProps {
   onClick: () => void;
-  /** `false`면 독이 입자 스케치 상태라 그리지 않아요. 자리는 그대로 차지해요 */
+  /** `false`면 독이 녹음 파형으로 접혀 있어 그리지 않아요. 자리는 그대로 차지해요 */
   isOrbVisible?: boolean;
 }
 

@@ -1,36 +1,10 @@
 import { prefersReducedMotion, roundedRectPoint } from "@utils/particleMotion";
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 
-/** 테두리를 따라 늘 흐르는 입자 수와 안쪽에 아주 옅게 떠 있는 입자 수 */
-const RIM_COUNT = 120;
-const INNER_COUNT = 28;
 /** 테두리에서 안쪽으로 들어갈 거리(px) */
 const RIM_INSET = 4;
 
-interface RimParticle {
-  /** 둘레 위 위치(0~1)와 매 프레임 움직이는 거리 */
-  distance: number;
-  speed: number;
-  /** 둘레에서 바깥쪽으로 벗어난 거리(px) */
-  spread: number;
-  size: number;
-  alpha: number;
-  x: number;
-  y: number;
-  bucket: number;
-}
-
-interface InnerParticle {
-  ratioX: number;
-  ratioY: number;
-  seed: number;
-  size: number;
-  alpha: number;
-  x: number;
-  y: number;
-}
-
-/** 누르거나 펼칠 때만 잠깐 나타나는 입자 */
+/** 누르거나 보낼 때만 잠깐 나타나는 입자 */
 interface EventParticle {
   kind: "trace" | "burst";
   x: number;
@@ -59,16 +33,18 @@ interface UseDockParticlesParams {
 /**
  * 독 위에 랜딩의 입자 반응을 그려요.
  *
- * 평소엔 테두리를 따라 아주 옅은 입자 실이 천천히 흐르고 안쪽에 먼지 몇 알이 떠 있을 뿐이에요.
+ * 평소엔 아무것도 그리지 않아요. 옅은 입자를 늘 깔아 두면 장식인지 반응인지 애매해서, 누를 때만 확실하게 보여줘요.
  * `burst`는 누른 자리에서 입자가 터져 나와 가라앉고, `trace`는 랜딩 탐색 장면의 실처럼
- * 청록 머리가 달린 실 한 가닥이 테두리를 한 바퀴 돌고 흩어져요. 독이 늘고 줄면 입자가 새 테두리로 옮겨 가요.
- * 움직임 줄이기 설정에서는 실이 멈추고 반응도 생기지 않아요.
+ * 청록 머리가 달린 실 한 가닥이 테두리를 한 바퀴 돌고 흩어져요. 반응이 끝나면 그리기를 멈춰요.
+ * 움직임 줄이기 설정에서는 반응이 생기지 않아요.
  */
 export const useDockParticles = ({ canvasRef, barRef, palette }: UseDockParticlesParams) => {
   const paletteRef = useRef(palette);
   paletteRef.current = palette;
   const eventsRef = useRef<EventParticle[]>([]);
   const sizeRef = useRef({ width: 0, height: 0, radius: 30 });
+  /** 멈춰 있던 그리기를 다시 돌려요. 반응이 생길 때 불러요 */
+  const wakeRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -76,28 +52,7 @@ export const useDockParticles = ({ canvasRef, barRef, palette }: UseDockParticle
     const context = canvas?.getContext("2d");
     if (!canvas || !bar || !context) return;
 
-    const reduced = prefersReducedMotion();
     const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
-    const rim: RimParticle[] = Array.from({ length: RIM_COUNT }, (_, i) => ({
-      distance: i / RIM_COUNT + Math.random() * 0.01,
-      speed: 0.00018 * (Math.random() < 0.5 ? 1 : -1) * (0.7 + Math.random() * 0.6),
-      spread: (Math.random() - 0.5) * 4,
-      size: 0.8 + Math.random() * 0.7,
-      alpha: 0.18 + Math.random() * 0.2,
-      x: 0,
-      y: 0,
-      bucket: Math.random() < 0.3 ? 0 : 1,
-    }));
-    const inner: InnerParticle[] = Array.from({ length: INNER_COUNT }, () => ({
-      ratioX: Math.random(),
-      ratioY: Math.random(),
-      seed: Math.random(),
-      size: 0.8 + Math.random() * 0.5,
-      alpha: 0.07 + Math.random() * 0.07,
-      x: 0,
-      y: 0,
-    }));
-    let frame = 0;
     let animation = 0;
 
     const resize = () => {
@@ -117,40 +72,12 @@ export const useDockParticles = ({ canvasRef, barRef, palette }: UseDockParticle
       return roundedRectPoint({ width, height, radius, inset: RIM_INSET, distance });
     };
 
-    let isOddFrame = false;
     const tick = () => {
-      // 실만 흐를 때는 30fps로 충분해요. 터짐·실 지나감이 있을 때만 60fps예요
-      isOddFrame = !isOddFrame;
-      if (eventsRef.current.length === 0 && isOddFrame) {
-        animation = requestAnimationFrame(tick);
-        return;
-      }
-      frame++;
       resize();
       const { width, height } = sizeRef.current;
       const colors = paletteRef.current;
       context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
       context.clearRect(0, 0, width, height);
-
-      inner.forEach((particle) => {
-        const homeX = 12 + particle.ratioX * (width - 24) + (reduced ? 0 : Math.cos(frame * 0.006 + particle.seed * 6.28) * 6);
-        const homeY = 8 + particle.ratioY * (height - 16) + (reduced ? 0 : Math.sin(frame * 0.008 + particle.seed * 6.28) * 4);
-        particle.x += (homeX - particle.x) * 0.1;
-        particle.y += (homeY - particle.y) * 0.1;
-        context.globalAlpha = particle.alpha;
-        context.fillStyle = colors[1];
-        context.fillRect(particle.x, particle.y, particle.size, particle.size);
-      });
-
-      rim.forEach((particle) => {
-        if (!reduced) particle.distance += particle.speed;
-        const point = pointOnRim(particle.distance);
-        particle.x += (point.x + point.nx * particle.spread - particle.x) * 0.12;
-        particle.y += (point.y + point.ny * particle.spread - particle.y) * 0.12;
-        context.globalAlpha = particle.alpha;
-        context.fillStyle = colors[particle.bucket];
-        context.fillRect(particle.x, particle.y, particle.size, particle.size);
-      });
 
       const events = eventsRef.current;
       for (let i = events.length - 1; i >= 0; i--) {
@@ -180,13 +107,19 @@ export const useDockParticles = ({ canvasRef, barRef, palette }: UseDockParticle
         context.fillRect(particle.x, particle.y, dot, dot);
       }
       context.globalAlpha = 1;
-      animation = requestAnimationFrame(tick);
+      // 반응이 다 끝나면 지운 채로 멈춰요
+      animation = events.length ? requestAnimationFrame(tick) : 0;
     };
 
     resize();
-    animation = requestAnimationFrame(tick);
+    wakeRef.current = () => {
+      if (!animation) animation = requestAnimationFrame(tick);
+    };
 
-    return () => cancelAnimationFrame(animation);
+    return () => {
+      cancelAnimationFrame(animation);
+      wakeRef.current = () => {};
+    };
   }, [barRef, canvasRef]);
 
   /** 독 안의 한 점에서 입자가 터져 나와요. 좌표는 독의 왼쪽 위 기준(px)이에요 */
@@ -211,6 +144,7 @@ export const useDockParticles = ({ canvasRef, barRef, palette }: UseDockParticle
         maxLife: 56,
       });
     }
+    wakeRef.current();
   }, []);
 
   /** 독 안의 한 점에서 가장 가까운 테두리에서 출발해 양쪽으로 갈라져 한 바퀴 도는 실 */
@@ -248,6 +182,7 @@ export const useDockParticles = ({ canvasRef, barRef, palette }: UseDockParticle
         maxLife: 95,
       });
     }
+    wakeRef.current();
   }, []);
 
   return { burst, trace };

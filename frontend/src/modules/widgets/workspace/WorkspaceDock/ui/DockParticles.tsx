@@ -21,7 +21,7 @@ interface DockParticlesProps {
 /**
  * 독 전체를 덮는 입자 캔버스.
  *
- * 독 테두리를 따라 옅은 입자 실이 흐르고, 녹음 버튼을 누르거나 독을 펼치고 보낼 때 잠깐 반응해요.
+ * 평소엔 비어 있고, 녹음 버튼을 누르거나 질문을 보낼 때만 입자가 터지거나 테두리를 한 바퀴 돌아요.
  * 독의 둥근 모서리를 그대로 따르고 포인터를 받지 않아요. 장식이라 낭독기에서 숨겨요.
  */
 export default function DockParticles({ barRef, ref }: DockParticlesProps) {

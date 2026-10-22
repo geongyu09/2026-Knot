@@ -13,6 +13,8 @@ interface UseDockOpenParams {
   isExpanded: boolean;
   /** 적던 글이 남아 있으면 닫지 않아요 */
   hasMessage: boolean;
+  /** 녹음 중이라 접혀 있을 때 파형을 보여 주는지. 아니면(대기 중) 늘 열린 독이에요 */
+  hasWaveform: boolean;
 }
 
 /** 캔버스를 그릴 수 있고 움직임 줄이기가 꺼져 있을 때만 파형을 써요. 아니면 늘 열린 독이에요 */
@@ -25,11 +27,12 @@ const canUseSeed = () => {
 /**
  * 독이 파형으로 접혀 있는지, 알약으로 열려 있는지를 정해요.
  *
- * 입자에 올리거나 누르면 열리고, 포인터가 독을 벗어나거나 포커스가 나가거나 바깥을 누르면 잠시 뒤 닫혀요.
+ * 파형은 다른 화면에서 녹음이 이어질 때만 써요. 녹음이 없으면 Figma 독 그대로 늘 열려 있고, 입자는 독 안의 채팅·녹음 구슬에만 있어요.
+ * 녹음 중엔 파형에 올리거나 누르면 열리고, 포인터가 독을 벗어나거나 포커스가 나가거나 바깥을 누르면 잠시 뒤 닫혀요.
  * 펼쳐 있거나 적던 글이 남아 있으면 닫지 않고, 펼친 독이 접힐 때는 접힘 모션이 끝난 뒤에 닫아요. 터치로 열었을 때는 벗어나도 닫지 않고 바깥을 눌러야 닫혀요.
  * 캔버스를 못 쓰거나 움직임 줄이기 설정이면 파형 없이 늘 열려 있어 지금까지의 독과 똑같이 동작해요.
  */
-export const useDockOpen = ({ stageRef, isExpanded, hasMessage }: UseDockOpenParams) => {
+export const useDockOpen = ({ stageRef, isExpanded, hasMessage, hasWaveform }: UseDockOpenParams) => {
   const [isSeedSupported] = useState(canUseSeed);
   const [isOpenByUser, setIsOpenByUser] = useState(false);
   const isKeptOpenRef = useRef(false);
@@ -38,7 +41,7 @@ export const useDockOpen = ({ stageRef, isExpanded, hasMessage }: UseDockOpenPar
   isExpandedRef.current = isExpanded;
   const closeTimerRef = useRef(0);
 
-  const isOpen = !isSeedSupported || isExpanded || hasMessage || isOpenByUser;
+  const isOpen = !isSeedSupported || !hasWaveform || isExpanded || hasMessage || isOpenByUser;
 
   const cancelClose = useCallback(() => {
     window.clearTimeout(closeTimerRef.current);

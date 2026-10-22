@@ -11,6 +11,8 @@ import {
   MIC_ICON_PATHS,
   MIC_SHAPE_SCALE,
   ORB_DAMPING,
+  ORB_DOT_MIN,
+  ORB_DOT_RANGE,
   ORB_PARTICLE_COUNT,
   ORB_SPRING,
   ORB_WAVE_COLUMNS,
@@ -63,6 +65,8 @@ interface UseParticleOrbParams {
   tone: ParticleOrbTone;
   analyser: AnalyserNode | null;
   isActive: boolean;
+  /** `true`면 무언가를 기다리는 중이라 구슬이 빠르게 돌며 모였다 풀렸다 해요 */
+  isWaiting: boolean;
   idlePalette: ParticleOrbPalette;
   recordingPalette: ParticleOrbPalette;
   neutralPalette: ParticleOrbPalette;
@@ -82,7 +86,7 @@ const createParticles = (count: number): OrbParticle[] =>
     u: Math.random() * Math.PI * 2,
     v: Math.acos(2 * Math.random() - 1),
     seed: Math.random(),
-    size: 0.8 + Math.random() * 0.8,
+    size: ORB_DOT_MIN + Math.random() * ORB_DOT_RANGE,
     x: 0,
     y: 0,
     vx: 0,
@@ -128,6 +132,7 @@ const drawBubble = (context: CanvasRenderingContext2D) => {
  * 입자 수백 개가 구름 같은 구를 이루고, `shape`가 `mic`면 마이크, `arrow`면 오른쪽 화살표, `bubble`이면 점 세 개가 든 말풍선으로 모여요.
  * `typing`은 말풍선의 점들이 입력 중처럼 차례로 튀어요.
  * 녹음 톤에서는 분석기의 소리 크기만큼 입자가 가운데를 가로지르는 파형으로 나가고, 조용하면 구름으로 돌아와요.
+ * `isWaiting`이면 구름이 빠르게 돌며 모였다 풀렸다 해요. 누른 뒤 결과를 기다리는 동안 멈춰 보이지 않게 해요.
  * 매 프레임 바뀌는 값이라 React 상태로 다루지 않고, 바뀌는 props는 ref로 받아 다음 프레임부터 반영해요.
  * 움직임 줄이기 설정에서는 회전·숨쉬기·흔들림을 멈추고 소리와 모양만 반영해요.
  */
@@ -138,13 +143,14 @@ export const useParticleOrb = ({
   tone,
   analyser,
   isActive,
+  isWaiting,
   idlePalette,
   recordingPalette,
   neutralPalette,
   haloRgb,
 }: UseParticleOrbParams) => {
-  const paramsRef = useRef({ radius, shape, tone, analyser, isActive, idlePalette, recordingPalette, neutralPalette, haloRgb });
-  paramsRef.current = { radius, shape, tone, analyser, isActive, idlePalette, recordingPalette, neutralPalette, haloRgb };
+  const paramsRef = useRef({ radius, shape, tone, analyser, isActive, isWaiting, idlePalette, recordingPalette, neutralPalette, haloRgb });
+  paramsRef.current = { radius, shape, tone, analyser, isActive, isWaiting, idlePalette, recordingPalette, neutralPalette, haloRgb };
 
   const pulsesRef = useRef<Pulse[]>([]);
   const pulse = useCallback(() => {
@@ -166,6 +172,8 @@ export const useParticleOrb = ({
     let frame = Math.random() * 1000;
     let level = 0;
     let hover = 0;
+    let wait = 0;
+    let spin = 0;
     let assignedShape: ParticleOrbShape | null = null;
     let animation = 0;
 
@@ -254,8 +262,11 @@ export const useParticleOrb = ({
       }
       assignedShape = null;
 
-      const rotation = reduced ? 0.6 : frame * (0.006 + level * 0.018 + hover * 0.004);
-      const orbRadius = baseRadius * (1 + hover * 0.08 + level * 0.28);
+      // 기다리는 동안은 빠르게 돌며 숨을 크게 쉬어, 누른 뒤 멈춰 있지 않고 무언가 준비되고 있다고 느끼게 해요
+      spin += 0.006 + level * 0.018 + hover * 0.004 + wait * 0.03;
+      const rotation = reduced ? 0.6 : spin;
+      const gather = reduced ? 0 : wait * 0.14 * (0.5 + 0.5 * Math.sin(frame * 0.11));
+      const orbRadius = baseRadius * (1 + hover * 0.08 + level * 0.28 - gather);
       const waveShare = isRecording ? Math.min(MAX_WAVE_SHARE, level * WAVE_SHARE_PER_LEVEL) : 0;
       if (isRecording) updateAmplitudes(orbRadius);
 
@@ -302,7 +313,8 @@ export const useParticleOrb = ({
       const haloRadius = Math.min(orbRadius * 1.9, Math.min(width, height) / 2);
       const beat = reduced ? 0.5 : 0.5 + 0.5 * Math.sin(frame * 0.075);
       const halo = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, haloRadius);
-      halo.addColorStop(0, `rgba(${rgb},${0.1 + beat * 0.12 + level * 0.18})`);
+      // 기다리는 동안은 빛무리가 더 또렷하게 뛰어요
+      halo.addColorStop(0, `rgba(${rgb},${0.1 + beat * (0.12 + wait * 0.14) + level * 0.18})`);
       halo.addColorStop(1, `rgba(${rgb},0)`);
       context.fillStyle = halo;
       context.beginPath();
@@ -315,7 +327,14 @@ export const useParticleOrb = ({
       resize();
       const { analyser: node, isActive: active, tone: nextTone, shape: nextShape } = paramsRef.current;
       // 가만히 떠 있는 구름은 30fps면 충분해요. 모양이 바뀌거나 소리·파동이 있을 땐 60fps예요
-      const isCalm = nextShape === "cloud" && hover < 0.01 && level < 0.01 && pulsesRef.current.length === 0 && !(node && active && nextTone === "recording");
+      const isCalm =
+        nextShape === "cloud" &&
+        hover < 0.01 &&
+        level < 0.01 &&
+        wait < 0.01 &&
+        !paramsRef.current.isWaiting &&
+        pulsesRef.current.length === 0 &&
+        !(node && active && nextTone === "recording");
       isOddFrame = !isOddFrame;
       if (isCalm && isOddFrame) {
         animation = requestAnimationFrame(tick);
@@ -323,6 +342,7 @@ export const useParticleOrb = ({
       }
       frame++;
       hover += ((nextShape !== "cloud" ? 1 : 0) - hover) * 0.12;
+      wait += ((paramsRef.current.isWaiting ? 1 : 0) - wait) * 0.1;
       const measured = node && active && nextTone === "recording" ? measureAnalyserLevel(node) : 0;
       level = smoothLevel({ previous: level, next: measured, attack: 0.35, release: 0.06 });
       placeParticles();
@@ -367,13 +387,18 @@ export const useParticleOrb = ({
       drawHalo();
       const palette =
         nextTone === "recording" ? paramsRef.current.recordingPalette : nextTone === "neutral" ? paramsRef.current.neutralPalette : paramsRef.current.idlePalette;
+      // 구슬은 작아서 네모 점이면 모자이크처럼 보여요. 칸마다 한 번에 둥근 점으로 채워요
       buckets.forEach((bucket, index) => {
+        if (!bucket.length) return;
         context.fillStyle = palette[index];
         const scale = index === 5 ? 0.8 : 1;
+        context.beginPath();
         bucket.forEach((particle) => {
           const dot = particle.size * scale * (0.7 + 0.3 * ((particle.depth + 1) / 2)) * (1.15 - 0.45 * particle.edge);
-          context.fillRect(particle.x, particle.y, dot, dot);
+          context.moveTo(particle.x + dot / 2, particle.y);
+          context.arc(particle.x, particle.y, dot / 2, 0, Math.PI * 2);
         });
+        context.fill();
       });
       animation = requestAnimationFrame(tick);
     };

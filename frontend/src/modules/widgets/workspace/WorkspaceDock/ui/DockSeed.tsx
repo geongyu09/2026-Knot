@@ -4,34 +4,31 @@ import { hexToRgb } from "@utils/hexToRgb";
 import { useRef, type PointerEvent } from "react";
 
 import { SEED_CANVAS_HEIGHT, SEED_CANVAS_OVERFLOW, SEED_WAVE_BOTTOM } from "../constants/dockSeed";
-import { useDockSeed, type DockSeedTone, type SeedSplitTargets } from "../model/useDockSeed";
+import { useDockSeed, type SeedSplitTargets } from "../model/useDockSeed";
 
 interface DockSeedProps {
   /** `true`면 파형이 독 자리로 갈라져 사라지고, `false`면 다시 파형으로 모여요 */
   isOpen: boolean;
-  tone: DockSeedTone;
-  /** 녹음 소리를 읽는 분석기. 녹음 중 파형이 목소리를 따라요 */
+  /** 녹음 소리를 읽는 분석기. 파형이 목소리를 따라요. 다른 탭의 녹음이면 없어요 */
   analyser: AnalyserNode | null;
   /** `false`면 일시정지라 소리를 읽지 않아요 */
   isActive: boolean;
-  /** 녹음 중이면 파형 아래에 보여 줄 녹음한 시간 */
-  elapsedTime: string | null;
-  /** 녹음 쪽이 없는 화면(녹음 화면)이면 `false` */
-  hasRecordSide: boolean;
+  /** 파형 옆에 보여 줄 녹음한 시간 */
+  elapsedTime: string;
   splitTargets: SeedSplitTargets;
   /** 입자를 눌렀을 때. 파동이 퍼지며 독이 열려요(터치·키보드는 열린 채로 머물러요) */
   onOpen: (options?: { keepOpen?: boolean }) => void;
 }
 
 /**
- * 독이 접혀 있을 때 독 자리에 떠 있는 입자.
+ * 다른 화면에서 녹음이 이어질 때 접힌 독 자리에 흐르는 입자 파형.
  *
- * 대기 중엔 어두운 유리 알약 위에 입자가 독을 그대로 스케치해요(알약 윤곽, 채팅 아이콘, 붉은 녹음 구슬). 녹음 중엔 녹음 바와 같은 청록 파형이
- * 길게 흐르며 목소리를 따르고 아래에 녹음한 시간이 보여요. 올리면 그 자리에 진짜 독이 나타나고, 벗어나면 다시 입자로 돌아가요.
+ * 녹음 바와 같은 청록 파형이 길게 흐르며 목소리를 따르고 옆에 녹음한 시간이 보여요.
+ * 올리면 입자가 독 모양(알약 윤곽, 채팅 아이콘, 녹음 칩 자리)으로 모이고 그 자리에 진짜 독이 나타나요. 벗어나면 다시 파형으로 돌아가요.
  * 입자 위에서 포인터는 밀어내기를 일으키고, 누르면 파동이 퍼져요.
  * 파형 자체는 장식이라 낭독기에서 숨기고, 누르는 자리는 「독 열기」 버튼이에요. 키보드로는 Enter나 Space로 열어요.
  */
-export default function DockSeed({ isOpen, tone, analyser, isActive, elapsedTime, hasRecordSide, splitTargets, onOpen }: DockSeedProps) {
+export default function DockSeed({ isOpen, analyser, isActive, elapsedTime, splitTargets, onOpen }: DockSeedProps) {
   const theme = useTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const accent = hexToRgb(theme.sub.accent[500]);
@@ -40,21 +37,11 @@ export default function DockSeed({ isOpen, tone, analyser, isActive, elapsedTime
   const { setPointer, clearPointer, pulse } = useDockSeed({
     canvasRef,
     isOpen,
-    tone,
     analyser,
     isActive,
-    hasRecordSide,
     splitTargets,
     palette: {
       teal: [`rgba(${accent},0.9)`, `rgba(${accent},0.55)`, `rgba(${accent},0.28)`],
-      // 어두운 알약 위에서 또렷하게 「녹음」으로 읽히도록 열린 독의 구슬과 같은 붉은 다섯 단계예요
-      orb: [
-        `rgba(${hexToRgb(theme.sub.warning[200])},0.92)`,
-        `rgba(${hexToRgb(theme.sub.warning[600])},0.8)`,
-        `rgba(${hexToRgb(theme.sub.warning[600])},0.9)`,
-        `rgba(${hexToRgb(theme.sub.warning[700])},0.9)`,
-        `rgba(${hexToRgb(theme.sub.warning[800])},0.8)`,
-      ],
       light: [`rgba(${hexToRgb(theme.neutral[0])},0.92)`, `rgba(${light},0.7)`, `rgba(${light},0.32)`],
     },
   });
@@ -73,11 +60,9 @@ export default function DockSeed({ isOpen, tone, analyser, isActive, elapsedTime
   return (
     <>
       <Canvas ref={canvasRef} aria-hidden="true" $isOpen={isOpen} />
-      {elapsedTime !== null && (
-        <ElapsedTime aria-hidden="true" $isVisible={!isOpen}>
-          {elapsedTime}
-        </ElapsedTime>
-      )}
+      <ElapsedTime aria-hidden="true" $isVisible={!isOpen}>
+        {elapsedTime}
+      </ElapsedTime>
       <HitArea
         type="button"
         aria-label="독 열기"

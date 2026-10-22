@@ -49,32 +49,28 @@ interface SeedParticle {
   vy: number;
   homeX: number;
   homeY: number;
-  /** 독 스케치에서의 자리(캔버스 가로 가운데·독 자리 세로 가운데 기준)와 맡은 부분 */
+  /** 올렸을 때 모일 독 모양에서의 자리(캔버스 가로 가운데·독 자리 세로 가운데 기준)와 맡은 부분 */
   sketchX: number;
   sketchY: number;
   part: SketchPart;
-  /** 녹음 구슬을 이룰 때의 구 위 각도와 농담(0~4). 열린 독의 구슬과 같은 계산이에요 */
+  /** 녹음 칩 자리에서 구슬을 이룰 때의 구 위 각도와 농담(0~4). 열린 독의 구슬과 같은 계산이에요 */
   u: number;
   v: number;
   shade: number;
 }
-
-export type DockSeedTone = "idle" | "recording";
 
 /** 독의 배치. 입자가 스케치할 알약 크기와 채팅·녹음 칸의 가운데(캔버스 가로 가운데 기준 px)예요 */
 export interface SeedSplitTargets {
   barWidth: number;
   barHeight: number;
   chatOffsetX: number;
-  /** 녹음 쪽이 없는 화면(녹음 화면)이면 `null` */
+  /** 녹음 칸을 아직 재지 못했으면 `null` */
   recordOffsetX: number | null;
 }
 
 export interface DockSeedPalette {
-  /** 청록 세 단계. 녹음 중 파형에 써요 */
+  /** 청록 세 단계. 파형과 녹음 칩 자리의 구슬에 써요 */
   teal: [string, string, string];
-  /** 붉은 다섯 단계(빛 받는 면부터 그늘까지). 녹음 구슬에 써요. 열린 독의 구슬과 같은 색이에요 */
-  orb: [string, string, string, string, string];
   /** 어두운 알약 위의 밝은 세 단계(아이콘 진한, 아이콘 옅은, 윤곽) */
   light: [string, string, string];
 }
@@ -83,11 +79,8 @@ interface UseDockSeedParams {
   canvasRef: RefObject<HTMLCanvasElement | null>;
   /** `true`면 입자가 독 자리로 갈라져 가고, 곧 사라져요 */
   isOpen: boolean;
-  tone: DockSeedTone;
   analyser: AnalyserNode | null;
   isActive: boolean;
-  /** 녹음 쪽이 없는 화면이면 대기 상태에도 녹음 알약을 두지 않아요 */
-  hasRecordSide: boolean;
   splitTargets: SeedSplitTargets;
   palette: DockSeedPalette;
 }
@@ -96,12 +89,10 @@ interface UseDockSeedParams {
 const SLOT_CENTER_BOTTOM = SEED_WAVE_BOTTOM;
 
 /**
- * 독이 접혀 있을 때 독 자리에 떠 있는 입자를 그려요.
+ * 다른 화면에서 녹음이 이어질 때 접힌 독 자리에 흐르는 입자 파형을 그려요.
  *
- * 대기 상태에서는 입자가 독을 그대로 스케치해요. 알약 윤곽, 채팅(말풍선) 아이콘, 붉은 녹음 구슬이 열린 독과 같은 자리에 있어
- * 이 자리에서 채팅과 녹음을 할 수 있다는 것이 바로 읽혀요. 녹음 중에는 녹음 바와 같은 청록 파형이 길게 흐르며 소리 크기를 따라요.
- * 둘 다 올리면 입자가 포인터를 피하고(95px), 누르면 파동이 퍼져요.
- * `isOpen`이 되면 입자가 독 스케치 자리로 모이고 그 뒤에서 진짜 독이 나타나면 사라져요. 닫히면 그 자리에서 다시 스케치나 파형이 돼요.
+ * 녹음 바와 같은 청록 파형이 길게 흐르며 소리 크기를 따라요. 올리면 입자가 포인터를 피하고(95px), 누르면 파동이 퍼져요.
+ * `isOpen`이 되면 입자가 독 모양(알약 윤곽, 채팅 아이콘, 녹음 칩 자리)으로 모이고 그 뒤에서 진짜 독이 나타나면 사라져요. 닫히면 그 자리에서 다시 파형이 돼요.
  * 숨어 있는 동안은 그리지 않아요.
  * 프레임이 자주 느려지면 입자 절반만 그리고 흔들림을 빼서 어느 기기에서도 버벅이지 않게 해요.
  * 움직임 줄이기 설정에서는 이 입자를 쓰지 않으므로 여기서는 고려하지 않아요.
@@ -109,15 +100,13 @@ const SLOT_CENTER_BOTTOM = SEED_WAVE_BOTTOM;
 export const useDockSeed = ({
   canvasRef,
   isOpen,
-  tone,
   analyser,
   isActive,
-  hasRecordSide,
   splitTargets,
   palette,
 }: UseDockSeedParams) => {
-  const paramsRef = useRef({ isOpen, tone, analyser, isActive, hasRecordSide, splitTargets, palette });
-  paramsRef.current = { isOpen, tone, analyser, isActive, hasRecordSide, splitTargets, palette };
+  const paramsRef = useRef({ isOpen, analyser, isActive, splitTargets, palette });
+  paramsRef.current = { isOpen, analyser, isActive, splitTargets, palette };
 
   const pointerRef = useRef({ x: -9999, y: -9999 });
   const pulsesRef = useRef<PulseWave[]>([]);
@@ -162,8 +151,6 @@ export const useDockSeed = ({
     let lastFrameAt = 0;
     let slowFrames = 0;
     let isLite = false;
-    let lastLayoutKey = "";
-    let isOddFrame = false;
     let shouldSnap = false;
     /** 새 자리에 고정한 채 그리지 않고 기다리는 프레임 수. 독 배치를 다시 잰 뒤 살아나게 해요 */
     let holdFrames = 0;
@@ -201,12 +188,12 @@ export const useDockSeed = ({
     };
 
     /**
-     * 독 스케치의 자리를 뽑아 입자에 나눠 줘요. 알약 윤곽은 랜딩 말풍선 윤곽과 같은 밀도(둘레 1px당 1.1개)로,
-     * 채팅 아이콘은 실제 아이콘 모양으로, 녹음 구슬은 가운데가 빽빽한 구름으로 둬요. 자리는 열린 독의 배치에서 잰 값이에요.
+     * 올렸을 때 모일 독 모양의 자리를 뽑아 입자에 나눠 줘요. 알약 윤곽은 랜딩 말풍선 윤곽과 같은 밀도(둘레 1px당 1.1개)로,
+     * 채팅 아이콘은 실제 아이콘 모양으로, 녹음 칩 자리는 가운데가 빽빽한 구름으로 둬요. 자리는 열린 독의 배치에서 잰 값이에요.
      */
     const assignSketch = () => {
-      const { splitTargets: layout, hasRecordSide: withRecord } = paramsRef.current;
-      const key = `${layout.barWidth}:${layout.barHeight}:${layout.chatOffsetX}:${layout.recordOffsetX}:${withRecord}`;
+      const { splitTargets: layout } = paramsRef.current;
+      const key = `${layout.barWidth}:${layout.barHeight}:${layout.chatOffsetX}:${layout.recordOffsetX}`;
       if (key === sketchKey || !layout.barWidth) return;
       const targets: { x: number; y: number; part: SketchPart }[] = [];
 
@@ -223,7 +210,7 @@ export const useDockSeed = ({
         targets.push({ x: layout.chatOffsetX + target.x, y: target.y, part: "icon" });
       });
 
-      if (withRecord && layout.recordOffsetX !== null) {
+      if (layout.recordOffsetX !== null) {
         // 구슬은 가운데만 정해 두고 매 프레임 구 위의 자리를 계산해요(열린 독의 구슬과 같은 방식)
         const orbCount = Math.round(SEED_ORB_RADIUS * SEED_ORB_RADIUS * 3.2);
         for (let i = 0; i < orbCount; i++) targets.push({ x: layout.recordOffsetX, y: 0, part: "orb" });
@@ -250,21 +237,17 @@ export const useDockSeed = ({
     };
 
     const placeParticles = () => {
-      const { tone: nextTone } = paramsRef.current;
       const centerX = width / 2;
       const centerY = height - SEED_WAVE_BOTTOM;
       const slotY = height - SLOT_CENTER_BOTTOM;
-      const isWave = nextTone === "recording";
-      if (isWave) updateAmplitudes();
+      updateAmplitudes();
       assignSketch();
 
       const waveWidth = Math.min(SEED_WAVE_MAX_WIDTH, width * SEED_WAVE_WIDTH_RATIO);
       const startX = centerX - waveWidth / 2;
       const columnWidth = waveWidth / SEED_WAVE_COLUMNS;
-      // 스케치는 숨 쉬듯 아주 살짝 떠 있어요
-      const drift = isWave ? 0 : Math.sin(frame * 0.017);
 
-      // 녹음 구슬: 왼쪽 위에서 빛이 들어오는 구가 천천히 돌아요. 열린 독의 구슬과 같은 계산이에요
+      // 녹음 칩 자리의 구슬: 왼쪽 위에서 빛이 들어오는 구가 천천히 돌아요. 열린 독의 구슬과 같은 계산이에요
       const rotation = frame * 0.006;
       const tilt = 0.38;
       particles.forEach((particle) => {
@@ -284,13 +267,7 @@ export const useDockSeed = ({
           const light = 0.5 + 0.5 * (-x * 0.45 - y * 0.78 + z * 0.3) * (0.6 + 0.4 * (r / SEED_ORB_RADIUS));
           particle.shade = z < -0.3 ? 4 : light > 0.78 ? 0 : light > 0.62 ? 1 : light > 0.46 ? 2 : light > 0.3 ? 3 : 4;
         }
-        if (!isWave) {
-          // 대기: 늘 독 스케치 자리. 열리면 진짜 독이 그 밑에서 나타나고 입자는 사라져요
-          particle.homeX = sketchX;
-          particle.homeY = sketchY + (blend > 0 ? 0 : drift);
-          return;
-        }
-        // 녹음 중: 파형이었다가 열리면 독 스케치 자리로 모여요
+        // 파형이었다가 열리면 독 모양 자리로 모여요
         const waveX = startX + (particle.column + 0.5 + particle.jitter) * columnWidth;
         const waveY = centerY + particle.level * amplitudes[particle.column];
         particle.homeX = waveX + (sketchX - waveX) * blend;
@@ -298,15 +275,15 @@ export const useDockSeed = ({
       });
     };
 
-    /** 입자 하나의 색. 스케치는 어두운 알약 위라 밝은 입자, 파형은 밝은 바탕 위라 청록이에요 */
-    const colorOf = (particle: SeedParticle, colors: DockSeedPalette, isWave: boolean) => {
-      if (isWave && blend < 0.55) {
+    /** 입자 하나의 색. 파형은 밝은 바탕 위라 청록이고, 독 모양으로 모이면 어두운 알약 위라 밝은 입자예요 */
+    const colorOf = (particle: SeedParticle, colors: DockSeedPalette) => {
+      if (blend < 0.55) {
         const strength = Math.abs(particle.level);
         return colors.teal[strength < 0.45 ? 0 : strength < 0.8 ? 1 : 2];
       }
       switch (particle.part) {
         case "orb":
-          return paramsRef.current.tone === "idle" ? colors.orb[particle.shade] : colors.teal[Math.min(2, particle.shade)];
+          return colors.teal[Math.min(2, particle.shade)];
         case "icon":
           return colors.light[particle.seed < 0.7 ? 0 : 1];
         default:
@@ -316,14 +293,6 @@ export const useDockSeed = ({
 
     const tick = (now: number) => {
       resize();
-      // 대기 스케치는 숨만 쉬어서 30fps면 충분해요. 포인터·파동·열림이 있거나 파형일 땐 60fps예요
-      const { isOpen: openNow, tone: toneNow } = paramsRef.current;
-      const isCalmSketch = toneNow === "idle" && !openNow && blend === 0 && pointerRef.current.x < -1000 && pulsesRef.current.length === 0;
-      isOddFrame = !isOddFrame;
-      if (isCalmSketch && isOddFrame) {
-        animation = requestAnimationFrame(tick);
-        return;
-      }
       frame++;
       // 느린 프레임이 잦으면 가볍게 그려요. 한 번 가벼워지면 그 세션에선 되돌리지 않아 깜빡이지 않아요
       if (lastFrameAt && now - lastFrameAt > SEED_SLOW_FRAME_MS) slowFrames++;
@@ -331,21 +300,14 @@ export const useDockSeed = ({
       if (!isLite && slowFrames > 12) isLite = true;
       lastFrameAt = now;
 
-      const { isOpen: open, tone: nextTone, analyser: node, isActive: active, palette: colors } = paramsRef.current;
-      const isWave = nextTone === "recording";
-      const measured = node && active && isWave ? measureAnalyserLevel(node) : 0;
+      const { isOpen: open, analyser: node, isActive: active, palette: colors } = paramsRef.current;
+      const measured = node && active ? measureAnalyserLevel(node) : 0;
       level = smoothLevel({ previous: level, next: measured, attack: 0.35, release: 0.08 });
       blend += ((open ? 1 : 0) - blend) * 0.2;
       if (blend < 0.01) blend = 0;
       alpha += (alphaGoal - alpha) * (alphaGoal < alpha ? 0.3 : 0.16);
       placeParticles();
 
-      // 녹음이 시작·종료되거나 녹음 쪽이 생기고 없어지면 입자가 옛 자리에서 날아오지 않고 새 자리에서 바로 살아나요
-      const layoutKey = `${nextTone}:${paramsRef.current.hasRecordSide}`;
-      if (layoutKey !== lastLayoutKey) {
-        if (lastLayoutKey) shouldSnap = true;
-        lastLayoutKey = layoutKey;
-      }
       if (shouldSnap) {
         shouldSnap = false;
         holdFrames = 3;
@@ -399,7 +361,7 @@ export const useDockSeed = ({
             forceX,
             forceY,
           });
-          const color = colorOf(particle, colors, isWave);
+          const color = colorOf(particle, colors);
           if (color !== lastColor) {
             context.fillStyle = color;
             lastColor = color;

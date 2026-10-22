@@ -4,7 +4,6 @@ import { keyframes } from "@emotion/react";
 import styled from "@emotion/styled";
 import { DOCK_HEIGHT } from "@primitives/layout/DockColumn";
 import Textarea from "@primitives/ui/Textarea";
-import { hexToRgb } from "@utils/hexToRgb";
 import { useRef } from "react";
 
 import SendIcon from "@/assets/icons/send.svg";
@@ -70,10 +69,11 @@ const DOCK_EXPAND_DURATION = "0.44s";
  * 접혀 있든 펼쳐 있든 회의 녹음(마이크) 슬롯을 두고, 누르면 마이크 권한을 받아 녹음을 시작해요.
  * 녹음 화면이 아닌 곳에서 녹음이 이어지고 있으면 마이크 자리에 녹음 칩을 둬요. 접힌 독에는 중지 버튼도 함께 둬요.
  *
- * 랜딩의 입자가 독에도 이어져요. 접혀 있을 때는 입자가 독을 그대로 스케치하고(`DockSeed`), 녹음 중엔 녹음 바와 같은 청록 파형이 길게 흘러요.
- * 올리면 그 자리에 진짜 독이 나타나고 벗어나면 다시 입자로 돌아가요. 파형도 올리면 독으로 모였다가 벗어나면 다시 파형이 돼요.
- * 채팅 버튼과 녹음 버튼은 둘 다 입자 구슬이에요. 채팅은 점 세 개가 든 말풍선으로 모여 있다가 올리면 점이 튀고, 녹음은 구름 구슬이다가 올리면 마이크가 돼요.
- * 보내기 화살표는 보낼 수 있게 될 때 입자로 모였다가 진짜 아이콘이 되고, 테두리에는 옅은 입자 실이 흘러요.
+ * 랜딩의 입자가 독에도 이어져요. 녹음이 없을 때는 Figma 독 그대로(Neutral 800 알약) 늘 보이고, 입자는 독 안의 구슬에만 있어요.
+ * 채팅 버튼과 녹음 버튼은 둘 다 입자 구슬이에요. 채팅은 점 세 개가 든 말풍선으로 모여 있다가 올리면 점이 입력 중처럼 튀고,
+ * 녹음은 붉은 구름 구슬이다가 올리면 마이크가 돼요. 누르면 녹음이 열릴 때까지 구슬이 청록으로 바뀌어 빠르게 돌며 기다려요.
+ * 다른 화면에서 녹음이 이어지면 접힌 독 자리에 녹음 바와 같은 청록 파형이 길게 흐르고(`DockSeed`), 올리면 독으로 모였다가 벗어나면 다시 파형이 돼요.
+ * 보내기 화살표는 보낼 수 있게 될 때 입자로 모였다가 진짜 아이콘이 돼요. 독 바탕에는 입자를 깔지 않고, 녹음 버튼을 누르거나 보낼 때만 입자가 터지며 테두리를 돌아요.
  * 캔버스를 못 쓰거나 움직임 줄이기 설정이면 파형 없이 늘 열린 독이라, 기존 동작과 접근성 이름은 어느 환경에서나 그대로예요.
  * 다른 탭의 녹음이면 칩은 점과 시간만 보여 주고 누를 수 없으며 중지 버튼도 두지 않아요.
  * 녹음 화면에서는 마이크를 숨겨요. Figma에서 숨겨져 있는 글 작성 슬롯은 만들지 않아요.
@@ -97,6 +97,7 @@ export default function WorkspaceDock() {
     isMicVisible,
     isRecordingChipVisible,
     isOtherTabRecording,
+    isRecordingStarting,
     isRecordingPaused,
     elapsedTime,
     analyser,
@@ -110,6 +111,7 @@ export default function WorkspaceDock() {
       stageRef,
       isExpanded,
       hasMessage: message.trim().length > 0,
+      hasWaveform: isRecordingChipVisible,
     });
   const { splitTargets } = useDockSplitTargets({
     formRef,
@@ -120,8 +122,6 @@ export default function WorkspaceDock() {
   });
   const { particlesRef, sendIconRef, burstAt, traceFrom } =
     useDockParticleEffects({ formRef, canSubmit });
-
-  const hasRecordSide = isMicVisible || isRecordingChipVisible;
 
   return (
     <Stage
@@ -140,14 +140,12 @@ export default function WorkspaceDock() {
         }
       }}
     >
-      {isSeedSupported && (
+      {isSeedSupported && isRecordingChipVisible && (
         <DockSeed
           isOpen={isOpen}
-          tone={isRecordingChipVisible ? "recording" : "idle"}
           analyser={analyser}
           isActive={!isRecordingPaused}
-          elapsedTime={isRecordingChipVisible ? elapsedTime : null}
-          hasRecordSide={hasRecordSide}
+          elapsedTime={elapsedTime}
           splitTargets={splitTargets}
           onOpen={open}
         />
@@ -158,7 +156,6 @@ export default function WorkspaceDock() {
       <Bar
         ref={formRef}
         $isOpen={isOpen}
-        $isSketch={isSeedSupported && !isOpen && !isRecordingChipVisible}
         $isExpanded={isExpanded}
         $isRecording={isRecordingChipVisible && !isRecordingPaused}
         onSubmit={(event) => {
@@ -195,6 +192,7 @@ export default function WorkspaceDock() {
               <>
                 <ControlDivider aria-hidden="true" />
                 <DockMicButton
+                  isWaiting={isRecordingStarting}
                   onClick={() => {
                     traceFrom(formRef.current?.querySelector("[data-mic]"));
                     void handleMicClick();
@@ -229,16 +227,18 @@ export default function WorkspaceDock() {
             </SubmitButton>
           </Controls>
         ) : (
-          /* 입자 스케치일 때는 자리만 차지하고 키보드·낭독기에서 닿지 않아요. 입력창은 밖에 있어 어디서든 타이핑은 그대로예요 */
+          /* 녹음 파형으로 접혀 있을 때는 자리만 차지하고 키보드·낭독기에서 닿지 않아요. 입력창은 밖에 있어 어디서든 타이핑은 그대로예요 */
           <CollapsedControls aria-hidden={!isOpen} inert={!isOpen}>
               <DockChatButton isOrbVisible={isOpen} onClick={handleExpand} />
 
-              {hasRecordSide && <ControlDivider aria-hidden="true" />}
+              {/* Figma처럼 구분선은 녹음 칩 앞에만 둬요. 대기 독은 말풍선과 마이크가 4px 사이로 붙어 있어요 */}
+              {isRecordingChipVisible && <ControlDivider aria-hidden="true" />}
 
               {isMicVisible && (
                 <RecordSlot data-dock-record>
                   <DockMicButton
                     isOrbVisible={isOpen}
+                    isWaiting={isRecordingStarting}
                     onClick={() => {
                       traceFrom(formRef.current?.querySelector("[data-mic]"));
                       void handleMicClick();
@@ -286,8 +286,6 @@ const Stage = styled.div`
  */
 const Bar = styled.form<{
   $isOpen: boolean;
-  /** 입자 스케치 상태. 카드처럼 밝은 알약 바탕만 두고 그 위에 입자가 독을 그려요 */
-  $isSketch: boolean;
   $isExpanded: boolean;
   $isRecording: boolean;
 }>`
@@ -307,29 +305,21 @@ const Bar = styled.form<{
   /* 접혔을 때만 동그란 알약이고, 펼친 뒤에는 여러 줄로 자라도 모서리가 30px로 고정돼요 */
   border-radius: ${({ $isExpanded }) =>
     $isExpanded ? "1.875rem" : "6.25rem"}; /* 30px : 100px */
-  /* 스케치 상태는 기존 독의 Neutral 800을 살짝 비치는 어두운 유리예요. 뒤가 은은히 흐려지고 가장자리에 옅은 빛 한 줄만 둬요.
-     열리면 기존 독의 Neutral 800 그대로예요 */
-  background-color: ${({ theme, $isSketch }) =>
-    $isSketch ? `rgba(${hexToRgb(theme.neutral[800])}, 0.84)` : theme.neutral[800]};
-  backdrop-filter: ${({ $isSketch }) => ($isSketch ? "blur(10px)" : "none")};
-  -webkit-backdrop-filter: ${({ $isSketch }) => ($isSketch ? "blur(10px)" : "none")};
-  box-shadow: ${({ theme, $isSketch, $isRecording }) => {
-    if ($isSketch) return `inset 0 0 0 1px rgba(255, 255, 255, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.12), ${theme.shadow02}`;
-    /* 녹음 중엔 독 아래로 청록 빛이 살짝 비쳐요 */
-    return $isRecording
+  background-color: ${({ theme }) => theme.neutral[800]};
+  /* 녹음 중엔 독 아래로 청록 빛이 살짝 비쳐요 */
+  box-shadow: ${({ theme, $isRecording }) =>
+    $isRecording
       ? `${theme.shadow03}, 0 10px 30px rgba(46, 133, 163, 0.16)`
-      : theme.shadow03;
-  }};
+      : theme.shadow03};
   interpolate-size: allow-keywords;
-  transition-property: width, padding, gap, border-radius, box-shadow, background-color, opacity, transform;
+  transition-property: width, padding, gap, border-radius, box-shadow, opacity, transform;
   transition-duration: ${({ $isExpanded }) =>
     $isExpanded ? DOCK_EXPAND_DURATION : "0.36s"};
   transition-timing-function: ${DOCK_EASING};
   /* 녹음 파형으로 접혀 있을 땐 보이지 않게 작게 두었다가, 열리면 입자 뒤에서 자라나요 */
-  opacity: ${({ $isOpen, $isSketch }) => ($isOpen || $isSketch ? 1 : 0)};
-  transform: ${({ $isOpen, $isSketch }) => ($isOpen || $isSketch ? "none" : "scale(0.55)")};
+  opacity: ${({ $isOpen }) => ($isOpen ? 1 : 0)};
+  transform: ${({ $isOpen }) => ($isOpen ? "none" : "scale(0.55)")};
   pointer-events: ${({ $isOpen }) => ($isOpen ? "auto" : "none")};
-
 
   /* 입자 캔버스가 맨 아래에 깔리고 나머지는 그 위에 놓여요 */
   & > :not(canvas) {
@@ -373,7 +363,7 @@ const InputOrb = styled.span`
   }
 `;
 
-/** 접힌 독의 녹음 칸. 입자 스케치가 자리를 재는 기준이고, 안의 버튼·칩처럼 세로 가운데에 놓여요 */
+/** 접힌 독의 녹음 칸. 파형이 모일 자리를 재는 기준이고, 안의 버튼·칩처럼 세로 가운데에 놓여요 */
 const RecordSlot = styled.span`
   display: flex;
   align-self: center;
@@ -384,7 +374,7 @@ const RecordSlot = styled.span`
 const CollapsedControls = styled.span`
   display: contents;
 
-  /* 입자 스케치일 때는 보이지 않아요. 입자가 같은 자리에 아이콘과 구슬을 그려요 */
+  /* 녹음 파형으로 접혀 있을 때는 보이지 않아요. 열리면 입자가 모인 자리에 나타나요 */
   &[aria-hidden="true"] > * {
     opacity: 0;
   }

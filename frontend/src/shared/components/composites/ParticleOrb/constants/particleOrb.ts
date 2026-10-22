@@ -1,5 +1,9 @@
-/** 구슬을 이루는 입자 수. 가장자리로 갈수록 성기게 두므로 작아도 구름처럼 보여요 */
-export const ORB_PARTICLE_COUNT = 600;
+/** 구슬을 이루는 입자 수. 가장자리로 갈수록 성기게 두므로 작아도 구름처럼 보여요. 점이 작아 촘촘히 둬요 */
+export const ORB_PARTICLE_COUNT = 900;
+
+/** 입자 한 알의 지름(px) 범위. 구슬이 작아 랜딩보다 잘게 두고 둥글게 그려 모자이크처럼 보이지 않게 해요 */
+export const ORB_DOT_MIN = 0.75;
+export const ORB_DOT_RANGE = 0.7;
 
 /** 파형으로 펼쳐질 때의 세로 막대 수 */
 export const ORB_WAVE_COLUMNS = 24;

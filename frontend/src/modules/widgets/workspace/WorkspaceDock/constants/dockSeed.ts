@@ -31,7 +31,7 @@ export const SEED_CLOSE_DELAY_MS = 380;
 /** 독이 열린 뒤 입자가 사라지기 시작하는 시간(ms). 진짜 독이 나타나는 동안 잠깐만 겹쳐요 */
 export const SEED_FADE_DELAY_MS = 140;
 
-/** 독 스케치의 채팅 아이콘 한 변(px)과 녹음 구슬 반지름(px). 열린 독의 아이콘·구슬과 같은 크기예요 */
+/** 파형이 독 모양으로 모일 때 채팅 아이콘 한 변(px)과 녹음 칩 자리 구슬 반지름(px). 열린 독의 아이콘·구슬과 같은 크기예요 */
 export const SEED_ICON_SIZE = 32;
 export const SEED_ORB_RADIUS = 13;
 

@@ -26,19 +26,18 @@ interface ParticleOrbProps {
   analyser?: AnalyserNode | null;
   /** `false`면 소리를 읽지 않아요(일시정지) */
   isActive?: boolean;
+  /** `true`면 결과를 기다리는 중이라 구슬이 빠르게 돌며 숨을 크게 쉬어요. 녹음 버튼을 누른 뒤 녹음이 열릴 때까지 써요 */
+  isWaiting?: boolean;
   /** `pulse()`로 파동을 퍼뜨릴 수 있어요 */
   ref?: Ref<ParticleOrbHandle>;
 }
-
-/** `#3C3B39` 같은 색상 토큰을 `rgba()`에 넣을 `60,59,57` 꼴로 바꿔요. */
-const toRgb = (hex: string) =>
-  [1, 3, 5].map((start) => parseInt(hex.slice(start, start + 2), 16)).join(",");
 
 /**
  * 랜딩의 입자로 만든 작은 구슬.
  *
  * 독의 녹음 버튼과 채팅 버튼이 써요. 입자 수백 개가 구름 같은 구를 이루며 천천히 돌고 숨 쉬거나, 말풍선·마이크·화살표 모양으로 모여요.
  * 녹음 버튼은 올리면 마이크로, 채팅 버튼은 올리면 점이 튀는 말풍선으로 바뀌어요. 누르면 파동이 퍼지고, 녹음 중엔 목소리가 들어올 때마다 파형으로 펼쳐져요.
+ * 입자는 구슬 크기에 맞춰 잘고 둥글게 그려 작은 자리에서도 모자이크처럼 보이지 않아요.
  * 장식이라 낭독기에서는 읽지 않아요. 접근성 이름은 감싸는 버튼이 가져요.
  * 색은 테마의 Warning(녹음 전)과 Accent(녹음 중) 토큰을 써요.
  */
@@ -49,6 +48,7 @@ export default function ParticleOrb({
   tone = "idle",
   analyser = null,
   isActive = true,
+  isWaiting = false,
   ref,
 }: ParticleOrbProps) {
   const theme = useTheme();
@@ -88,6 +88,7 @@ export default function ParticleOrb({
     tone,
     analyser,
     isActive,
+    isWaiting,
     idlePalette,
     recordingPalette,
     neutralPalette,

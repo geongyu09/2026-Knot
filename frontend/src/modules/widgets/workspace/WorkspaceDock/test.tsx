@@ -30,6 +30,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { useRecordingStore } from "@store/recordingStore";
 import { useSearchAnswerStore } from "@store/searchAnswerStore";
+import { captureAnalyticsEvent } from "@utils/captureAnalyticsEvent";
 import { formatRecordingTime } from "@utils/formatRecordingTime";
 import { getRecordingStartProof } from "@utils/recordingControlProof";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -41,6 +42,10 @@ import { DOCK_HINT_MAX_SEEN_COUNT, DOCK_HINT_TEXT } from "./constants/dockHint";
 vi.mock("@constants/recording", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@constants/recording")>()),
   RECORDING_AUDIO_MODE: "FINAL_WEBM_V1",
+}));
+
+vi.mock("@utils/captureAnalyticsEvent", () => ({
+  captureAnalyticsEvent: vi.fn(),
 }));
 
 const WORKSPACE_ID = "1";
@@ -482,6 +487,48 @@ describe("WorkspaceDock", () => {
     expect(screen.queryByText(DOCK_HINT_TEXT)).not.toBeInTheDocument();
   });
 
+  describe("독을 연 방법 기록", () => {
+    beforeEach(() => {
+      vi.mocked(captureAnalyticsEvent).mockClear();
+    });
+
+    it("요청하기 버튼으로 펼치면 버튼으로 열었다고 남긴다", () => {
+      renderDock();
+
+      expandDock();
+
+      expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+        event: "dock_chat_opened",
+        properties: { trigger: "button" },
+      });
+    });
+
+    it("접힌 독에 글자가 들어와 펼치면 글자를 쳐서 열었다고 한 번만 남긴다", () => {
+      renderDock();
+      const field = screen.getByRole("textbox", { name: "무엇이든 요청하세요" });
+
+      fireEvent.change(field, { target: { value: "ㅇ" } });
+      fireEvent.change(field, { target: { value: "아" } });
+
+      expect(captureAnalyticsEvent).toHaveBeenCalledTimes(1);
+      expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+        event: "dock_chat_opened",
+        properties: { trigger: "typing" },
+      });
+    });
+
+    it("늘 펼쳐 둔 탐색 화면에서 적는 것은 남기지 않는다", () => {
+      renderDock(CHAT_PATH);
+
+      fireEvent.change(
+        screen.getByRole("textbox", { name: "무엇이든 요청하세요" }),
+        { target: { value: QUESTION } },
+      );
+
+      expect(captureAnalyticsEvent).not.toHaveBeenCalled();
+    });
+  });
+
   describe("접힌 독에서 바로 치기", () => {
     // 접힌 독에도 입력창을 보이지 않게 남겨 두고 커서를 둬야, 한글 첫 글자부터 입력기가 조립해요
 
@@ -698,6 +745,72 @@ describe("WorkspaceDock", () => {
       expect(
         screen.queryByRole("button", { name: "녹음 화면으로 이동" }),
       ).not.toBeInTheDocument();
+    });
+
+    it("녹음이 열리기를 기다리는 동안 마이크를 기다리는 중으로 두고, 녹음 칩으로 바꾸지 않는다", async () => {
+      let respond = () => {};
+      const isResponded = new Promise<void>((resolve) => {
+        respond = resolve;
+      });
+      mockServer.use(
+        http.post("*/api/v1/workspaces/:workspaceId/recordings", async () => {
+          await isResponded;
+          return HttpResponse.json(recordingStartResponse, { status: 201 });
+        }),
+      );
+      const { router } = renderDock();
+
+      await clickMic();
+
+      expect(
+        screen.getByRole("button", { name: "회의 녹음 시작" }),
+      ).toHaveAttribute("aria-busy", "true");
+      expect(
+        screen.queryByRole("button", { name: "녹음 화면으로 이동" }),
+      ).not.toBeInTheDocument();
+
+      await act(async () => respond());
+
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe(RECORDING_PATH),
+      );
+    });
+
+    it("녹음이 열리면 결과와 기다린 시간을 남긴다", async () => {
+      vi.mocked(captureAnalyticsEvent).mockClear();
+      renderDock();
+
+      await clickMic();
+
+      expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+        event: "recording_start_result",
+        properties: {
+          result: "started",
+          wait_seconds: expect.any(Number),
+          workspace_id: Number(WORKSPACE_ID),
+        },
+      });
+    });
+
+    it("권한을 받지 못하면 기다림을 풀고 그 결과를 남긴다", async () => {
+      vi.mocked(captureAnalyticsEvent).mockClear();
+      denyMicrophoneOnce();
+      renderDock();
+
+      await clickMic();
+      confirmMicAlert();
+
+      expect(
+        screen.getByRole("button", { name: "회의 녹음 시작" }),
+      ).toHaveAttribute("aria-busy", "false");
+      expect(captureAnalyticsEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "recording_start_result",
+          properties: expect.objectContaining({
+            result: "microphone_unavailable",
+          }),
+        }),
+      );
     });
 
     it("권한을 받지 못하면 권한을 허용하는 방법을 알리고 제자리에 남는다", async () => {
@@ -1380,6 +1493,7 @@ const createFakeCanvasContext = () =>
     clearRect: () => {},
     fillRect: () => {},
     beginPath: () => {},
+    moveTo: () => {},
     arc: () => {},
     fill: () => {},
     stroke: () => {},
@@ -1407,35 +1521,49 @@ describe("파형으로 접힌 독", () => {
     vi.unstubAllGlobals();
   });
 
-  it("캔버스를 쓸 수 있으면 처음엔 파형만 있고 독 버튼은 없다", () => {
+  /** 다른 탭에서 녹음이 이어지는 홈을 그리고, 독이 파형으로 접히기를 기다려요 */
+  const renderRecordingDock = async () => {
+    respondCurrentRecordingStatus("RECORDING");
     renderDock();
 
-    expect(screen.getByRole("button", { name: "독 열기" })).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "무엇이든 요청하기" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "회의 녹음 시작" }),
-    ).not.toBeInTheDocument();
-  });
+    return screen.findByRole("button", { name: "독 열기" });
+  };
 
-  it("파형을 누르면 독이 열려 요청하기와 회의 녹음 버튼이 나타난다", () => {
+  it("녹음이 없으면 캔버스를 쓸 수 있어도 파형 없이 처음부터 독 버튼이 보인다 (Figma Dock/Bar 기본)", () => {
     renderDock();
 
-    fireEvent.click(screen.getByRole("button", { name: "독 열기" }));
-
+    expect(
+      screen.queryByRole("button", { name: "독 열기" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "무엇이든 요청하기" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "회의 녹음 시작" }),
     ).toBeInTheDocument();
+  });
+
+  it("다른 화면에서 녹음이 이어지면 처음엔 파형만 있고 독 버튼은 없다", async () => {
+    await renderRecordingDock();
+
+    expect(
+      screen.queryByRole("button", { name: "무엇이든 요청하기" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("파형을 누르면 독이 열려 요청하기 버튼이 나타난다", async () => {
+    const seed = await renderRecordingDock();
+
+    fireEvent.click(seed);
+
+    expect(
+      screen.getByRole("button", { name: "무엇이든 요청하기" }),
+    ).toBeInTheDocument();
     expect(isDockExpanded()).toBe(false);
   });
 
-  it("열린 독에서 요청하기를 누르면 그대로 펼쳐진다", () => {
-    renderDock();
-    fireEvent.click(screen.getByRole("button", { name: "독 열기" }));
+  it("열린 독에서 요청하기를 누르면 그대로 펼쳐진다", async () => {
+    fireEvent.click(await renderRecordingDock());
 
     expandDock();
 
@@ -1443,14 +1571,13 @@ describe("파형으로 접힌 독", () => {
   });
 
   it("포인터가 독을 벗어나면 잠시 뒤 파형으로 돌아간다", async () => {
-    renderDock();
-    const seedButton = screen.getByRole("button", { name: "독 열기" });
-    fireEvent.click(seedButton);
+    const seed = await renderRecordingDock();
+    fireEvent.click(seed);
     expect(
       screen.getByRole("button", { name: "무엇이든 요청하기" }),
     ).toBeInTheDocument();
 
-    fireEvent.pointerLeave(seedButton.parentElement!, { pointerType: "mouse" });
+    fireEvent.pointerLeave(seed.parentElement!, { pointerType: "mouse" });
 
     await waitFor(
       () =>
@@ -1461,8 +1588,8 @@ describe("파형으로 접힌 독", () => {
     );
   });
 
-  it("파형 상태에서 글자를 치면 독이 바로 펼쳐진다", () => {
-    renderDock();
+  it("파형 상태에서 글자를 치면 독이 바로 펼쳐진다", async () => {
+    await renderRecordingDock();
 
     fireEvent.change(
       screen.getByRole("textbox", { name: "무엇이든 요청하세요" }),
@@ -1479,11 +1606,12 @@ describe("파형으로 접힌 독", () => {
     ).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("녹음 화면에서는 파형을 눌러도 회의 녹음 버튼이 없다", () => {
+  it("녹음 화면에서는 파형 없이 독이 보이고 회의 녹음 버튼이 없다", () => {
     renderDock(RECORDING_PATH);
 
-    fireEvent.click(screen.getByRole("button", { name: "독 열기" }));
-
+    expect(
+      screen.queryByRole("button", { name: "독 열기" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "무엇이든 요청하기" }),
     ).toBeInTheDocument();

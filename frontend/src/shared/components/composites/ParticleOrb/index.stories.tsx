@@ -35,6 +35,7 @@ const DarkStage = styled.div`
  * **녹음 중 동작**
  * - `recording` 톤에서 `analyser`를 넘기면 목소리가 들어올 때마다 입자가 가운데를 가로지르는 파형으로 펼쳐지고, 조용하면 구름으로 돌아와요. 청록 빛무리가 맥박처럼 뛰어요.
  * - `isActive`가 `false`면 일시정지라 소리를 읽지 않고 빛무리도 쉬어요.
+ * - `isWaiting`이면 결과를 기다리는 중이라 구름이 빠르게 돌며 모였다 풀렸다 해요. 녹음 버튼을 누른 뒤 녹음이 열릴 때까지 써요.
  *
  * **규칙**
  * - 장식이라 낭독기에서는 읽지 않아요. 접근성 이름은 감싸는 버튼이 가져요.
@@ -83,6 +84,11 @@ export const Typing: Story = {
 /** 녹음 칩에 올려 입자가 「녹음 화면으로 가기」 화살표로 모인 상태예요. */
 export const Arrow: Story = {
   args: { radius: 7, size: 24, tone: "recording", shape: "arrow" },
+};
+
+/** 녹음 버튼을 누르고 마이크와 서버가 녹음을 열기를 기다리는 상태예요. 청록 구름이 빠르게 돌며 숨을 크게 쉬어요. 예: 독의 회의 녹음 버튼을 누른 직후 */
+export const Waiting: Story = {
+  args: { radius: 13, size: 60, tone: "recording", isWaiting: true },
 };
 
 /** 녹음 중이라 청록으로 바뀌고 목소리가 들어올 때마다 파형으로 펼쳐져요. 예: 녹음 칩의 상태 표시 */
