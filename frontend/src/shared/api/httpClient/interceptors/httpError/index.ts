@@ -1,24 +1,7 @@
 import axios from "axios";
 
-import type { HttpErrorType } from "../../error";
-import { createHttpError, HTTP_ERROR_TYPE } from "../../error";
+import { createHttpError, toHttpErrorType } from "../../error";
 import type { HttpInterceptor } from "../../types/interceptor";
-
-const STATUS_ERROR_TYPE: Record<number, HttpErrorType> = {
-  400: HTTP_ERROR_TYPE.badRequest,
-  401: HTTP_ERROR_TYPE.unauthorized,
-  403: HTTP_ERROR_TYPE.forbidden,
-  404: HTTP_ERROR_TYPE.notFound,
-  409: HTTP_ERROR_TYPE.conflict,
-  429: HTTP_ERROR_TYPE.tooManyRequests,
-};
-
-const toErrorType = (status?: number) => {
-  if (status === undefined) return HTTP_ERROR_TYPE.network;
-  if (status in STATUS_ERROR_TYPE) return STATUS_ERROR_TYPE[status];
-
-  return status < 500 ? HTTP_ERROR_TYPE.clientError : HTTP_ERROR_TYPE.serverError;
-};
 
 // 어댑터를 감싸고 있어 axios가 JSON으로 바꾸기 전의 본문을 받아요. xhr 어댑터는 문자열로 줘요
 const toErrorBody = (data: unknown) => {
@@ -60,7 +43,7 @@ export const httpErrorInterceptor: HttpInterceptor =
       if (!axios.isAxiosError(error) || axios.isCancel(error)) throw error;
 
       throw createHttpError({
-        type: toErrorType(error.response?.status),
+        type: toHttpErrorType(error.response?.status),
         code: toErrorCode(error.response?.data),
         cause: error,
       });

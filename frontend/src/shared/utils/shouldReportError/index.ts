@@ -1,6 +1,7 @@
 import {
   HTTP_ERROR_TYPE,
   isHttpError,
+  toHttpErrorType,
   type HttpErrorType,
 } from "@api/httpClient/error";
 import { SseRequestError } from "@api/sse/requestSseStream";
@@ -54,32 +55,35 @@ const FETCH_NETWORK_ERROR_PATTERN =
  */
 const EXPECTED_MICROPHONE_ERROR_NAMES = ["NotAllowedError", "NotFoundError"];
 
-/** SSE 요청은 httpClient를 거치지 않아 상태 코드를 httpClient와 같은 실패 이유로 맞춰요 */
-const SSE_STATUS_ERROR_TYPE: Record<number, HttpErrorType> = {
-  400: HTTP_ERROR_TYPE.badRequest,
-  401: HTTP_ERROR_TYPE.unauthorized,
-  403: HTTP_ERROR_TYPE.forbidden,
-  404: HTTP_ERROR_TYPE.notFound,
-  409: HTTP_ERROR_TYPE.conflict,
-  429: HTTP_ERROR_TYPE.tooManyRequests,
-};
-
 interface RequestFailure {
   type: HttpErrorType;
   code?: string;
 }
 
+/**
+ * 요청 실패를 httpClient와 같은 실패 이유로 맞춰요. 요청 실패가 아니면 `undefined`예요.
+ *
+ * SSE 요청은 httpClient를 거치지 않아 상태 코드로 이유를 정해요.
+ * 저장소에 직접 PUT하는 오디오 · 조각 업로드도 httpClient를 거치지 않는데, 우리 API가 아니라 화면이 처리하는 업무 오류가 없어요.
+ * 그래서 응답을 받지 못한 실패만 `network`로 다른 요청과 같이 거르고, 응답을 받은 실패는 모두 보고해요.
+ */
 const toRequestFailure = (error: unknown): RequestFailure | undefined => {
   if (isHttpError(error)) return { type: error.type, code: error.code };
 
   if (error instanceof SseRequestError) {
-    const type =
-      SSE_STATUS_ERROR_TYPE[error.status] ??
-      (error.status < 500
-        ? HTTP_ERROR_TYPE.clientError
-        : HTTP_ERROR_TYPE.serverError);
+    return { type: toHttpErrorType(error.status), code: error.code };
+  }
 
-    return { type, code: error.code };
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+    if (status === undefined) return { type: HTTP_ERROR_TYPE.network };
+
+    return {
+      type:
+        status < 500
+          ? HTTP_ERROR_TYPE.clientError
+          : HTTP_ERROR_TYPE.serverError,
+    };
   }
 
   return undefined;
@@ -148,7 +152,7 @@ interface ShouldReportErrorParams {
  * - 사용자 입력 검증 400, 화면이 처리하는 업무 403(워크스페이스 접근 거부, 탐색 대화 접근 거부)
  * - 도메인 리소스가 없는 404, 상태 충돌 409, 요청 제한 429: 화면마다 안내 문구나 이동이 있어요
  * - 오프라인, 페이지를 떠나는 중, 숨긴 탭에서 응답을 받지 못한 요청: 연결이 끊긴 것이 아니라 브라우저가 멈추거나 끊은 요청이 섞여요.
- *   새로고침이나 이동으로 끊긴 요청(`Request aborted`)은 취소로 봐요
+ *   새로고침이나 이동으로 끊긴 요청(`Request aborted`)은 취소로 봐요. 저장소에 직접 PUT하는 업로드도 같아요
  * - 녹음에서 마이크 권한 거절, 마이크 없음: 마이크 안내 창이 안내해요
  *
  * 4xx를 통째로 빼지 않아요. 요청 계약 위반 400, CSRF 재시도 뒤에도 남은 403과 화면이 처리하지 않는 업무 403, 없는 API 경로 404,
