@@ -137,9 +137,8 @@ export class SearchAnswerFailedError extends Error {
  * 끝 이벤트(completed·failed·stopped) 없이 닫힌 답변 스트림. 취소한 경우는 해당하지 않아요.
  *
  * 연결이 끊겨도 서버는 답변을 계속 만들어요(SEARCH-R8). 서버에 FAILED로 저장된 답변(`SearchAnswerFailedError`)과
- * 다르므로 따로 둬요.
+ * 다르므로 따로 두고, 받는 쪽은 실패로 그리지 않고 재연결 API로 이어 받아요.
  */
-// TODO: SEARCH-R8 이어 보기. 재연결 작업에서 실패와 끊김을 나눌지 결정
 export class SearchAnswerDisconnectedError extends Error {
   constructor() {
     super("탐색 답변 스트림이 끝 이벤트 없이 닫혔어요");

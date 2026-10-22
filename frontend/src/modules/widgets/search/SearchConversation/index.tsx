@@ -8,6 +8,7 @@ import styled from "@emotion/styled";
 import useNavigateToNewChat from "@hooks/domain/chat/useNavigateToNewChat";
 import useConversationId from "@hooks/domain/search/useConversationId";
 import useRememberLastConversation from "@hooks/domain/search/useRememberLastConversation";
+import useResumeSearchAnswer from "@hooks/domain/search/useResumeSearchAnswer";
 import useSearchAnswerControl from "@hooks/domain/search/useSearchAnswerControl";
 import useSearchAnswerState from "@hooks/domain/search/useSearchAnswerState";
 import { useEffect } from "react";
@@ -44,6 +45,7 @@ const isUnavailableError = (error: unknown) =>
  * - 대화가 없어졌거나 볼 수 없으면 다시 시도해도 열리지 않으니, 안내 대신 빈 새 대화로 옮겨요.
  *
  * 지금 보는 대화는 워크스페이스마다 기억해 두고, GNB 탐색을 누르면 그 대화로 돌아와요.
+ * 서버가 아직 만들고 있는 답변이 있으면 이어 받아 끝까지 그려요(SEARCH-R8).
  */
 export default function SearchConversation() {
   const { workspaceId } = useParams();
@@ -58,6 +60,7 @@ export default function SearchConversation() {
   const { navigateToNewChat } = useNavigateToNewChat();
 
   useRememberLastConversation();
+  useResumeSearchAnswer();
 
   const isUnavailable = isUnavailableError(error);
 

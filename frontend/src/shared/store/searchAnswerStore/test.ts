@@ -2,6 +2,7 @@ import {
   SearchStreamAcceptedDto,
   SearchStreamDeltaDto,
   SearchStreamFailedDto,
+  SearchStreamSnapshotDto,
 } from "@api/dto/search";
 import { SearchAnswerFailedError } from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations";
 import { searchAnswerStreamResponse } from "@api/mock/responses/search";
@@ -137,6 +138,80 @@ describe("searchAnswerStore", () => {
       status: "IDLE",
       questionMessageId: null,
       answerMessageId: null,
+    });
+  });
+
+  it("[SEARCH-R8] 서버에서 만들고 있는 답변을 이어 받으면 접수 대기 없이 저장된 본문을 든 생성 중으로 바꾼다", () => {
+    const target = {
+      question,
+      conversationId,
+      questionMessageId,
+      answerMessageId,
+      text: deltas[0],
+    };
+
+    const controller = useSearchAnswerStore.getState().resume(target);
+
+    const state = useSearchAnswerStore.getState();
+    expect(controller).not.toBeNull();
+    expect(state).toMatchObject({ ...target, status: "STREAMING", controller });
+  });
+
+  it("[SEARCH-R8] 이어 받는 답변에 snapshot이 오면 저장된 본문으로 바꾸고 뒤따르는 조각을 이어 붙인다", () => {
+    const controller = useSearchAnswerStore.getState().resume({
+      question,
+      conversationId,
+      questionMessageId,
+      answerMessageId,
+      text: deltas[0],
+    });
+    if (!controller) throw new Error("이어 받기를 시작하지 못했어요");
+    const savedText = deltas.slice(0, 2).join("");
+
+    useSearchAnswerStore.getState().applyEvent(controller, {
+      event: "snapshot",
+      data: new SearchStreamSnapshotDto({
+        answerId: answerMessageId,
+        content: savedText,
+        status: "STREAMING",
+      }),
+    });
+    useSearchAnswerStore.getState().applyEvent(controller, {
+      event: "delta",
+      data: new SearchStreamDeltaDto({ answerMessageId, text: deltas[2] }),
+    });
+
+    expect(useSearchAnswerStore.getState().text).toBe(savedText + deltas[2]);
+  });
+
+  it("[SEARCH-R6] 접수 대기·생성 중에는 다른 답변을 이어 받지 않는다", () => {
+    startQuestion();
+
+    const controller = useSearchAnswerStore.getState().resume({
+      question,
+      conversationId,
+      questionMessageId,
+      answerMessageId,
+      text: "",
+    });
+
+    expect(controller).toBeNull();
+    expect(useSearchAnswerStore.getState().status).toBe("SENDING");
+  });
+
+  it("[SEARCH-R8] 이어 받기를 그만두면 처음 상태로 돌아가고, 지난 요청이 그만둬도 지금 답변은 그대로 둔다", () => {
+    const staleController = startQuestion();
+    useSearchAnswerStore.getState().abort();
+    const controller = startQuestion();
+
+    useSearchAnswerStore.getState().release(staleController);
+    expect(useSearchAnswerStore.getState().controller).toBe(controller);
+
+    useSearchAnswerStore.getState().release(controller);
+    expect(useSearchAnswerStore.getState()).toMatchObject({
+      status: "IDLE",
+      question: "",
+      controller: null,
     });
   });
 

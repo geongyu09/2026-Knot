@@ -1,4 +1,5 @@
 import type {
+  SearchAnswerEventsStream,
   SearchAnswerRetryStream,
   SearchAnswerStream,
   SearchConversations,
@@ -68,7 +69,8 @@ export const searchQuestionAnswerStreamResponse = {
 
 /**
  * 실패한 답변을 다시 시도했을 때의 응답이에요.
- * 서버는 실패했던 답변 메시지를 비우고 다시 채우므로, 메시지 ID는 핸들러가 요청 경로의 질문 ID로 채워요.
+ * 서버는 실패했던 답변 메시지를 비우고 다시 채우므로, accepted의 `questionId`·`answerMessageId`는 핸들러가 요청 경로의 질문 ID로 채워요.
+ * 첫 질문과 달리 accepted에 대화 ID가 없고 `status: "STREAMING"`이 함께 와요(`docs/api/search-answer-retry.md`).
  */
 export const searchAnswerRetryStreamResponse = {
   stages: ["SEARCHING", "GENERATING"],
@@ -82,6 +84,23 @@ export const searchAnswerRetryStreamResponse = {
     },
   ],
 } satisfies SearchAnswerRetryStream;
+
+/**
+ * 끊긴 답변에 다시 연결했을 때의 응답이에요.
+ * 서버가 그때까지 저장한 본문을 snapshot으로 먼저 보내고 나머지 조각을 이어 보내요. 답변 ID는 핸들러가 요청 경로에서 채워요.
+ */
+export const searchAnswerEventsStreamResponse = {
+  content: "DB는 지난주 ",
+  deltas: ["기술 선정 회의에서 ", "PostgreSQL로 ", "정해졌어요."],
+  evidences: [
+    {
+      documentId: 11,
+      title: "DB 기술 선정 회의록",
+      topic: "DB 기술 선정",
+      rank: 1,
+    },
+  ],
+} satisfies SearchAnswerEventsStream;
 
 /**
  * 이미 질문이 오간 탐색 대화의 메시지 조회 응답이에요.

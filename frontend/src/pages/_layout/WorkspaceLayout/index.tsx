@@ -1,10 +1,14 @@
 import DockablePanel from "@composites/DockablePanel";
+import { MEDIA_QUERY, SCREEN_CONDITION } from "@constants/breakpoint";
 import styled from "@emotion/styled";
 import TranscriptToggle from "@features/document/TranscriptToggle";
 import SearchEvidenceToggle from "@features/search/SearchEvidenceToggle";
+import useKeyDown from "@hooks/common/useKeyDown";
+import useMediaQuery from "@hooks/common/useMediaQuery";
 import useTranscriptPanel from "@hooks/domain/document/useTranscriptPanel";
 import useRecordingLeaveWarning from "@hooks/domain/recording/useRecordingLeaveWarning";
 import useAbortSearchAnswerOnLeave from "@hooks/domain/search/useAbortSearchAnswerOnLeave";
+import useOpenedEvidenceMessage from "@hooks/domain/search/useOpenedEvidenceMessage";
 import useOpenEvidenceOnAnswerComplete from "@hooks/domain/search/useOpenEvidenceOnAnswerComplete";
 import useWorkspaceEntry from "@hooks/domain/workspace/useWorkspaceEntry";
 import useWorkspaceNav from "@hooks/domain/workspace/useWorkspaceNav";
@@ -22,8 +26,8 @@ import SearchEvidenceList from "@widgets/search/SearchEvidenceList";
 import WorkspaceDock from "@widgets/workspace/WorkspaceDock";
 import WorkspaceGnb from "@widgets/workspace/WorkspaceGnb";
 import WorkspaceSidebar from "@widgets/workspace/WorkspaceSidebar";
-import { useState } from "react";
-import { Outlet, useParams } from "react-router";
+import { useState, type MouseEvent } from "react";
+import { Outlet, useLocation, useParams } from "react-router";
 
 import ChatListIcon from "@/assets/icons/chatList.svg";
 import SidebarIcon from "@/assets/icons/sidebar.svg";
@@ -51,6 +55,10 @@ import type { DockedPanelName } from "./types/dockedPanel";
  * 문서 하나를 보는 화면에서는 원문 패널이 같은 오른쪽 자리를 쓴다. GNB 오른쪽의 원문 버튼으로 여닫고,
  * 회원이 마지막에 둔 상태를 다음 문서에도 그대로 적용한다(DOC-R3 · DOC-R4).
  *
+ * 1024 미만(태블릿, 모바일)에서는 자리가 모자라 구조는 그대로 두고 패널만 본문 위에 띄운다(RESP-R2 · RESP-R3).
+ * 왼쪽 패널은 고정하지 않고 덮개로만 열고, 오른쪽 패널은 태블릿에서 오른쪽 덮개(폭 400), 모바일에서 아래 시트로 연다.
+ * 오른쪽 패널은 흐린 바깥을 누르거나 ESC를 누르면 닫는다.
+ *
  * 들어갈 수 있는 워크스페이스인지도 이 레이아웃 범위에서 한 번만 판정한다(`useWorkspaceEntry`).
  * 조회에 성공하기 전에는 본문 대신 스피너를 두고, 401은 로그인으로, 403·404는 선택 화면으로 보낸다.
  * 처음 조회가 네트워크 끊김·timeout으로 실패하면 ERR-02를, 5xx나 400·409·429 같은 나머지 4xx로 실패하면 ERR-03을 GNB와 독까지 레이아웃 전체 대신 그린다.
@@ -73,7 +81,12 @@ export default function WorkspaceLayout() {
     workspaceId: Number(workspaceId),
   });
   const { isChatActive, activeTabIndex } = useWorkspaceNav();
-  const { isTranscriptPanelOpen } = useTranscriptPanel();
+  const { isTranscriptPanelOpen, toggleTranscriptPanel } = useTranscriptPanel();
+  const { openedMessageId, closeEvidenceMessage } = useOpenedEvidenceMessage();
+  const { pathname } = useLocation();
+  const { isMatched: isBelowDesktop } = useMediaQuery(
+    SCREEN_CONDITION.belowDesktop,
+  );
   const [pickedPanel, setPickedPanel] = useState<DockedPanelName>(null);
 
   useRecordingLeaveWarning();
@@ -94,6 +107,29 @@ export default function WorkspaceLayout() {
 
   // 원문 패널은 주소의 documentId로 원문을 불러오므로, documentId가 있는 화면(문서 하나를 보는 화면)에만 버튼과 자리를 둬요
   const isDocumentActive = documentId !== undefined;
+
+  const isEvidenceOverlayOpen =
+    isBelowDesktop && isChatActive && openedMessageId !== null;
+  const isTranscriptOverlayOpen =
+    isBelowDesktop && isDocumentActive && isTranscriptPanelOpen;
+
+  const closeRightOverlay = () => {
+    if (isEvidenceOverlayOpen) closeEvidenceMessage();
+    if (isTranscriptOverlayOpen) toggleTranscriptPanel();
+  };
+
+  useKeyDown({
+    key: "Escape",
+    isEnabled: isEvidenceOverlayOpen || isTranscriptOverlayOpen,
+    onKeyDown: closeRightOverlay,
+  });
+
+  // 좁은 화면에서는 레일 자체가 패널 뒤의 흐린 막이라, 패널 바깥(레일)을 누른 것만 닫기로 봐요
+  const handleRailClick = (e: MouseEvent<HTMLDivElement>) => {
+    if (!isBelowDesktop || e.target !== e.currentTarget) return;
+
+    closeRightOverlay();
+  };
 
   if (entryError) {
     return (
@@ -116,6 +152,7 @@ export default function WorkspaceLayout() {
                 dockTargetId={WORKSPACE_DOCK_RAIL_ID}
                 isDocked={dockedPanel === "sidebar"}
                 onDockedChange={pickPanel("sidebar")}
+                peekResetKey={pathname}
               >
                 <WorkspaceSidebar />
               </DockablePanel>
@@ -127,6 +164,7 @@ export default function WorkspaceLayout() {
                   dockTargetId={WORKSPACE_DOCK_RAIL_ID}
                   isDocked={dockedPanel === "chatList"}
                   onDockedChange={pickPanel("chatList")}
+                  peekResetKey={pathname}
                 >
                   <ChatListDrawer />
                 </DockablePanel>
@@ -164,13 +202,13 @@ export default function WorkspaceLayout() {
         </Content>
 
         {isChatActive && (
-          <EvidenceRail>
+          <EvidenceRail onClick={handleRailClick}>
             <SearchEvidenceList />
           </EvidenceRail>
         )}
 
         {isDocumentActive && (
-          <TranscriptRail>
+          <TranscriptRail onClick={handleRailClick}>
             {/* 본문처럼, 들어갈 수 있는 워크스페이스인지 알기 전에는 원문을 불러오지 않아요 */}
             {isReady && isTranscriptPanelOpen && <TranscriptPanel />}
           </TranscriptRail>
@@ -191,6 +229,10 @@ const Container = styled.div`
 const GnbSlot = styled.div`
   flex-shrink: 0;
   padding-top: 1.5rem; /* 24px */
+
+  ${MEDIA_QUERY.mobile} {
+    padding-top: 1rem; /* 16px */
+  }
 `;
 
 const Body = styled.div`
@@ -267,6 +309,51 @@ const EvidenceRail = styled.div`
   @media (prefers-reduced-motion: reduce) {
     transition: none;
   }
+
+  /* 태블릿: 자리를 차지하지 않고 GNB 아래를 흐리게 덮은 뒤 오른쪽에 띄워요 */
+  ${MEDIA_QUERY.belowDesktop} {
+    position: fixed;
+    inset: 4.25rem 0 0; /* 68px, GNB 아래 */
+    z-index: 25; /* 독(본문 안)과 띄운 왼쪽 패널(20) 위, 모달(30) 아래 */
+    display: none;
+    width: auto;
+    margin-right: 0;
+    padding: 1rem 1rem 8.5rem; /* 16px 16px 136px */
+    overflow: visible;
+    background-color: ${({ theme }) => `${theme.neutral[900]}66`}; /* 40% */
+    transition: none;
+
+    &:has(> *) {
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-end;
+      width: auto;
+      margin-right: 0;
+    }
+
+    && > * {
+      width: min(25rem, 100%); /* 400px */
+      max-height: 100%;
+      overflow-y: auto;
+    }
+  }
+
+  /* 모바일: 화면 아래에서 올라오는 시트로 열어요. 높이는 내용만큼, 최대 화면의 85% */
+  ${MEDIA_QUERY.mobile} {
+    inset: 0;
+    padding: 0;
+
+    &:has(> *) {
+      align-items: flex-end;
+    }
+
+    && > * {
+      width: 100%;
+      max-height: 85dvh;
+      padding-bottom: calc(1.5rem + env(safe-area-inset-bottom)); /* 24px */
+      border-radius: 1.25rem 1.25rem 0 0; /* 20px */
+    }
+  }
 `;
 
 /**
@@ -277,6 +364,11 @@ const EvidenceRail = styled.div`
  */
 const TranscriptRail = styled(EvidenceRail)`
   padding-bottom: 8.5rem; /* 136px */
+
+  /* 위 아래 여백이 모바일 시트의 바닥 붙임(EvidenceRail)을 덮어쓰지 않게 되돌려요 */
+  ${MEDIA_QUERY.mobile} {
+    padding-bottom: 0;
+  }
 `;
 
 const Main = styled.main`
@@ -300,6 +392,11 @@ const DockSlot = styled(DockColumn)`
   flex-direction: column;
   gap: ${DOCK_TOAST_GAP};
   pointer-events: none;
+
+  /* 모바일은 화면 아래 홈 표시줄 같은 기기 안전 영역만큼 더 띄워요(RESP-R8) */
+  ${MEDIA_QUERY.mobile} {
+    bottom: calc(1.25rem + env(safe-area-inset-bottom)); /* 20px */
+  }
 `;
 
 const DockWrapper = styled.div`

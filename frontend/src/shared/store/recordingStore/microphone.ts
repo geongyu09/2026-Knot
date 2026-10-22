@@ -1,4 +1,5 @@
 import { captureCaughtError } from "@provider/sentry";
+import { markRecordingStart } from "@utils/recordingStartTrace";
 
 import MicrophoneConnection, {
   type MicrophoneConnectionParams,
@@ -24,6 +25,9 @@ export default class Microphone {
   private generation = 0;
 
   private pendingConnect: Promise<MicrophoneConnection | null> | null = null;
+
+  /** 마지막으로 연결하지 못한 오류의 이름(`NotAllowedError` 등). 연결했거나 기다리는 사이 끊었으면 `null`이에요 */
+  errorName: string | null = null;
 
   constructor({ onData, onLost }: MicrophoneParams) {
     this.onData = onData;
@@ -69,9 +73,11 @@ export default class Microphone {
 
   private async open() {
     const requestedGeneration = this.generation;
+    this.errorName = null;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      markRecordingStart("mic-granted");
 
       if (requestedGeneration !== this.generation) {
         stopTracks(stream);
@@ -84,11 +90,20 @@ export default class Microphone {
         onData: this.onData,
         onLost: this.onLost,
       });
+      markRecordingStart("audio-ready");
 
       return this.connection;
     } catch (error) {
       // 받지 못하면 연결하지 않고 `null`만 돌려줘요. 권한 거부와 장치 없음은 Sentry 보고 기준에서 빠져요
       captureCaughtError({ error, feature: "recording" });
+      // 기다리는 사이 끊었으면 받은 마이크를 버리듯 이번 실패의 이유도 남기지 않아요
+      if (requestedGeneration !== this.generation) return null;
+
+      // getUserMedia는 DOMException으로 거절해요
+      this.errorName =
+        error instanceof DOMException || error instanceof Error
+          ? error.name
+          : null;
 
       return null;
     }

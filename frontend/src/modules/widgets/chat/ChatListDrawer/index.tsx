@@ -1,3 +1,4 @@
+import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
 import SearchConversationList from "@features/search/SearchConversationList";
 import useNavigateToNewChat from "@hooks/domain/chat/useNavigateToNewChat";
@@ -43,6 +44,11 @@ const Container = styled.aside`
   border-radius: 1.5rem; /* 24px */
   background-color: ${({ theme }) => theme.neutral[0]};
   box-shadow: ${({ theme }) => theme.shadow03};
+
+  /* 모바일 덮개는 화면 폭에서 오른쪽 70px을 남기고 최대 320px까지 넓혀요(RESP-R2) */
+  ${MEDIA_QUERY.mobile} {
+    width: min(20rem, 100vw - 4.375rem); /* 320px */
+  }
 `;
 
 const DrawerHead = styled.div`

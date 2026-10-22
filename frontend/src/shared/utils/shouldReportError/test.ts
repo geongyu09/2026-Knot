@@ -218,6 +218,46 @@ describe("shouldReportError", () => {
       ).toBe(true);
     });
 
+    describe("저장소에 직접 PUT한 업로드(axios 오류 그대로)", () => {
+      const uploadError = (status?: number) =>
+        new AxiosError(
+          status
+            ? `Request failed with status code ${status}`
+            : "Network Error",
+          status ? AxiosError.ERR_BAD_REQUEST : AxiosError.ERR_NETWORK,
+          undefined,
+          undefined,
+          status
+            ? ({ status } as ConstructorParameters<typeof AxiosError>[4])
+            : undefined,
+        );
+
+      it("오프라인이나 숨긴 탭에서 응답을 받지 못한 업로드는 보고하지 않는다", () => {
+        expect(isReported(uploadError(), false)).toBe(false);
+        expect(
+          shouldReportError({
+            error: uploadError(),
+            isOnline: true,
+            isHidden: true,
+          }),
+        ).toBe(false);
+      });
+
+      it("온라인인데 응답을 받지 못한 업로드는 warning으로 보고한다", () => {
+        expect(isReported(uploadError(), true)).toBe(true);
+        expect(getErrorReportLevel(uploadError())).toBe("warning");
+      });
+
+      // 우리 API가 아니라 화면이 처리하는 업무 오류(404, 409 등)가 없어요
+      it.each([403, 404, 409, 503])(
+        "응답을 받은 업로드 실패(%s)는 error로 보고한다",
+        (status) => {
+          expect(isReported(uploadError(status))).toBe(true);
+          expect(getErrorReportLevel(uploadError(status))).toBe("error");
+        },
+      );
+    });
+
     it("오프라인이어도 네트워크와 관계없는 TypeError는 보고한다", () => {
       expect(
         isReported(new TypeError("Cannot read properties of undefined"), false),

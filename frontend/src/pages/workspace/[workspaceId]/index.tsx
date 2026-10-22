@@ -1,3 +1,4 @@
+import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
 import MemberGreeting from "@features/member/MemberGreeting";
 import PendingDocumentsCard from "@widgets/document/PendingDocumentsCard";
@@ -41,6 +42,11 @@ const Root = styled.div`
   justify-content: center;
   min-height: 100%;
   padding: 1.375rem 1.5rem 7rem; /* 22px 24px 112px — 위는 피그마의 화면 위 110px 자리, 아래는 하단 Dock 자리 */
+
+  ${MEDIA_QUERY.mobile} {
+    padding-right: 1rem; /* 16px */
+    padding-left: 1rem;
+  }
 `;
 
 /** 피그마 PageColumn: 폭 1080px, 인사말과 카드 묶음 사이 28px */
@@ -50,15 +56,38 @@ const PageColumn = styled.div`
   gap: 1.75rem; /* 28px */
   width: 100%;
   max-width: 67.5rem; /* 1080px */
+
+  ${MEDIA_QUERY.mobile} {
+    gap: 1.25rem; /* 20px */
+  }
 `;
 
 /**
  * 피그마 Grid: 왼쪽 열 652px · 오른쪽 열 400px, 윗줄 312px · 아랫줄 214px, 사이 28px.
- * 화면이 좁으면 왼쪽 열부터 줄어들고, 카드는 칸의 높이를 채워요
+ * 화면이 좁으면 왼쪽 열부터 줄어들고, 카드는 칸의 높이를 채워요.
+ *
+ * 태블릿은 2열을 지키고 오른쪽 열만 280px로 줄여요. 모바일은 한 열로 쌓고 카드 높이는 내용에 맞춰요(RESP-R5).
+ * 모바일 순서는 확인이 필요한 문서, 진행 중인 녹음, 최근 추가된 문서, 팀원 초대예요.
  */
 const CardGrid = styled.div`
   display: grid;
   grid-template-rows: 19.5rem 13.375rem; /* 312px 214px */
   grid-template-columns: minmax(0, 40.75rem) minmax(0, 25rem); /* 652px 400px */
   gap: 1.75rem; /* 28px */
+
+  ${MEDIA_QUERY.belowDesktop} {
+    grid-template-columns: minmax(0, 1fr) 17.5rem; /* 280px */
+  }
+
+  ${MEDIA_QUERY.mobile} {
+    grid-template-rows: none;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem; /* 16px */
+
+    /* 최근 추가된 문서(2번째)와 팀원 초대(4번째)를 진행 중인 녹음 뒤로 보내요 */
+    & > :nth-child(2),
+    & > :nth-child(4) {
+      order: 1;
+    }
+  }
 `;

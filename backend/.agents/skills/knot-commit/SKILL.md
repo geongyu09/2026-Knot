@@ -26,7 +26,7 @@ Base every commit decision on the actual backend diff. Use the linked Issue or t
 - Add a separate `refactor` commit only after the related behavior is green and only when behavior-preserving cleanup is actually needed. Do not create an empty or speculative refactor commit.
 - Do not combine multiple independent public methods or unrelated layers merely because they belong to the same Issue. Each commit must have one review reason and an explicit file/hunk set.
 - Do not stage every changed file blindly.
-- Treat `커밋해줘` and `작업 단위로 커밋해줘` as explicit commit creation requests. `커밋 메시지 작성해줘` authorizes only a draft. Do not amend, rebase, or reset unless the user explicitly asks for that operation.
+- Treat `커밋해줘` and `작업 단위로 커밋해줘` as explicit commit creation requests. `커밋 메시지 작성해줘` authorizes only a draft. In the `knot-feature` flow (root `AGENTS.md`, 「기능 구현 요청 파이프라인」), the completion condition 「개발까지」 is the explicit commit creation request. Do not amend, rebase, or reset unless the user explicitly asks for that operation.
 - Preserve existing user changes and report pre-existing staged or dirty files before staging.
 - Do not claim a test or formatting check passed without running it and reporting the result.
 

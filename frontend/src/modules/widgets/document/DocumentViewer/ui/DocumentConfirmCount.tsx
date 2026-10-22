@@ -43,7 +43,7 @@ export default function DocumentConfirmCount({
         <Trigger
           {...triggerProps}
           onPointerEnter={() => {
-            triggerProps.onPointerEnter();
+            triggerProps.onPointerEnter?.();
             // 앞선 조회가 실패했으면 팝오버를 여는 김에 다시 조회해요
             retryIfFailed();
           }}

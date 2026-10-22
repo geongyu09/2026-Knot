@@ -53,4 +53,15 @@ const Trigger = styled.button<{ $isOpen: boolean }>`
     outline: 2px solid ${({ theme }) => theme.sub.accent[500]};
     outline-offset: 2px;
   }
+
+  /* 손가락으로 누를 때는 보이는 크기(38px)는 그대로 두고 누르는 영역만 44px로 넓혀요(RESP-R9) */
+  @media (pointer: coarse) {
+    position: relative;
+
+    &::after {
+      position: absolute;
+      inset: -0.1875rem; /* 3px */
+      content: "";
+    }
+  }
 `;

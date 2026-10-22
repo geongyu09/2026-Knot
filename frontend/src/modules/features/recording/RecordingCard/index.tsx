@@ -1,4 +1,5 @@
 import useMeQuery from "@api/queries/useMeQuery";
+import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
 import Divider from "@primitives/ui/Divider";
 
@@ -54,6 +55,10 @@ const Title = styled.h1`
   color: ${({ theme }) => theme.neutral[800]};
   overflow-wrap: break-word;
   ${({ theme }) => theme.text.title01};
+  /* 모바일은 제목을 40px에서 26px로 줄여요 */
+  ${MEDIA_QUERY.mobile} {
+    ${({ theme }) => theme.text.heading02};
+  }
 `;
 
 const Help = styled.p`

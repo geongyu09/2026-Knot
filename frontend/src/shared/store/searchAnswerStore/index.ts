@@ -36,12 +36,33 @@ interface StartSearchAnswerParams {
   retryOf?: SearchAnswerRetryTarget;
 }
 
+/** 화면이 받고 있지 않은, 서버에서 만들고 있는 답변 */
+export interface SearchAnswerResumeTarget {
+  question: string;
+
+  conversationId: number;
+
+  questionMessageId: number;
+
+  answerMessageId: number;
+
+  /** 메시지 조회로 받은, 지금까지 저장된 본문 */
+  text: string;
+}
+
 interface SearchAnswerActions {
   /**
    * 질문을 보내거나 실패한 답변을 다시 요청하며 이전 답변을 비우고 접수 대기로 바꾼 뒤, 이번 요청의 컨트롤러를 돌려줘요.
    * 이미 접수 대기·생성 중이면 아무것도 바꾸지 않고 `null`을 돌려줘요(SEARCH-R6).
    */
   start: (params: StartSearchAnswerParams) => AbortController | null;
+
+  /**
+   * 화면이 받고 있지 않은, 서버에서 만들고 있는 답변을 이어 받기 시작해요(SEARCH-R8).
+   * 이미 접수된 답변이라 접수 대기를 거치지 않고 저장된 본문을 든 생성 중으로 바꾼 뒤, 이번 연결의 컨트롤러를 돌려줘요.
+   * 이미 접수 대기·생성 중이면 아무것도 바꾸지 않고 `null`을 돌려줘요.
+   */
+  resume: (target: SearchAnswerResumeTarget) => AbortController | null;
 
   /** 도착한 이벤트 하나를 답변에 반영해요. 지금 요청의 이벤트가 아니면 버려요 */
   applyEvent: (
@@ -62,6 +83,12 @@ interface SearchAnswerActions {
    * accepted 뒤면 받은 답변을 두고 실패로 바꿔요(SEARCH-R5). 지금 요청이 아니면 아무것도 바꾸지 않고 `false`예요.
    */
   fail: (controller: AbortController, error: unknown) => boolean;
+
+  /**
+   * 다시 연결해도 끝을 받지 못해 이어 받기를 그만두고 처음 상태로 돌아가요. 지금 요청이 아니면 아무것도 바꾸지 않아요.
+   * 끝난 방식을 모르니 실패로 그리지 않고, 화면은 다시 조회한 저장된 메시지로 그 답변을 그려요.
+   */
+  release: (controller: AbortController) => void;
 
   /** 받고 있는 스트림을 끊고 처음 상태로 돌아가요. 서버는 답변을 계속 만들어요(SEARCH-R8) */
   abort: () => void;
@@ -88,7 +115,7 @@ const IDLE_STATE: SearchAnswerState = {
  *
  * 상태 규칙은 모두 여기에 둬요. 이벤트를 답변에 반영하는 규칙은 같은 폴더의 `reduceSearchStreamEvent`가 맡아요.
  * 요청 하나가 끝나기 전에 끊거나 새 질문을 보내면 늦게 도착한 이벤트·결과가 새 답변을 덮어쓸 수 있어서,
- * 요청이 부르는 동작(`applyEvent`·`settle`·`fail`)은 받은 컨트롤러가 지금 컨트롤러와 같을 때만 반영해요.
+ * 요청이 부르는 동작(`applyEvent`·`settle`·`fail`·`release`)은 받은 컨트롤러가 지금 컨트롤러와 같을 때만 반영해요.
  * 질문 전송 요청과 주소 이동은 `@hooks/domain/search/useSearchAnswerControl`이 맡아요.
  * 화면은 도메인 훅으로 읽고, 테스트는 답변이 테스트끼리 새지 않도록 `abort`로 초기화해요.
  */
@@ -115,6 +142,16 @@ export const useSearchAnswerStore = create<
         answerMessageId: retryOf?.answerMessageId ?? null,
         controller,
       });
+
+      return controller;
+    },
+
+    resume: (target) => {
+      const { status } = get();
+      if (status === "SENDING" || status === "STREAMING") return null;
+
+      const controller = new AbortController();
+      set({ ...IDLE_STATE, ...target, status: "STREAMING", controller });
 
       return controller;
     },
@@ -147,6 +184,12 @@ export const useSearchAnswerStore = create<
       });
 
       return false;
+    },
+
+    release: (controller) => {
+      if (!isCurrent(controller)) return;
+
+      set(IDLE_STATE);
     },
 
     abort: () => {

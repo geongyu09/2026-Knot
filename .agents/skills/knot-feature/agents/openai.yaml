@@ -1,0 +1,4 @@
+interface:
+  display_name: "Knot Feature"
+  short_description: "「○○ 기능 구현해 줘」를 기능 요구사항, QA 시트, 이슈, 구현, PR까지 잇는 입구"
+  default_prompt: "Use $knot-feature to take this Knot feature request from requirements through issue, implementation and PR."
