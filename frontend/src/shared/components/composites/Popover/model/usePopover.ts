@@ -6,9 +6,14 @@ import {
   useState,
 } from "react";
 
+import useKeyDown from "@hooks/common/useKeyDown";
 import useTimeout from "@hooks/common/useTimeout";
 
-import type { PopoverPlacement, PopoverTriggerProps } from "../types/popover";
+import type {
+  PopoverOpenOn,
+  PopoverPlacement,
+  PopoverTriggerProps,
+} from "../types/popover";
 import { getPopoverPosition } from "../utils/getPopoverPosition";
 
 /** 포인터가 트리거와 팝오버 사이 8px 틈을 지나는 동안 닫지 않고 기다리는 시간 */
@@ -17,20 +22,23 @@ const CLOSE_DELAY_MS = 150;
 interface UsePopoverParams {
   /** 트리거의 어느 가장자리에 맞출지 */
   placement: PopoverPlacement;
+  /** 무엇으로 열지 */
+  openOn: PopoverOpenOn;
 }
 
 /**
- * 트리거에 포인터를 올리면 팝오버를 열고, 트리거와 팝오버 밖으로 나가면 닫는 상태.
+ * 트리거로 팝오버를 여닫는 상태. `openOn`이 `hover`면 포인터를 올려 열고, `click`이면 눌러서 열어요.
  *
  * 팝오버는 `body`에 따로 그려져서 DOM으로는 트리거 밖에 있어요.
- * 그래서 트리거(`triggerProps`)와 내용(`contentProps`) 양쪽에 같은 여닫기 함수를 붙이고, 벗어나면 바로 닫지 않고
+ * 그래서 `hover`일 때는 트리거(`triggerProps`)와 내용(`contentProps`) 양쪽에 같은 여닫기 함수를 붙이고, 벗어나면 바로 닫지 않고
  * {@link CLOSE_DELAY_MS}만큼 기다려요. 그 사이 다른 쪽에 들어오면 닫기를 취소해요.
+ * 바깥 누름도 같은 이유로 트리거와 내용 둘 다의 밖을 눌렀을 때만 닫아요.
  *
  * 위치는 팝오버를 그린 뒤 크기를 재서 정해요. 크기를 알아야 위로 뒤집을지 정할 수 있어서예요.
  * 열려 있는 동안 트리거를 품은 영역이 스크롤되거나 창 크기가 바뀌면 트리거와 자리가 어긋나므로 닫아요.
  * 내용 안이나 트리거와 관계없는 영역이 스크롤될 때는 닫지 않아요.
  */
-const usePopover = ({ placement }: UsePopoverParams) => {
+const usePopover = ({ placement, openOn }: UsePopoverParams) => {
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
 
@@ -60,6 +68,10 @@ const usePopover = ({ placement }: UsePopoverParams) => {
   const handlePointerLeave = () => {
     startCloseTimer();
   };
+
+  const handleClick = () => setIsOpen((prev) => !prev);
+
+  useKeyDown({ key: "Escape", isEnabled: isOpen, onKeyDown: close });
 
   // 여기서 바꾼 좌표는 브라우저가 그리기 전에 반영돼요. 그래서 이전 좌표나 (0, 0)에 잠깐 보이지 않아요
   useLayoutEffect(() => {
@@ -91,13 +103,24 @@ const usePopover = ({ placement }: UsePopoverParams) => {
       close();
     };
 
+    // 트리거를 누를 때도 닫으면 이어지는 click이 다시 열어 버려서, 트리거 안은 바깥으로 보지 않아요
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!(event.target instanceof Node)) return;
+      if (triggerRef.current?.contains(event.target)) return;
+      if (contentRef.current?.contains(event.target)) return;
+
+      close();
+    };
+
     // 캡처 단계에서 들어야 페이지뿐 아니라 안쪽 스크롤 영역의 스크롤도 잡혀요
     window.addEventListener("scroll", handleScroll, true);
     window.addEventListener("resize", close);
+    document.addEventListener("pointerdown", handlePointerDown);
 
     return () => {
       window.removeEventListener("scroll", handleScroll, true);
       window.removeEventListener("resize", close);
+      document.removeEventListener("pointerdown", handlePointerDown);
     };
   }, [isOpen]);
 
@@ -107,11 +130,14 @@ const usePopover = ({ placement }: UsePopoverParams) => {
     onPointerLeave: handlePointerLeave,
   };
 
-  const triggerProps: PopoverTriggerProps = {
-    ref: setTriggerRef,
-    ...hoverProps,
+  const triggerProps: PopoverTriggerProps =
+    openOn === "hover"
+      ? { ref: setTriggerRef, ...hoverProps }
+      : { ref: setTriggerRef, onClick: handleClick, "aria-expanded": isOpen };
+  const contentProps = {
+    ref: contentRef,
+    ...(openOn === "hover" ? hoverProps : {}),
   };
-  const contentProps = { ref: contentRef, ...hoverProps };
 
   return { isOpen, position, triggerProps, contentProps };
 };

@@ -1190,6 +1190,8 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
       waitForOpen: () => waitFor(() => expect(stream).toBeDefined()),
       send: (event: string, data: object) =>
         stream?.enqueue(encoder.encode(toFrame(event, data))),
+      /** 끝 이벤트 없이 연결을 닫아요 */
+      close: () => stream?.close(),
     };
   };
 
@@ -1703,6 +1705,184 @@ describe("WorkspaceLayout의 탐색 질문 흐름", () => {
     expect(within(lastTurn).getByText(FOLLOW_UP_QUESTION)).toBeInTheDocument();
     expect(within(lastTurn).getByText(answerText)).toBeInTheDocument();
     expect(router.state.location.pathname).toBe(CONVERSATION_PATH);
+  });
+
+  describe("끊긴 답변 이어 보기 (SEARCH-R8)", () => {
+    const SEARCH_ANSWER_EVENTS_PATH =
+      "*/api/v1/workspaces/:workspaceId/search/conversations/:conversationId/answers/:answerId/events";
+    const { questionMessageId, answerMessageId } =
+      searchQuestionAnswerStreamResponse;
+    const savedItems = searchMessagesResponse.items;
+    const savedText = "초기 스키마는 ";
+    const restText = "백엔드 팀이 정리했어요.";
+    const fullText = savedText + restText;
+
+    /** 저장된 턴 뒤에, 서버가 아직 만들고 있는 후속 질문의 답변이 저장된 데까지 있어요 */
+    const streamingItems = [
+      ...savedItems,
+      { ...savedItems[0], id: questionMessageId, content: FOLLOW_UP_QUESTION },
+      {
+        ...savedItems[1],
+        id: answerMessageId,
+        content: savedText,
+        status: "STREAMING",
+        evidences: [],
+      },
+    ];
+
+    const snapshotFrame = {
+      event: "snapshot",
+      data: { answerId: answerMessageId, content: savedText, status: "STREAMING" },
+    };
+    const restFrames = [
+      { event: "delta", data: { answerId: answerMessageId, text: restText } },
+      {
+        event: "completed",
+        data: { answerId: answerMessageId, status: "COMPLETED" },
+      },
+    ];
+
+    /** 이번 테스트에서만 재연결 요청에 넘긴 프레임을 한 번에 보내고 닫아요. 요청 횟수를 세요 */
+    const respondAnswerEvents = (frames: { event: string; data: object }[]) => {
+      const requests = { count: 0 };
+      mockServer.use(
+        http.get(SEARCH_ANSWER_EVENTS_PATH, () => {
+          requests.count += 1;
+
+          return new HttpResponse(
+            frames.map(({ event, data }) => toFrame(event, data)).join(""),
+            { headers: { "Content-Type": "text/event-stream" } },
+          );
+        }),
+      );
+
+      return requests;
+    };
+
+    const getLastTurn = () => {
+      const turns = within(getConversation()).getAllByRole("article");
+      return turns[turns.length - 1];
+    };
+
+    it("후속 질문의 답변이 끝 이벤트 없이 끊기면 실패 안내 대신 다시 연결해 받은 답변을 끝까지 보여준다", async () => {
+      const stream = respondWithControlledSse(SEARCH_QUESTIONS_PATH);
+      const reconnects = respondAnswerEvents([snapshotFrame, ...restFrames]);
+      renderLayout(CONVERSATION_PATH, <SearchConversation />);
+      await findInConversation(savedItems[0].content);
+
+      await sendFromDock(FOLLOW_UP_QUESTION);
+      await stream.waitForOpen();
+      stream.send("accepted", {
+        conversationId: Number(CONVERSATION_ID),
+        questionMessageId,
+        answerMessageId,
+      });
+      stream.send("delta", { answerMessageId, text: "초기" });
+      await findInConversation("초기");
+      stream.close();
+
+      await findInConversation(fullText);
+      expect(reconnects.count).toBe(1);
+      expect(
+        within(getConversation()).queryByText(FAILED_TEXT),
+      ).not.toBeInTheDocument();
+    });
+
+    it("답변을 만들고 있는 대화를 열면 저장된 데부터 이어 받아 끝까지 보여주고, 끝나면 메시지를 다시 조회한다", async () => {
+      respondMessages(streamingItems);
+      respondAnswerEvents([snapshotFrame, ...restFrames]);
+      // 레이아웃도 같은 메시지를 따로 조회해서 횟수 대신 순서로 봐요
+      const requestOrder: string[] = [];
+      mockServer.events.on("request:start", ({ request }) => {
+        const { pathname } = new URL(request.url);
+        if (pathname.endsWith("/events")) requestOrder.push("events");
+        if (pathname.endsWith("/messages")) requestOrder.push("messages");
+      });
+      renderLayout(CONVERSATION_PATH, <SearchConversation />);
+
+      await findInConversation(fullText);
+      expect(
+        within(getLastTurn()).getByText(FOLLOW_UP_QUESTION),
+      ).toBeInTheDocument();
+      expect(within(getConversation()).getAllByRole("article")).toHaveLength(
+        savedItems.filter(({ role }) => role === "USER").length + 1,
+      );
+      await waitFor(() =>
+        expect(requestOrder.lastIndexOf("messages")).toBeGreaterThan(
+          requestOrder.indexOf("events"),
+        ),
+      );
+      mockServer.events.removeAllListeners();
+    });
+
+    it("이어 받는 동안에는 새 질문을 보낼 수 없다 (SEARCH-R6)", async () => {
+      respondMessages(streamingItems);
+      // 재연결 스트림을 열어 두기만 해서 답변이 끝나지 않아요
+      mockServer.use(
+        http.get(
+          SEARCH_ANSWER_EVENTS_PATH,
+          () =>
+            new HttpResponse(new ReadableStream(), {
+              headers: { "Content-Type": "text/event-stream" },
+            }),
+        ),
+      );
+      renderLayout(CONVERSATION_PATH, <SearchConversation />);
+      await findInConversation(savedText.trim());
+
+      fireEvent.change(
+        await screen.findByRole("textbox", { name: "무엇이든 요청하세요" }),
+        { target: { value: QUESTION } },
+      );
+
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "보내기" })).toBeDisabled(),
+      );
+    });
+
+    it("다시 연결한 답변이 실패로 끝나면 그 자리에 실패 안내와 다시 시도를 보여준다 (SEARCH-R5)", async () => {
+      respondMessages(streamingItems);
+      respondAnswerEvents([
+        snapshotFrame,
+        {
+          event: "failed",
+          data: {
+            answerId: answerMessageId,
+            status: "FAILED",
+            code: "LLM_STREAM_FAILED",
+          },
+        },
+      ]);
+      renderLayout(CONVERSATION_PATH, <SearchConversation />);
+
+      await waitFor(() =>
+        expect(within(getLastTurn()).getByText(FAILED_TEXT)).toBeInTheDocument(),
+      );
+      expect(
+        within(getLastTurn()).getByRole("button", { name: "다시 시도" }),
+      ).toBeInTheDocument();
+    });
+
+    it("다시 연결해도 끝을 받지 못하면 세 번까지만 연결하고 저장된 답변으로 둔다", async () => {
+      respondMessages(streamingItems);
+      const reconnects = respondAnswerEvents([snapshotFrame]);
+      const { queryClient } = renderLayout(
+        CONVERSATION_PATH,
+        <SearchConversation />,
+      );
+
+      await waitFor(() => expect(reconnects.count).toBe(3), { timeout: 4000 });
+      await waitFor(() =>
+        expect(useSearchAnswerStore.getState().status).toBe("IDLE"),
+      );
+      await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+      expect(reconnects.count).toBe(3);
+      expect(within(getLastTurn()).getByText(savedText.trim())).toBeInTheDocument();
+      expect(
+        within(getConversation()).queryByText(FAILED_TEXT),
+      ).not.toBeInTheDocument();
+    });
   });
 
   describe("GNB 탐색으로 돌아오기", () => {

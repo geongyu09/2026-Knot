@@ -1,4 +1,5 @@
 import type {
+  SearchAnswerEventsStream,
   SearchAnswerRetryStream,
   SearchAnswerStream,
   SearchConversations,
@@ -83,6 +84,23 @@ export const searchAnswerRetryStreamResponse = {
     },
   ],
 } satisfies SearchAnswerRetryStream;
+
+/**
+ * 끊긴 답변에 다시 연결했을 때의 응답이에요.
+ * 서버가 그때까지 저장한 본문을 snapshot으로 먼저 보내고 나머지 조각을 이어 보내요. 답변 ID는 핸들러가 요청 경로에서 채워요.
+ */
+export const searchAnswerEventsStreamResponse = {
+  content: "DB는 지난주 ",
+  deltas: ["기술 선정 회의에서 ", "PostgreSQL로 ", "정해졌어요."],
+  evidences: [
+    {
+      documentId: 11,
+      title: "DB 기술 선정 회의록",
+      topic: "DB 기술 선정",
+      rank: 1,
+    },
+  ],
+} satisfies SearchAnswerEventsStream;
 
 /**
  * 이미 질문이 오간 탐색 대화의 메시지 조회 응답이에요.

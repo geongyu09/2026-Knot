@@ -61,6 +61,7 @@ const captureAnswerLeft = ({ sentAt, leftAt }: CaptureAnswerLeftParams) =>
  *
  * - 답변 결과(`search_answer_result`): 질문을 보낸 뒤 완료 · 중지 · 실패 · 접수 전 실패로 끝나면 보내요. 홈 · 문서로 옮겨도 답변은 뒤에서 계속 받아 끝나면 보내요.
  *   받기를 끊었으면(다른 대화를 열거나 워크스페이스를 나감) 결과가 없어 보내지 않아요.
+ *   돌아와서 서버의 답변을 이어 받은 것도 보낸 질문이 아니라서 보내지 않아요.
  * - 떠남(`search_answer_left`): 답변이 끝나기 전에 그 답변의 대화 주소에서 다른 주소로 옮기면, 질문을 보낸 뒤 기다린 시간을 보내요.
  *   다른 워크스페이스로 옮기거나 워크스페이스 밖으로 나가는 것도 떠남이에요.
  *   접수 전에는 대화 주소가 없어 세지 않아요. 접수되면 앱이 그 대화로 옮겨 가요.
@@ -85,6 +86,12 @@ const useSearchAnswerAnalytics = () => {
 
     return useSearchAnswerStore.subscribe((state, previous) => {
       if (isAnswering(state) && !isAnswering(previous)) {
+        // 서버에서 만들고 있던 답변을 이어 받으면 접수 대기 없이 바로 생성 중이 돼요. 보낸 질문이 아니라 결과를 세지 않아요
+        if (state.status === "STREAMING") {
+          trackAnswerResult = null;
+          return;
+        }
+
         // 다시 시도는 보낼 때부터 질문 메시지 id가 있고, 첫 질문은 아직 대화 id가 없어요
         sentAtRef.current = Date.now();
         trackAnswerResult = createSearchAnswerResultTracker({

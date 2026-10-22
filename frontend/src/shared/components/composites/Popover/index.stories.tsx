@@ -37,7 +37,11 @@ const Stage = styled.div<{ isAtBottom?: boolean }>`
 `;
 
 /**
- * 트리거에 포인터를 올리면 내용을 트리거 근처에 띄우는 팝오버예요. 문서 보기의 「2명 확인했어요」에 올리면 뜨는 확인한 사람 목록이 이 팝오버를 씁니다.
+ * 트리거에 포인터를 올리거나 트리거를 누르면 내용을 트리거 근처에 띄우는 팝오버예요. 문서 보기의 「2명 확인했어요」에 올리면 뜨는 확인한 사람 목록이 이 팝오버를 씁니다.
+ *
+ * **무엇으로 여나 (`openOn`)**
+ * - `hover`(기본값): 포인터를 올리면 열려요. 잠깐 보고 마는 정보에 써요. 예: 확인한 사람 목록
+ * - `click`: 트리거를 누르면 열리고 다시 누르면 닫혀요. 안에서 읽을 거리가 많은 패널에 써요. 예: GNB의 새 소식 패널
  *
  * **어떻게 뜨나**
  * - 트리거 8px 아래에 `placement`에 맞춰 왼쪽 끝(`bottom-start`)이나 오른쪽 끝(`bottom-end`)을 맞춰 떠요.
@@ -47,8 +51,9 @@ const Stage = styled.div<{ isAtBottom?: boolean }>`
  *
  * **동작 규칙**
  * - 포인터가 트리거에서 팝오버로 건너가는 동안 잠깐 둘 다 벗어나므로, 벗어나자마자 닫지 않고 잠시 기다렸다 닫아요.
- * - 닫히며 접히는 동안 트리거에 다시 올리면 그대로 다시 펼쳐져요.
- * - 포인터로만 열려요. 키보드로 여는 동작은 아직 없어요.
+ * - 닫히며 접히는 동안 다시 열면 그대로 다시 펼쳐져요.
+ * - 어느 방식이든 바깥을 누르거나 ESC를 누르면 닫혀요.
+ * - `hover`는 포인터로만 열려요. 키보드로 열려면 트리거가 버튼인 `click`을 써요.
  *
  * 무엇을 어떤 모양으로 보여줄지는 쓰는 쪽이 정하므로 이 컴포넌트는 도메인을 알지 못해요.
  */
@@ -63,11 +68,13 @@ const meta = {
   },
   argTypes: {
     placement: { control: "radio", options: ["bottom-start", "bottom-end"] },
+    openOn: { control: "radio", options: ["hover", "click"] },
     content: { control: false },
     children: { control: false },
   },
   args: {
     placement: "bottom-end",
+    openOn: "hover",
     content: (
       <PeopleCard>
         <li>흑곰</li>
