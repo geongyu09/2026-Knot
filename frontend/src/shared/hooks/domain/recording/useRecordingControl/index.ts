@@ -1,4 +1,5 @@
 import { HTTP_ERROR_TYPE, isHttpError } from "@api/httpClient/error";
+import { markRecordingStart } from "@utils/recordingStartTrace";
 import useCompleteRecordingAudioChunkMutation from "@api/mutations/useCompleteRecordingAudioChunkMutation";
 import useCompleteRecordingAudioUploadMutation from "@api/mutations/useCompleteRecordingAudioUploadMutation";
 import useEndRecordingMutation from "@api/mutations/useEndRecordingMutation";
@@ -343,6 +344,7 @@ const useRecordingControl = () => {
           audioMode: RECORDING_AUDIO_MODE,
         });
         if (!isConnected) return "microphoneUnavailable";
+        markRecordingStart("mic-connected");
       } catch (error) {
         if (!(error instanceof UnsupportedPcmCollectorError)) {
           // 서버가 받는 형식으로 녹음할 수 없는 브라우저예요. 안내는 다른 실패와 함께 정해요(#465)
@@ -391,6 +393,7 @@ const useRecordingControl = () => {
 
       try {
         let session = await requestStart();
+        markRecordingStart("server-started");
 
         if (session.status === "ENDED" || session.status === "DISCARDED") {
           clearRecordingStartProof();

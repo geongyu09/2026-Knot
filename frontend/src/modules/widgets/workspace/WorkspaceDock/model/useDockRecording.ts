@@ -8,6 +8,7 @@ import useRecordingStartRefusedDialog from "@hooks/domain/recording/useRecording
 import useServerRecording from "@hooks/domain/recording/useServerRecording";
 import { PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { formatRecordingTime } from "@utils/formatRecordingTime";
+import { markRecordingStart } from "@utils/recordingStartTrace";
 import { trackRecordingStartResult } from "@utils/trackRecordingStartResult";
 import { useEffect, useState } from "react";
 import { useMatch, useParams } from "react-router";
@@ -84,6 +85,7 @@ export const useDockRecording = () => {
     if (!workspaceId) return;
 
     const startedAt = performance.now();
+    markRecordingStart("click");
     setIsRecordingStarting(true);
     const result = await startRecording(Number(workspaceId));
     trackRecordingStartResult({
@@ -110,6 +112,7 @@ export const useDockRecording = () => {
     }
     if (result !== "started") return;
 
+    markRecordingStart("navigated");
     navigateToRecording({ workspaceId });
   };
 

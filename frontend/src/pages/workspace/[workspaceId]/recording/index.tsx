@@ -1,6 +1,8 @@
 import styled from "@emotion/styled";
 import RecordingCard from "@features/recording/RecordingCard";
 import RecorderBar from "@widgets/recording/RecorderBar";
+import { markRecordingStart } from "@utils/recordingStartTrace";
+import { useEffect } from "react";
 
 /**
  * 녹음 화면 (`/workspace/:workspaceId/recording`)
@@ -16,6 +18,12 @@ import RecorderBar from "@widgets/recording/RecorderBar";
  * @see https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=1635-2763 녹음/다른 화면 이동
  */
 export default function RecordingPage() {
+  // 독에서 누른 뒤 이 화면이 그려지기까지 걸린 시간을 개발 서버 콘솔에 남겨요
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => markRecordingStart("screen-painted"));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
   return (
     <Container>
       <PageColumn>
