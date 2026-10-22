@@ -16,6 +16,7 @@ import { RECORDING_AUDIO_MODE } from "@constants/recording";
 import { TOAST_MESSAGES } from "@constants/toastMessages";
 import useNavigateToRecordingDocuments from "@hooks/domain/recording/useNavigateToRecordingDocuments";
 import useRecordingEndedAnalytics from "@hooks/domain/recording/useRecordingEndedAnalytics";
+import useRecordingStartAnalytics from "@hooks/domain/recording/useRecordingStartAnalytics";
 import useNavigateToWorkspaceHome from "@hooks/domain/workspace/useNavigateToWorkspaceHome";
 import { useToast } from "@provider/context/toastContext";
 import {
@@ -714,11 +715,15 @@ const useRecordingControl = () => {
     openEndRecordingDialog,
   ]);
 
+  // 독의 시작과 녹음 바의 이어서 녹음이 이 함수들로 마이크를 받아요. 받지 못해 안내 창을 띄운 실패는 사용 기록으로도 보내요
+  const { startAndTrackRecording, resumeAndTrackRecording } =
+    useRecordingStartAnalytics({ startRecording, resumeRecording });
+
   return {
-    startRecording,
+    startRecording: startAndTrackRecording,
     pauseRecording,
     syncPause,
-    resumeRecording,
+    resumeRecording: resumeAndTrackRecording,
     sendHeartbeat,
     endRecording,
     endRecordingWithoutConfirm,

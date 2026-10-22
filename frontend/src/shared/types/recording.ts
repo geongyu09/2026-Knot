@@ -9,3 +9,6 @@ export type CurrentRecordingStatus = "recording" | "paused" | "organizing";
  * `PCM16_CHUNKS_V1`은 녹음 중 PCM 조각을 바로 올리는 방식이에요. 시작 요청의 `audioMode`와 같은 값이에요
  */
 export type RecordingAudioMode = "FINAL_WEBM_V1" | "PCM16_CHUNKS_V1";
+
+/** 브라우저가 알려 주는 마이크 권한 상태. 마이크 권한을 조회할 수 없는 브라우저면 `unsupported`예요 */
+export type MicrophonePermission = PermissionState | "unsupported";

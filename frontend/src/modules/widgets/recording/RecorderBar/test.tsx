@@ -672,6 +672,43 @@ describe("RecorderBar", () => {
       expect(screen.getByText("녹음 중")).toBeInTheDocument();
     });
 
+    it("받지 못한 이유를 녹음 바에서 이어서 녹음하지 못한 사용 기록으로 남긴다", async () => {
+      vi.useRealTimers();
+      await disconnectAndDeny(1);
+
+      await clickResume();
+
+      await waitFor(() =>
+        expect(captureAnalyticsEvent).toHaveBeenCalledWith({
+          event: "recording_start_failed",
+          properties: {
+            reason: "microphone_unavailable",
+            error_name: "NotAllowedError",
+            permission_before: "unsupported",
+            permission_after: "unsupported",
+            attempt: expect.any(Number),
+            surface: "recorder_bar",
+            workspace_id: Number(WORKSPACE_ID),
+          },
+        }),
+      );
+    });
+
+    it("알림을 닫은 뒤 다시 눌러 이어 가면 그 시도는 남기지 않는다", async () => {
+      vi.useRealTimers();
+      await disconnectAndDeny(1);
+      await clickResume();
+      await waitFor(() =>
+        expect(captureAnalyticsEvent).toHaveBeenCalledTimes(1),
+      );
+      confirmMicAlert();
+
+      await clickResume();
+
+      expect(screen.getByText("녹음 중")).toBeInTheDocument();
+      expect(captureAnalyticsEvent).toHaveBeenCalledTimes(1);
+    });
+
     it("알림을 닫은 뒤 다시 눌러도 마이크를 못 받으면 같은 알림을 다시 띄운다", async () => {
       await disconnectAndDeny(2);
       await clickResume();
