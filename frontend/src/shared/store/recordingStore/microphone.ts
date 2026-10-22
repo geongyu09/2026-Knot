@@ -1,4 +1,5 @@
 import { captureCaughtError } from "@provider/sentry";
+import { markRecordingStart } from "@utils/recordingStartTrace";
 
 import MicrophoneConnection, {
   type MicrophoneConnectionParams,
@@ -72,6 +73,7 @@ export default class Microphone {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      markRecordingStart("mic-granted");
 
       if (requestedGeneration !== this.generation) {
         stopTracks(stream);
@@ -84,6 +86,7 @@ export default class Microphone {
         onData: this.onData,
         onLost: this.onLost,
       });
+      markRecordingStart("audio-ready");
 
       return this.connection;
     } catch (error) {

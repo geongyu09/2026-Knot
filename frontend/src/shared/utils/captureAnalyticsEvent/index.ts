@@ -10,6 +10,17 @@ import type { RecordingAudioMode } from "@/shared/types/recording";
  * 문서 제목 · 내용은 넣지 않아요. 탐색 질문 글 · 답변 글은 MVP 단계에서 자세히 보려고 `search_answer_result`에만 넣어요.
  */
 interface AnalyticsEventMap {
+  /** 독의 녹음 버튼을 누른 뒤 녹음을 열었는지 결과가 정해졌어요. 누른 것은 자동 클릭으로 세고, 열렸는지와 기다린 시간은 여기서만 보여요 */
+  recording_start_result: {
+    result: "started" | "microphone_unavailable" | "refused" | "network_failed" | "failed" | "uploading";
+    /** 누른 뒤 결과가 정해질 때까지 기다린 시간(초, 소수 첫째 자리까지). 마이크 권한 창을 보고 있던 시간도 들어가요 */
+    wait_seconds: number;
+    workspace_id: number;
+  };
+  /** 접힌 독이 질문 입력창으로 펼쳐졌어요. 버튼은 자동 클릭으로도 보이지만, 화면 아무 데서나 글자를 쳐서 펼친 것은 여기서만 보여요 */
+  dock_chat_opened: {
+    trigger: "button" | "typing";
+  };
   /** 녹음을 끝내고 업로드 결과가 정해졌어요. 끝내지 못했으면 보내지 않아요 */
   recording_ended: {
     result: "uploaded" | "not_uploaded";

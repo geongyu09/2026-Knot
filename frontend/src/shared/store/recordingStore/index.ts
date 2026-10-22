@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { markRecordingStart } from "@utils/recordingStartTrace";
 
 import type { RecordingAudioMode } from "@/shared/types/recording";
 
@@ -183,6 +184,7 @@ export const useRecordingStore = create<RecordingState & RecordingActions>()((
       if (audioMode === "PCM16_CHUNKS_V1") {
         pcmCollector?.close();
         pcmCollector = await createPcmCollector(connection.stream);
+        markRecordingStart("pcm-ready");
       }
 
       return true;

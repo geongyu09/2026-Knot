@@ -85,8 +85,10 @@ const Container = styled.section`
   }
 `;
 
+/** 상태·시간 다음의 남은 폭을 파형이 다 채워요 */
 const Info = styled.div`
   display: flex;
+  flex: 1;
   align-items: center;
   gap: 1rem; /* 16px */
   min-width: 0;

@@ -54,8 +54,9 @@ if (process.env.NODE_ENV === "development") {
 const enableApiMocking = async () => {
   if (process.env.API_MOCKING !== "true") return;
 
-  const { mockWorker, reactivateMockWorkerOnFocus } =
+  const { mockWorker, reactivateMockWorkerOnFocus, installMockScenarioSwitch } =
     await import("@api/mock/browser");
+  installMockScenarioSwitch();
   await mockWorker.start();
   reactivateMockWorkerOnFocus();
 };
