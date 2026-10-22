@@ -129,9 +129,79 @@ export const smoothLevel = ({ previous, next, attack, release }: SmoothLevelPara
 export const prefersReducedMotion = () =>
   typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-/* ---------- 랜딩 입자 엔진과 똑같이 쓰는 파형·포인터·파동 계산 ---------- */
+/* ---------- 소리 이력과 랜딩 입자 엔진과 똑같이 쓰는 포인터·파동 계산 ---------- */
 
-/** 파형 전체가 커졌다 작아지는 숨. 랜딩 녹음 장면의 `level`이에요 */
+/** 소리 크기 이력. 왼쪽이 오래된 것, 오른쪽 끝이 지금이고 일정 간격마다 한 칸씩 왼쪽으로 밀려요 */
+export interface LevelHistory {
+  /** 칸마다의 소리 크기(0~1). 마지막 칸이 지금이에요 */
+  values: Float32Array;
+  /** 한 칸이 맡는 시간(ms) */
+  intervalMs: number;
+  /** 마지막으로 칸을 민 시각(ms). `null`이면 아직 시작 전이에요 */
+  lastShiftAt: number | null;
+}
+
+/** 칸 수와 칸 하나가 맡는 시간으로 빈 이력을 만들어요 */
+export const createLevelHistory = (columns: number, intervalMs: number): LevelHistory => ({
+  values: new Float32Array(columns),
+  intervalMs,
+  lastShiftAt: null,
+});
+
+/** 이력을 비워 평평하게 만들어요. 일시정지하거나 소리를 읽을 수 없을 때 써요 */
+export const clearLevelHistory = (history: LevelHistory) => {
+  history.values.fill(0);
+  history.lastShiftAt = null;
+};
+
+/**
+ * 지금 소리 크기를 이력에 넣어요. 한 칸이 맡는 시간 안에서는 가장 큰 값을 남겨 짧은 소리도 보이고,
+ * 시간이 지나면 한 칸씩 왼쪽으로 밀고 새 칸은 지금 크기에서 시작해요. 탭이 오래 멈췄다 돌아오면 이력을 비우고 다시 시작해요.
+ */
+export const pushLevel = (history: LevelHistory, level: number, now: number) => {
+  const { values, intervalMs } = history;
+  const last = values.length - 1;
+  if (history.lastShiftAt === null) history.lastShiftAt = now;
+
+  let elapsed = now - history.lastShiftAt;
+  if (elapsed >= intervalMs * values.length) {
+    values.fill(0);
+    history.lastShiftAt = now;
+    elapsed = 0;
+  }
+  values[last] = Math.max(values[last], level);
+  while (elapsed >= intervalMs) {
+    values.copyWithin(0, 1);
+    values[last] = level;
+    history.lastShiftAt += intervalMs;
+    elapsed -= intervalMs;
+  }
+};
+
+/** 다음 칸으로 밀리기까지 얼마나 지났는지(0~1). 이력이 부드럽게 흘러가 보이도록 그릴 때 그만큼 왼쪽으로 당겨요 */
+export const levelHistoryPhase = (history: LevelHistory, now: number) =>
+  history.lastShiftAt === null ? 0 : Math.max(0, Math.min(1, (now - history.lastShiftAt) / history.intervalMs));
+
+interface SampleLevelHistoryParams {
+  history: LevelHistory;
+  /** 가로 위치(0~1). 0이 왼쪽, 1이 오른쪽 끝(지금)이에요 */
+  position: number;
+  /** `levelHistoryPhase`의 값. 그만큼 이력을 왼쪽으로 당겨 읽어요 */
+  phase: number;
+}
+
+/** 가로 위치의 소리 크기(0~1). 칸 사이는 매끄럽게 이어요 */
+export const sampleLevelHistory = ({ history, position, phase }: SampleLevelHistoryParams) => {
+  const { values } = history;
+  const last = values.length - 1;
+  const u = Math.max(0, position) * last + phase;
+  const left = Math.min(last, Math.floor(u));
+  const right = Math.min(last, left + 1);
+  const mix = Math.min(1, u - left);
+  return values[left] * (1 - mix) + values[right] * mix;
+};
+
+/** 파형 전체가 커졌다 작아지는 숨. 랜딩 녹음 장면과 문서 정리 그림이 써요. 녹음 중 파형은 소리 이력을 쓰고 이 숨은 쓰지 않아요 */
 export const waveBreath = (frame: number) =>
   0.62 + 0.38 * Math.sin(frame * 0.019) * Math.sin(frame * 0.0073 + 1.3);
 

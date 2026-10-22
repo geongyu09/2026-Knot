@@ -1,5 +1,8 @@
-/** 파형 막대 수. 랜딩 녹음 장면과 같아요 */
+/** 소리 이력의 칸 수. 오른쪽 끝이 지금이고 왼쪽으로 갈수록 오래된 소리예요. 녹음 화면 파형과 같아요 */
 export const SEED_WAVE_COLUMNS = 96;
+
+/** 한 칸이 맡는 시간(ms). 녹음 화면 파형과 같아 두 파형이 같은 흐름으로 보여요 */
+export const SEED_WAVE_INTERVAL_MS = 50;
 
 /** 파형 입자 수. 좁은 화면은 그리는 비용을 줄이려고 덜 써요 */
 export const SEED_PARTICLE_COUNT = { desktop: 2600, mobile: 1100 } as const;
@@ -11,11 +14,11 @@ export const SEED_MOBILE_BREAKPOINT = 760;
 export const SEED_WAVE_MAX_WIDTH = 360;
 export const SEED_WAVE_WIDTH_RATIO = 0.6;
 
-/** 파형이 위아래로 퍼지는 최대 높이(px). 랜딩의 무대 높이 20%를 독 자리에 맞춘 값이에요 */
+/** 소리가 가장 클 때 파형이 가운데에서 위아래로 퍼지는 거리(px). 알약 높이 60 안에 들어와요 */
 export const SEED_WAVE_AMPLITUDE = 22;
 
-/** 파형이 알약 밖으로 나가지 않게 가운데에서 위아래로 이만큼(px)까지만 퍼져요. 큰 소리는 잘리지 않고 부드럽게 눌려요 */
-export const SEED_WAVE_LIMIT = 24;
+/** 소리가 없을 때 남는 선의 두께(px). 녹음 화면 파형과 같아요 */
+export const SEED_WAVE_FLAT_AMPLITUDE = 1;
 
 /** 파형과 시간을 담는 알약의 높이(px). 독과 같은 60px이라 올리면 독으로 자연스럽게 이어져요 */
 export const SEED_PILL_HEIGHT = 60;
@@ -40,9 +43,6 @@ export const SEED_FADE_DELAY_MS = 140;
 /** 파형이 독 모양으로 모일 때 채팅 아이콘 한 변(px)과 녹음 칩 자리 구슬 반지름(px). 열린 독의 아이콘·구슬과 같은 크기예요 */
 export const SEED_ICON_SIZE = 32;
 export const SEED_ORB_RADIUS = 13;
-
-/** 파형은 랜딩처럼 늘 숨 쉬고, 목소리가 들어오면 이 배율만큼 더 커져요. 녹음 바 파형과 같아요 */
-export const SEED_WAVE_VOICE_GAIN = 0.5;
 
 /** 한 프레임이 이보다 오래 걸리는 일이 잦으면 입자 일부를 건너뛰어 가볍게 그려요(ms) */
 export const SEED_SLOW_FRAME_MS = 22;

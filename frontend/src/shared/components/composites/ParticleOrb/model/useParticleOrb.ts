@@ -1,4 +1,14 @@
-import { frameStep, prefersReducedMotion, smoothLevel, stepSpring, waveAmplitude } from "@utils/particleMotion";
+import {
+  clearLevelHistory,
+  createLevelHistory,
+  frameStep,
+  levelHistoryPhase,
+  prefersReducedMotion,
+  pushLevel,
+  sampleLevelHistory,
+  smoothLevel,
+  stepSpring,
+} from "@utils/particleMotion";
 import { measureAnalyserLevel } from "@utils/measureAudioLevel";
 import { sampleShapeTargets } from "@utils/sampleShapeTargets";
 import { useCallback, useEffect, useRef, type RefObject } from "react";
@@ -21,7 +31,7 @@ import {
   WAVE_DOT_SCALE,
   WAVE_SHAPE_COLUMNS,
   WAVE_SHAPE_FLAT_AMPLITUDE,
-  WAVE_SHAPE_GAIN,
+  WAVE_SHAPE_INTERVAL_MS,
   WAVE_SHAPE_SPAN_SCALE,
 } from "../constants/particleOrb";
 import type { ParticleOrbPalette, ParticleOrbShape, ParticleOrbTone } from "../types/particleOrb";
@@ -136,7 +146,7 @@ const drawBubble = (context: CanvasRenderingContext2D) => {
  * `typing`은 말풍선의 점들이 입력 중처럼 차례로 튀어요.
  * `disc`는 입자가 단색 원 안에 빽빽이 모이고 그 위에 테두리 고리를 둘러 한눈에 녹음 버튼으로 읽혀요. 입자가 조용히 모여야 단색 원이 차오르고,
  * 다른 모양으로 바뀌면 단색 원이 먼저 사라져 입자가 분해되는 것이 보여요. `scatter()`는 그때 입자를 바깥으로 살짝 흩뜨려요.
- * `wave`는 입자 전부가 구름처럼 흩어진 채 파형 윤곽을 이루고 조용할 때도 숨 쉬듯 일렁이며, 분석기가 있으면 목소리만큼 더 커져요. 일시정지면 평평한 선이에요.
+ * `wave`는 입자 전부가 구름처럼 흩어진 채 소리 크기의 흐름을 이뤄요. 오른쪽 끝이 지금이고 왼쪽으로 흘러가며, 조용하면 가는 선, 말하면 그 순간만 커져요. 일시정지면 평평한 선이에요.
  * `isWaiting`이면 구름이 빠르게 돌며 모였다 풀렸다 해요. 누른 뒤 결과를 기다리는 동안 멈춰 보이지 않게 해요.
  * 매 프레임 바뀌는 값이라 React 상태로 다루지 않고, 바뀌는 props는 ref로 받아 다음 프레임부터 반영해요.
  * 움직임 줄이기 설정에서는 회전·숨쉬기·흔들림을 멈추고 소리와 모양만 반영해요.
@@ -176,7 +186,8 @@ export const useParticleOrb = ({
     const reduced = prefersReducedMotion();
     const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
     const particles = createParticles(ORB_PARTICLE_COUNT);
-    const amplitudes = new Float32Array(WAVE_SHAPE_COLUMNS);
+    const waveHistory = createLevelHistory(WAVE_SHAPE_COLUMNS, WAVE_SHAPE_INTERVAL_MS);
+    let wavePhase = 0;
     let width = 0;
     let height = 0;
     let frame = Math.random() * 1000;
@@ -233,7 +244,7 @@ export const useParticleOrb = ({
     };
 
     const placeParticles = () => {
-      const { radius: baseRadius, shape: nextShape, isActive: active } = paramsRef.current;
+      const { radius: baseRadius, shape: nextShape } = paramsRef.current;
       const centerX = width / 2;
       const centerY = height / 2;
 
@@ -256,26 +267,15 @@ export const useParticleOrb = ({
       }
 
       if (nextShape === "wave") {
-        // 녹음 칩: 입자 전부가 파형 윤곽을 이뤄요. 조용해도 랜딩 파형처럼 숨 쉬고, 목소리가 들어오면 더 커져요
+        // 녹음 칩: 입자 전부가 소리 크기의 흐름을 이뤄요. 오른쪽 끝이 지금이고, 조용하면 가는 선, 말한 순간만 캔버스 끝까지 커져요
         assignedShape = null;
         const span = Math.min(width - 4, baseRadius * WAVE_SHAPE_SPAN_SCALE);
-        // 조용할 때도 높이의 절반 넘게 일렁여야 작은 칩에서 파형으로 읽혀요. 목소리가 들어오면 캔버스 끝까지 커져요
-        const limit = height / 2 - 1;
-        const maxAmplitude = limit * (0.6 + 0.4 * level);
-        for (let column = 0; column < WAVE_SHAPE_COLUMNS; column++) {
-          amplitudes[column] = !active
-            ? WAVE_SHAPE_FLAT_AMPLITUDE
-            : reduced
-              ? WAVE_SHAPE_FLAT_AMPLITUDE + limit * level
-              : Math.min(limit, waveAmplitude({ column, columns: WAVE_SHAPE_COLUMNS, frame: frame * 1.5, maxAmplitude, scale: WAVE_SHAPE_GAIN }));
-        }
+        const limit = height / 2 - 1 - WAVE_SHAPE_FLAT_AMPLITUDE;
         // 막대를 세우지 않고 입자가 가로로 고르게 흩어진 채 매끄러운 파형 윤곽을 따라요. 가운데가 빽빽하고 위아래 끝은 성겨 구름 같은 파형이에요
         particles.forEach((particle) => {
-          const position = particle.seed * WAVE_SHAPE_COLUMNS - 0.5;
-          const left = Math.max(0, Math.min(WAVE_SHAPE_COLUMNS - 1, Math.floor(position)));
-          const right = Math.min(WAVE_SHAPE_COLUMNS - 1, left + 1);
-          const mix = Math.max(0, Math.min(1, position - left));
-          const amplitude = amplitudes[left] * (1 - mix) + amplitudes[right] * mix;
+          const amplitude =
+            WAVE_SHAPE_FLAT_AMPLITUDE +
+            limit * sampleLevelHistory({ history: waveHistory, position: particle.seed, phase: wavePhase });
           particle.homeX = centerX - span / 2 + particle.seed * span + particle.jitter;
           particle.homeY = centerY + particle.waveLevel * amplitude;
           particle.depth = 1;
@@ -394,8 +394,15 @@ export const useParticleOrb = ({
       lastFrameAt = now;
       hover += ((nextShape !== "cloud" ? 1 : 0) - hover) * 0.12;
       wait += ((paramsRef.current.isWaiting ? 1 : 0) - wait) * 0.1;
-      const measured = node && active ? measureAnalyserLevel(node) : 0;
-      level = smoothLevel({ previous: level, next: measured, attack: 0.35, release: 0.06 });
+      // 일시정지거나 소리를 읽을 수 없으면 이력을 비워 파형이 평평한 선이에요
+      if (node && active) {
+        level = smoothLevel({ previous: level, next: measureAnalyserLevel(node), attack: 0.6, release: 0.3 });
+        pushLevel(waveHistory, level, now);
+      } else {
+        level = 0;
+        clearLevelHistory(waveHistory);
+      }
+      wavePhase = levelHistoryPhase(waveHistory, now);
       placeParticles();
 
       // 단색 원은 입자가 조용히 모여야 차오르고, 다른 모양이 되면 입자보다 먼저 빠져 분해가 보여요

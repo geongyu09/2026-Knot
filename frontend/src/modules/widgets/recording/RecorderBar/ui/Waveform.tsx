@@ -13,8 +13,8 @@ interface WaveformProps {
 /**
  * 녹음 시간 옆의 파형.
  *
- * 랜딩 녹음 장면 그대로의 입자 파형이에요. 바의 남은 폭을 다 채우며 숨 쉬고, 마이크 소리가 들어오면 그만큼 더 크게 퍼져요.
- * 일시정지면 숨을 멈추고 흐려져요. 녹음 중임을 보여 주는 장식이라 낭독기에서는 숨겨요.
+ * 소리 크기의 흐름을 보여 주는 입자 파형이에요. 바의 남은 폭을 다 채우고, 오른쪽 끝이 지금 소리라 말하면 그 순간만 커져 왼쪽으로 흘러가요.
+ * 조용하면 가는 선만 남고, 일시정지면 평평한 선으로 흐려져요. 「내 말이 지금 들리고 있다」를 보여 주는 것이 역할이라 낭독기에서는 숨겨요.
  */
 export default function Waveform({ analyser, isActive }: WaveformProps) {
   return <ParticleWaveform analyser={analyser} isActive={isActive} height={WAVEFORM_HEIGHT} />;

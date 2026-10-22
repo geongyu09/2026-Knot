@@ -1,6 +1,6 @@
 /**
  * 입자가 모이는 모양. `disc`는 테두리 고리 안에 붉은 원이 든 녹음 버튼, `cloud`는 구름 같은 구슬, `mic`는 마이크 아이콘,
- * `arrow`는 오른쪽 화살표, `wave`는 숨 쉬며 목소리에 반응하는 입자 구름 파형,
+ * `arrow`는 오른쪽 화살표, `wave`는 소리 크기의 흐름을 보여 주는 입자 구름 파형(조용하면 가는 선),
  * `bubble`은 점 세 개가 든 말풍선, `typing`은 그 점들이 입력 중처럼 튀는 말풍선이에요.
  */
 export type ParticleOrbShape = "disc" | "cloud" | "mic" | "arrow" | "wave" | "bubble" | "typing";
