@@ -322,6 +322,64 @@ export class SearchStreamStoppedDto {
   }
 }
 
+// GET /api/v1/workspaces/{workspaceId}/search/conversations/{conversationId}/answers/{answerId}/events (SSE)
+// 끊긴 답변을 다시 받는 스트림. 답변 메시지 ID를 `answerMessageId`가 아니라 `answerId`라고 불러요.
+// 요청 함수가 첫 질문 스트림과 같은 이벤트 DTO로 바꿔 내므로, 앱의 다른 곳은 아래 Raw 모양을 보지 않아요
+
+/** 재연결 스트림 `event: snapshot`의 data 모양 */
+export interface SearchAnswerSnapshotRaw {
+  answerId: number;
+  content: string;
+  status: SearchMessageStatus;
+}
+
+/** 재연결 스트림 `event: delta`의 data 모양 */
+export interface SearchAnswerEventsDeltaRaw {
+  answerId: number;
+  text: string;
+}
+
+/** 재연결 스트림 `event: evidence`의 data 모양 */
+export interface SearchAnswerEventsEvidenceRaw {
+  answerId: number;
+  items: SearchEvidenceRaw[];
+}
+
+/** 재연결 스트림 `event: completed`의 data 모양 */
+export interface SearchAnswerEventsCompletedRaw {
+  answerId: number;
+  status: "COMPLETED";
+}
+
+/** 재연결 스트림 `event: failed`의 data 모양 */
+export interface SearchAnswerEventsFailedRaw {
+  answerId: number;
+  status: "FAILED";
+  code: string;
+}
+
+/** 재연결 스트림 `event: stopped`의 data 모양 */
+export interface SearchAnswerEventsStoppedRaw {
+  answerId: number;
+  status: "STOPPED";
+}
+
+/** 다시 연결했을 때 서버에 저장된 답변 본문을 알리는 이벤트. 재연결 스트림의 첫 이벤트 */
+export class SearchStreamSnapshotDto {
+  /** 답변 메시지 ID */
+  answerMessageId: number;
+  /** 지금까지 저장된 답변 본문 전체. 받던 본문을 이 값으로 바꾸고, 뒤따르는 delta를 이어 붙임 */
+  content: string;
+  /** 답변 메시지의 지금 상태. 이미 끝난 답변이면 뒤따르는 끝 이벤트와 같은 값 */
+  status: SearchMessageStatus;
+
+  constructor(raw: SearchAnswerSnapshotRaw) {
+    this.answerMessageId = raw.answerId;
+    this.content = raw.content;
+    this.status = raw.status;
+  }
+}
+
 /**
  * 탐색 스트림이 흘려보내는 이벤트 한 건.
  *
@@ -330,6 +388,7 @@ export class SearchStreamStoppedDto {
  */
 export type SearchStreamEvent =
   | { event: "accepted"; data: SearchStreamAcceptedDto }
+  | { event: "snapshot"; data: SearchStreamSnapshotDto }
   | { event: "progress"; data: SearchStreamProgressDto }
   | { event: "delta"; data: SearchStreamDeltaDto }
   | { event: "evidence"; data: SearchStreamEvidenceDto }

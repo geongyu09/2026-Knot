@@ -23,6 +23,7 @@ import { ownershipTransfersHandlers } from "./api/v1/workspaces/[workspaceId]/ow
 import { workspaceRecordingsHandlers } from "./api/v1/workspaces/[workspaceId]/recordings";
 import { recordingHandlers } from "./api/v1/workspaces/[workspaceId]/recordings/[recordingId]";
 import { workspaceSearchConversationsHandlers } from "./api/v1/workspaces/[workspaceId]/search/conversations";
+import { workspaceSearchAnswerEventsHandlers } from "./api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/answers/[answerId]/events";
 import { workspaceSearchConversationMessagesHandlers } from "./api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/messages";
 import { workspaceSearchConversationQuestionsHandlers } from "./api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions";
 import { workspaceSearchAnswerRetryHandlers } from "./api/v1/workspaces/[workspaceId]/search/conversations/[conversationId]/questions/[questionId]/retry";
@@ -80,5 +81,6 @@ export const handlers = [
   ...workspaceSearchConversationsHandlers,
   ...workspaceSearchConversationQuestionsHandlers,
   ...workspaceSearchAnswerRetryHandlers,
+  ...workspaceSearchAnswerEventsHandlers,
   ...workspaceSearchConversationMessagesHandlers,
 ];

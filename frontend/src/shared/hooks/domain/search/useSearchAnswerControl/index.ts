@@ -1,11 +1,17 @@
 import { useCallback } from "react";
+import {
+  SearchAnswerDisconnectedError,
+  SearchAnswerFailedError,
+} from "@api/fetch/api/v1/workspaces/[workspaceId]/search/conversations";
 import useCreateSearchConversationMutation from "@api/mutations/useCreateSearchConversationMutation";
 import useCreateSearchQuestionMutation from "@api/mutations/useCreateSearchQuestionMutation";
+import useResumeSearchAnswerMutation from "@api/mutations/useResumeSearchAnswerMutation";
 import useRetrySearchAnswerMutation from "@api/mutations/useRetrySearchAnswerMutation";
 import { searchKeys } from "@api/queryKey/search";
 import useNavigateToChatSession from "@hooks/domain/chat/useNavigateToChatSession";
 import { PATH_ROUTE } from "@routes/PATH_ROUTE";
 import {
+  type SearchAnswerResumeTarget,
   type SearchAnswerRetryTarget,
   useSearchAnswerStore,
 } from "@store/searchAnswerStore";
@@ -33,6 +39,10 @@ interface RetryAnswerParams extends SearchAnswerRetryTarget {
   question: string;
 }
 
+interface ResumeAnswerParams extends SearchAnswerResumeTarget {
+  workspaceId: number;
+}
+
 /** 첫 질문·후속 질문·재시도 요청이 함께 받는 값 */
 interface AnswerRequest {
   requestId: string;
@@ -56,6 +66,28 @@ interface RunAnswerParams {
   ) => Promise<{ status: "COMPLETED" | "STOPPED" } | null>;
 }
 
+interface FollowAnswerParams {
+  workspaceId: number;
+
+  conversationId: number;
+
+  answerMessageId: number;
+
+  /** 이어 받는 답변의 저장소 컨트롤러. 다시 연결해도 같은 컨트롤러로 이벤트를 반영하고 끊어요 */
+  controller: AbortController;
+}
+
+/** 끝 이벤트 없이 끊긴 답변에 다시 연결하는 최대 횟수. 넘으면 이어 받기를 그만두고 저장된 메시지로 그려요 */
+const MAX_RESUME_ATTEMPTS = 3;
+
+/** 다시 연결한 스트림이 또 끊겼을 때 다음 연결 전에 쉬는 시간(ms). 처음 끊겼을 때는 바로 다시 연결해요 */
+const RESUME_RETRY_DELAY_MS = 1000;
+
+const wait = (ms: number) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
 /**
  * 탐색 질문을 보내거나 실패한 답변을 다시 요청하고, 도착하는 답변을 전역 저장소에 넘기는 도메인 훅.
  *
@@ -76,6 +108,11 @@ interface RunAnswerParams {
  * - 다시 시도: 실패한 답변의 질문으로 답변을 다시 받아요(SEARCH-R5). 대화가 이미 있으니 주소는 옮기지 않고,
  *   접수되면 첫 질문이 실패해 목록에서 빠져 있던 대화도 목록에 다시 나타나요.
  *   접수 전에 실패하면 저장된 실패 답변이 그대로 보여 다시 누를 수 있어요.
+ * - 끊김: 접수된 답변이 끝 이벤트 없이 끊기면 실패로 그리지 않고 재연결 API로 이어 받아요(SEARCH-R8).
+ *   서버는 연결이 끊겨도 답변을 계속 만들기 때문이에요. 다시 끊기면 잠시 쉬고 `MAX_RESUME_ATTEMPTS`번까지 다시 연결하고,
+ *   그래도 끝을 받지 못하면 저장소를 비우고 메시지를 다시 조회해 저장된 상태로 그려요.
+ * - 이어 받기: 화면이 받고 있지 않은, 서버에서 만들고 있는 답변을 재연결 API로 끝까지 받아요(SEARCH-R8).
+ *   다른 대화에 다녀오거나 새로고침한 뒤 대화 화면이 `useResumeSearchAnswer`로 불러요. 끊김과 같은 방식으로 다시 연결해요.
  * - 중단: 받기만 끊고 처음 상태로 돌아가요. 서버는 답변을 계속 만들어요(SEARCH-R8).
  */
 const useSearchAnswerControl = () => {
@@ -88,6 +125,64 @@ const useSearchAnswerControl = () => {
     useCreateSearchQuestionMutation();
 
   const { mutateAsync: retrySearchAnswer } = useRetrySearchAnswerMutation();
+  const { mutateAsync: resumeSearchAnswer } = useResumeSearchAnswerMutation();
+
+  const followAnswer = useCallback(
+    async ({
+      workspaceId,
+      conversationId,
+      answerMessageId,
+      controller,
+    }: FollowAnswerParams) => {
+      const { applyEvent, settle, fail, release } =
+        useSearchAnswerStore.getState();
+
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          const result = await resumeSearchAnswer({
+            workspaceId,
+            conversationId,
+            answerId: answerMessageId,
+            signal: controller.signal,
+            onEvent: (event) => applyEvent(controller, event),
+          });
+
+          // 끊었으면 결과가 없고, 저장소는 abort가 이미 비웠어요
+          if (!result) return;
+
+          settle(controller, result.status);
+        } catch (error) {
+          const canReconnect =
+            error instanceof SearchAnswerDisconnectedError &&
+            attempt < MAX_RESUME_ATTEMPTS;
+
+          if (canReconnect) {
+            await wait(RESUME_RETRY_DELAY_MS);
+            if (controller.signal.aborted) return;
+            continue;
+          }
+
+          logRequestError({
+            feature: "search",
+            action: "탐색 답변 이어 받기",
+            error,
+          });
+
+          if (error instanceof SearchAnswerFailedError) {
+            fail(controller, error);
+          } else {
+            release(controller);
+          }
+        }
+
+        queryClient.invalidateQueries({
+          queryKey: searchKeys.messages({ workspaceId, conversationId }),
+        });
+        return;
+      }
+    },
+    [queryClient, resumeSearchAnswer],
+  );
 
   const runAnswer = useCallback(
     async ({
@@ -109,6 +204,7 @@ const useSearchAnswerControl = () => {
 
       // 첫 질문은 accepted가 와야 대화 ID를 알아요
       let acceptedConversationId = conversationId;
+      let acceptedAnswerMessageId: number | undefined;
 
       const invalidateMessages = () => {
         if (acceptedConversationId === undefined) return;
@@ -131,6 +227,7 @@ const useSearchAnswerControl = () => {
             if (event.event !== "accepted") return;
 
             acceptedConversationId = event.data.conversationId;
+            acceptedAnswerMessageId = event.data.answerMessageId;
             queryClient.invalidateQueries({
               queryKey: searchKeys.conversations(workspaceId),
             });
@@ -153,13 +250,28 @@ const useSearchAnswerControl = () => {
 
         return { isAcceptFailed: false };
       } catch (error) {
+        if (
+          error instanceof SearchAnswerDisconnectedError &&
+          acceptedConversationId !== undefined &&
+          acceptedAnswerMessageId !== undefined
+        ) {
+          await followAnswer({
+            workspaceId,
+            conversationId: acceptedConversationId,
+            answerMessageId: acceptedAnswerMessageId,
+            controller,
+          });
+
+          return { isAcceptFailed: false };
+        }
+
         logRequestError({ feature: "search", action: "탐색 질문", error });
         invalidateMessages();
 
         return { isAcceptFailed: fail(controller, error) };
       }
     },
-    [isNewConversationScreen, navigateToChatSession, queryClient],
+    [followAnswer, isNewConversationScreen, navigateToChatSession, queryClient],
   );
 
   const sendQuestion = useCallback(
@@ -206,12 +318,27 @@ const useSearchAnswerControl = () => {
     [retrySearchAnswer, runAnswer],
   );
 
+  const resumeAnswer = useCallback(
+    async ({ workspaceId, ...target }: ResumeAnswerParams) => {
+      const controller = useSearchAnswerStore.getState().resume(target);
+      if (!controller) return;
+
+      await followAnswer({
+        workspaceId,
+        conversationId: target.conversationId,
+        answerMessageId: target.answerMessageId,
+        controller,
+      });
+    },
+    [followAnswer],
+  );
+
   const abortAnswer = useCallback(
     () => useSearchAnswerStore.getState().abort(),
     [],
   );
 
-  return { sendQuestion, retryAnswer, abortAnswer };
+  return { sendQuestion, retryAnswer, resumeAnswer, abortAnswer };
 };
 
 export default useSearchAnswerControl;

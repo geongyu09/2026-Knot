@@ -34,6 +34,16 @@ export type SearchAnswerRetryStream = Omit<
   "conversationId" | "questionMessageId" | "answerMessageId"
 >;
 
+/** 끊긴 답변 재연결 SSE 스트림의 값들. 답변 ID는 요청 경로에서 받아 채워요 */
+export interface SearchAnswerEventsStream {
+  /** snapshot 이벤트로 보낼, 다시 연결한 때까지 저장된 본문 */
+  content: string;
+  /** snapshot 뒤 delta 이벤트로 차례로 보낼 답변 조각 */
+  deltas: string[];
+  /** evidence 이벤트의 items. 최대 3개 */
+  evidences: SearchEvidenceItem[];
+}
+
 /** 탐색 메시지 하나 */
 export interface SearchMessage {
   id: number;
