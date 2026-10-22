@@ -722,4 +722,20 @@ describe("RecorderBar", () => {
       expect(screen.getByText("일시정지")).toBeInTheDocument();
     });
   });
+
+  it("녹음을 끝내는 중이라 이어서 녹음하지 못하면 마이크를 받지 못한 사용 기록으로 남기지 않는다", async () => {
+    vi.useRealTimers();
+    await startRecording();
+    await act(async () => {
+      await useRecordingStore.getState().pauseRecording();
+      useRecordingStore.getState().beginEnding();
+    });
+    renderRecorderBar();
+
+    await clickResume();
+    // 사용 기록은 권한 상태를 읽은 뒤에 보내므로, 그 뒤까지 기다려요
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+
+    expect(captureAnalyticsEvent).not.toHaveBeenCalled();
+  });
 });

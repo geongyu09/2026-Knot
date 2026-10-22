@@ -93,6 +93,9 @@ export default class Microphone {
     } catch (error) {
       // 받지 못하면 연결하지 않고 `null`만 돌려줘요. 권한 거부와 장치 없음은 Sentry 보고 기준에서 빠져요
       captureCaughtError({ error, feature: "recording" });
+      // 기다리는 사이 끊었으면 받은 마이크를 버리듯 이번 실패의 이유도 남기지 않아요
+      if (requestedGeneration !== this.generation) return null;
+
       // getUserMedia는 DOMException으로 거절해요
       this.errorName =
         error instanceof DOMException || error instanceof Error

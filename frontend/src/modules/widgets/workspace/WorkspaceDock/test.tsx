@@ -832,13 +832,13 @@ describe("WorkspaceDock", () => {
       );
 
       it("권한 창을 보기 전과 본 뒤의 마이크 권한 상태를 함께 남긴다", async () => {
+        const getUserMedia = denyMicrophoneOnce();
+        // 권한 창(getUserMedia)이 열리기 전에 읽으면 prompt, 열린 뒤에 읽으면 denied예요
         stubPermissions(
-          vi
-            .fn()
-            .mockResolvedValueOnce({ state: "prompt" })
-            .mockResolvedValueOnce({ state: "denied" }),
+          vi.fn().mockImplementation(async () => ({
+            state: getUserMedia.mock.calls.length === 0 ? "prompt" : "denied",
+          })),
         );
-        denyMicrophoneOnce();
         renderDock();
 
         await clickMic();

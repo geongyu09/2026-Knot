@@ -3,6 +3,7 @@ import useNavigateToRecording from "@hooks/domain/recording/useNavigateToRecordi
 import useRecordingState from "@hooks/domain/recording/useRecordingState";
 import useRecordingControl from "@hooks/domain/recording/useRecordingControl";
 import useRecordingElapsedTime from "@hooks/domain/recording/useRecordingElapsedTime";
+import useRecordingStartAnalytics from "@hooks/domain/recording/useRecordingStartAnalytics";
 import useRecordingStartNetworkErrorDialog from "@hooks/domain/recording/useRecordingStartNetworkErrorDialog";
 import useRecordingStartRefusedDialog from "@hooks/domain/recording/useRecordingStartRefusedDialog";
 import useServerRecording from "@hooks/domain/recording/useServerRecording";
@@ -43,6 +44,11 @@ export const useDockRecording = () => {
   const { status: serverStatus, elapsedTime: serverElapsedTime } =
     useServerRecording();
   const { startRecording, syncPause, endRecording } = useRecordingControl();
+  // 안내 창을 띄운 실패는 독에서 시작하지 못한 사용 기록으로도 보내요
+  const { startAndTrackRecording } = useRecordingStartAnalytics({
+    startRecording,
+    surface: "dock",
+  });
 
   const isOtherTabRecording =
     !isRecordingActive &&
@@ -67,7 +73,7 @@ export const useDockRecording = () => {
   const handleMicClick = async () => {
     if (!workspaceId) return;
 
-    const result = await startRecording(Number(workspaceId));
+    const result = await startAndTrackRecording(Number(workspaceId));
     if (result === "microphoneUnavailable") {
       openMicrophoneUnavailableDialog();
       return;
