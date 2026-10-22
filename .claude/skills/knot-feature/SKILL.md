@@ -11,8 +11,11 @@ description: 「○○ 기능 구현해 줘」 한 문장을 받아 Knot의 기�
 [반환 규약](../../../.agents/skills/knot-feature/references/return-contract.md),
 [정본 위치](../../../.agents/skills/knot-feature/references/sources.md)를 완전히 읽고 정본으로 따른다.
 
-- 단계마다 `.claude/agents/knot-feature-*.md`를 Agent 도구로 한 번에 하나씩 실행한다.
-  프롬프트에는 상태 파일 경로, 메시지 문장, 사용자 답변만 넣고 문서 내용을 넣지 않는다.
+- 문서 단계의 여섯 단계는 `.claude/agents/knot-feature-*.md`를 Agent 도구로 한 번에 하나씩
+  실행한다. 프롬프트에는 상태 파일 경로, 메시지 문장, 사용자 답변만 넣고 문서 내용을 넣지 않는다.
+- 구현 단계는 이 세션이 직접 한다. 정본의 `references/fe-implementation.md`,
+  `references/be-implementation.md`를 읽고 기존 `frontend`, `backend` 하네스(규칙, 스킬, 에이전트)로
+  수행한다.
 - 두 질문(영역, 완료 조건)과 `needs_user_input`의 질문은 AskUserQuestion으로 묻는다. 요청으로 알 수
   있으면 묻지 않는다.
 - 정본의 `$knot-*` 표기는 같은 이름의 `/knot-*` 스킬 호출로 해석한다.
