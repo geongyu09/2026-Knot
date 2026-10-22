@@ -45,13 +45,18 @@ export const useParticleIcon = ({ canvasRef, iconRef, draw, size, palette }: Use
   const paramsRef = useRef({ draw, size, palette });
   paramsRef.current = { draw, size, palette };
   const startRef = useRef<(fromScatter: boolean) => void>(() => {});
+  /** 아직 끝나지 않은 조립 요청. 효과가 다시 실행돼도(StrictMode, 다시 그리기) 이어서 조립해 아이콘이 숨겨진 채 남지 않아요 */
+  const pendingRef = useRef<{ fromScatter: boolean } | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
     const reduced = prefersReducedMotion();
+    // 지난 효과가 아이콘을 숨긴 채 정리됐을 수 있어 늘 보이는 상태에서 시작해요
+    if (iconRef.current) iconRef.current.style.opacity = "";
     if (!canvas || !context || reduced) {
       startRef.current = () => {};
+      pendingRef.current = null;
       return;
     }
 
@@ -124,6 +129,7 @@ export const useParticleIcon = ({ canvasRef, iconRef, draw, size, palette }: Use
       }
       if (mode === "settle" && frame - settledAt > SETTLE_FRAMES) {
         mode = "idle";
+        pendingRef.current = null;
         particles = [];
         context.clearRect(0, 0, width, height);
       }
@@ -145,10 +151,14 @@ export const useParticleIcon = ({ canvasRef, iconRef, draw, size, palette }: Use
           ? { targetX, targetY, x: targetX + (Math.random() - 0.5) * 18, y: targetY + (Math.random() - 0.5) * 18, vx: (Math.random() - 0.5) * 2, vy: (Math.random() - 0.5) * 2, isFalling: false, startFrame: 0, size: particleSize, shade }
           : { targetX, targetY, x: targetX + (Math.random() - 0.5) * 14, y: -4 - Math.random() * 26, vx: 0, vy: 0.5 + Math.random() * 1.5, isFalling: true, startFrame: frame + Math.floor(Math.random() * 8), size: particleSize, shade };
       });
+      pendingRef.current = { fromScatter };
       showIcon(false);
       mode = "gather";
       if (!animation) animation = requestAnimationFrame(tick);
     };
+
+    // 효과가 정리됐다 다시 실행된 사이에 요청된 조립은 여기서 이어가요
+    if (pendingRef.current) startRef.current(pendingRef.current.fromScatter);
 
     return () => {
       cancelAnimationFrame(animation);
