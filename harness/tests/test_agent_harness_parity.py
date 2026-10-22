@@ -3,10 +3,26 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SKILL_NAMES = ("knot-issue-planning", "knot-deep-interview", "knot-grill-me")
+SKILL_NAMES = (
+    "knot-issue-planning",
+    "knot-deep-interview",
+    "knot-grill-me",
+    "knot-feature",
+)
 
 
 class AgentHarnessParityTest(unittest.TestCase):
+    def test_feature_pipeline_validator_is_referenced_by_canonical_skill(self):
+        canonical = (ROOT / ".agents" / "skills" / "knot-feature" / "SKILL.md").read_text(encoding="utf-8")
+        contract = (
+            ROOT / ".agents" / "skills" / "knot-feature" / "references" / "return-contract.md"
+        ).read_text(encoding="utf-8")
+
+        self.assertTrue((ROOT / "harness" / "feature_pipeline.py").is_file())
+        self.assertIn("harness/feature_pipeline.py", canonical)
+        self.assertIn("harness/feature_pipeline.py", contract)
+        self.assertIn("노션 변경 사항", contract)
+
     def test_claude_imports_shared_project_instructions(self):
         claude_md = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
 
