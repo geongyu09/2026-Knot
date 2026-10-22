@@ -94,6 +94,37 @@ describe("retrySearchAnswerApi", () => {
     ]);
   });
 
+  it("[SEARCH-R5] 재시도 accepted의 questionId·answerMessageId를 경로의 대화 ID와 합쳐 첫 질문과 같은 accepted 모양으로 낸다", async () => {
+    // 서버 계약(docs/api/search-answer-retry.md)대로 대화 ID 없이 status가 함께 와요
+    const accepted = {
+      questionId: QUESTION_ID,
+      answerMessageId: 999,
+      status: "STREAMING",
+    };
+    mockServer.use(
+      http.post(
+        SEARCH_ANSWER_RETRY_PATH,
+        () =>
+          new HttpResponse(
+            `event: accepted\ndata: ${JSON.stringify(accepted)}\n\n` +
+              `event: completed\ndata: ${JSON.stringify({ answerMessageId: 999, status: "COMPLETED" })}\n\n`,
+            { headers: { "Content-Type": "text/event-stream" } },
+          ),
+      ),
+    );
+
+    const [acceptedEvent] = await readAllRetryEvents();
+
+    expect(acceptedEvent).toEqual({
+      event: "accepted",
+      data: new SearchStreamAcceptedDto({
+        conversationId: CONVERSATION_ID,
+        questionMessageId: QUESTION_ID,
+        answerMessageId: 999,
+      }),
+    });
+  });
+
   it("요청 ID만 담은 본문을 SSE와 CSRF 헤더와 함께 POST로 보낸다", async () => {
     const requests: Request[] = [];
     // 요청만 남기고 아무것도 돌려주지 않아 기본 mock 핸들러가 이어서 응답해요

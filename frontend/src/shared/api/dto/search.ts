@@ -157,7 +157,7 @@ export interface PostSearchAnswerRetryRequestInput {
 
 /**
  * 실패한 답변 재시도 요청 본문. 질문 내용은 경로의 질문을 다시 쓰므로 싣지 않아요.
- * 응답은 첫 질문과 같은 SSE 스트림이고, accepted는 경로의 질문 ID와 실패했던 답변 메시지 ID를 다시 담아요
+ * 응답은 첫 질문과 같은 SSE 스트림이지만 accepted만 모양이 달라요(`SearchAnswerRetryAcceptedDto`)
  */
 export class PostSearchAnswerRetryRequestDto {
   /** 같은 재시도 요청의 중복 실행을 서버가 알아보는 키(UUID) */
@@ -168,9 +168,35 @@ export class PostSearchAnswerRetryRequestDto {
   }
 }
 
-// 아래 이벤트 DTO는 첫 질문·후속 질문·재시도 스트림이 공유
+/** 재시도 스트림 `event: accepted`의 data 모양. 첫 질문과 달리 대화 ID가 없고 질문 ID 이름이 `questionId`예요 */
+export interface SearchAnswerRetryAcceptedRaw {
+  questionId: number;
+  answerMessageId: number;
+  status: "STREAMING";
+}
 
-/** `event: accepted`의 data 모양 */
+/**
+ * 재시도 요청이 접수됐음을 알리는 이벤트. 재시도 스트림의 첫 이벤트.
+ * 요청 함수가 경로의 대화 ID와 합쳐 첫 질문과 같은 `SearchStreamAcceptedDto`로 바꿔 내므로 앱의 다른 곳은 이 모양을 보지 않아요
+ */
+export class SearchAnswerRetryAcceptedDto {
+  /** 다시 쓴 질문 메시지 ID. 경로의 질문 ID와 같음 */
+  questionId: number;
+  /** 비우고 다시 채우는 답변 메시지 ID. 실패했던 답변 메시지와 같고, 뒤따르는 이벤트의 answerMessageId와 같음 */
+  answerMessageId: number;
+  /** 접수 상태. 항상 STREAMING이고, 끝난 상태는 후속 이벤트로 알림 */
+  status: "STREAMING";
+
+  constructor(raw: SearchAnswerRetryAcceptedRaw) {
+    this.questionId = raw.questionId;
+    this.answerMessageId = raw.answerMessageId;
+    this.status = raw.status;
+  }
+}
+
+// 아래 이벤트 DTO는 첫 질문·후속 질문·재시도 스트림이 공유 (재시도의 accepted만 서버 모양이 달라 요청 함수가 이 모양으로 맞춰요)
+
+/** `event: accepted`의 data 모양. 재시도 요청 함수는 서버의 `SearchAnswerRetryAcceptedRaw`와 경로의 대화 ID로 이 모양을 만들어요 */
 export interface SearchStreamAcceptedRaw {
   conversationId: number;
   questionMessageId: number;
@@ -179,9 +205,9 @@ export interface SearchStreamAcceptedRaw {
 
 /** 서버가 질문을 받아 대화와 메시지를 만들었음을 알리는 이벤트. 스트림의 첫 이벤트 */
 export class SearchStreamAcceptedDto {
-  /** 탐색 대화 ID. 첫 질문이면 새로 만들어진 대화, 후속 질문이면 경로의 대화 */
+  /** 탐색 대화 ID. 첫 질문이면 새로 만들어진 대화, 후속 질문·재시도면 경로의 대화 */
   conversationId: number;
-  /** 저장된 질문 메시지 ID */
+  /** 저장된 질문 메시지 ID. 재시도면 다시 쓴 질문 */
   questionMessageId: number;
   /** 이어서 채워질 답변 메시지 ID. 뒤따르는 이벤트의 answerMessageId와 같음 */
   answerMessageId: number;
