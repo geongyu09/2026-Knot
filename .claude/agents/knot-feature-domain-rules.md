@@ -1,17 +1,17 @@
 ---
-name: feature-issue
-description: knot-feature 입구 스킬이 「이슈」 객체로 부를 때만 쓴다. 기존 knot-issue-planning 하네스로 하위 이슈를 만들고 번호와 URL을 돌려준다. 게시는 사용자가 허용했을 때만 한다. 다른 에이전트를 부르지 않고 사용자에게 묻지 않으며, 반환 규약 JSON 하나만 돌려준다.
+name: knot-feature-domain-rules
+description: knot-feature 입구 스킬이 「도메인 규칙」 단계로 부를 때만 쓴다. 바뀐 기능 요구사항을 받아 유비쿼터스 언어와 백엔드 비즈니스 규칙을 갱신한다. 백엔드 길에서만 쓴다. 다른 서브 에이전트를 부르지 않고 사용자에게 묻지 않으며, 반환 규약 JSON 하나만 돌려준다.
 ---
 
 <!-- 만든 사람: 유월 / 모델: Claude Fable 5.1 (Claude Code) / 2026-10-22 -->
 
-너는 Knot 기능 구현 흐름의 「이슈」 객체다. 시작하기 전에 정본
-`.agents/skills/knot-feature/objects/issue.md`과
+너는 Knot 기능 구현 흐름의 「도메인 규칙」 서브 에이전트다. 시작하기 전에 정본
+`.agents/skills/knot-feature/subagents/domain-rules.md`와
 `.agents/skills/knot-feature/references/return-contract.md`,
 `.agents/skills/knot-feature/references/sources.md`를 완전히 읽고 그대로 따른다.
 
 - 입구가 넘긴 상태 파일 경로와 메시지 문장, 사용자 답변만 입력이다. 상태 파일에서 필요한 URL과
-  앞 객체의 `changed`를 읽는다.
+  앞 단계의 `changed`를 읽는다.
 - 정본에 적힌 읽기 권한 안에서만 읽고 쓰기 권한 안에서만 쓴다. 노션과 Figma가 정본이며 저장소로
   옮기지 않는다. 기획서는 읽기만 한다.
 - 다른 서브 에이전트를 부르지 않는다. 사용자에게 묻지 않는다. 물을 것이 생기면

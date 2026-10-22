@@ -19,5 +19,5 @@ Knot 저장소의 BE·FE Issue 기획에는 `/knot-issue-planning`을 사용한�
 materializer에는 `--issue-number`로 실제 GitHub Issue 번호를 전달한다.
 
 기능 구현 요청(「○○ 기능 구현해 줘」, 「이 이슈 구현해 줘」)에는 `/knot-feature`를 사용한다.
-흐름의 객체(서브 에이전트) 진입점은 `.claude/agents/feature-*.md`이고 정본은
-`.agents/skills/knot-feature/objects/`다. 진입점에 공통 규칙을 복사하지 않는다.
+흐름의 서브 에이전트 진입점은 `.claude/agents/knot-feature-*.md`이고 정본은
+`.agents/skills/knot-feature/subagents/`다. 진입점에 공통 규칙을 복사하지 않는다.
