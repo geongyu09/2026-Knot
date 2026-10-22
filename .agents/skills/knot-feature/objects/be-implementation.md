@@ -41,6 +41,8 @@
   `## 노션 변경 사항`에 이슈의 링크를 끌어와 적고, 그 아래는 `knot-pr`의 본문 규칙과 PR
   템플릿을 따른다. 백엔드 PR은 사람이 아니라 AI가 보는 PR이라 내용이 더 많아도 된다. 이슈 라벨을
   그대로 붙이고 assignee를 지정한다.
+- PR을 올린 뒤 Backend CI 결과를 확인한다. 실패하면 실패 루프 규칙대로 고쳐 다시 푸시하고,
+  통과한 뒤에야 PR URL을 돌려준다. E2E는 프론트 길의 QA 시트 시나리오가 맡는다.
 - ADR이 필요한 이슈(`메모`에 ADR 결정과 예정 경로)는 구현 브랜치에서
   `python3 harness/materialize_adr.py <snapshot.json> --issue-number <번호> --implementation --pretty`
   로 `Proposed` ADR을 만들어 같은 PR에 넣는다.

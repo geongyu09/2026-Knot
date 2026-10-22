@@ -45,6 +45,9 @@
   `## 노션 변경 사항`에 이슈의 링크를 끌어와 적고, `관련 이슈`에 `Closes #<번호>`, `작업 내용`에
   스토리북과 E2E 통과 결과, E2E 시나리오 설명을 넣는다. 이슈 라벨을 그대로 붙이고 assignee를
   지정한다. 유월이 이 PR을 컨펌한다.
+- PR을 올린 뒤 PR CI(`frontend-ci.yml`, PR #855 머지 뒤에는 `frontend-e2e.yml`)의 결과를 확인한다.
+  이것이 QA 단계다. E2E가 실패하면 실패 루프 규칙대로 고쳐 다시 푸시하고, 통과한 결과와 E2E
+  시나리오 설명을 PR 본문에 남긴 뒤에야 PR URL을 돌려준다.
 - ADR이 필요한 이슈(`메모`에 ADR 결정과 예정 경로)는 구현 브랜치에서
   `python3 harness/materialize_adr.py <snapshot.json> --issue-number <번호> --implementation --pretty`
   로 `Proposed` ADR을 만들어 같은 PR에 넣는다.
