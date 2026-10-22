@@ -18,6 +18,7 @@ import useNavigateToRecordingDocuments from "@hooks/domain/recording/useNavigate
 import useRecordingEndedAnalytics from "@hooks/domain/recording/useRecordingEndedAnalytics";
 import useNavigateToWorkspaceHome from "@hooks/domain/workspace/useNavigateToWorkspaceHome";
 import { useToast } from "@provider/context/toastContext";
+import { countMetric } from "@provider/sentry";
 import {
   type RecordingSession,
   useRecordingStore,
@@ -41,6 +42,8 @@ import {
 } from "@utils/recordingControlProof";
 import { useCallback, useRef } from "react";
 import useEndRecordingDialog from "../useEndRecordingDialog";
+
+import type { RecordingEndCause } from "@/shared/types/recording";
 
 /** 최종 오디오 업로드가 일시 실패했을 때 다시 시도하는 최대 횟수(첫 시도 제외) */
 const AUDIO_UPLOAD_MAX_RETRIES = 3;
@@ -67,6 +70,32 @@ const acceptUntilFrom = (endedAt: string | null) =>
     (endedAt ? new Date(endedAt).getTime() : Date.now()) +
       CHUNK_ACCEPT_WINDOW_MS,
   ).toISOString();
+
+interface CountRecordingEndParams {
+  session: RecordingSession;
+  reason: RecordingEndCause;
+  /** 오디오를 서버로 넘겼는지. PCM은 종료가 받아들여져 남은 조각을 올리기 시작했으면 `true`예요 */
+  isUploaded: boolean;
+}
+
+/** 녹음이 끝난 이유를 Sentry 지표로 세요. 녹음이 끝나는 경로마다 한 번만 불러요(ADR 915) */
+const countRecordingEnd = ({
+  session,
+  reason,
+  isUploaded,
+}: CountRecordingEndParams) =>
+  countMetric({
+    name: "recording.end",
+    attributes: { reason, uploaded: isUploaded, audio_mode: session.audioMode },
+  });
+
+/** 생존 신호가 알려 준 서버의 종료 사유를 지표의 끝난 이유로 바꿔요. 다른 탭에서 끝냈거나 사유가 없으면 `endedByServer`예요 */
+const toServerEndCause = (endReason: string | null) => {
+  if (endReason === "CONNECTION_EXPIRED") return "connectionExpired";
+  if (endReason === "MAX_DURATION") return "maxDuration";
+
+  return "endedByServer";
+};
 
 const wait = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -139,6 +168,7 @@ type ControlProof = NonNullable<ReturnType<typeof getRecordingControlProof>>;
  *   생존 신호를 바로 한 번 보내 그 응답대로 처리해요. 이미 버려진 녹음(409)이면 오디오를 버리고 홈으로 가요.
  *
  * 최초 탭 증명은 sessionStorage에 두고, 실패는 콘솔에 남겨요. 위에 적은 경우만 토스트나 모달로 안내해요.
+ * 시작을 시도한 결과와 녹음이 끝난 이유는 오류가 아니어도 Sentry 지표(`recording.start`, `recording.end`)로 세요.
  * 안내하는 이동은 모두 독이 있는 화면끼리라 `show`로 띄운 토스트가 이동 뒤에도 남아요.
  * 독의 마이크 끊김 알림처럼 효과 안에서 부르는 곳이 있어 동작의 참조를 고정해요.
  */
@@ -268,6 +298,11 @@ const useRecordingControl = () => {
       if (status === "ENDED" && session.audioMode === "PCM16_CHUNKS_V1") {
         // 서버가 먼저 끝낸 녹음은 봉인할 수 없어 남은 소리를 버리고, 예약한 조각만 시한 안에 올려요
         closeRecording(session.workspaceId, acceptUntilFrom(endedAt));
+        countRecordingEnd({
+          session,
+          reason: toServerEndCause(endReason),
+          isUploaded: true,
+        });
         if (isConnectionExpired) {
           show(TOAST_MESSAGES.RECORDING_CONNECTION_LOST);
         }
@@ -276,12 +311,18 @@ const useRecordingControl = () => {
         const audio = await useRecordingStore.getState().stopRecording();
         const isUploaded = await uploadRecordedAudio({ ...session, audio });
         closeRecording(session.workspaceId);
+        countRecordingEnd({
+          session,
+          reason: toServerEndCause(endReason),
+          isUploaded,
+        });
         // 올리지 못했으면 문서로 정리하지 않으므로, 업로드 실패 안내만 남겨요
         if (isUploaded && isConnectionExpired) {
           show(TOAST_MESSAGES.RECORDING_CONNECTION_LOST);
         }
       } else if (status === "DISCARDED") {
         closeRecording(session.workspaceId);
+        countRecordingEnd({ session, reason: "discarded", isUploaded: false });
       } else {
         useRecordingStore.getState().syncElapsedTime(elapsedMillis);
       }
@@ -291,6 +332,11 @@ const useRecordingControl = () => {
 
       if (isUnreachableRecordingError(error)) {
         closeRecording(session.workspaceId);
+        countRecordingEnd({
+          session,
+          reason: "unreachable",
+          isUploaded: false,
+        });
         // 내보내졌거나 없어진 워크스페이스인지 레이아웃의 진입 판정이 다시 확인해, 그렇다면 다른 곳으로 보내고 알려요(ERR-11)
         void queryClient.invalidateQueries({
           queryKey: workspaceKeys.detail(session.workspaceId),
@@ -301,6 +347,11 @@ const useRecordingControl = () => {
       ) {
         // 이 탭은 더 제어할 수 없어 서버가 곧 녹음을 끝내요. 오디오도 올릴 수 없어 버리고, 신호를 되풀이하지 않게 녹음을 닫아요
         closeRecording(session.workspaceId);
+        countRecordingEnd({
+          session,
+          reason: "controlLost",
+          isUploaded: false,
+        });
         show(TOAST_MESSAGES.RECORDING_CONTROL_LOST);
       }
     }
@@ -323,7 +374,14 @@ const useRecordingControl = () => {
         return;
       }
 
-      if (isClosedRecordingError(error)) closeRecording(workspaceId);
+      if (!isClosedRecordingError(error)) return;
+
+      // 서버가 끝낸 녹음은 위에서 생존 신호에 맡기므로, 여기서 닫는 건 서버가 버린 녹음이에요
+      const { session } = useRecordingStore.getState();
+      closeRecording(workspaceId);
+      if (session) {
+        countRecordingEnd({ session, reason: "discarded", isUploaded: false });
+      }
     },
     [closeRecording, sendHeartbeat],
   );
@@ -464,7 +522,10 @@ const useRecordingControl = () => {
 
       isStartingRef.current = true;
       try {
-        return await connectAndStartRecording(workspaceId);
+        const result = await connectAndStartRecording(workspaceId);
+        countMetric({ name: "recording.start", attributes: { result } });
+
+        return result;
       } finally {
         isStartingRef.current = false;
       }
@@ -678,9 +739,25 @@ const useRecordingControl = () => {
     show,
     uploadRecordedAudio,
   ]);
+
+  /** 사용자가 끝낸 결과를 Sentry 지표로도 세요. 끝내지 못했으면(`notEnded`) 녹음이 이어져 세지 않아요 */
+  const endAndCountRecording = useCallback(async () => {
+    const { session } = useRecordingStore.getState();
+    const result = await endAndUploadRecording();
+    if (session && result !== "notEnded") {
+      countRecordingEnd({
+        session,
+        reason: "userEnded",
+        isUploaded: result === "uploaded",
+      });
+    }
+
+    return result;
+  }, [endAndUploadRecording]);
+
   // 확인 창과 워크스페이스 옮기기가 모두 이 함수로 끝내요. 끝낸 결과는 사용 기록으로도 보내요
   const { endAndTrackRecording: endRecordingWithoutConfirm } =
-    useRecordingEndedAnalytics(endAndUploadRecording);
+    useRecordingEndedAnalytics(endAndCountRecording);
 
   const endRecording = useCallback(() => {
     // 끝내는 동안 다시 눌러도 이미 끝내는 중이라 확인 창을 또 띄우지 않아요
