@@ -5,6 +5,7 @@ import {
   SearchStreamEvidenceDto,
   SearchStreamExcludedDocumentsDto,
   SearchStreamProgressDto,
+  SearchStreamSnapshotDto,
 } from "@api/dto/search";
 import { searchAnswerStreamResponse } from "@api/mock/responses/search";
 import { describe, expect, it } from "vitest";
@@ -143,6 +144,31 @@ describe("reduceSearchStreamEvent", () => {
     );
 
     expect(answer.stage).toBe(stages[stages.length - 1]);
+  });
+
+  it("[SEARCH-R8] 생성 중에 받는 답변의 snapshot을 받으면 받던 본문을 저장된 본문으로 바꾼다", () => {
+    const receivedAnswer = { ...streamingAnswer, text: deltas[0] };
+    const snapshot = new SearchStreamSnapshotDto({
+      answerId: answerMessageId,
+      content: deltas.slice(0, 3).join(""),
+      status: "STREAMING",
+    });
+
+    expect(
+      reduceSearchStreamEvent(receivedAnswer, { event: "snapshot", data: snapshot }),
+    ).toEqual({ ...receivedAnswer, text: snapshot.content });
+  });
+
+  it("[SEARCH-R8] 다른 답변의 snapshot은 반영하지 않는다", () => {
+    const snapshot = new SearchStreamSnapshotDto({
+      answerId: answerMessageId + 1,
+      content: "다른 답변",
+      status: "STREAMING",
+    });
+
+    expect(
+      reduceSearchStreamEvent(streamingAnswer, { event: "snapshot", data: snapshot }),
+    ).toBe(streamingAnswer);
   });
 
   it("끝 이벤트는 뮤테이션 결과로 판정하므로 반영하지 않는다", () => {
