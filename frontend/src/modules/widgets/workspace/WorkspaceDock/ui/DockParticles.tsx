@@ -34,8 +34,8 @@ export default function DockParticles({ barRef, ref }: DockParticlesProps) {
     palette: [
       `rgba(${hexToRgb(theme.neutral[0])},1)`,
       `rgba(${hexToRgb(theme.neutral[300])},1)`,
-      `rgba(${hexToRgb(theme.sub.accent[200])},1)`,
-      `rgba(${hexToRgb(theme.sub.accent[500])},1)`,
+      `rgba(${hexToRgb(theme.neutral[400])},1)`,
+      `rgba(${hexToRgb(theme.neutral[500])},1)`,
     ],
   });
 

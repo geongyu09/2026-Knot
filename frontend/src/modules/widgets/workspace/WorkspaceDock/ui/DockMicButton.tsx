@@ -8,7 +8,7 @@ interface DockMicButtonProps {
   onClick: () => void;
   /** `false`면 독이 녹음 파형으로 접혀 있어 구슬을 그리지 않아요. 자리는 그대로 차지해요 */
   isOrbVisible?: boolean;
-  /** 눌러서 녹음이 열리기를 기다리는 중. 구슬이 녹음 중의 청록으로 바뀌어 빠르게 돌고, 다시 눌러도 반응하지 않아요 */
+  /** 눌러서 녹음이 열리기를 기다리는 중. 구슬이 밝은 구름으로 바뀌어 빠르게 돌고, 다시 눌러도 반응하지 않아요 */
   isWaiting?: boolean;
 }
 
@@ -17,7 +17,7 @@ interface DockMicButtonProps {
  *
  * 평소엔 고리 안에 붉은 원이 든 녹음 버튼이에요. 올리거나 포커스하면 원이 입자로 살짝 분해됐다가 마이크 모양으로 모이고,
  * 벗어나면 다시 원으로 돌아와요. 누르면 파동이 한 번 퍼진 뒤 녹음을 시작해요.
- * 녹음이 열리기를 기다리는 동안은 구슬이 바로 청록으로 바뀌어 빠르게 돌아,
+ * 녹음이 열리기를 기다리는 동안은 구슬이 바로 밝은 구름으로 바뀌어 빠르게 돌아,
  * 마이크 권한과 서버를 기다리는 1~2초에도 누른 것이 받아들여졌다는 것이 보여요.
  * 40px 칸을 차지하고 접근성 이름은 「회의 녹음 시작」이에요. 기다리는 동안은 `aria-busy`로 알려요.
  */
@@ -61,7 +61,7 @@ export default function DockMicButton({ onClick, isOrbVisible = true, isWaiting 
             ref={orbRef}
             radius={DOCK_ORB_RADIUS}
             size={DOCK_ORB_CANVAS_SIZE}
-            tone={isWaiting ? "recording" : "idle"}
+            tone={isWaiting ? "neutral" : "idle"}
             shape={isWaiting ? "cloud" : isHovered || isFocused ? "mic" : "disc"}
             isWaiting={isWaiting}
           />

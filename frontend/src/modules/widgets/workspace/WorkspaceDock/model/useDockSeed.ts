@@ -69,8 +69,8 @@ export interface SeedSplitTargets {
 }
 
 export interface DockSeedPalette {
-  /** 청록 세 단계. 파형과 녹음 칩 자리의 구슬에 써요 */
-  teal: [string, string, string];
+  /** 먹색 세 단계. 녹음 화면 파형과 같은 색으로 파형과 녹음 칩 자리의 구슬에 써요 */
+  wave: [string, string, string];
   /** 어두운 알약 위의 밝은 세 단계(아이콘 진한, 아이콘 옅은, 윤곽) */
   light: [string, string, string];
 }
@@ -275,15 +275,15 @@ export const useDockSeed = ({
       });
     };
 
-    /** 입자 하나의 색. 파형은 밝은 바탕 위라 청록이고, 독 모양으로 모이면 어두운 알약 위라 밝은 입자예요 */
+    /** 입자 하나의 색. 파형은 밝은 바탕 위라 먹색이고, 독 모양으로 모이면 어두운 알약 위라 밝은 입자예요 */
     const colorOf = (particle: SeedParticle, colors: DockSeedPalette) => {
       if (blend < 0.55) {
         const strength = Math.abs(particle.level);
-        return colors.teal[strength < 0.45 ? 0 : strength < 0.8 ? 1 : 2];
+        return colors.wave[strength < 0.45 ? 0 : strength < 0.8 ? 1 : 2];
       }
       switch (particle.part) {
         case "orb":
-          return colors.teal[Math.min(2, particle.shade)];
+          return colors.wave[Math.min(2, particle.shade)];
         case "icon":
           return colors.light[particle.seed < 0.7 ? 0 : 1];
         default:

@@ -22,7 +22,7 @@ interface DockRecordingChipProps {
 /**
  * 녹음 화면이 아닌 곳에서 녹음이 이어지고 있을 때 마이크 자리에 놓이는 녹음 칩.
  *
- * 청록 입자 파형과 녹음한 시간을 누르면 녹음 화면으로 가고(올리면 파형이 화살표로 모여 「가기」를 알려요), 접힌 독에서는 오른쪽 중지 버튼으로 녹음을 끝내요.
+ * 밝은 입자 파형과 녹음한 시간을 누르면 녹음 화면으로 가고(올리면 파형이 화살표로 모여 「가기」를 알려요), 접힌 독에서는 오른쪽 중지 버튼으로 녹음을 끝내요.
  * 파형은 조용할 때도 숨 쉬고 목소리가 들어오면 커지며, 일시정지면 평평한 선이에요.
  * 다른 탭의 녹음이면 녹음 화면으로 갈 수도 끝낼 수도 없어 파형과 시간만 보여 줘요(STT-R28).
  */
@@ -42,7 +42,7 @@ export default function DockRecordingChip({
           radius={ORB_RADIUS}
           size={ORB_CANVAS_HEIGHT}
           width={ORB_CANVAS_WIDTH}
-          tone="recording"
+          tone="neutral"
           shape={isArrow && onOpen ? "arrow" : "wave"}
           analyser={analyser}
           isActive={!isPaused}
@@ -106,7 +106,7 @@ const OpenButton = styled.button`
   }
 `;
 
-/** 녹음 중이면 청록 파형이 숨 쉬며 목소리에 맞춰 커지고, 일시정지면 평평한 선으로 쉬어요. */
+/** 녹음 중이면 밝은 파형이 숨 쉬며 목소리에 맞춰 커지고, 일시정지면 평평한 선으로 쉬어요. */
 const OrbSlot = styled.span`
   display: flex;
   flex-shrink: 0;

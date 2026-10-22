@@ -90,25 +90,25 @@ export const Typing: Story = {
 
 /** 녹음 칩에 올려 파형이 「녹음 화면으로 가기」 화살표로 모인 상태예요. */
 export const Arrow: Story = {
-  args: { radius: 8, size: 24, width: 36, tone: "recording", shape: "arrow" },
+  args: { radius: 8, size: 24, width: 36, tone: "neutral", shape: "arrow" },
 };
 
-/** 녹음 버튼을 누르고 마이크와 서버가 녹음을 열기를 기다리는 상태예요. 청록 구름이 빠르게 돌며 숨을 크게 쉬어요. 예: 독의 회의 녹음 버튼을 누른 직후 */
+/** 녹음 버튼을 누르고 마이크와 서버가 녹음을 열기를 기다리는 상태예요. 밝은 구름이 빠르게 돌며 숨을 크게 쉬어요. 예: 독의 회의 녹음 버튼을 누른 직후 */
 export const Waiting: Story = {
-  args: { radius: 13, size: 60, tone: "recording", isWaiting: true },
+  args: { radius: 13, size: 60, tone: "neutral", isWaiting: true },
 };
 
-/** 녹음 중의 청록 파형이에요. 조용할 때도 숨 쉬고 목소리가 들어올 때마다 커져요. 예: 녹음 칩의 상태 표시 */
+/** 녹음 중의 밝은 입자 파형이에요. 독 안(어두운 바탕)에서 채팅 말풍선과 같은 중립색이에요. 조용할 때도 숨 쉬고 목소리가 들어올 때마다 커져요. 예: 녹음 칩의 상태 표시 */
 export const Recording: Story = {
-  args: { radius: 8, size: 24, width: 36, tone: "recording", shape: "wave", analyser: createFakeAnalyser() },
+  args: { radius: 8, size: 24, width: 36, tone: "neutral", shape: "wave", analyser: createFakeAnalyser() },
 };
 
 /** 다른 탭에서 녹음 중이라 소리를 읽을 수 없는 파형이에요. 숨만 쉬어요. 예: 다른 탭이 녹음 중일 때의 칩 */
 export const RecordingElsewhere: Story = {
-  args: { radius: 8, size: 24, width: 36, tone: "recording", shape: "wave" },
+  args: { radius: 8, size: 24, width: 36, tone: "neutral", shape: "wave" },
 };
 
 /** 녹음을 잠시 멈춰 소리를 읽지 않는 상태예요. 파형이 평평한 선으로 쉬어요. 예: 일시정지한 녹음의 칩 */
 export const Paused: Story = {
-  args: { radius: 8, size: 24, width: 36, tone: "recording", shape: "wave", analyser: createFakeAnalyser(), isActive: false },
+  args: { radius: 8, size: 24, width: 36, tone: "neutral", shape: "wave", analyser: createFakeAnalyser(), isActive: false },
 };

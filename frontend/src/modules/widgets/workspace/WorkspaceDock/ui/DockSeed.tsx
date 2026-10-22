@@ -31,7 +31,9 @@ interface DockSeedProps {
 export default function DockSeed({ isOpen, analyser, isActive, elapsedTime, splitTargets, onOpen }: DockSeedProps) {
   const theme = useTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const accent = hexToRgb(theme.sub.accent[500]);
+  // 녹음 화면의 파형(RecorderBar)과 같은 먹색이에요. 녹음 화면의 파형이 독 자리로 접힌 것으로 읽혀요
+  const ink = hexToRgb(theme.neutral[800]);
+  const strong = hexToRgb(theme.neutral[900]);
   const light = hexToRgb(theme.neutral[300]);
 
   const { setPointer, clearPointer, pulse } = useDockSeed({
@@ -41,7 +43,7 @@ export default function DockSeed({ isOpen, analyser, isActive, elapsedTime, spli
     isActive,
     splitTargets,
     palette: {
-      teal: [`rgba(${accent},0.9)`, `rgba(${accent},0.55)`, `rgba(${accent},0.28)`],
+      wave: [`rgba(${strong},0.9)`, `rgba(${ink},0.6)`, `rgba(${ink},0.32)`],
       light: [`rgba(${hexToRgb(theme.neutral[0])},0.92)`, `rgba(${light},0.7)`, `rgba(${light},0.32)`],
     },
   });
@@ -107,13 +109,16 @@ const ElapsedTime = styled.span<{ $isVisible: boolean }>`
   bottom: ${(SEED_WAVE_BOTTOM - SEED_CANVAS_OVERFLOW) / 16}rem;
   left: calc(50% + min(11.25rem, 30%) + 0.75rem); /* 파형 절반(최대 180px) + 12px */
   transform: translateY(50%);
-  color: ${({ theme }) => theme.neutral[800]};
+  /* 입자 파형처럼 가볍게. 굵은 라벨 대신 중간 굵기에 자간을 살짝 띄우고 먹색을 한 단계 옅게 둬요 */
+  color: ${({ theme }) => theme.neutral[700]};
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
   white-space: nowrap;
-  opacity: ${({ $isVisible }) => ($isVisible ? 1 : 0)};
+  opacity: ${({ $isVisible }) => ($isVisible ? 0.9 : 0)};
   transition: opacity 0.2s;
   pointer-events: none;
-  ${({ theme }) => theme.text.label01};
+  ${({ theme }) => theme.text.caption02};
+  font-weight: 500;
 `;
 
 /**

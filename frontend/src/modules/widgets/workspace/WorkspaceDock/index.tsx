@@ -8,6 +8,8 @@ import { useRef } from "react";
 
 import SendIcon from "@/assets/icons/send.svg";
 
+import { useDockHint } from "./model/useDockHint";
+import { useDockHoverGuide } from "./model/useDockHoverGuide";
 import { useDockOpen } from "./model/useDockOpen";
 import { useDockParticleEffects } from "./model/useDockParticleEffects";
 import { useDockSplitTargets } from "./model/useDockSplitTargets";
@@ -15,7 +17,7 @@ import { useDockRecording } from "./model/useDockRecording";
 import { useWorkspaceDock } from "./model/useWorkspaceDock";
 import { DOCK_ORB_CANVAS_SIZE, DOCK_ORB_RADIUS } from "./constants/dockOrb";
 import DockChatButton from "./ui/DockChatButton";
-import DockHintTooltip from "./ui/DockHintTooltip";
+import DockGuide from "./ui/DockGuide";
 import DockMicButton from "./ui/DockMicButton";
 import DockParticles from "./ui/DockParticles";
 import DockRecordingChip from "./ui/DockRecordingChip";
@@ -71,8 +73,9 @@ const DOCK_EXPAND_DURATION = "0.44s";
  *
  * 랜딩의 입자가 독에도 이어져요. 녹음이 없을 때는 Figma 독 그대로(Neutral 800 알약) 늘 보이고, 입자는 독 안의 구슬에만 있어요.
  * 채팅 버튼과 녹음 버튼은 둘 다 입자 구슬이에요. 채팅은 점 세 개가 든 말풍선으로 모여 있다가 올리면 점이 입력 중처럼 튀고,
- * 녹음은 붉은 구름 구슬이다가 올리면 마이크가 돼요. 누르면 녹음이 열릴 때까지 구슬이 청록으로 바뀌어 빠르게 돌며 기다려요.
- * 다른 화면에서 녹음이 이어지면 접힌 독 자리에 녹음 바와 같은 청록 파형이 길게 흐르고(`DockSeed`), 올리면 독으로 모였다가 벗어나면 다시 파형이 돼요.
+ * 녹음은 고리 안 붉은 원이다가 올리면 입자로 분해됐다 마이크가 돼요. 누르면 녹음이 열릴 때까지 구슬이 밝은 구름으로 바뀌어 빠르게 돌며 기다려요.
+ * 다른 화면에서 녹음이 이어지면 접힌 독 자리에 녹음 화면과 같은 먹색 입자 파형이 길게 흐르고(`DockSeed`), 올리면 독으로 모였다가 벗어나면 다시 파형이 돼요. 독 안의 녹음 칩은 밝은 입자 파형이에요.
+ * 첫 사용 안내는 홈에서 독이 접혀 쉬고 있을 때만 뜨고, 채팅·녹음 버튼에 올리면 한 줄 안내가 떠요(`DockGuide`).
  * 보내기 화살표는 보낼 수 있게 될 때 입자로 모였다가 진짜 아이콘이 돼요. 독 바탕에는 입자를 깔지 않고, 녹음 버튼을 누르거나 보낼 때만 입자가 터지며 테두리를 돌아요.
  * 캔버스를 못 쓰거나 움직임 줄이기 설정이면 파형 없이 늘 열린 독이라, 기존 동작과 접근성 이름은 어느 환경에서나 그대로예요.
  * 다른 탭의 녹음이면 칩은 점과 시간만 보여 주고 누를 수 없으며 중지 버튼도 두지 않아요.
@@ -85,7 +88,6 @@ export default function WorkspaceDock() {
     formRef,
     textareaRef,
     isExpanded,
-    isHintVisible,
     message,
     canSubmit,
     handleExpand,
@@ -105,6 +107,12 @@ export default function WorkspaceDock() {
     handleOpenRecording,
     handleStopRecording,
   } = useDockRecording();
+  // 첫 사용 안내는 홈에서 독이 접혀 쉬고 있을 때만, 버튼 안내는 첫 사용 안내가 없을 때 올리면 떠요
+  const isRecordingBusy = isRecordingChipVisible || isRecordingStarting;
+  const { isHintVisible } = useDockHint({ isDockExpanded: isExpanded, isRecordingBusy });
+  const { hoverGuide, bind: bindHoverGuide } = useDockHoverGuide({
+    isEnabled: !isExpanded && !isRecordingBusy && !isHintVisible,
+  });
   const stageRef = useRef<HTMLDivElement>(null);
   const { isSeedSupported, isOpen, open, enter, leave, scheduleClose } =
     useDockOpen({
@@ -151,7 +159,8 @@ export default function WorkspaceDock() {
         />
       )}
 
-      {isHintVisible && <DockHintTooltip />}
+      {isHintVisible && <DockGuide kind="first" />}
+      {hoverGuide && <DockGuide kind={hoverGuide} />}
 
       <Bar
         ref={formRef}
@@ -229,13 +238,15 @@ export default function WorkspaceDock() {
         ) : (
           /* 녹음 파형으로 접혀 있을 때는 자리만 차지하고 키보드·낭독기에서 닿지 않아요. 입력창은 밖에 있어 어디서든 타이핑은 그대로예요 */
           <CollapsedControls aria-hidden={!isOpen} inert={!isOpen}>
-              <DockChatButton isOrbVisible={isOpen} onClick={handleExpand} />
+              <GuideTarget {...bindHoverGuide("chat")}>
+                <DockChatButton isOrbVisible={isOpen} onClick={handleExpand} />
+              </GuideTarget>
 
               {/* Figma처럼 구분선은 녹음 칩 앞에만 둬요. 대기 독은 말풍선과 마이크가 4px 사이로 붙어 있어요 */}
               {isRecordingChipVisible && <ControlDivider aria-hidden="true" />}
 
               {isMicVisible && (
-                <RecordSlot data-dock-record>
+                <RecordSlot data-dock-record {...bindHoverGuide("record")}>
                   <DockMicButton
                     isOrbVisible={isOpen}
                     isWaiting={isRecordingStarting}
@@ -306,11 +317,9 @@ const Bar = styled.form<{
   border-radius: ${({ $isExpanded }) =>
     $isExpanded ? "1.875rem" : "6.25rem"}; /* 30px : 100px */
   background-color: ${({ theme }) => theme.neutral[800]};
-  /* 녹음 중엔 독 아래로 청록 빛이 살짝 비쳐요 */
+  /* 녹음 중엔 독 아래 그림자가 조금 더 깊어요. 파형이 녹음 화면과 같은 먹색이라 색 빛은 두지 않아요 */
   box-shadow: ${({ theme, $isRecording }) =>
-    $isRecording
-      ? `${theme.shadow03}, 0 10px 30px rgba(46, 133, 163, 0.16)`
-      : theme.shadow03};
+    $isRecording ? `${theme.shadow03}, 0 10px 30px rgba(60, 59, 57, 0.14)` : theme.shadow03};
   interpolate-size: allow-keywords;
   transition-property: width, padding, gap, border-radius, box-shadow, opacity, transform;
   transition-duration: ${({ $isExpanded }) =>
@@ -364,6 +373,11 @@ const InputOrb = styled.span`
 `;
 
 /** 접힌 독의 녹음 칸. 파형이 모일 자리를 재는 기준이고, 안의 버튼·칩처럼 세로 가운데에 놓여요 */
+/** 올렸을 때 안내를 띄우려고 버튼을 감싸요. 모양에는 관여하지 않아요 */
+const GuideTarget = styled.span`
+  display: flex;
+`;
+
 const RecordSlot = styled.span`
   display: flex;
   align-self: center;

@@ -435,7 +435,7 @@ export const useParticleOrb = ({
         !paramsRef.current.isWaiting &&
         !scatterRef.current &&
         pulsesRef.current.length === 0 &&
-        !(node && active && nextTone === "recording");
+        !(node && active);
       isOddFrame = !isOddFrame;
       if (isCalm && isOddFrame) {
         animation = requestAnimationFrame(tick);
@@ -444,7 +444,7 @@ export const useParticleOrb = ({
       frame++;
       hover += ((nextShape !== "cloud" ? 1 : 0) - hover) * 0.12;
       wait += ((paramsRef.current.isWaiting ? 1 : 0) - wait) * 0.1;
-      const measured = node && active && nextTone === "recording" ? measureAnalyserLevel(node) : 0;
+      const measured = node && active ? measureAnalyserLevel(node) : 0;
       level = smoothLevel({ previous: level, next: measured, attack: 0.35, release: 0.06 });
       placeParticles();
 

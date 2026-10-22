@@ -36,7 +36,22 @@ import { getRecordingStartProof } from "@utils/recordingControlProof";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import WorkspaceDock from ".";
-import { DOCK_HINT_MAX_SEEN_COUNT, DOCK_HINT_TEXT } from "./constants/dockHint";
+import {
+  DOCK_GUIDE_COPY,
+  DOCK_HINT_DELAY_MS,
+  DOCK_HINT_MAX_SEEN_COUNT,
+  DOCK_HINT_SEEN_COUNT_KEY,
+} from "./constants/dockHint";
+
+const DOCK_HINT_TEXT = DOCK_GUIDE_COPY.first.title;
+
+/** 첫 사용 안내가 뜨기까지 기다리는 시간만큼 기다려요. 안 떠야 하는 경우를 볼 때 써요 */
+const waitForHintDelay = () =>
+  act(() => new Promise((resolve) => setTimeout(resolve, DOCK_HINT_DELAY_MS + 50)));
+
+/** 첫 사용 안내를 이미 다 본 사용자로 만들어요 */
+const markHintAsSeen = () =>
+  localStorage.setItem(DOCK_HINT_SEEN_COUNT_KEY, String(DOCK_HINT_MAX_SEEN_COUNT));
 
 // 이 파일은 WebM 녹음만 보므로, PCM 켜기(#799) 뒤에도 WebM으로 고정해요. PCM 시작은 useRecordingControl 테스트가 봐요
 vi.mock("@constants/recording", async (importOriginal) => ({
@@ -446,27 +461,28 @@ describe("WorkspaceDock", () => {
     expect(field).toHaveValue(QUESTION);
   });
 
-  it("독 안내는 처음 세 번 방문할 때까지만 보여준다", () => {
+  it("독 안내는 홈에서 처음 세 번 방문할 때까지만 보여준다", async () => {
     for (let visit = 1; visit <= DOCK_HINT_MAX_SEEN_COUNT; visit += 1) {
       const { unmount } = renderDock();
 
-      expect(screen.getByText(DOCK_HINT_TEXT)).toBeInTheDocument();
+      expect(await screen.findByText(DOCK_HINT_TEXT)).toBeInTheDocument();
 
       unmount();
       sessionStorage.clear(); // 탭을 닫고 다시 들어온 셈이에요
     }
 
     renderDock();
+    await waitForHintDelay();
 
     expect(screen.queryByText(DOCK_HINT_TEXT)).not.toBeInTheDocument();
   });
 
-  it("같은 방문 안에서 다시 그려도 방문 횟수를 더 쓰지 않는다", () => {
+  it("같은 방문 안에서 다시 그려도 방문 횟수를 더 쓰지 않는다", async () => {
     // 새로고침이나 홈·탐색 오가기로 독이 다시 그려져도 같은 방문이에요
     for (let render = 1; render <= DOCK_HINT_MAX_SEEN_COUNT + 2; render += 1) {
       const { unmount } = renderDock();
 
-      expect(screen.getByText(DOCK_HINT_TEXT)).toBeInTheDocument();
+      expect(await screen.findByText(DOCK_HINT_TEXT)).toBeInTheDocument();
 
       unmount();
     }
@@ -474,17 +490,45 @@ describe("WorkspaceDock", () => {
     sessionStorage.clear();
     renderDock();
 
-    expect(screen.getByText(DOCK_HINT_TEXT)).toBeInTheDocument();
+    expect(await screen.findByText(DOCK_HINT_TEXT)).toBeInTheDocument();
   });
 
-  it("독을 열면 안내는 사라진다", () => {
-    renderDock();
+  it("독을 열면 안내는 사라지고 이번 방문에는 다시 뜨지 않는다", async () => {
+    const { unmount } = renderDock();
 
-    expect(screen.getByText(DOCK_HINT_TEXT)).toBeInTheDocument();
+    expect(await screen.findByText(DOCK_HINT_TEXT)).toBeInTheDocument();
 
     expandDock();
 
     expect(screen.queryByText(DOCK_HINT_TEXT)).not.toBeInTheDocument();
+
+    unmount();
+    renderDock();
+    await waitForHintDelay();
+
+    expect(screen.queryByText(DOCK_HINT_TEXT)).not.toBeInTheDocument();
+  });
+
+  it("다른 탭에서 녹음 중이면 안내를 띄우지 않는다", async () => {
+    respondCurrentRecordingStatus("RECORDING");
+    renderDock();
+    await waitForHintDelay();
+
+    expect(screen.queryByText(DOCK_HINT_TEXT)).not.toBeInTheDocument();
+  });
+
+  it("안내가 없을 때 채팅 버튼에 올리면 한 줄 안내가 떴다가 벗어나면 사라진다", async () => {
+    markHintAsSeen();
+    renderDock();
+
+    const chatButton = screen.getByRole("button", { name: "무엇이든 요청하기" });
+    fireEvent.pointerEnter(chatButton.parentElement as HTMLElement);
+
+    expect(await screen.findByText(DOCK_GUIDE_COPY.chat)).toBeInTheDocument();
+
+    fireEvent.pointerLeave(chatButton.parentElement as HTMLElement);
+
+    expect(screen.queryByText(DOCK_GUIDE_COPY.chat)).not.toBeInTheDocument();
   });
 
   describe("독을 연 방법 기록", () => {
@@ -603,8 +647,9 @@ describe("WorkspaceDock", () => {
     });
   });
 
-  it("이미 열려 있는 탐색 화면에서는 안내를 보여주지 않는다", () => {
+  it("이미 열려 있는 탐색 화면에서는 안내를 보여주지 않는다", async () => {
     renderDock(CHAT_PATH);
+    await waitForHintDelay();
 
     expect(screen.queryByText(DOCK_HINT_TEXT)).not.toBeInTheDocument();
   });

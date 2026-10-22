@@ -17,7 +17,6 @@ import {
 } from "react";
 import { useParams } from "react-router";
 
-import { useDockHint } from "./useDockHint";
 import { useKeepFieldFocused } from "./useKeepFieldFocused";
 import { useTypeToStartChat } from "./useTypeToStartChat";
 
@@ -54,8 +53,6 @@ export const useWorkspaceDock = () => {
 
   const isExpanded = isChatActive || isExpandedByUser;
   const canSubmit = message.trim().length > 0 && !isAnswerPending;
-
-  const { isHintVisible } = useDockHint({ isDockExpanded: isExpanded });
 
   useEffect(() => {
     if (focusRequestCount === 0) return;
@@ -147,7 +144,6 @@ export const useWorkspaceDock = () => {
     formRef,
     textareaRef,
     isExpanded,
-    isHintVisible,
     message,
     canSubmit,
     handleExpand,
