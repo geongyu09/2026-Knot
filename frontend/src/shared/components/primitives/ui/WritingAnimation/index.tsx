@@ -1,34 +1,57 @@
+import { useTheme } from "@emotion/react";
 import styled from "@emotion/styled";
+import { hexToRgb } from "@utils/hexToRgb";
+import { useRef } from "react";
 
-// 48px로 보여주므로 3배 밀도 화면까지 선명한 144×144로 줄여 두었어요
-import writingGif from "@/assets/illustrations/writing.gif";
 import WritingIllustration from "@/assets/illustrations/writing.svg";
 
+import { WRITING_STAGE_HEIGHT, WRITING_STAGE_WIDTH } from "./constants/writingParticles";
+import { useWritingParticles } from "./model/useWritingParticles";
+
 /**
- * 펜이 문서에 글줄을 한 줄씩 써 내려가는 48×48 그림.
+ * 회의 녹음이 주제별 문서로 정리되는 모습을 입자로 그리는 192×128 그림.
  *
- * 디자이너가 만든 GIF(3.6초 반복)를 보여주고,
- * 움직임 줄이기(`prefers-reduced-motion: reduce`)를 켠 사용자에게는 같은 그림의 멈춘 판을 보여줘요.
+ * 녹음 바와 같은 청록 입자 파형이 숨 쉬다가 문서 세 장으로 갈라지고, 문서마다 입자 펜이 글줄을 한 줄씩 써 내려가요.
+ * 다 쓰면 잠깐 머물렀다가 다시 파형으로 모여 6.5초마다 되풀이해요. 랜딩과 독의 입자와 같은 규칙(스프링 복귀, 파형 공식)을 써요.
+ * 움직임 줄이기(`prefers-reduced-motion: reduce`)를 켠 사용자에게는 펜이 글줄을 쓰는 멈춘 그림을 보여줘요.
  * 꾸밈용 그림이라 낭독기에서 읽지 않아요.
  *
  * @example
  * <IllustratedMessageLayout illustration={<WritingAnimation />} title={…} description={…} />
  */
 export default function WritingAnimation() {
+  const theme = useTheme();
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const accent = hexToRgb(theme.sub.accent[500]);
+
+  useWritingParticles({
+    canvasRef,
+    palette: {
+      teal: [`rgba(${accent},0.92)`, `rgba(${accent},0.6)`, `rgba(${accent},0.32)`],
+      ink: [`rgba(${hexToRgb(theme.primary)},0.88)`, `rgba(${hexToRgb(theme.neutral[500])},0.9)`],
+    },
+  });
+
   return (
-    <>
-      <MovingImage src={writingGif} alt="" />
+    <Stage aria-hidden="true">
+      <Canvas ref={canvasRef} />
       <StillImage />
-    </>
+    </Stage>
   );
 }
 
-// GIF는 CSS로 멈출 수 없어서, 두 그림을 모두 그려 두고 미디어 쿼리로 하나만 보여줘요.
-// 그래서 움직임 줄이기를 켜도 숨긴 GIF는 내려받아요.
-const MovingImage = styled.img`
+const Stage = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: ${WRITING_STAGE_WIDTH / 16}rem; /* 192px */
+  height: ${WRITING_STAGE_HEIGHT / 16}rem; /* 128px */
+`;
+
+const Canvas = styled.canvas`
   display: block;
-  width: 3rem; /* 48px */
-  height: 3rem;
+  width: 100%;
+  height: 100%;
 
   @media (prefers-reduced-motion: reduce) {
     display: none;
@@ -38,8 +61,8 @@ const MovingImage = styled.img`
 // <img>로 넣으면 SVG 안의 currentColor가 바깥 color를 받지 못해 검정이 되므로 svgr 컴포넌트로 넣어요
 const StillImage = styled(WritingIllustration)`
   display: none;
-  width: 3rem; /* 48px */
-  height: 3rem;
+  width: 4.5rem; /* 72px */
+  height: 4.5rem;
   color: ${({ theme }) => theme.primary};
 
   @media (prefers-reduced-motion: reduce) {
