@@ -104,13 +104,13 @@ const DockPill = styled.span<{ $isVisible: boolean }>`
   height: ${SEED_PILL_HEIGHT / 16}rem;
   border: 1px solid ${({ theme }) => `rgba(${hexToRgb(theme.neutral[0])}, 0.08)`};
   border-radius: 6.25rem; /* 100px */
-  /* 독과 같은 색이지만 비쳐서, 스크롤로 뒤를 지나가는 카드와 글자가 흐릿한 빛 덩어리로 어려요. 86%는 거의 안 비쳐서 68%로 두고 흐림은 8px로 줄여 글자 덩어리가 보이게 해요 */
-  background-color: ${({ theme }) => `rgba(${hexToRgb(theme.neutral[800])}, 0.68)`};
+  /* 독과 같은 색이지만 비쳐서, 스크롤로 뒤를 지나가는 카드와 글자가 흐릿한 빛 덩어리로 어려요. 86%와 68%는 티가 안 나서 56%로 두고 흐림은 6px로 줄여 글자 덩어리가 또렷이 비치게 해요 */
+  background-color: ${({ theme }) => `rgba(${hexToRgb(theme.neutral[800])}, 0.56)`};
   box-shadow:
     inset 0 1px 0 ${({ theme }) => `rgba(${hexToRgb(theme.neutral[0])}, 0.1)`},
     ${({ theme }) => theme.shadow03};
-  backdrop-filter: blur(8px) saturate(1.2);
-  -webkit-backdrop-filter: blur(8px) saturate(1.2);
+  backdrop-filter: blur(6px) saturate(1.2);
+  -webkit-backdrop-filter: blur(6px) saturate(1.2);
   opacity: ${({ $isVisible }) => ($isVisible ? 1 : 0)};
   transition: opacity 0.2s;
   pointer-events: none;
