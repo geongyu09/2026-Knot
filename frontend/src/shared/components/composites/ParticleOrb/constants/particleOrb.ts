@@ -5,9 +5,6 @@ export const ORB_PARTICLE_COUNT = 900;
 export const ORB_DOT_MIN = 0.75;
 export const ORB_DOT_RANGE = 0.7;
 
-/** 구름이 목소리에 파형으로 펼쳐질 때의 세로 막대 수 */
-export const ORB_WAVE_COLUMNS = 24;
-
 /** `wave` 모양의 파형 윤곽을 재는 칸 수. 칸 사이는 매끄럽게 이어 막대가 아니라 입자 구름이 파형 모양을 이뤄요 */
 export const WAVE_SHAPE_COLUMNS = 12;
 /** `wave` 모양의 가로 폭은 구슬 반지름의 이 배율이에요. 캔버스보다 넓으면 캔버스에 맞춰요 */

@@ -1,17 +1,5 @@
 import { measureAnalyserLevel } from "@utils/measureAudioLevel";
-import {
-  advancePulses,
-  createPulse,
-  nextPulseBoost,
-  pointerRepulsion,
-  prefersReducedMotion,
-  pulseForce,
-  smoothLevel,
-  stepSpring,
-  waveAmplitude,
-  waveBreath,
-  type PulseWave,
-} from "@utils/particleMotion";
+import { advancePulses, createPulse, frameStep, nextPulseBoost, pointerRepulsion, prefersReducedMotion, pulseForce, smoothLevel, stepSpring, type PulseWave, waveAmplitude, waveBreath } from "@utils/particleMotion";
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 
 import {
@@ -84,6 +72,7 @@ export const useParticleWaveform = ({ canvasRef, analyser, isActive, palette }: 
     let width = 0;
     let height = 0;
     let frame = Math.random() * 1000;
+    let lastFrameAt = 0;
     let level = 0;
     let animation = 0;
 
@@ -113,8 +102,10 @@ export const useParticleWaveform = ({ canvasRef, analyser, isActive, palette }: 
       }
     };
 
-    const tick = () => {
-      frame++;
+    const tick = (now: number) => {
+      // 화면 주사율과 상관없이 같은 속도로 움직이게 흐른 시간만큼 프레임을 더해요
+      frame += frameStep(now, lastFrameAt);
+      lastFrameAt = now;
       resize();
       const { analyser: node, isActive: active, palette: colors } = paramsRef.current;
       const measured = node && active ? measureAnalyserLevel(node) : 0;

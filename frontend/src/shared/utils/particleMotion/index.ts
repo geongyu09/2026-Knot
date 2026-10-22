@@ -4,6 +4,15 @@
  * 랜딩의 입자 엔진과 같은 규칙(스프링 복귀, 감쇠, 둥근 사각형 둘레)을 작은 캔버스에서도 쓰려고 모았어요.
  */
 
+/** 한 프레임의 기준 길이(ms). 애니메이션은 60fps 기준으로 설계됐어요 */
+const FRAME_MS = 1000 / 60;
+
+/**
+ * 지난 프레임부터 흐른 시간을 60fps 기준 프레임 수로 바꿔요.
+ * 120Hz 화면에서 프레임마다 1씩 더하면 두 배 빨라져서, 흐른 시간만큼만 더해요. 탭이 멈췄다 돌아오면 최대 2프레임만 쳐요.
+ */
+export const frameStep = (now: number, previous: number) => (previous ? Math.min(2, (now - previous) / FRAME_MS) : 1);
+
 /** 가운데에 몰린 -1~1 난수. 입자를 선 둘레에 자연스럽게 퍼뜨릴 때 써요. 랜딩과 같아요 */
 export const gaussian = () => (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
 

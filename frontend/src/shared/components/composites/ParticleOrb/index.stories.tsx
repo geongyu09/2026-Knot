@@ -32,11 +32,11 @@ const DarkStage = styled.div`
  * - `shape`가 `disc`면 테두리 고리 안에 붉은 원이 든 녹음 버튼이에요. 독의 녹음 버튼이 평소에 보여 주는 모양으로, `mic`으로 바꾸면 원이 입자로 분해됐다가 마이크로 모여요(`scatter()`를 함께 불러요).
  * - `wave`면 입자 전부가 세로 막대 파형이 되어 조용할 때도 숨 쉬고 목소리에 커져요. 녹음 칩이 평소에 보여 주는 모양으로, 올렸을 때 `arrow`로 바꿔 오른쪽 화살표로 모아요. 옆으로 길어 `width`를 넓게 줘요.
  * - `cloud`면 입자 수백 개가 구름 같은 구를 이루며 천천히 돌고 숨 쉬어요. 녹음을 기다리는 동안 써요.
- * - `tone`이 `idle`이면 녹음 전의 붉은빛(Warning), `recording`이면 녹음 중의 청록빛(Accent), `neutral`이면 어두운 바탕 위의 밝은 회색이에요. 채팅 버튼은 `neutral`에 `bubble`(올리면 `typing`)이에요.
+ * - `tone`이 `idle`이면 녹음 전의 붉은빛(Warning), `neutral`이면 어두운 바탕 위의 밝은 회색이에요. 채팅 버튼과 녹음 칩, 녹음 시작 대기는 `neutral`이에요.
  *
  * **녹음 중 동작**
- * - `recording` 톤에서 `analyser`를 넘기면 목소리가 들어올 때마다 파형이 커져요(`cloud`는 가운데를 가로지르는 파형으로 펼쳐졌다 돌아와요). 청록 빛무리가 맥박처럼 뛰어요.
- * - `isActive`가 `false`면 일시정지라 소리를 읽지 않고 빛무리도 쉬어요. `wave`는 평평한 선이 돼요.
+ * - `analyser`를 넘기면 목소리가 들어올 때마다 파형이 커져요.
+ * - `isActive`가 `false`면 일시정지라 소리를 읽지 않아요. `wave`는 평평한 선이 돼요.
  * - `isWaiting`이면 결과를 기다리는 중이라 구름이 빠르게 돌며 모였다 풀렸다 해요. 녹음 버튼을 누른 뒤 녹음이 열릴 때까지 써요.
  *
  * **규칙**
@@ -50,7 +50,7 @@ const meta = {
   args: { radius: 13, size: 60, shape: "disc", tone: "idle", isActive: true },
   argTypes: {
     shape: { control: "radio", options: ["disc", "cloud", "mic", "arrow", "wave", "bubble", "typing"] },
-    tone: { control: "radio", options: ["idle", "recording", "neutral"] },
+    tone: { control: "radio", options: ["idle", "neutral"] },
   },
   decorators: [
     (Story) => (

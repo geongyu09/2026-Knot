@@ -1,4 +1,4 @@
-import { prefersReducedMotion, smoothLevel, stepSpring, waveAmplitude } from "@utils/particleMotion";
+import { frameStep, prefersReducedMotion, smoothLevel, stepSpring, waveAmplitude } from "@utils/particleMotion";
 import { measureAnalyserLevel } from "@utils/measureAudioLevel";
 import { sampleShapeTargets } from "@utils/sampleShapeTargets";
 import { useCallback, useEffect, useRef, type RefObject } from "react";
@@ -18,7 +18,6 @@ import {
   ORB_DOT_RANGE,
   ORB_PARTICLE_COUNT,
   ORB_SPRING,
-  ORB_WAVE_COLUMNS,
   WAVE_DOT_SCALE,
   WAVE_SHAPE_COLUMNS,
   WAVE_SHAPE_FLAT_AMPLITUDE,
@@ -46,8 +45,7 @@ interface OrbParticle {
   /** 가운데에서 얼마나 떨어졌는지(0~1). 가장자리는 작게 그려요 */
   edge: number;
   bucket: number;
-  /** 구름 파형에서 몇 번째 막대인지, 막대 안의 세로 위치(-1~1), 가로 흔들림 */
-  column: number;
+  /** 파형에서의 세로 위치(-1~1)와 가로 흔들림 */
   /** `wave` 모양에서의 세로 위치(-1~1). 가운데에 몰린 난수라 파형 가운데가 빽빽하고 끝이 성겨요 */
   waveLevel: number;
   level: number;
@@ -78,20 +76,13 @@ interface UseParticleOrbParams {
   /** `true`면 무언가를 기다리는 중이라 구슬이 빠르게 돌며 모였다 풀렸다 해요 */
   isWaiting: boolean;
   idlePalette: ParticleOrbPalette;
-  recordingPalette: ParticleOrbPalette;
   neutralPalette: ParticleOrbPalette;
-  /** 녹음 중 빛무리 색. `r,g,b` 꼴이에요 */
-  haloRgb: string;
   /** `disc` 모양의 단색 원과 테두리 고리 색. `r,g,b` 꼴이에요 */
   discRgb: string;
 }
 
 /** 구가 보는 사람 쪽으로 기울어진 각도. 위쪽이 조금 보이게 해요 */
 const TILT = 0.38;
-
-/** 목소리가 이만큼이면 입자 전부가 파형으로 나가요 */
-const WAVE_SHARE_PER_LEVEL = 1.7;
-const MAX_WAVE_SHARE = 0.9;
 
 const createParticles = (count: number): OrbParticle[] =>
   Array.from({ length: count }, (_, index) => ({
@@ -108,7 +99,6 @@ const createParticles = (count: number): OrbParticle[] =>
     depth: 0,
     edge: 0,
     bucket: 1,
-    column: index % ORB_WAVE_COLUMNS,
     waveLevel: Math.random() + Math.random() - 1,
     level: Math.random() * 2 - 1,
     jitter: (Math.random() - 0.5) * 0.42,
@@ -147,7 +137,6 @@ const drawBubble = (context: CanvasRenderingContext2D) => {
  * `disc`는 입자가 단색 원 안에 빽빽이 모이고 그 위에 테두리 고리를 둘러 한눈에 녹음 버튼으로 읽혀요. 입자가 조용히 모여야 단색 원이 차오르고,
  * 다른 모양으로 바뀌면 단색 원이 먼저 사라져 입자가 분해되는 것이 보여요. `scatter()`는 그때 입자를 바깥으로 살짝 흩뜨려요.
  * `wave`는 입자 전부가 구름처럼 흩어진 채 파형 윤곽을 이루고 조용할 때도 숨 쉬듯 일렁이며, 분석기가 있으면 목소리만큼 더 커져요. 일시정지면 평평한 선이에요.
- * 녹음 톤의 구름은 분석기의 소리 크기만큼 입자가 가운데를 가로지르는 파형으로 나가고, 조용하면 구름으로 돌아와요.
  * `isWaiting`이면 구름이 빠르게 돌며 모였다 풀렸다 해요. 누른 뒤 결과를 기다리는 동안 멈춰 보이지 않게 해요.
  * 매 프레임 바뀌는 값이라 React 상태로 다루지 않고, 바뀌는 props는 ref로 받아 다음 프레임부터 반영해요.
  * 움직임 줄이기 설정에서는 회전·숨쉬기·흔들림을 멈추고 소리와 모양만 반영해요.
@@ -161,13 +150,11 @@ export const useParticleOrb = ({
   isActive,
   isWaiting,
   idlePalette,
-  recordingPalette,
   neutralPalette,
-  haloRgb,
   discRgb,
 }: UseParticleOrbParams) => {
-  const paramsRef = useRef({ radius, shape, tone, analyser, isActive, isWaiting, idlePalette, recordingPalette, neutralPalette, haloRgb, discRgb });
-  paramsRef.current = { radius, shape, tone, analyser, isActive, isWaiting, idlePalette, recordingPalette, neutralPalette, haloRgb, discRgb };
+  const paramsRef = useRef({ radius, shape, tone, analyser, isActive, isWaiting, idlePalette, neutralPalette, discRgb });
+  paramsRef.current = { radius, shape, tone, analyser, isActive, isWaiting, idlePalette, neutralPalette, discRgb };
 
   const pulsesRef = useRef<Pulse[]>([]);
   const pulse = useCallback(() => {
@@ -189,10 +176,11 @@ export const useParticleOrb = ({
     const reduced = prefersReducedMotion();
     const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
     const particles = createParticles(ORB_PARTICLE_COUNT);
-    const amplitudes = new Float32Array(ORB_WAVE_COLUMNS);
+    const amplitudes = new Float32Array(WAVE_SHAPE_COLUMNS);
     let width = 0;
     let height = 0;
     let frame = Math.random() * 1000;
+    let lastFrameAt = 0;
     let level = 0;
     let hover = 0;
     let wait = 0;
@@ -244,19 +232,10 @@ export const useParticleOrb = ({
       });
     };
 
-    const updateAmplitudes = (orbRadius: number) => {
-      // 랜딩 파형과 같은 공식. 구슬이 작아 바닥값 2.5가 크므로 1/4로 줄여 써요
-      const maxAmplitude = orbRadius * 4 * (0.25 + 0.75 * level);
-      for (let column = 0; column < ORB_WAVE_COLUMNS; column++) {
-        amplitudes[column] = waveAmplitude({ column, columns: ORB_WAVE_COLUMNS, frame: frame * 1.8, maxAmplitude, scale: 1 }) / 4;
-      }
-    };
-
     const placeParticles = () => {
-      const { radius: baseRadius, shape: nextShape, tone: nextTone, isActive: active } = paramsRef.current;
+      const { radius: baseRadius, shape: nextShape, isActive: active } = paramsRef.current;
       const centerX = width / 2;
       const centerY = height / 2;
-      const isRecording = nextTone === "recording";
 
       if (nextShape === "disc") {
         // 녹음 버튼: 안쪽 원을 입자로 빽빽이 채워요. 단색 원이 차오르면 입자는 그 위에 숨고, 분해될 때 드러나요
@@ -345,21 +324,7 @@ export const useParticleOrb = ({
       const rotation = reduced ? 0.6 : spin;
       const gather = reduced ? 0 : wait * 0.14 * (0.5 + 0.5 * Math.sin(frame * 0.11));
       const orbRadius = baseRadius * (1 + hover * 0.08 + level * 0.28 - gather);
-      const waveShare = isRecording ? Math.min(MAX_WAVE_SHARE, level * WAVE_SHARE_PER_LEVEL) : 0;
-      if (isRecording) updateAmplitudes(orbRadius);
-
       particles.forEach((particle) => {
-        if (particle.seed < waveShare) {
-          // 구슬 가운데를 가로지르는 파형. 목소리가 클수록 더 많은 입자가 나와요
-          particle.homeX = centerX - orbRadius * 1.3 + (particle.column + 0.5 + particle.jitter) * ((orbRadius * 2.6) / ORB_WAVE_COLUMNS);
-          particle.homeY = centerY + particle.level * amplitudes[particle.column];
-          particle.depth = 1;
-          particle.edge = 0.3;
-          const strength = Math.abs(particle.level);
-          particle.bucket = strength < 0.45 ? 0 : strength < 0.8 ? 2 : 3;
-          return;
-        }
-
         const breathe = reduced
           ? 1
           : 1 + 0.05 * Math.sin(frame * 0.028 + particle.seed * 6.28) + level * 0.22 * Math.sin(frame * 0.21 + particle.seed * 9);
@@ -382,24 +347,6 @@ export const useParticleOrb = ({
       });
     };
 
-    const drawHalo = () => {
-      const { radius: baseRadius, tone: nextTone, haloRgb: rgb, isActive: active } = paramsRef.current;
-      if (nextTone !== "recording" || !active) return;
-      const centerX = width / 2;
-      const centerY = height / 2;
-      const orbRadius = baseRadius * (1 + level * 0.28);
-      const haloRadius = Math.min(orbRadius * 1.9, Math.min(width, height) / 2);
-      const beat = reduced ? 0.5 : 0.5 + 0.5 * Math.sin(frame * 0.075);
-      const halo = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, haloRadius);
-      // 기다리는 동안은 빛무리가 더 또렷하게 뛰어요
-      halo.addColorStop(0, `rgba(${rgb},${0.1 + beat * (0.12 + wait * 0.14) + level * 0.18})`);
-      halo.addColorStop(1, `rgba(${rgb},0)`);
-      context.fillStyle = halo;
-      context.beginPath();
-      context.arc(centerX, centerY, haloRadius, 0, Math.PI * 2);
-      context.fill();
-    };
-
     /** `disc`의 단색 원과 테두리 고리. 입자가 모인 만큼 차오르고, 고리는 녹음 표시처럼 천천히 맥박을 쳐요 */
     const drawDisc = () => {
       if (solid < 0.01) return;
@@ -419,7 +366,7 @@ export const useParticleOrb = ({
     };
 
     let isOddFrame = false;
-    const tick = () => {
+    const tick = (now: number) => {
       resize();
       const { analyser: node, isActive: active, tone: nextTone, shape: nextShape } = paramsRef.current;
       // 가만히 떠 있는 구름, 자리를 잡은 말풍선·녹음 버튼, 일시정지한 파형은 30fps면 충분해요. 모양이 바뀌는 중이거나 소리·파동이 있을 땐 60fps예요.
@@ -442,7 +389,9 @@ export const useParticleOrb = ({
         animation = requestAnimationFrame(tick);
         return;
       }
-      frame++;
+      // 화면 주사율과 상관없이 같은 속도로 움직이게 흐른 시간만큼 프레임을 더해요
+      frame += frameStep(now, lastFrameAt);
+      lastFrameAt = now;
       hover += ((nextShape !== "cloud" ? 1 : 0) - hover) * 0.12;
       wait += ((paramsRef.current.isWaiting ? 1 : 0) - wait) * 0.1;
       const measured = node && active ? measureAnalyserLevel(node) : 0;
@@ -504,10 +453,8 @@ export const useParticleOrb = ({
 
       context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
       context.clearRect(0, 0, width, height);
-      drawHalo();
       drawDisc();
-      const palette =
-        nextTone === "recording" ? paramsRef.current.recordingPalette : nextTone === "neutral" ? paramsRef.current.neutralPalette : paramsRef.current.idlePalette;
+      const palette = nextTone === "neutral" ? paramsRef.current.neutralPalette : paramsRef.current.idlePalette;
       const shapeDotScale = nextShape === "disc" ? DISC_DOT_SCALE : nextShape === "wave" ? WAVE_DOT_SCALE : 1;
       // 구슬은 작아서 네모 점이면 모자이크처럼 보여요. 칸마다 한 번에 둥근 점으로 채워요
       buckets.forEach((bucket, index) => {

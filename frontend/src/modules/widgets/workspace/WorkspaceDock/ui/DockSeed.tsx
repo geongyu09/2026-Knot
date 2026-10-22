@@ -61,6 +61,8 @@ export default function DockSeed({ isOpen, analyser, isActive, elapsedTime, spli
 
   return (
     <>
+      {/* 파형과 시간 뒤의 옅은 유리판. 홈 카드 위를 지나가도 파형이 글자와 섞이지 않아요 */}
+      <GlassPill aria-hidden="true" $isVisible={!isOpen} />
       <Canvas ref={canvasRef} aria-hidden="true" $isOpen={isOpen} />
       <ElapsedTime aria-hidden="true" $isVisible={!isOpen}>
         {elapsedTime}
@@ -92,6 +94,28 @@ export default function DockSeed({ isOpen, analyser, isActive, elapsedTime, spli
   );
 }
 
+/**
+ * 파형과 시간을 받치는 유리판. 바탕색(Neutral 50)을 반투명하게 깔고 뒤를 흐려 글자 위를 지나가도 파형이 읽혀요.
+ * 흰색 카드와 구분되도록 흰색 그대로 쓰지 않고, 테두리는 먹색을 아주 옅게 둬요. 독이 나타나면 독에 자리를 내줘요
+ */
+const GlassPill = styled.span<{ $isVisible: boolean }>`
+  position: absolute;
+  bottom: ${(SEED_WAVE_BOTTOM - SEED_CANVAS_OVERFLOW - 26) / 16}rem; /* 파형 가운데를 중심으로 52px */
+  left: calc(50% - min(11.25rem, 30%) - 1.5rem); /* 파형 왼쪽 끝에서 24px 바깥 */
+  width: calc(min(22.5rem, 60%) + 6.75rem); /* 파형 + 시간(44px) + 양옆 여백 */
+  height: 3.25rem; /* 52px */
+  border: 1px solid ${({ theme }) => `rgba(${hexToRgb(theme.neutral[900])}, 0.06)`};
+  border-radius: 6.25rem; /* 100px */
+  background-color: ${({ theme }) => `rgba(${hexToRgb(theme.neutral[50])}, 0.68)`};
+  box-shadow: 0 6px 20px ${({ theme }) => `rgba(${hexToRgb(theme.neutral[900])}, 0.05)`};
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  opacity: ${({ $isVisible }) => ($isVisible ? 1 : 0)};
+  transition: opacity 0.2s;
+  pointer-events: none;
+  z-index: 1; /* 파형 캔버스(2) 아래, 독(1)과 같은 층이지만 독이 나타나면 숨어요 */
+`;
+
 /** 독 자리 위로 넉넉히 그려요. 열린 뒤에는 독이 포인터를 받도록 비켜요 */
 const Canvas = styled.canvas<{ $isOpen: boolean }>`
   position: absolute;
@@ -117,6 +141,7 @@ const ElapsedTime = styled.span<{ $isVisible: boolean }>`
   opacity: ${({ $isVisible }) => ($isVisible ? 0.9 : 0)};
   transition: opacity 0.2s;
   pointer-events: none;
+  z-index: 2; /* 유리판(1) 위에 놓여요 */
   ${({ theme }) => theme.text.caption02};
   font-weight: 500;
 `;

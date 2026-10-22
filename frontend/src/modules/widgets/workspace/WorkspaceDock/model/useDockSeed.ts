@@ -1,6 +1,7 @@
 import {
   advancePulses,
   createPulse,
+  frameStep,
   gaussian,
   nextPulseBoost,
   pointerRepulsion,
@@ -9,9 +10,9 @@ import {
   roundedRectPoint,
   smoothLevel,
   stepSpring,
+  type PulseWave,
   waveAmplitude,
   waveBreath,
-  type PulseWave,
 } from "@utils/particleMotion";
 import { measureAnalyserLevel } from "@utils/measureAudioLevel";
 import { sampleShapeTargets } from "@utils/sampleShapeTargets";
@@ -37,7 +38,6 @@ import { drawSpeechBubbleIcon } from "../utils/drawDockIcons";
 type SketchPart = "frame" | "icon" | "orb";
 
 interface SeedParticle {
-  column: number;
   /** 막대 안의 세로 위치(-1~1). 랜딩 파형과 같아요 */
   level: number;
   jitter: number;
@@ -166,7 +166,6 @@ export const useDockSeed = ({
       canvas.height = Math.round(height * pixelRatio);
       const count = isMobile ? SEED_PARTICLE_COUNT.mobile : SEED_PARTICLE_COUNT.desktop;
       particles = Array.from({ length: count }, (_, index) => ({
-        column: index % SEED_WAVE_COLUMNS,
         level: Math.random() * 2 - 1,
         jitter: (Math.random() - 0.5) * 0.42,
         seed: Math.random(),
@@ -267,9 +266,15 @@ export const useDockSeed = ({
           const light = 0.5 + 0.5 * (-x * 0.45 - y * 0.78 + z * 0.3) * (0.6 + 0.4 * (r / SEED_ORB_RADIUS));
           particle.shade = z < -0.3 ? 4 : light > 0.78 ? 0 : light > 0.62 ? 1 : light > 0.46 ? 2 : light > 0.3 ? 3 : 4;
         }
-        // 파형이었다가 열리면 독 모양 자리로 모여요
-        const waveX = startX + (particle.column + 0.5 + particle.jitter) * columnWidth;
-        const waveY = centerY + particle.level * amplitudes[particle.column];
+        // 파형이었다가 열리면 독 모양 자리로 모여요. 막대를 세우지 않고 칸 사이를 매끄럽게 이어 가운데가 빽빽한 파형 윤곽이에요
+        const position = particle.seed * SEED_WAVE_COLUMNS - 0.5;
+        const left = Math.max(0, Math.min(SEED_WAVE_COLUMNS - 1, Math.floor(position)));
+        const right = Math.min(SEED_WAVE_COLUMNS - 1, left + 1);
+        const mix = Math.max(0, Math.min(1, position - left));
+        const amplitude = amplitudes[left] * (1 - mix) + amplitudes[right] * mix;
+        const depth = Math.sign(particle.level) * Math.pow(Math.abs(particle.level), 1.35);
+        const waveX = startX + particle.seed * waveWidth + particle.jitter * columnWidth * 0.6;
+        const waveY = centerY + depth * amplitude;
         particle.homeX = waveX + (sketchX - waveX) * blend;
         particle.homeY = waveY + (sketchY - waveY) * blend;
       });
@@ -293,7 +298,8 @@ export const useDockSeed = ({
 
     const tick = (now: number) => {
       resize();
-      frame++;
+      // 화면 주사율과 상관없이 같은 속도로 움직이게 흐른 시간만큼 프레임을 더해요
+      frame += frameStep(now, lastFrameAt);
       // 느린 프레임이 잦으면 가볍게 그려요. 한 번 가벼워지면 그 세션에선 되돌리지 않아 깜빡이지 않아요
       if (lastFrameAt && now - lastFrameAt > SEED_SLOW_FRAME_MS) slowFrames++;
       else slowFrames = Math.max(0, slowFrames - 1);
