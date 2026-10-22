@@ -28,6 +28,7 @@ import {
   SEED_WAVE_AMPLITUDE,
   SEED_WAVE_BOTTOM,
   SEED_WAVE_COLUMNS,
+  SEED_WAVE_LIMIT,
   SEED_WAVE_MAX_WIDTH,
   SEED_WAVE_VOICE_GAIN,
   SEED_WAVE_WIDTH_RATIO,
@@ -274,7 +275,8 @@ export const useDockSeed = ({
         const amplitude = amplitudes[left] * (1 - mix) + amplitudes[right] * mix;
         const depth = Math.sign(particle.level) * Math.pow(Math.abs(particle.level), 1.35);
         const waveX = startX + particle.seed * waveWidth + particle.jitter * columnWidth * 0.6;
-        const waveY = centerY + depth * amplitude;
+        // 유리판 안에 머물도록 큰 진폭은 tanh로 부드럽게 눌러요. 잘리지 않고 끝으로 갈수록 천천히 멈춰요
+        const waveY = centerY + SEED_WAVE_LIMIT * Math.tanh((depth * amplitude) / SEED_WAVE_LIMIT);
         particle.homeX = waveX + (sketchX - waveX) * blend;
         particle.homeY = waveY + (sketchY - waveY) * blend;
       });

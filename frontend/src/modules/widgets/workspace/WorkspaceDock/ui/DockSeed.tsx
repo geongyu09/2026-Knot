@@ -3,7 +3,7 @@ import styled from "@emotion/styled";
 import { hexToRgb } from "@utils/hexToRgb";
 import { useRef, type PointerEvent } from "react";
 
-import { SEED_CANVAS_HEIGHT, SEED_CANVAS_OVERFLOW, SEED_WAVE_BOTTOM } from "../constants/dockSeed";
+import { SEED_CANVAS_HEIGHT, SEED_CANVAS_OVERFLOW, SEED_GLASS_HEIGHT, SEED_WAVE_BOTTOM } from "../constants/dockSeed";
 import { useDockSeed, type SeedSplitTargets } from "../model/useDockSeed";
 
 interface DockSeedProps {
@@ -31,9 +31,7 @@ interface DockSeedProps {
 export default function DockSeed({ isOpen, analyser, isActive, elapsedTime, splitTargets, onOpen }: DockSeedProps) {
   const theme = useTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  // 녹음 화면의 파형(RecorderBar)과 같은 먹색이에요. 녹음 화면의 파형이 독 자리로 접힌 것으로 읽혀요
-  const ink = hexToRgb(theme.neutral[800]);
-  const strong = hexToRgb(theme.neutral[900]);
+  // 어두운 유리판 위라 독 안의 녹음 칩과 같은 밝은 입자예요. 올리면 나타나는 독(Neutral 800)과 같은 톤으로 이어져요
   const light = hexToRgb(theme.neutral[300]);
 
   const { setPointer, clearPointer, pulse } = useDockSeed({
@@ -43,7 +41,7 @@ export default function DockSeed({ isOpen, analyser, isActive, elapsedTime, spli
     isActive,
     splitTargets,
     palette: {
-      wave: [`rgba(${strong},0.9)`, `rgba(${ink},0.6)`, `rgba(${ink},0.32)`],
+      wave: [`rgba(${hexToRgb(theme.neutral[0])},0.95)`, `rgba(${hexToRgb(theme.neutral[200])},0.7)`, `rgba(${light},0.4)`],
       light: [`rgba(${hexToRgb(theme.neutral[0])},0.92)`, `rgba(${light},0.7)`, `rgba(${light},0.32)`],
     },
   });
@@ -95,21 +93,32 @@ export default function DockSeed({ isOpen, analyser, isActive, elapsedTime, spli
 }
 
 /**
- * 파형과 시간을 받치는 유리판. 바탕색(Neutral 50)을 반투명하게 깔고 뒤를 흐려 글자 위를 지나가도 파형이 읽혀요.
- * 흰색 카드와 구분되도록 흰색 그대로 쓰지 않고, 테두리는 먹색을 아주 옅게 둬요. 독이 나타나면 독에 자리를 내줘요
+ * 파형과 시간을 받치는 어두운 유리판. 독(Neutral 800)과 같은 먹색을 반투명하게 깔고 뒤를 흐려, 올리면 나타나는 독과 같은 톤으로 이어져요.
+ * 유리답게 위쪽 가장자리에 빛이 닿은 얇은 선과 위에서 아래로 옅어지는 윤기를 두고, 아래로 부드러운 그림자를 떨어뜨려요.
+ * 독이 나타나면 독에 자리를 내줘요
  */
 const GlassPill = styled.span<{ $isVisible: boolean }>`
   position: absolute;
-  bottom: ${(SEED_WAVE_BOTTOM - SEED_CANVAS_OVERFLOW - 26) / 16}rem; /* 파형 가운데를 중심으로 52px */
+  bottom: ${(SEED_WAVE_BOTTOM - SEED_CANVAS_OVERFLOW - SEED_GLASS_HEIGHT / 2) / 16}rem; /* 파형 가운데가 유리판 가운데예요 */
   left: calc(50% - min(11.25rem, 30%) - 1.5rem); /* 파형 왼쪽 끝에서 24px 바깥 */
   width: calc(min(22.5rem, 60%) + 6.75rem); /* 파형 + 시간(44px) + 양옆 여백 */
-  height: 3.25rem; /* 52px */
-  border: 1px solid ${({ theme }) => `rgba(${hexToRgb(theme.neutral[900])}, 0.06)`};
+  height: ${SEED_GLASS_HEIGHT / 16}rem;
+  border: 1px solid ${({ theme }) => `rgba(${hexToRgb(theme.neutral[0])}, 0.16)`};
   border-radius: 6.25rem; /* 100px */
-  background-color: ${({ theme }) => `rgba(${hexToRgb(theme.neutral[50])}, 0.68)`};
-  box-shadow: 0 6px 20px ${({ theme }) => `rgba(${hexToRgb(theme.neutral[900])}, 0.05)`};
-  backdrop-filter: blur(14px) saturate(1.1);
-  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  background:
+    linear-gradient(
+      180deg,
+      ${({ theme }) => `rgba(${hexToRgb(theme.neutral[0])}, 0.1)`} 0%,
+      ${({ theme }) => `rgba(${hexToRgb(theme.neutral[0])}, 0.02)`} 45%,
+      ${({ theme }) => `rgba(${hexToRgb(theme.neutral[900])}, 0.06)`} 100%
+    ),
+    ${({ theme }) => `rgba(${hexToRgb(theme.neutral[800])}, 0.72)`};
+  box-shadow:
+    inset 0 1px 0 ${({ theme }) => `rgba(${hexToRgb(theme.neutral[0])}, 0.22)`},
+    inset 0 -1px 0 ${({ theme }) => `rgba(${hexToRgb(theme.neutral[900])}, 0.25)`},
+    0 10px 30px ${({ theme }) => `rgba(${hexToRgb(theme.neutral[900])}, 0.18)`};
+  backdrop-filter: blur(22px) saturate(1.3);
+  -webkit-backdrop-filter: blur(22px) saturate(1.3);
   opacity: ${({ $isVisible }) => ($isVisible ? 1 : 0)};
   transition: opacity 0.2s;
   pointer-events: none;
@@ -133,8 +142,8 @@ const ElapsedTime = styled.span<{ $isVisible: boolean }>`
   bottom: ${(SEED_WAVE_BOTTOM - SEED_CANVAS_OVERFLOW) / 16}rem;
   left: calc(50% + min(11.25rem, 30%) + 0.75rem); /* 파형 절반(최대 180px) + 12px */
   transform: translateY(50%);
-  /* 입자 파형처럼 가볍게. 굵은 라벨 대신 중간 굵기에 자간을 살짝 띄우고 먹색을 한 단계 옅게 둬요 */
-  color: ${({ theme }) => theme.neutral[700]};
+  /* 입자 파형처럼 가볍게. 굵은 라벨 대신 중간 굵기에 자간을 살짝 띄우고, 어두운 유리판 위라 밝은 글자예요 */
+  color: ${({ theme }) => theme.neutral[100]};
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.04em;
   white-space: nowrap;
