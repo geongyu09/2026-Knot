@@ -28,11 +28,26 @@ export type SearchQuestionAnswerStream = Omit<
   "conversationId"
 >;
 
-/** 실패한 답변 재시도 SSE 스트림의 값들. 대화·질문 ID는 요청 경로에서 받아 채워요 */
+/**
+ * 실패한 답변 재시도 SSE 스트림의 값들. 질문·답변 ID는 요청 경로에서 받아 채워요.
+ *
+ * accepted가 첫 질문과 달라요. 대화 ID 없이 재사용한 질문 ID(`questionId`)와 답변 ID, 접수 상태(`STREAMING`)를 보내요.
+ * 나머지 이벤트는 첫 질문과 같아요
+ */
 export type SearchAnswerRetryStream = Omit<
   SearchAnswerStream,
   "conversationId" | "questionMessageId" | "answerMessageId"
 >;
+
+/** 재시도 accepted 이벤트의 data. 서버가 보내는 모양 그대로예요 */
+export interface SearchAnswerRetryAccepted {
+  /** 재사용한 USER 질문 ID. 요청 경로의 질문 ID와 같아요 */
+  questionId: number;
+  /** 재사용한 ASSISTANT 답변 ID. 질문 바로 다음 메시지예요 */
+  answerMessageId: number;
+  /** 접수 상태. 늘 STREAMING이고 끝은 후속 이벤트로 알아요 */
+  status: "STREAMING";
+}
 
 /** 끊긴 답변 재연결 SSE 스트림의 값들. 답변 ID는 요청 경로에서 받아 채워요 */
 export interface SearchAnswerEventsStream {

@@ -13,7 +13,14 @@ import { theme } from "@provider/themeProvider";
 import { getRouterPath, PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useSearchAnswerStore } from "@store/searchAnswerStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
@@ -484,6 +491,27 @@ describe("SearchConversation", () => {
     ).toBeInTheDocument();
     expect(within(turns[0]).getByText(retriedAnswer)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("'다시 시도'로 받은 답변이 끝나면 그 대화의 메시지를 다시 조회한다 (SEARCH-R5)", async () => {
+    respondWithFailedFirstAnswer();
+    renderConversation();
+    const retryButton = await screen.findByRole("button", {
+      name: "다시 시도",
+    });
+
+    // 처음 조회는 이미 끝났으니, 여기서부터 세는 요청은 재시도가 일으킨 것뿐이에요
+    let messagesRequestCount = 0;
+    mockServer.events.on("request:start", ({ request }) => {
+      if (request.url.includes("/messages")) messagesRequestCount += 1;
+    });
+
+    await act(async () => {
+      fireEvent.click(retryButton);
+    });
+
+    await waitFor(() => expect(messagesRequestCount).toBe(1));
+    mockServer.events.removeAllListeners();
   });
 
   it("'기록 N개에서 찾았어요'를 누르면 그 답변의 찾은 기록을 연다 (SEARCH-R2)", async () => {
