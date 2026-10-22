@@ -2,11 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import {
   advancePulses,
+  clearLevelHistory,
+  createLevelHistory,
   createPulse,
+  levelHistoryPhase,
   nextPulseBoost,
   pointerRepulsion,
   pulseForce,
+  pushLevel,
   roundedRectPoint,
+  sampleLevelHistory,
   smoothLevel,
   stepSpring,
   waveAmplitude,
@@ -63,6 +68,50 @@ describe("smoothLevel", () => {
   it("커질 때는 attack, 작아질 때는 release 비율로 따라간다", () => {
     expect(smoothLevel({ previous: 0, next: 1, attack: 0.5, release: 0.1 })).toBe(0.5);
     expect(smoothLevel({ previous: 1, next: 0, attack: 0.5, release: 0.1 })).toBe(0.9);
+  });
+});
+
+describe("소리 이력", () => {
+  it("한 칸이 맡는 시간 안에서는 가장 큰 값을 남긴다", () => {
+    const history = createLevelHistory(4, 100);
+    pushLevel(history, 0.8, 0);
+    pushLevel(history, 0.2, 30);
+    expect(Array.from(history.values).map((v) => Number(v.toFixed(2)))).toEqual([0, 0, 0, 0.8]);
+  });
+
+  it("시간이 지나면 한 칸씩 왼쪽으로 밀리고 오른쪽 끝이 지금이다", () => {
+    const history = createLevelHistory(4, 100);
+    pushLevel(history, 0.8, 0);
+    pushLevel(history, 0.3, 100);
+    pushLevel(history, 0.5, 200);
+    // 0~100ms 칸은 0.8, 100~200ms 칸은 0.5, 새로 시작한 지금 칸도 0.5에서 시작해요
+    expect(Array.from(history.values).map((v) => Number(v.toFixed(2)))).toEqual([0, 0.8, 0.5, 0.5]);
+  });
+
+  it("오래 멈췄다 돌아오면 이력을 비우고 다시 시작한다", () => {
+    const history = createLevelHistory(4, 100);
+    pushLevel(history, 0.8, 0);
+    pushLevel(history, 0.1, 5000);
+    expect(Array.from(history.values).map((v) => Number(v.toFixed(2)))).toEqual([0, 0, 0, 0.1]);
+  });
+
+  it("비우면 평평해지고 다시 넣으면 그 시각부터 센다", () => {
+    const history = createLevelHistory(4, 100);
+    pushLevel(history, 0.8, 0);
+    clearLevelHistory(history);
+    expect(Array.from(history.values)).toEqual([0, 0, 0, 0]);
+    expect(levelHistoryPhase(history, 50)).toBe(0);
+    pushLevel(history, 0.4, 1000);
+    expect(levelHistoryPhase(history, 1050)).toBe(0.5);
+  });
+
+  it("가로 위치의 크기는 칸 사이를 매끄럽게 잇고 흘러간 만큼 왼쪽으로 당겨 읽는다", () => {
+    const history = createLevelHistory(3, 100);
+    history.values.set([0, 1, 0]);
+    expect(sampleLevelHistory({ history, position: 0.5, phase: 0 })).toBe(1);
+    expect(sampleLevelHistory({ history, position: 0.25, phase: 0 })).toBe(0.5);
+    expect(sampleLevelHistory({ history, position: 0, phase: 1 })).toBe(1);
+    expect(sampleLevelHistory({ history, position: 1, phase: 0.7 })).toBe(0);
   });
 });
 

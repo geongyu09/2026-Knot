@@ -5,16 +5,15 @@ export const ORB_PARTICLE_COUNT = 900;
 export const ORB_DOT_MIN = 0.75;
 export const ORB_DOT_RANGE = 0.7;
 
-/** `wave` 모양의 파형 윤곽을 재는 칸 수. 칸 사이는 매끄럽게 이어 막대가 아니라 입자 구름이 파형 모양을 이뤄요 */
+/** `wave` 모양의 소리 이력 칸 수와 한 칸이 맡는 시간(ms). 작은 칩이라 12칸으로 약 1.8초가 보여요. 오른쪽 끝이 지금이에요 */
 export const WAVE_SHAPE_COLUMNS = 12;
+export const WAVE_SHAPE_INTERVAL_MS = 150;
 /** `wave` 모양의 가로 폭은 구슬 반지름의 이 배율이에요. 캔버스보다 넓으면 캔버스에 맞춰요 */
 export const WAVE_SHAPE_SPAN_SCALE = 4.5;
-/** `wave` 모양에서 일시정지면 막대가 이 높이(px)의 평평한 선으로 쉬어요 */
+/** `wave` 모양에서 소리가 없거나 일시정지면 이 높이(px)의 평평한 선으로 쉬어요 */
 export const WAVE_SHAPE_FLAT_AMPLITUDE = 1.2;
 /** `wave` 모양의 입자는 칩이 작아 이만큼 키워 그려요. 너무 키우면 입자 느낌이 사라져요 */
 export const WAVE_DOT_SCALE = 1.2;
-/** 랜딩 파형 공식은 평균 진폭이 최대의 절반쯤이라 작은 칩에서는 이만큼 곱해 채워요 */
-export const WAVE_SHAPE_GAIN = 1.6;
 
 /** `disc` 모양의 안쪽 원은 구슬 반지름의 이 배율이고, 테두리 고리는 구슬 반지름 그대로예요 */
 export const DISC_RADIUS_SCALE = 0.72;

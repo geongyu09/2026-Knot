@@ -1,18 +1,21 @@
 import {
   advancePulses,
+  clearLevelHistory,
+  createLevelHistory,
   createPulse,
   frameStep,
   gaussian,
+  levelHistoryPhase,
   nextPulseBoost,
   pointerRepulsion,
   prefersReducedMotion,
   pulseForce,
+  pushLevel,
   roundedRectPoint,
+  sampleLevelHistory,
   smoothLevel,
   stepSpring,
   type PulseWave,
-  waveAmplitude,
-  waveBreath,
 } from "@utils/particleMotion";
 import { measureAnalyserLevel } from "@utils/measureAudioLevel";
 import { sampleShapeTargets } from "@utils/sampleShapeTargets";
@@ -28,9 +31,9 @@ import {
   SEED_WAVE_AMPLITUDE,
   SEED_WAVE_BOTTOM,
   SEED_WAVE_COLUMNS,
-  SEED_WAVE_LIMIT,
+  SEED_WAVE_FLAT_AMPLITUDE,
+  SEED_WAVE_INTERVAL_MS,
   SEED_WAVE_MAX_WIDTH,
-  SEED_WAVE_VOICE_GAIN,
   SEED_WAVE_WIDTH_RATIO,
 } from "../constants/dockSeed";
 import { drawSpeechBubbleIcon } from "../utils/drawDockIcons";
@@ -39,9 +42,10 @@ import { drawSpeechBubbleIcon } from "../utils/drawDockIcons";
 type SketchPart = "frame" | "icon" | "orb";
 
 interface SeedParticle {
-  /** 막대 안의 세로 위치(-1~1). 랜딩 파형과 같아요 */
+  /** 파형에서의 세로 위치(-1~1). 가운데에 몰려 있어 파형 가운데가 빽빽하고 끝이 성겨요 */
   level: number;
   jitter: number;
+  /** 입자마다 고정된 0~1 난수. 파형에서의 가로 위치(0 왼쪽, 1 오른쪽 끝=지금)이기도 해요 */
   seed: number;
   size: number;
   x: number;
@@ -92,7 +96,9 @@ const SLOT_CENTER_BOTTOM = SEED_WAVE_BOTTOM;
 /**
  * 다른 화면에서 녹음이 이어질 때 접힌 독 자리에 흐르는 입자 파형을 그려요.
  *
- * 녹음 바와 같은 청록 파형이 길게 흐르며 소리 크기를 따라요. 올리면 입자가 포인터를 피하고(95px), 누르면 파동이 퍼져요.
+ * 녹음 화면 파형과 같은 먹색 파형이 소리 크기의 흐름을 보여 줘요. 오른쪽 끝이 지금이고 왼쪽으로 흘러가며,
+ * 조용하면 가는 선, 말하면 그 순간만 커져요. 일시정지거나 다른 탭의 녹음이라 소리를 읽을 수 없으면 평평한 선이에요.
+ * 올리면 입자가 포인터를 피하고(95px), 누르면 파동이 퍼져요.
  * `isOpen`이 되면 입자가 독 모양(알약 윤곽, 채팅 아이콘, 녹음 칩 자리)으로 모이고 그 뒤에서 진짜 독이 나타나면 사라져요. 닫히면 그 자리에서 다시 파형이 돼요.
  * 숨어 있는 동안은 그리지 않아요.
  * 프레임이 자주 느려지면 입자 절반만 그리고 흔들림을 빼서 어느 기기에서도 버벅이지 않게 해요.
@@ -136,13 +142,14 @@ export const useDockSeed = ({
     if (!canvas || !context || prefersReducedMotion()) return;
 
     const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
-    const amplitudes = new Float32Array(SEED_WAVE_COLUMNS);
+    const history = createLevelHistory(SEED_WAVE_COLUMNS, SEED_WAVE_INTERVAL_MS);
     let particles: SeedParticle[] = [];
     let width = 0;
     let height = 0;
     let isMobile = false;
     let frame = Math.random() * 1000;
     let level = 0;
+    let phase = 0;
     let blend = 0;
     let alpha = 1;
     let alphaGoal = 1;
@@ -167,7 +174,7 @@ export const useDockSeed = ({
       canvas.height = Math.round(height * pixelRatio);
       const count = isMobile ? SEED_PARTICLE_COUNT.mobile : SEED_PARTICLE_COUNT.desktop;
       particles = Array.from({ length: count }, () => ({
-        level: Math.random() * 2 - 1,
+        level: Math.random() + Math.random() - 1,
         jitter: (Math.random() - 0.5) * 0.42,
         seed: Math.random(),
         size: 0.8 + Math.random() * 0.7,
@@ -228,19 +235,10 @@ export const useDockSeed = ({
       sketchKey = key;
     };
 
-    /** 랜딩 `updateWaveAmplitudes`와 같아요. 녹음 중엔 숨쉬기 대신 소리 크기가 높이를 정해요 */
-    const updateAmplitudes = () => {
-      const scale = Math.min(1.25, waveBreath(frame) * (1 + SEED_WAVE_VOICE_GAIN * level));
-      for (let column = 0; column < SEED_WAVE_COLUMNS; column++) {
-        amplitudes[column] = waveAmplitude({ column, columns: SEED_WAVE_COLUMNS, frame, maxAmplitude: SEED_WAVE_AMPLITUDE, scale });
-      }
-    };
-
     const placeParticles = () => {
       const centerX = width / 2;
       const centerY = height - SEED_WAVE_BOTTOM;
       const slotY = height - SLOT_CENTER_BOTTOM;
-      updateAmplitudes();
       assignSketch();
 
       const waveWidth = Math.min(SEED_WAVE_MAX_WIDTH, width * SEED_WAVE_WIDTH_RATIO);
@@ -267,16 +265,11 @@ export const useDockSeed = ({
           const light = 0.5 + 0.5 * (-x * 0.45 - y * 0.78 + z * 0.3) * (0.6 + 0.4 * (r / SEED_ORB_RADIUS));
           particle.shade = z < -0.3 ? 4 : light > 0.78 ? 0 : light > 0.62 ? 1 : light > 0.46 ? 2 : light > 0.3 ? 3 : 4;
         }
-        // 파형이었다가 열리면 독 모양 자리로 모여요. 막대를 세우지 않고 칸 사이를 매끄럽게 이어 가운데가 빽빽한 파형 윤곽이에요
-        const position = particle.seed * SEED_WAVE_COLUMNS - 0.5;
-        const left = Math.max(0, Math.min(SEED_WAVE_COLUMNS - 1, Math.floor(position)));
-        const right = Math.min(SEED_WAVE_COLUMNS - 1, left + 1);
-        const mix = Math.max(0, Math.min(1, position - left));
-        const amplitude = amplitudes[left] * (1 - mix) + amplitudes[right] * mix;
-        const depth = Math.sign(particle.level) * Math.pow(Math.abs(particle.level), 1.35);
+        // 파형이었다가 열리면 독 모양 자리로 모여요. 그 자리 시각의 소리만큼 퍼져서 조용하면 가는 선, 말한 순간만 커져 왼쪽으로 흘러가요
+        const amplitude =
+          SEED_WAVE_FLAT_AMPLITUDE + SEED_WAVE_AMPLITUDE * sampleLevelHistory({ history, position: particle.seed, phase });
         const waveX = startX + particle.seed * waveWidth + particle.jitter * columnWidth * 0.6;
-        // 유리판 안에 머물도록 큰 진폭은 tanh로 부드럽게 눌러요. 잘리지 않고 끝으로 갈수록 천천히 멈춰요
-        const waveY = centerY + SEED_WAVE_LIMIT * Math.tanh((depth * amplitude) / SEED_WAVE_LIMIT);
+        const waveY = centerY + particle.level * amplitude;
         particle.homeX = waveX + (sketchX - waveX) * blend;
         particle.homeY = waveY + (sketchY - waveY) * blend;
       });
@@ -309,8 +302,15 @@ export const useDockSeed = ({
       lastFrameAt = now;
 
       const { isOpen: open, analyser: node, isActive: active, palette: colors } = paramsRef.current;
-      const measured = node && active ? measureAnalyserLevel(node) : 0;
-      level = smoothLevel({ previous: level, next: measured, attack: 0.35, release: 0.08 });
+      // 일시정지거나 다른 탭의 녹음이라 소리를 읽을 수 없으면 이력을 비워 평평한 선이에요
+      if (node && active) {
+        level = smoothLevel({ previous: level, next: measureAnalyserLevel(node), attack: 0.6, release: 0.3 });
+        pushLevel(history, level, now);
+      } else {
+        level = 0;
+        clearLevelHistory(history);
+      }
+      phase = levelHistoryPhase(history, now);
       blend += ((open ? 1 : 0) - blend) * 0.2;
       if (blend < 0.01) blend = 0;
       alpha += (alphaGoal - alpha) * (alphaGoal < alpha ? 0.3 : 0.16);
@@ -363,9 +363,10 @@ export const useDockSeed = ({
             particle,
             homeX: particle.homeX,
             homeY: particle.homeY,
-            spring: 0.09,
+            spring: 0.12,
             damping: 0.84,
-            jitter: isLite ? 0 : 0.18,
+            // 조용할 땐 거의 멈춰 있고 소리가 들어올수록 조금 흔들려요. 독 모양으로 모여 있을 땐 살짝 살아 있어요
+            jitter: isLite ? 0 : blend > 0.5 ? 0.12 : 0.04 + level * 0.2,
             forceX,
             forceY,
           });

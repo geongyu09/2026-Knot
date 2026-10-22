@@ -1,21 +1,37 @@
 import { measureAnalyserLevel } from "@utils/measureAudioLevel";
-import { advancePulses, createPulse, frameStep, nextPulseBoost, pointerRepulsion, prefersReducedMotion, pulseForce, smoothLevel, stepSpring, type PulseWave, waveAmplitude, waveBreath } from "@utils/particleMotion";
+import {
+  advancePulses,
+  clearLevelHistory,
+  createLevelHistory,
+  createPulse,
+  levelHistoryPhase,
+  nextPulseBoost,
+  pointerRepulsion,
+  prefersReducedMotion,
+  pulseForce,
+  pushLevel,
+  sampleLevelHistory,
+  smoothLevel,
+  stepSpring,
+  type PulseWave,
+} from "@utils/particleMotion";
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 
 import {
   WAVEFORM_AMPLITUDE_RATIO,
   WAVEFORM_COLUMNS,
+  WAVEFORM_FLAT_AMPLITUDE,
+  WAVEFORM_INTERVAL_MS,
   WAVEFORM_PARTICLE_RANGE,
   WAVEFORM_PARTICLES_PER_AREA,
   WAVEFORM_POINTER_RADIUS,
-  WAVEFORM_VOICE_GAIN,
 } from "../constants/particleWaveform";
 
 interface WaveParticle {
-  column: number;
-  /** 막대 안의 세로 위치(-1~1). 랜딩 파형과 같아요 */
+  /** 가로 위치(0~1). 0이 왼쪽, 1이 오른쪽 끝(지금)이에요 */
+  position: number;
+  /** 세로 위치(-1~1). 가운데에 몰려 있어 파형 가운데가 빽빽하고 끝이 성겨요 */
   level: number;
-  jitter: number;
   size: number;
   x: number;
   y: number;
@@ -32,12 +48,13 @@ interface UseParticleWaveformParams {
 }
 
 /**
- * 랜딩 녹음 장면의 파형을 캔버스에 매 프레임 그려요.
+ * 소리 크기의 흐름을 입자 파형으로 캔버스에 매 프레임 그려요.
  *
- * 96칸 막대가 저마다 다른 박자로 출렁이고 양 끝으로 갈수록 낮아지는 랜딩 공식 그대로예요.
- * 파형 전체는 랜딩처럼 숨 쉬고, 분석기의 소리 크기만큼 더 크게 퍼져요. 입자는 가운데가 빽빽하고
- * 세로 위치에 따라 잉크 세 단계로 그려요. 올리면 입자가 포인터를 피하고, 누르면 파동이 퍼져요.
- * 일시정지면 숨을 멈추고 옅은 색으로 멈춰 있어요. 움직임 줄이기 설정에서는 흔들림과 숨쉬기 없이 소리만 따라요.
+ * 오른쪽 끝이 지금 소리이고 시간이 지나면 왼쪽으로 흘러가요. 조용하면 가운데에 가는 선만 남고,
+ * 말하면 그 순간의 자리만 소리만큼 커져요. 입자는 가운데가 빽빽하고 세로 위치에 따라 잉크 세 단계로 그려요.
+ * 올리면 입자가 포인터를 피하고, 누르면 파동이 퍼져요.
+ * 일시정지면 이력을 비워 옅은 색의 평평한 선으로 멈춰 있고, 이어서 녹음하면 오른쪽부터 다시 채워져요.
+ * 움직임 줄이기 설정에서는 흔들림 없이 소리만 따라요.
  */
 export const useParticleWaveform = ({ canvasRef, analyser, isActive, palette }: UseParticleWaveformParams) => {
   const paramsRef = useRef({ analyser, isActive, palette });
@@ -67,12 +84,10 @@ export const useParticleWaveform = ({ canvasRef, analyser, isActive, palette }: 
 
     const reduced = prefersReducedMotion();
     const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.75);
-    const amplitudes = new Float32Array(WAVEFORM_COLUMNS);
+    const history = createLevelHistory(WAVEFORM_COLUMNS, WAVEFORM_INTERVAL_MS);
     const particles: WaveParticle[] = [];
     let width = 0;
     let height = 0;
-    let frame = Math.random() * 1000;
-    let lastFrameAt = 0;
     let level = 0;
     let animation = 0;
 
@@ -90,9 +105,8 @@ export const useParticleWaveform = ({ canvasRef, analyser, isActive, palette }: 
       particles.length = 0;
       for (let i = 0; i < count; i++) {
         particles.push({
-          column: i % WAVEFORM_COLUMNS,
-          level: Math.random() * 2 - 1,
-          jitter: (Math.random() - 0.5) * 0.42,
+          position: Math.random(),
+          level: Math.random() + Math.random() - 1,
           size: 0.9 + Math.random() * 0.9,
           x: Math.random() * width,
           y: height / 2 + (Math.random() - 0.5) * height * 0.2,
@@ -103,33 +117,32 @@ export const useParticleWaveform = ({ canvasRef, analyser, isActive, palette }: 
     };
 
     const tick = (now: number) => {
-      // 화면 주사율과 상관없이 같은 속도로 움직이게 흐른 시간만큼 프레임을 더해요
-      frame += frameStep(now, lastFrameAt);
-      lastFrameAt = now;
       resize();
       const { analyser: node, isActive: active, palette: colors } = paramsRef.current;
-      const measured = node && active ? measureAnalyserLevel(node) : 0;
-      level = smoothLevel({ previous: level, next: measured, attack: 0.4, release: 0.08 });
-
-      // 랜딩 녹음 장면의 숨쉬기 그대로. 목소리가 들어오면 그만큼 더 퍼지고, 일시정지면 숨도 멈춰요
-      const breath = reduced || !active ? 0.7 : waveBreath(frame);
-      const scale = Math.min(1.25, breath * (1 + WAVEFORM_VOICE_GAIN * level));
-      const maxAmplitude = height * WAVEFORM_AMPLITUDE_RATIO;
-      for (let column = 0; column < WAVEFORM_COLUMNS; column++) {
-        amplitudes[column] = waveAmplitude({ column, columns: WAVEFORM_COLUMNS, frame, maxAmplitude, scale });
+      // 일시정지거나 소리를 읽을 수 없으면 이력을 비워 평평한 선이에요. 소리는 빠르게 따라가고 조금 천천히 가라앉아요
+      if (node && active) {
+        level = smoothLevel({ previous: level, next: measureAnalyserLevel(node), attack: 0.6, release: 0.3 });
+        pushLevel(history, level, now);
+      } else {
+        level = 0;
+        clearLevelHistory(history);
       }
+      const phase = levelHistoryPhase(history, now);
+      const maxAmplitude = height * WAVEFORM_AMPLITUDE_RATIO;
 
       const pulses = pulsesRef.current;
       advancePulses(pulses);
       const pointer = pointerRef.current;
       const hasPointer = pointer.x > -1000;
-      const columnWidth = width / WAVEFORM_COLUMNS;
       const centerY = height / 2;
       const buckets: WaveParticle[][] = [[], [], [], []];
 
       particles.forEach((particle) => {
-        const homeX = (particle.column + 0.5 + particle.jitter) * columnWidth;
-        const homeY = centerY + particle.level * amplitudes[particle.column];
+        // 그 자리 시각의 소리만큼 퍼져요. 조용하면 가는 선, 말한 순간만 커져 왼쪽으로 흘러가요
+        const amplitude =
+          WAVEFORM_FLAT_AMPLITUDE + maxAmplitude * sampleLevelHistory({ history, position: particle.position, phase });
+        const homeX = particle.position * width;
+        const homeY = centerY + particle.level * amplitude;
         let forceX = 0;
         let forceY = 0;
         if (hasPointer) {
@@ -152,9 +165,10 @@ export const useParticleWaveform = ({ canvasRef, analyser, isActive, palette }: 
           particle,
           homeX,
           homeY,
-          spring: reduced ? 0.3 : 0.09,
+          spring: reduced ? 0.3 : 0.12,
           damping: 0.84,
-          jitter: reduced || !active ? 0 : 0.18,
+          // 조용할 땐 거의 멈춰 있고 소리가 들어올수록 조금 흔들려요. 일시정지면 전혀 움직이지 않아요
+          jitter: reduced || !active ? 0 : 0.04 + level * 0.2,
           forceX,
           forceY,
         });
