@@ -14,11 +14,11 @@ export const SEED_WAVE_WIDTH_RATIO = 0.6;
 /** 파형이 위아래로 퍼지는 최대 높이(px). 랜딩의 무대 높이 20%를 독 자리에 맞춘 값이에요 */
 export const SEED_WAVE_AMPLITUDE = 22;
 
-/** 파형이 유리판 밖으로 나가지 않게 가운데에서 위아래로 이만큼(px)까지만 퍼져요. 큰 소리는 잘리지 않고 부드럽게 눌려요 */
+/** 파형이 알약 밖으로 나가지 않게 가운데에서 위아래로 이만큼(px)까지만 퍼져요. 큰 소리는 잘리지 않고 부드럽게 눌려요 */
 export const SEED_WAVE_LIMIT = 24;
 
-/** 파형과 시간 뒤 유리판의 높이(px) */
-export const SEED_GLASS_HEIGHT = 60;
+/** 파형과 시간을 담는 알약의 높이(px). 독과 같은 60px이라 올리면 독으로 자연스럽게 이어져요 */
+export const SEED_PILL_HEIGHT = 60;
 
 /** 캔버스가 독 아래로 더 내려가는 거리(px). 알약 윤곽과 떠다니는 흔들림이 잘리지 않게 해요 */
 export const SEED_CANVAS_OVERFLOW = 20;

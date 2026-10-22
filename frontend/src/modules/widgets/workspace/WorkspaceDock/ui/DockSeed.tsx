@@ -3,7 +3,7 @@ import styled from "@emotion/styled";
 import { hexToRgb } from "@utils/hexToRgb";
 import { useRef, type PointerEvent } from "react";
 
-import { SEED_CANVAS_HEIGHT, SEED_CANVAS_OVERFLOW, SEED_GLASS_HEIGHT, SEED_WAVE_BOTTOM } from "../constants/dockSeed";
+import { SEED_CANVAS_HEIGHT, SEED_CANVAS_OVERFLOW, SEED_PILL_HEIGHT, SEED_WAVE_BOTTOM } from "../constants/dockSeed";
 import { useDockSeed, type SeedSplitTargets } from "../model/useDockSeed";
 
 interface DockSeedProps {
@@ -31,7 +31,7 @@ interface DockSeedProps {
 export default function DockSeed({ isOpen, analyser, isActive, elapsedTime, splitTargets, onOpen }: DockSeedProps) {
   const theme = useTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  // 어두운 유리판 위라 독 안의 녹음 칩과 같은 밝은 입자예요. 올리면 나타나는 독(Neutral 800)과 같은 톤으로 이어져요
+  // 독과 같은 알약 위라 독 안의 녹음 칩과 같은 밝은 입자예요
   const light = hexToRgb(theme.neutral[300]);
 
   const { setPointer, clearPointer, pulse } = useDockSeed({
@@ -59,8 +59,8 @@ export default function DockSeed({ isOpen, analyser, isActive, elapsedTime, spli
 
   return (
     <>
-      {/* 파형과 시간 뒤의 옅은 유리판. 홈 카드 위를 지나가도 파형이 글자와 섞이지 않아요 */}
-      <GlassPill aria-hidden="true" $isVisible={!isOpen} />
+      {/* 파형과 시간을 담는 독과 같은 알약. 홈 카드 위를 지나가도 파형이 글자와 섞이지 않아요 */}
+      <DockPill aria-hidden="true" $isVisible={!isOpen} />
       <Canvas ref={canvasRef} aria-hidden="true" $isOpen={isOpen} />
       <ElapsedTime aria-hidden="true" $isVisible={!isOpen}>
         {elapsedTime}
@@ -93,32 +93,18 @@ export default function DockSeed({ isOpen, analyser, isActive, elapsedTime, spli
 }
 
 /**
- * 파형과 시간을 받치는 어두운 유리판. 독(Neutral 800)과 같은 먹색을 반투명하게 깔고 뒤를 흐려, 올리면 나타나는 독과 같은 톤으로 이어져요.
- * 유리답게 위쪽 가장자리에 빛이 닿은 얇은 선과 위에서 아래로 옅어지는 윤기를 두고, 아래로 부드러운 그림자를 떨어뜨려요.
- * 독이 나타나면 독에 자리를 내줘요
+ * 파형과 시간을 담는 알약. 독과 같은 Neutral 800 바탕과 그림자라, 올리면 그 자리에서 독으로 이어져요.
+ * 녹음 화면의 파형 알약과도 같은 색이에요. 독이 나타나면 독에 자리를 내줘요
  */
-const GlassPill = styled.span<{ $isVisible: boolean }>`
+const DockPill = styled.span<{ $isVisible: boolean }>`
   position: absolute;
-  bottom: ${(SEED_WAVE_BOTTOM - SEED_CANVAS_OVERFLOW - SEED_GLASS_HEIGHT / 2) / 16}rem; /* 파형 가운데가 유리판 가운데예요 */
+  bottom: ${(SEED_WAVE_BOTTOM - SEED_CANVAS_OVERFLOW - SEED_PILL_HEIGHT / 2) / 16}rem; /* 파형 가운데가 알약 가운데예요 */
   left: calc(50% - min(11.25rem, 30%) - 1.5rem); /* 파형 왼쪽 끝에서 24px 바깥 */
   width: calc(min(22.5rem, 60%) + 6.75rem); /* 파형 + 시간(44px) + 양옆 여백 */
-  height: ${SEED_GLASS_HEIGHT / 16}rem;
-  border: 1px solid ${({ theme }) => `rgba(${hexToRgb(theme.neutral[0])}, 0.16)`};
+  height: ${SEED_PILL_HEIGHT / 16}rem;
   border-radius: 6.25rem; /* 100px */
-  background:
-    linear-gradient(
-      180deg,
-      ${({ theme }) => `rgba(${hexToRgb(theme.neutral[0])}, 0.1)`} 0%,
-      ${({ theme }) => `rgba(${hexToRgb(theme.neutral[0])}, 0.02)`} 45%,
-      ${({ theme }) => `rgba(${hexToRgb(theme.neutral[900])}, 0.06)`} 100%
-    ),
-    ${({ theme }) => `rgba(${hexToRgb(theme.neutral[800])}, 0.72)`};
-  box-shadow:
-    inset 0 1px 0 ${({ theme }) => `rgba(${hexToRgb(theme.neutral[0])}, 0.22)`},
-    inset 0 -1px 0 ${({ theme }) => `rgba(${hexToRgb(theme.neutral[900])}, 0.25)`},
-    0 10px 30px ${({ theme }) => `rgba(${hexToRgb(theme.neutral[900])}, 0.18)`};
-  backdrop-filter: blur(22px) saturate(1.3);
-  -webkit-backdrop-filter: blur(22px) saturate(1.3);
+  background-color: ${({ theme }) => theme.neutral[800]};
+  box-shadow: ${({ theme }) => theme.shadow03};
   opacity: ${({ $isVisible }) => ($isVisible ? 1 : 0)};
   transition: opacity 0.2s;
   pointer-events: none;
@@ -142,7 +128,7 @@ const ElapsedTime = styled.span<{ $isVisible: boolean }>`
   bottom: ${(SEED_WAVE_BOTTOM - SEED_CANVAS_OVERFLOW) / 16}rem;
   left: calc(50% + min(11.25rem, 30%) + 0.75rem); /* 파형 절반(최대 180px) + 12px */
   transform: translateY(50%);
-  /* 입자 파형처럼 가볍게. 굵은 라벨 대신 중간 굵기에 자간을 살짝 띄우고, 어두운 유리판 위라 밝은 글자예요 */
+  /* 입자 파형처럼 가볍게. 굵은 라벨 대신 중간 굵기에 자간을 살짝 띄우고, 어두운 알약 위라 밝은 글자예요 */
   color: ${({ theme }) => theme.neutral[100]};
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.04em;
@@ -150,7 +136,7 @@ const ElapsedTime = styled.span<{ $isVisible: boolean }>`
   opacity: ${({ $isVisible }) => ($isVisible ? 0.9 : 0)};
   transition: opacity 0.2s;
   pointer-events: none;
-  z-index: 2; /* 유리판(1) 위에 놓여요 */
+  z-index: 2; /* 알약(1) 위에 놓여요 */
   ${({ theme }) => theme.text.caption02};
   font-weight: 500;
 `;
