@@ -3,12 +3,8 @@ import { PATH_ROUTE } from "@routes/PATH_ROUTE";
 import { useEffect, useRef, useState } from "react";
 import { useMatch } from "react-router";
 
-import {
-  DOCK_HINT_DELAY_MS,
-  DOCK_HINT_MAX_SEEN_COUNT,
-  DOCK_HINT_SEEN_COUNT_KEY,
-  DOCK_HINT_VISIT_KEY,
-} from "../constants/dockHint";
+import { DOCK_HINT_DELAY_MS, DOCK_HINT_MAX_SEEN_COUNT } from "../constants/dockHint";
+import { readSeenCount, readVisitDecision, writeSeenCount, writeVisitDecision } from "../utils/dockHintStorage";
 
 interface UseDockHintParams {
   /** 독이 이미 펼쳐져 있는지. 펼쳐져 있으면 안내할 게 없어요 */
@@ -16,44 +12,6 @@ interface UseDockHintParams {
   /** 녹음이 이어지고 있거나 시작을 기다리는 중인지. 독이 파형으로 접혀 있거나 구슬이 돌고 있어 안내를 띄울 자리가 아니에요 */
   isRecordingBusy: boolean;
 }
-
-/** 이번 방문에서 안내를 띄우기로 했는지. 아직 정하지 않았으면 `null` */
-type VisitDecision = "shown" | "hidden" | null;
-
-const readVisitDecision = (): VisitDecision => {
-  try {
-    const decision = sessionStorage.getItem(DOCK_HINT_VISIT_KEY);
-
-    return decision === "shown" || decision === "hidden" ? decision : null;
-  } catch {
-    return null;
-  }
-};
-
-const writeVisitDecision = (decision: Exclude<VisitDecision, null>) => {
-  try {
-    sessionStorage.setItem(DOCK_HINT_VISIT_KEY, decision);
-  } catch {
-    // 남길 수 없으면 이번 방문만 판단하고 넘어가요
-  }
-};
-
-const readSeenCount = () => {
-  try {
-    return Number(localStorage.getItem(DOCK_HINT_SEEN_COUNT_KEY)) || 0;
-  } catch {
-    // 몇 번 봤는지 알 수 없으면 이미 다 본 것으로 쳐요
-    return DOCK_HINT_MAX_SEEN_COUNT;
-  }
-};
-
-const writeSeenCount = (count: number) => {
-  try {
-    localStorage.setItem(DOCK_HINT_SEEN_COUNT_KEY, String(count));
-  } catch {
-    // 남길 수 없으면 이번 방문만 보여주고 넘어가요
-  }
-};
 
 /**
  * 독 첫 사용 안내를 띄울지 정하고, 보여준 방문 횟수를 브라우저에 남깁니다.

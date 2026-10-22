@@ -41,6 +41,8 @@ import {
   DOCK_HINT_DELAY_MS,
   DOCK_HINT_MAX_SEEN_COUNT,
   DOCK_HINT_SEEN_COUNT_KEY,
+  DOCK_HOVER_GUIDE_DELAY_MS,
+  DOCK_HOVER_GUIDE_MAX_PER_VISIT,
 } from "./constants/dockHint";
 
 const DOCK_HINT_TEXT = DOCK_GUIDE_COPY.first.title;
@@ -521,15 +523,44 @@ describe("WorkspaceDock", () => {
     markHintAsSeen();
     renderDock();
 
-    const chatButton = screen.getByRole("button", { name: "무엇이든 요청하기" });
-    fireEvent.pointerEnter(chatButton.parentElement as HTMLElement);
+    const chatTarget = screen.getByRole("button", { name: "무엇이든 요청하기" }).parentElement as HTMLElement;
+    fireEvent.pointerEnter(chatTarget, { pointerType: "mouse" });
 
     expect(await screen.findByText(DOCK_GUIDE_COPY.chat)).toBeInTheDocument();
 
-    fireEvent.pointerLeave(chatButton.parentElement as HTMLElement);
+    fireEvent.pointerLeave(chatTarget);
 
     // 사라지는 모션만큼 잠깐 더 그려 두었다가 떼요
     await waitFor(() => expect(screen.queryByText(DOCK_GUIDE_COPY.chat)).not.toBeInTheDocument());
+  });
+
+  it("버튼 안내는 한 방문에서 버튼마다 두 번까지만 뜬다", async () => {
+    markHintAsSeen();
+    renderDock();
+
+    const chatTarget = screen.getByRole("button", { name: "무엇이든 요청하기" }).parentElement as HTMLElement;
+    for (let shown = 1; shown <= DOCK_HOVER_GUIDE_MAX_PER_VISIT; shown += 1) {
+      fireEvent.pointerEnter(chatTarget, { pointerType: "mouse" });
+      expect(await screen.findByText(DOCK_GUIDE_COPY.chat)).toBeInTheDocument();
+      fireEvent.pointerLeave(chatTarget);
+      await waitFor(() => expect(screen.queryByText(DOCK_GUIDE_COPY.chat)).not.toBeInTheDocument());
+    }
+
+    fireEvent.pointerEnter(chatTarget, { pointerType: "mouse" });
+    await act(() => new Promise((resolve) => setTimeout(resolve, DOCK_HOVER_GUIDE_DELAY_MS + 50)));
+
+    expect(screen.queryByText(DOCK_GUIDE_COPY.chat)).not.toBeInTheDocument();
+  });
+
+  it("안내를 띄우는 세 번의 방문이 지나면 버튼 안내도 뜨지 않는다", async () => {
+    localStorage.setItem(DOCK_HINT_SEEN_COUNT_KEY, String(DOCK_HINT_MAX_SEEN_COUNT + 1));
+    renderDock();
+
+    const chatTarget = screen.getByRole("button", { name: "무엇이든 요청하기" }).parentElement as HTMLElement;
+    fireEvent.pointerEnter(chatTarget, { pointerType: "mouse" });
+    await act(() => new Promise((resolve) => setTimeout(resolve, DOCK_HOVER_GUIDE_DELAY_MS + 50)));
+
+    expect(screen.queryByText(DOCK_GUIDE_COPY.chat)).not.toBeInTheDocument();
   });
 
   describe("독을 연 방법 기록", () => {
