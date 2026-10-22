@@ -1,3 +1,4 @@
+import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
 import RecordingCard from "@features/recording/RecordingCard";
 import RecorderBar from "@widgets/recording/RecorderBar";
@@ -32,6 +33,11 @@ const Container = styled.div`
   justify-content: center;
   min-height: 100%;
   padding: 1.75rem 1.5rem 7rem; /* 28px 24px 112px — 위는 GNB 아래 116px 지점, 아래는 하단 Dock 자리 */
+
+  ${MEDIA_QUERY.mobile} {
+    padding-right: 1rem; /* 16px */
+    padding-left: 1rem;
+  }
 `;
 
 const PageColumn = styled.div`

@@ -1,4 +1,5 @@
 import type { Theme } from "@emotion/react";
+import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
 import Button from "@primitives/ui/Button";
 
@@ -80,6 +81,17 @@ const Container = styled.div`
   padding: 1.25rem; /* 20px */
   border-radius: 1rem; /* 16px */
   background-color: ${({ theme }) => theme.neutral[100]};
+
+  /* 모바일은 버튼을 아래 줄로 내리고 폭을 꽉 채워요(RESP-R5) */
+  ${MEDIA_QUERY.mobile} {
+    flex-wrap: wrap;
+    align-items: flex-start;
+
+    && > button {
+      flex-basis: 100%;
+      height: 2.75rem; /* 44px */
+    }
+  }
 `;
 
 const IconChip = styled.span`
@@ -139,4 +151,8 @@ const Hint = styled.p`
   text-overflow: ellipsis;
   white-space: nowrap;
   ${({ theme }) => theme.text.caption02};
+
+  ${MEDIA_QUERY.mobile} {
+    white-space: normal;
+  }
 `;

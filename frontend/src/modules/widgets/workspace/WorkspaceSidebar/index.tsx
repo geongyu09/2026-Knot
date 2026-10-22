@@ -1,3 +1,4 @@
+import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
 import DocumentTree from "@features/document/DocumentTree";
 import WorkspaceSwitcher from "@features/workspace/WorkspaceSwitcher";
@@ -29,4 +30,9 @@ const Container = styled.aside`
   background-color: ${({ theme }) => theme.neutral[0]};
   box-shadow: ${({ theme }) => theme.shadow03};
   overflow-y: auto;
+
+  /* 모바일 덮개는 화면 폭에서 오른쪽 70px을 남기고 최대 320px까지 넓혀요(RESP-R2) */
+  ${MEDIA_QUERY.mobile} {
+    width: min(20rem, 100vw - 4.375rem); /* 320px */
+  }
 `;

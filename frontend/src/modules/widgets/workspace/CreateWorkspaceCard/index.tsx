@@ -1,3 +1,4 @@
+import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
 import Button from "@primitives/ui/Button";
 import TextField from "@primitives/ui/TextField";
@@ -66,6 +67,11 @@ const Container = styled.section`
   border-radius: 1.5rem; /* 24px */
   background-color: ${({ theme }) => theme.neutral[0]};
   box-shadow: ${({ theme }) => theme.shadow02};
+
+  /* 모바일은 안쪽 여백을 줄여 360px 화면에서도 입력칸과 버튼 폭을 지켜요 */
+  ${MEDIA_QUERY.mobile} {
+    padding: 2rem 1.5rem; /* 32px 24px */
+  }
 `;
 
 const Title = styled.h1`

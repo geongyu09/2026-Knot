@@ -6,6 +6,7 @@ import {
   TAB_PRESS_SCALE,
   TAB_RELEASE_DURATION_MS,
 } from "@constants/tabMotion";
+import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
 import useWorkspaceNav from "@hooks/domain/workspace/useWorkspaceNav";
 
@@ -113,6 +114,12 @@ const NavItem = styled.button<{ $isActive: boolean }>`
   height: 2rem; /* 32px */
   padding: 0 1.125rem; /* 18px */
   border-radius: 62.4375rem;
+
+  /* 360px 화면에서 양옆 버튼 두 개씩과 함께 한 줄에 들어가도록 칸 여백을 줄여요(RESP-R1) */
+  ${MEDIA_QUERY.mobile} {
+    padding: 0 0.75rem; /* 12px */
+  }
+
   color: ${({ theme, $isActive }) =>
     $isActive ? theme.neutral[0] : theme.neutral[600]};
   white-space: nowrap;

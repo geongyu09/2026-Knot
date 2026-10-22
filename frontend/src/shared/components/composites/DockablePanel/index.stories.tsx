@@ -204,3 +204,18 @@ const Content = styled.main`
   padding: 1.25rem 2.5rem;
   color: ${({ theme }) => theme.neutral[800]};
 `;
+
+/**
+ * 1024 미만(태블릿, 모바일) 화면이에요. 본문 자리가 모자라 고정하지 않아요.
+ * 버튼을 누르면 GNB 아래를 흐리게 덮고 패널을 띄우며, 흐린 바깥이나 버튼을 다시 누르면 닫혀요.
+ * 포인터를 얹어도 띄우지 않아요. 손가락으로 누르는 기기에서도 같은 동작이 되게 하려는 거예요.
+ */
+export const NarrowScreen: Story = {
+  globals: { viewport: { value: "mobile390", isRotated: false } },
+  parameters: {
+    design: {
+      type: "figma",
+      url: "https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=4705-29759",
+    },
+  },
+};

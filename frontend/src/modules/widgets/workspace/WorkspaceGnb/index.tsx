@@ -1,3 +1,4 @@
+import { MEDIA_QUERY } from "@constants/breakpoint";
 import styled from "@emotion/styled";
 import MemberProfileAvatar from "@features/member/MemberProfileAvatar";
 import type { ReactNode } from "react";
@@ -43,6 +44,10 @@ const Container = styled.header`
   align-items: center;
   height: 2.75rem; /* 44px */
   padding: 0 1.5rem; /* 24px */
+
+  ${MEDIA_QUERY.mobile} {
+    padding: 0 1rem; /* 16px */
+  }
 `;
 
 const Side = styled.div<{ $isTrailing?: boolean }>`
@@ -53,4 +58,8 @@ const Side = styled.div<{ $isTrailing?: boolean }>`
     $isTrailing ? "flex-end" : "flex-start"};
   gap: 0.5rem; /* 8px */
   min-width: 0;
+
+  ${MEDIA_QUERY.mobile} {
+    gap: 0.375rem; /* 6px */
+  }
 `;
