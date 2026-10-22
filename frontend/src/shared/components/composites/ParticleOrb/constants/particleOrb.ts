@@ -8,14 +8,14 @@ export const ORB_DOT_RANGE = 0.7;
 /** 구름이 목소리에 파형으로 펼쳐질 때의 세로 막대 수 */
 export const ORB_WAVE_COLUMNS = 24;
 
-/** `wave` 모양의 세로 막대 수. 막대 사이가 보여야 파형으로 읽혀서 구름 파형보다 성기게 둬요 */
+/** `wave` 모양의 파형 윤곽을 재는 칸 수. 칸 사이는 매끄럽게 이어 막대가 아니라 입자 구름이 파형 모양을 이뤄요 */
 export const WAVE_SHAPE_COLUMNS = 12;
 /** `wave` 모양의 가로 폭은 구슬 반지름의 이 배율이에요. 캔버스보다 넓으면 캔버스에 맞춰요 */
 export const WAVE_SHAPE_SPAN_SCALE = 4.5;
 /** `wave` 모양에서 일시정지면 막대가 이 높이(px)의 평평한 선으로 쉬어요 */
 export const WAVE_SHAPE_FLAT_AMPLITUDE = 1.2;
-/** `wave` 모양의 입자는 칩이 작아 이만큼 키워 그려요 */
-export const WAVE_DOT_SCALE = 1.5;
+/** `wave` 모양의 입자는 칩이 작아 이만큼 키워 그려요. 너무 키우면 입자 느낌이 사라져요 */
+export const WAVE_DOT_SCALE = 1.2;
 /** 랜딩 파형 공식은 평균 진폭이 최대의 절반쯤이라 작은 칩에서는 이만큼 곱해 채워요 */
 export const WAVE_SHAPE_GAIN = 1.6;
 

@@ -46,9 +46,10 @@ interface OrbParticle {
   /** 가운데에서 얼마나 떨어졌는지(0~1). 가장자리는 작게 그려요 */
   edge: number;
   bucket: number;
-  /** 구름 파형과 `wave` 모양에서 몇 번째 막대인지, 막대 안의 세로 위치(-1~1), 가로 흔들림 */
+  /** 구름 파형에서 몇 번째 막대인지, 막대 안의 세로 위치(-1~1), 가로 흔들림 */
   column: number;
-  waveColumn: number;
+  /** `wave` 모양에서의 세로 위치(-1~1). 가운데에 몰린 난수라 파형 가운데가 빽빽하고 끝이 성겨요 */
+  waveLevel: number;
   level: number;
   jitter: number;
   /** 마이크 모양에서의 자리 */
@@ -108,7 +109,7 @@ const createParticles = (count: number): OrbParticle[] =>
     edge: 0,
     bucket: 1,
     column: index % ORB_WAVE_COLUMNS,
-    waveColumn: index % WAVE_SHAPE_COLUMNS,
+    waveLevel: Math.random() + Math.random() - 1,
     level: Math.random() * 2 - 1,
     jitter: (Math.random() - 0.5) * 0.42,
     micX: 0,
@@ -145,7 +146,7 @@ const drawBubble = (context: CanvasRenderingContext2D) => {
  * `typing`은 말풍선의 점들이 입력 중처럼 차례로 튀어요.
  * `disc`는 입자가 단색 원 안에 빽빽이 모이고 그 위에 테두리 고리를 둘러 한눈에 녹음 버튼으로 읽혀요. 입자가 조용히 모여야 단색 원이 차오르고,
  * 다른 모양으로 바뀌면 단색 원이 먼저 사라져 입자가 분해되는 것이 보여요. `scatter()`는 그때 입자를 바깥으로 살짝 흩뜨려요.
- * `wave`는 입자 전부가 세로 막대 파형을 이루고 조용할 때도 숨 쉬듯 일렁이며, 분석기가 있으면 목소리만큼 더 커져요. 일시정지면 평평한 선이에요.
+ * `wave`는 입자 전부가 구름처럼 흩어진 채 파형 윤곽을 이루고 조용할 때도 숨 쉬듯 일렁이며, 분석기가 있으면 목소리만큼 더 커져요. 일시정지면 평평한 선이에요.
  * 녹음 톤의 구름은 분석기의 소리 크기만큼 입자가 가운데를 가로지르는 파형으로 나가고, 조용하면 구름으로 돌아와요.
  * `isWaiting`이면 구름이 빠르게 돌며 모였다 풀렸다 해요. 누른 뒤 결과를 기다리는 동안 멈춰 보이지 않게 해요.
  * 매 프레임 바뀌는 값이라 React 상태로 다루지 않고, 바뀌는 props는 ref로 받아 다음 프레임부터 반영해요.
@@ -275,7 +276,7 @@ export const useParticleOrb = ({
       }
 
       if (nextShape === "wave") {
-        // 녹음 칩: 입자 전부가 세로 막대 파형이에요. 조용해도 랜딩 파형처럼 숨 쉬고, 목소리가 들어오면 더 커져요
+        // 녹음 칩: 입자 전부가 파형 윤곽을 이뤄요. 조용해도 랜딩 파형처럼 숨 쉬고, 목소리가 들어오면 더 커져요
         assignedShape = null;
         const span = Math.min(width - 4, baseRadius * WAVE_SHAPE_SPAN_SCALE);
         // 조용할 때도 높이의 절반 넘게 일렁여야 작은 칩에서 파형으로 읽혀요. 목소리가 들어오면 캔버스 끝까지 커져요
@@ -288,13 +289,20 @@ export const useParticleOrb = ({
               ? WAVE_SHAPE_FLAT_AMPLITUDE + limit * level
               : Math.min(limit, waveAmplitude({ column, columns: WAVE_SHAPE_COLUMNS, frame: frame * 1.5, maxAmplitude, scale: WAVE_SHAPE_GAIN }));
         }
+        // 막대를 세우지 않고 입자가 가로로 고르게 흩어진 채 매끄러운 파형 윤곽을 따라요. 가운데가 빽빽하고 위아래 끝은 성겨 구름 같은 파형이에요
         particles.forEach((particle) => {
-          particle.homeX = centerX - span / 2 + (particle.waveColumn + 0.5 + particle.jitter * 0.5) * (span / WAVE_SHAPE_COLUMNS);
-          particle.homeY = centerY + particle.level * amplitudes[particle.waveColumn];
+          const position = particle.seed * WAVE_SHAPE_COLUMNS - 0.5;
+          const left = Math.max(0, Math.min(WAVE_SHAPE_COLUMNS - 1, Math.floor(position)));
+          const right = Math.min(WAVE_SHAPE_COLUMNS - 1, left + 1);
+          const mix = Math.max(0, Math.min(1, position - left));
+          const amplitude = amplitudes[left] * (1 - mix) + amplitudes[right] * mix;
+          particle.homeX = centerX - span / 2 + particle.seed * span + particle.jitter;
+          particle.homeY = centerY + particle.waveLevel * amplitude;
           particle.depth = 1;
           particle.edge = 0.3;
-          const strength = Math.abs(particle.level);
-          particle.bucket = strength < 0.45 ? 0 : strength < 0.8 ? 2 : 3;
+          const strength = Math.abs(particle.waveLevel);
+          // 흰 심은 가늘게, 바깥으로 갈수록 청록이 짙어져 뿌연 안개가 아니라 파형으로 읽혀요
+          particle.bucket = strength < 0.18 ? 0 : strength < 0.4 ? 1 : strength < 0.65 ? 2 : strength < 0.88 ? 3 : 5;
         });
         return;
       }
