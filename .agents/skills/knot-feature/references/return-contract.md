@@ -23,6 +23,22 @@
 | `question` | `needs_user_input`일 때만. 무엇을 왜 묻는지, 고를 수 있는 선택지, 권장안을 한 덩어리로 쓴다. `blocked`일 때는 사람이 손볼 것을 적는다. |
 | `side_effects` | 충돌이나 영향 범위. 기능 요구사항 충돌 브리핑은 여기에 담긴다. |
 
+## 검증기
+
+입구는 서브 에이전트가 돌려준 JSON과 상태 파일을 저장소의 결정적 검증기로 확인하고, `changed`를
+「노션 변경 사항」 Markdown으로 만든다. 판단 규칙은 이 문서가 정본이고 검증기는 그것을 기계적으로
+확인할 뿐이다.
+
+```bash
+python3 harness/feature_pipeline.py result <result.json> --pretty   # 반환값 검증
+python3 harness/feature_pipeline.py state <state.json> --pretty     # 상태 파일 검증
+python3 harness/feature_pipeline.py render <state.json>             # PR용 ## 노션 변경 사항
+python3 harness/feature_pipeline.py render <state.json> --issue     # 이슈용 (## 없이 굵은 제목)
+```
+
+검증에 실패한 반환값은 상태 파일에 넣지 않고, 같은 서브 에이전트를 규약을 지키라는 말과 함께 한 번
+다시 부른다. 두 번째도 실패하면 `blocked`로 보고 멈춘다.
+
 ## 「노션 변경 사항」 형식
 
 `changed` 배열을 아래 형식으로 옮긴다. 내용을 베끼지 않고 링크만 단다. 바뀐 문서가 없는 항목은
@@ -31,12 +47,13 @@
 ```markdown
 ## 노션 변경 사항
 
-- 기능 요구사항: [SEARCH-R12](https://app.notion.com/p/...) 추가. 복사 버튼을 누르면 알림이 뜬다
-- QA 시트: [SEARCH-QA-031](https://app.notion.com/p/...) 추가
-- 디자인: [탐색 답변 복사](https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=...) 변경 없음, 참고 링크
-- 도메인 규칙: 없음 (프론트 길)
-- API 명세: 없음 (프론트 길)
+- 노션: [기능 요구사항 SEARCH-R12 추가. 복사 버튼을 누르면 알림이 뜬다](https://app.notion.com/p/...)
+- 노션: [QA 시트 SEARCH-QA-031 추가](https://app.notion.com/p/...)
+- Figma: [탐색 답변 복사 화면, 변경 없음, 참고 링크](https://www.figma.com/design/jyDFCKX5AIztZessq4H7nQ/knot?node-id=...)
 ```
+
+`summary`는 어느 문서의 무엇이 바뀌었는지로 시작한다(기능 요구사항, 도메인 규칙, API 명세, QA 시트,
+디자인). 백엔드 길이 아니어서 고치지 않은 문서는 적지 않는다. 바뀐 것이 하나도 없으면 `- 없음`이다.
 
 - PR 본문에서는 첫 번째 `##` 섹션으로 둔다. 그 아래는 기존 PR 템플릿을 따른다.
 - 이슈 본문은 세 섹션(`구현 기능 설명`, `TODO`, `메모`)만 허용하므로 `##`를 쓰지 않고

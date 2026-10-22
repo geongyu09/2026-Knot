@@ -86,8 +86,9 @@ description: 「○○ 기능 구현해 줘」 한 문장을 받아 Knot의 기�
 - Codex: 서브 에이전트를 띄울 수단이 있으면 같은 `subagents/*.md`로 띄운다. 없으면 입구 세션이 해당
   정의 파일을 읽고 그 서브 에이전트로서 한 단계만 수행한 뒤 같은 반환 규약으로 상태 파일에 기록한다.
   이때도 서브 에이전트 규칙(다른 서브 에이전트를 부르지 않기, 사용자에게 묻지 않기, 쓰기 권한 안에서만)은 그대로다.
-- 모든 서브 에이전트는 `references/return-contract.md`의 JSON 하나를 돌려준다. 입구는 이 값만 보고 다음
-  행동을 정한다. 노션 MCP나 Figma MCP가 없는 세션에서는 해당 서브 에이전트가 `blocked`로 돌아온다.
+- 모든 서브 에이전트는 `references/return-contract.md`의 JSON 하나를 돌려준다. 입구는
+  `python3 harness/feature_pipeline.py result <file>`로 검증한 뒤 이 값만 보고 다음 행동을 정하고,
+  이슈와 PR의 「노션 변경 사항」은 같은 스크립트의 `render`로 만든다. 노션 MCP나 Figma MCP가 없는 세션에서는 해당 서브 에이전트가 `blocked`로 돌아온다.
 
 ### 반환값 처리
 
