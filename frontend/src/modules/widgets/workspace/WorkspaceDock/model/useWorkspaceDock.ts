@@ -144,6 +144,8 @@ export const useWorkspaceDock = () => {
     formRef,
     textareaRef,
     isExpanded,
+    /** 화면(탐색) 때문에 펼쳐 둔 것인지. 사용자가 접은 게 아니라 화면이 바뀌어 접히면 접힘 모션이 없어요 */
+    isExpandedByScreen: isChatActive,
     message,
     canSubmit,
     handleExpand,

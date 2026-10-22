@@ -89,6 +89,7 @@ export default function WorkspaceDock() {
     formRef,
     textareaRef,
     isExpanded,
+    isExpandedByScreen,
     message,
     canSubmit,
     handleExpand,
@@ -118,10 +119,11 @@ export default function WorkspaceDock() {
   });
   // 사라질 때 모션을 보여 주려고 잠깐 더 그려요
   const guide = useGuidePresence(isHintVisible ? { kind: "first", tailOffset: 0 } : hoverGuide);
-  const { isSeedSupported, isOpen, open, enter, leave, scheduleClose } =
+  const { isSeedSupported, isOpen, isClosedByScreen, open, enter, leave, scheduleClose } =
     useDockOpen({
       stageRef,
       isExpanded,
+      isExpandedByScreen,
       hasMessage: message.trim().length > 0,
       hasWaveform: isRecordingChipVisible,
     });
@@ -170,6 +172,7 @@ export default function WorkspaceDock() {
       <Bar
         ref={formRef}
         $isOpen={isOpen}
+        $isInstant={isClosedByScreen}
         $isExpanded={isExpanded}
         $isRecording={isRecordingChipVisible && !isRecordingPaused}
         onSubmit={(event) => {
@@ -302,6 +305,8 @@ const Stage = styled.div`
  */
 const Bar = styled.form<{
   $isOpen: boolean;
+  /** 탐색 화면을 떠나며 닫힐 때는 화면이 통째로 바뀌므로 접히는 모션 없이 바로 파형 뒤로 숨어요 */
+  $isInstant: boolean;
   $isExpanded: boolean;
   $isRecording: boolean;
 }>`
@@ -327,8 +332,8 @@ const Bar = styled.form<{
     $isRecording ? `${theme.shadow03}, 0 10px 30px rgba(60, 59, 57, 0.14)` : theme.shadow03};
   interpolate-size: allow-keywords;
   transition-property: width, padding, gap, border-radius, box-shadow, opacity, transform;
-  transition-duration: ${({ $isExpanded }) =>
-    $isExpanded ? DOCK_EXPAND_DURATION : "0.36s"};
+  transition-duration: ${({ $isExpanded, $isInstant }) =>
+    $isInstant ? "0s" : $isExpanded ? DOCK_EXPAND_DURATION : "0.36s"};
   transition-timing-function: ${DOCK_EASING};
   /* 녹음 파형으로 접혀 있을 땐 보이지 않게 작게 두었다가, 열리면 입자 뒤에서 자라나요 */
   opacity: ${({ $isOpen }) => ($isOpen ? 1 : 0)};
