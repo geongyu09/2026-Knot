@@ -3,7 +3,12 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SKILL_NAMES = ("knot-issue-planning", "knot-deep-interview", "knot-grill-me")
+SKILL_NAMES = (
+    "knot-issue-planning",
+    "knot-deep-interview",
+    "knot-grill-me",
+    "knot-feature",
+)
 
 
 class AgentHarnessParityTest(unittest.TestCase):
